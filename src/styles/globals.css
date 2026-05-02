@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Variables - Design System SICS */
+:root {
+  /* Primary palette */
+  --color-primary: #00a1be;
+  --color-primary-light: #e6f7fb;
+  --color-primary-dark: #007a91;
+  /* Brand palette SICS */
+  --color-brand-turchese: #00a1be;
+  --color-brand-grigio: #747373;
+  --color-brand-verde: #95c11f;
+  --color-brand-arancio: #ee7326;
+  --color-brand-rosso: #e73331;
+  --color-brand-fucsia: #c82381;
+  /* UI */
+  --color-secondary: #747373;
+  --color-secondary-light: #f2f2f2;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-storico: #b0b0b0;
+  --color-bg: #ffffff;
+  --color-bg-page: #f8fafc;
+  --color-border: #e2e8f0;
+  --color-text: #1a202c;
+  --color-text-muted: #64748b;
+}
+
+/* Font Face - Tenorite */
+/* NOTE: convertire i .ttf in .woff2 per ridurre il peso da ~416KB a ~250KB.
+   Una volta convertiti, i file WOFF2 vengono caricati automaticamente (formato prioritario). */
+@font-face {
+  font-family: 'Tenorite';
+  src: url('/fonts/tenorite-regular.woff2') format('woff2'),
+       url('/fonts/tenorite-regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Tenorite';
+  src: url('/fonts/tenorite-bold.woff2') format('woff2'),
+       url('/fonts/tenorite-bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Tenorite';
+  src: url('/fonts/tenorite-italic.woff2') format('woff2'),
+       url('/fonts/tenorite-italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Tenorite';
+  src: url('/fonts/tenorite-bolditalic.woff2') format('woff2'),
+       url('/fonts/tenorite-bolditalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  background-color: var(--color-bg-page);
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Mascot animations ──────────────────────────────────────────────────── */
+
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  25%       { transform: translateY(-6px) rotate(-2deg); }
+  75%       { transform: translateY(-3px) rotate(2deg); }
+}
+
+@keyframes mascot-sway {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50%       { transform: translateY(-3px) rotate(1.5deg); }
+}
+
+@keyframes mascot-pop {
+  0%   { transform: scale(0.6) translateY(8px); opacity: 0; }
+  60%  { transform: scale(1.08) translateY(-2px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes mascot-fadeout {
+  0%   { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(0.85) translateY(4px); }
+}
+
+/* Utility classes */
+@layer utilities {
+  .font-tenorite {
+    font-family: 'Tenorite', system-ui, sans-serif;
+  }
+
+  .page-transition {
+    transition: opacity 200ms ease-out, transform 200ms ease-out;
+  }
+
+  .card-hover {
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 161, 190, 0.12);
+  }
+}

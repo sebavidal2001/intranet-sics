@@ -1,0 +1,139 @@
+// ─── Tool definitions shared between Gemini and OpenRouter handlers ───────────
+
+export const TOOL_LIST_PREVENTIVI_DEF = {
+  name: "list_preventivi",
+  description:
+    "Elenca preventivi dal database con filtri e ordinamento. Usare per: 'tutti i preventivi', 'preventivi di [cliente]', 'preventivi ordinati/rifiutati', 'preventivi del 2024', 'top N per importo', 'il preventivo più costoso', 'ordina per valore', ecc.",
+  parameters_obj: {
+    cliente:   { type: "string",  description: "Nome cliente, es. ALPHAMAC" },
+    stato:     { type: "string",  description: "Stato: pending, ordinato o rifiutato" },
+    categoria: { type: "string",  description: "Categoria prodotto, es. scale" },
+    anno:      { type: "number",  description: "Anno di riferimento, es. 2024" },
+    order_by:  { type: "string",  description: "Campo: codice, importo_preventivo, importo_ordinato, data_offerta" },
+    order_dir: { type: "string",  description: "Direzione: desc (default) o asc" },
+    limit:     { type: "number",  description: "Max risultati (default 50, max 100)" },
+  },
+  required: [] as string[],
+};
+
+export const TOOL_CERCA_SIMILI_DEF = {
+  name: "cerca_simili",
+  description:
+    "Ricerca semantica nei preventivi storici per trovare configurazioni tecnicamente simili. Usare per query come 'trova scale con...', 'preventivi simili a...', 'configurazioni con motoriduttore...' ecc.",
+  parameters_obj: {
+    query:   { type: "string", description: "Descrizione tecnica da cercare semanticamente" },
+    cliente: { type: "string", description: "Filtro opzionale per cliente" },
+    limite:  { type: "number", description: "Max risultati, default 5" },
+  },
+  required: ["query"] as string[],
+};
+
+export const TOOL_CERCA_ARTICOLO_DEF = {
+  name: "cerca_articolo",
+  description:
+    "Ricerca testuale nelle distinte materiali. Usare per: codici articolo (es. '4505000'), materiali (es. 'profilato alluminio 170×40'), dimensioni, n° gradini o qualsiasi testo tecnico nelle voci di preventivo.",
+  parameters_obj: {
+    query:              { type: "string", description: "Testo da cercare nelle distinte" },
+    codice_preventivo:  { type: "string", description: "Filtro per codice preventivo (es. S_24_103)" },
+    limite:             { type: "number", description: "Max preventivi da restituire, default 10" },
+  },
+  required: ["query"] as string[],
+};
+
+export const TOOL_AGGREGA_DEF = {
+  name: "aggrega_preventivi",
+  description:
+    "Dati aggregati (group by) sui preventivi. Usare per: 'quanti preventivi per cliente', 'valore totale per stato', 'tasso di conferma per categoria', 'preventivi per mese', 'quale cliente ha il maggior numero di ordinati', statistiche aggregate, conteggi, somme, medie.",
+  parameters_obj: {
+    group_by:       { type: "string", description: "Dimensione di raggruppamento: stato | cliente | categoria | anno | mese" },
+    metrica:        { type: "string", description: "Metrica di ordinamento: count (default) | sum_importo | avg_importo | tasso_ordinato" },
+    filtro_stato:   { type: "string", description: "Filtra per stato: pending, ordinato, rifiutato" },
+    filtro_cliente: { type: "string", description: "Filtra per nome cliente (ricerca parziale)" },
+    filtro_anno:    { type: "number", description: "Filtra per anno, es. 2024" },
+    limit:          { type: "number", description: "Max righe nel risultato, default 20" },
+  },
+  required: ["group_by"] as string[],
+};
+
+export const TOOL_QUERY_RIGHE_DEF = {
+  name: "query_righe_distinta",
+  description:
+    "Query sulla tabella strutturata delle voci distinta materiali (prezzi, codici, quantità). " +
+    "Usare per: 'codice con prezzo unitario più alto', 'articolo più costoso', 'top 10 costi per codice', " +
+    "'quanto costa il codice 4505000', 'tutti i preventivi che usano AFD.00.2.32435', 'cerca articoli con descrizione profilato'. " +
+    "Modalità: max_prezzo=singola riga con prezzo massimo assoluto, top_costi=classifica per prezzo max per codice, " +
+    "cerca_codice=filtra per codice articolo, cerca_descrizione=filtra per testo descrizione.",
+  parameters_obj: {
+    modalita:        { type: "string", description: "max_prezzo | top_costi | cerca_codice | cerca_descrizione" },
+    query:           { type: "string", description: "Testo da cercare (per cerca_codice e cerca_descrizione)" },
+    categoria:       { type: "string", description: "Filtra per categoria preventivi, es. scale" },
+    filtro_cliente:  { type: "string", description: "Filtra per cliente" },
+    filtro_stato:    { type: "string", description: "Filtra per stato preventivo" },
+    limit:           { type: "number", description: "Numero max risultati, default 10" },
+  },
+  required: ["modalita"] as string[],
+};
+
+export const TOOL_TOP_ARTICOLI_DEF = {
+  name: "top_articoli",
+  description:
+    "Trova gli articoli (codici) più utilizzati nei preventivi, contando in quanti documenti unici appaiono. " +
+    "Usare per: 'articoli più usati', 'top 10 codici', 'materiali più ricorrenti nelle scale', 'quali articoli compaiono di più', " +
+    "'componenti più frequenti', 'classifica articoli per categoria'. " +
+    "Restituisce codice articolo, numero di preventivi in cui compare e una breve descrizione.",
+  parameters_obj: {
+    categoria:       { type: "string", description: "Categoria dei preventivi da analizzare, es. 'scale', 'ballatoi'. Se omessa analizza tutto." },
+    top_n:           { type: "number", description: "Numero di articoli da restituire, default 10, max 30" },
+    filtro_cliente:  { type: "string", description: "Filtra per cliente (ricerca parziale)" },
+    filtro_stato:    { type: "string", description: "Filtra per stato: pending, ordinato, rifiutato" },
+  },
+  required: [] as string[],
+};
+
+export const TOOL_DETTAGLIO_DEF = {
+  name: "dettaglio_preventivo",
+  description:
+    "Recupera il contenuto COMPLETO di un singolo preventivo: distinta materiali con codici, quantità, prezzi, " +
+    "manodopera (progettazione/lavorazione/montaggio), totali e tutti i dati tecnici. " +
+    "Usare SEMPRE quando l'utente chiede: 'tutti i dati del preventivo X', 'la distinta completa di S_24/041', " +
+    "'mostrami tutto il preventivo', 'dettaglio del preventivo', 'costi e quantità del preventivo X'. " +
+    "Accetta il codice sia in formato S_24/041 sia S_24_041.",
+  parameters_obj: {
+    codice: { type: "string", description: "Codice preventivo, es. S_24/041 oppure S_24_041" },
+  },
+  required: ["codice"] as string[],
+};
+
+// ─── Fallback constants (used if the row is missing in ai_config) ─────────────
+
+export const SICS_KNOWLEDGE_FALLBACK =
+  "=== PROFILO AZIENDA SICS ===\n" +
+  "Ragione sociale: SICS by Airfluid s.r.l.\n" +
+  "Sede: Via Fornace 26, Castel Guelfo (BO) 40023, Italia | Tel: +39 0542 670840 | info@s-ics.com | www.s-ics.com\n" +
+  "P.IVA: 00683421200 | Fondata: 1990 (35+ anni di esperienza)\n" +
+  "Claim aziendale: 'Create to Solve'\n" +
+  "Certificazione: ISO 9001:2024\n" +
+  "Valori fondamentali: Passione, Ingegno, Fiducia, Determinazione, Responsabilità, Crescita\n" +
+  "\n" +
+  "SETTORI SERVITI: alimentare/beverage, farmaceutico, automotive, logistica e magazzino, manifatturiero generale, chimico/petrolchimico, elettronica, imballaggio.\n" +
+  "\n" +
+  "GAMMA PRODOTTI:\n" +
+  "1. TRASPORTATORI (9 tipologie): nastri piani, nastri inclinati, nastri a curva, trasportatori a catena, a cerniera/lamiera, a rete metallica, elevatori a tazze, trasportatori vibranti, sistemi di accumulo/buffer.\n" +
+  "2. PROTEZIONI (3 tipologie): recinzioni modulari di sicurezza, ripari fissi (carter, schermi), tunnel e cabine di protezione.\n" +
+  "3. TELAI: strutture portanti in alluminio e acciaio, frame modulari per linee produttive.\n" +
+  "4. SCALE E PIATTAFORME: scale fisse industriali a norma, scalette di accesso, ballatoi e passerelle, piattaforme di lavoro sopraelevate.\n" +
+  "5. SMART PRODUCTION (4 prodotti): sistemi di monitoraggio produzione in tempo reale, sensori IoT per linee, dashboard analytics, integrazione MES/ERP.\n" +
+  "6. AUTOMAZIONI (3 tipologie): manipolatori e pick&place, sistemi di presa/rilascio robotizzati, celle automatizzate integrate.\n" +
+  "7. IMPIANTI BORDO MACCHINA (4 tipi): alimentatori automatici, scaricatori, sistemi di orientamento/posizionamento pezzi, buffer di accumulo bordo linea.\n" +
+  "8. IMPIANTI CAPANNONE: rulliere di smistamento, sistemi di stoccaggio automatico, logistica interna e movimentazione.\n" +
+  "9. COMPONENTI (7 categorie): pneumatica (cilindri, valvole, raccordi), vuoto (ventose, generatori, pompe), elettromeccanica (motoriduttori, variatori, encoder), lubrificazione (sistemi centralizzati, dosatori), strutture (profilati alluminio, connettori), fluidi (tubi, raccordi, filtri), materiali di consumo (cinghie, guarnizioni, rulli).\n" +
+  "10. SERVIZI (10 tipologie): progettazione su misura, revisione e retrofit impianti esistenti, manutenzione preventiva e correttiva, installazione e collaudo, formazione operatori, consulenza tecnica, assistenza tecnica remota e on-site, fornitura ricambi, sviluppo software/automazione, audit di sicurezza macchinari.\n" +
+  "\n" +
+  "PUNTI DI FORZA: soluzioni custom ingegnerizzate internamente, tempi di consegna rapidi, supporto post-vendita strutturato, forte know-how su integrazione di sistemi eterogenei, approccio 'chiavi in mano' dalla progettazione al collaudo.\n" +
+  "=== FINE PROFILO AZIENDA ===\n\n";
+
+export const PRECISO_FALLBACK =
+  "MODALITÀ PRECISO: riporta ESCLUSIVAMENTE dati presenti nei preventivi trovati — codici, quantità, prezzi, ore — senza aggiungere interpretazioni, suggerimenti o osservazioni non documentate. Se un'informazione non è in archivio, dì esplicitamente che non è disponibile. Quando rispondi a domande generali (definizioni, spiegazioni tecniche non legate all'archivio), specifica brevemente 'questa è conoscenza generale, non dall'archivio SICS' e offri di cercare dati concreti nel DB. Sii conciso e diretto. ";
+
+export const CREATIVO_FALLBACK =
+  "MODALITÀ CREATIVO: usa i dati dell'archivio come base solida, poi aggiungi ragionamento commerciale di valore: identifica pattern tra preventivi ordinati e rifiutati, segnala rischi di pricing, suggerisci componenti o lavorazioni che aumentano il tasso di conferma, fai osservazioni sul tipo di cliente, proponi un posizionamento di prezzo motivato. Distingui chiaramente i dati certi (dall'archivio) dalle tue osservazioni (ragionamento induttivo). ";
