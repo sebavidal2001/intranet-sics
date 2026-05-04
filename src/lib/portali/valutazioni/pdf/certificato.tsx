@@ -17,7 +17,7 @@ export interface RigaCertificato {
   parametro: string;
   parametroColore: string;
   punteggioAuto: number | null;
-  punteggioResp: number;
+  punteggioResp: number | null;
 }
 
 export interface RadarPoint {
@@ -454,7 +454,7 @@ export function CertificatoPDF({ dati }: { dati: DatiCertificato }) {
             </View>
 
             {righe.map((r, i) => {
-              const diff = r.punteggioAuto !== null ? r.punteggioAuto - r.punteggioResp : null;
+              const diff = r.punteggioAuto !== null && r.punteggioResp !== null ? r.punteggioAuto - r.punteggioResp : null;
               return (
                 <View key={i} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}>
                   <View style={s.colMansione}>

@@ -53,6 +53,7 @@ export async function creaScala(formData: FormData): Promise<ActionResult> {
     .insert({ nome, min, max, labels });
 
   if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/config");
   redirect("/admin/config");
 }
 
@@ -85,6 +86,7 @@ export async function modificaScala(
     .eq("id", id);
 
   if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/config");
   redirect("/admin/config");
 }
 
@@ -119,6 +121,7 @@ export async function creaParametro(formData: FormData): Promise<ActionResult> {
     .insert(parsed.data);
 
   if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/config");
   redirect("/admin/config");
 }
 
@@ -145,6 +148,7 @@ export async function modificaParametro(
     .eq("id", id);
 
   if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/config");
   redirect("/admin/config");
 }
 
@@ -177,6 +181,7 @@ export async function creaSessione(formData: FormData): Promise<ActionResult> {
     .insert({ ...parsed.data, is_aperta: false });
 
   if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/config");
   redirect("/admin/config");
 }
 
@@ -254,6 +259,7 @@ export async function creaKpi(formData: FormData): Promise<ActionResult> {
   });
 
   if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/config");
   redirect("/admin/config");
 }
 
@@ -284,6 +290,7 @@ export async function modificaKpi(id: string, formData: FormData): Promise<Actio
     .eq("id", id);
 
   if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/config");
   redirect("/admin/config");
 }
 

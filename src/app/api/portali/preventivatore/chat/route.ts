@@ -105,10 +105,18 @@ export async function POST(request: NextRequest) {
         ? "L'utente sta costruendo un nuovo preventivo e cerca ispirazione dai precedenti. Aiutalo a trovare configurazioni simili e suggerisci strutture e prezzi ragionevoli."
         : "L'utente sta consultando l'archivio preventivi per analisi e aggiornamenti di stato.");
 
-    // Esegui l'handler AI
+    // Esegui l'handler AI con fallback automatico OpenRouter → Gemini
     let result: { risposta: string; tool_usato: ToolName | null; risultati: unknown[] | null };
     if (process.env.OPENROUTER_API_KEY) {
-      result = await handleOpenRouter(messages, systemInstruction, temperature, top_p);
+      try {
+        result = await handleOpenRouter(messages, systemInstruction, temperature, top_p);
+      } catch (openrouterErr) {
+        console.warn("OpenRouter fallito, fallback su Gemini:", openrouterErr instanceof Error ? openrouterErr.message : openrouterErr);
+        if (!process.env.GEMINI_API_KEY) {
+          throw new Error("Nessun provider AI disponibile");
+        }
+        result = await handleGemini(messages, systemInstruction);
+      }
     } else {
       result = await handleGemini(messages, systemInstruction);
     }

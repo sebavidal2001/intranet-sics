@@ -95,13 +95,14 @@ export async function handleOpenRouter(
   const call = async (msgs: Array<Record<string, unknown>>) => {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
         "HTTP-Referer": "https://intranet-sics.vercel.app",
         "X-Title": "SICS Preventivatore",
       },
-      body: JSON.stringify({ model, messages: msgs, tools: OPENROUTER_TOOLS, tool_choice: "auto", temperature, top_p }),
+      body: JSON.stringify({ model, messages: msgs, tools: OPENROUTER_TOOLS, tool_choice: "auto", temperature, top_p, max_tokens: 2048 }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
