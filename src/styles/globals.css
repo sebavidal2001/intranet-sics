@@ -30,12 +30,11 @@
 }
 
 /* Font Face - Tenorite */
-/* NOTE: convertire i .ttf in .woff2 per ridurre il peso da ~416KB a ~250KB.
-   Una volta convertiti, i file WOFF2 vengono caricati automaticamente (formato prioritario). */
+/* TODO (perf): convertire i .ttf in .woff2 per ridurre il peso da ~416KB a ~250KB.
+   Tool: https://cloudconvert.com/ttf-to-woff2 — poi aggiungere la riga woff2 come primo src. */
 @font-face {
   font-family: 'Tenorite';
-  src: url('/fonts/tenorite-regular.woff2') format('woff2'),
-       url('/fonts/tenorite-regular.ttf') format('truetype');
+  src: url('/fonts/tenorite-regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -43,8 +42,7 @@
 
 @font-face {
   font-family: 'Tenorite';
-  src: url('/fonts/tenorite-bold.woff2') format('woff2'),
-       url('/fonts/tenorite-bold.ttf') format('truetype');
+  src: url('/fonts/tenorite-bold.ttf') format('truetype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -52,8 +50,7 @@
 
 @font-face {
   font-family: 'Tenorite';
-  src: url('/fonts/tenorite-italic.woff2') format('woff2'),
-       url('/fonts/tenorite-italic.ttf') format('truetype');
+  src: url('/fonts/tenorite-italic.ttf') format('truetype');
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -61,8 +58,7 @@
 
 @font-face {
   font-family: 'Tenorite';
-  src: url('/fonts/tenorite-bolditalic.woff2') format('woff2'),
-       url('/fonts/tenorite-bolditalic.ttf') format('truetype');
+  src: url('/fonts/tenorite-bolditalic.ttf') format('truetype');
   font-weight: 700;
   font-style: italic;
   font-display: swap;

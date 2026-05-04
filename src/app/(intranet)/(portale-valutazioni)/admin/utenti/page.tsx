@@ -22,10 +22,12 @@ const SORT_COLUMNS: Record<string, string> = {
   reparto: "reparto",
 };
 
+const PAGE_SIZE = 25;
+
 export default async function UtentiPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ mostra_tutti?: string; sort?: string; dir?: string }>;
+  searchParams?: Promise<{ mostra_tutti?: string; sort?: string; dir?: string; page?: string }>;
 }) {
   const [user, isAdmin] = await Promise.all([getSessionUser(), getSessionIsAdmin()]);
   if (!user) redirect("/auth/login");
@@ -36,20 +38,32 @@ export default async function UtentiPage({
   const mostraTutti = params?.mostra_tutti === "1";
   const { sort, dir } = parseSortParams(params ?? {}, "nome");
   const dbCol = SORT_COLUMNS[sort] ?? "cognome";
+  const page = Math.max(1, parseInt(params?.page ?? "1", 10) || 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
 
   const sb = createAdminClient();
   let query = sb
     .from("utenti")
-    .select("*, responsabile:utenti!responsabile_id(nome, cognome)")
-    .order(dbCol, { ascending: dir === "asc" });
+    .select("*, responsabile:utenti!responsabile_id(nome, cognome)", { count: "exact" })
+    .order(dbCol, { ascending: dir === "asc" })
+    .range(from, to);
 
   if (!mostraTutti) query = query.or("stato.eq.attivo,stato.is.null");
 
-  const { data: utenti } = await query;
+  const { data: utenti, count: totaleCount } = await query;
 
-  const { data: profiliAssegnati } = await sb
-    .from("utente_profili")
-    .select("utente_id, ruolo_professionale:ruoli_professionali(id, nome)");
+  const paginaCorrente = page;
+  const totalePagine = Math.ceil((totaleCount ?? 0) / PAGE_SIZE);
+
+  // Carica profili solo per gli utenti della pagina corrente
+  const utenteIds = (utenti ?? []).map((u) => (u as { id: string }).id);
+  const { data: profiliAssegnati } = utenteIds.length > 0
+    ? await sb
+        .from("utente_profili")
+        .select("utente_id, ruolo_professionale:ruoli_professionali(id, nome)")
+        .in("utente_id", utenteIds)
+    : { data: [] };
 
   type UtenteRow = {
     id: string; nome: string; cognome: string; email: string;
@@ -83,7 +97,7 @@ export default async function UtentiPage({
   };
 
   const utentiTyped = (utenti ?? []) as UtenteRow[];
-  const totaleAttivi = utentiTyped.filter((u) => u.stato === "attivo" || !u.stato).length;
+  const totaleUtenti = totaleCount ?? utentiTyped.length;
 
   const shProps = { currentSort: sort, currentDir: dir };
 
@@ -95,7 +109,7 @@ export default async function UtentiPage({
           <div>
             <h1 className="font-tenorite text-3xl font-bold text-text">Gestione Utenti</h1>
             <p className="text-text-muted mt-1">
-              {mostraTutti ? `${utentiTyped.length} utenti totali` : `${totaleAttivi} utenti attivi`}
+              {totaleUtenti} {mostraTutti ? "utenti totali" : "utenti attivi"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -190,6 +204,46 @@ export default async function UtentiPage({
               </TableBody>
             </Table>
           </CardContent>
+          {totalePagine > 1 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-border">
+              <p className="text-sm text-text-muted">
+                Pagina {paginaCorrente} di {totalePagine} · {totaleUtenti} utenti
+              </p>
+              <div className="flex items-center gap-2">
+                {paginaCorrente > 1 && (
+                  <Link
+                    href={`/admin/utenti?${new URLSearchParams({ ...(mostraTutti ? { mostra_tutti: "1" } : {}), sort, dir, page: String(paginaCorrente - 1) }).toString()}`}
+                    className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-bg-page transition-colors"
+                  >
+                    ← Precedente
+                  </Link>
+                )}
+                {Array.from({ length: Math.min(5, totalePagine) }, (_, i) => {
+                  const half = 2;
+                  let start = Math.max(1, paginaCorrente - half);
+                  const end = Math.min(totalePagine, start + 4);
+                  start = Math.max(1, end - 4);
+                  return start + i;
+                }).map((p) => (
+                  <Link
+                    key={p}
+                    href={`/admin/utenti?${new URLSearchParams({ ...(mostraTutti ? { mostra_tutti: "1" } : {}), sort, dir, page: String(p) }).toString()}`}
+                    className={`px-3 py-1.5 text-sm border rounded-md transition-colors ${p === paginaCorrente ? "bg-primary text-white border-primary" : "border-border hover:bg-bg-page"}`}
+                  >
+                    {p}
+                  </Link>
+                ))}
+                {paginaCorrente < totalePagine && (
+                  <Link
+                    href={`/admin/utenti?${new URLSearchParams({ ...(mostraTutti ? { mostra_tutti: "1" } : {}), sort, dir, page: String(paginaCorrente + 1) }).toString()}`}
+                    className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-bg-page transition-colors"
+                  >
+                    Successiva →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
       </div>
     </div>

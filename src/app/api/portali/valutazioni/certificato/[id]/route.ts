@@ -52,21 +52,30 @@ export async function GET(
   }
 
   // Carica in parallelo: dati utente, mansioni, risposte, config
-  const [
-    utenteRes,
-    responsabileRes,
-    utenteMansioni,
-    risposteRes,
-    configRes,
-  ] = await Promise.all([
-    db.from("utenti").select("id, nome, cognome, email, reparto, ruolo, data_assunzione").eq("id", sessione.utente_id).single(),
-    sessione.responsabile_id
-      ? db.from("utenti").select("id, nome, cognome").eq("id", sessione.responsabile_id).single()
-      : Promise.resolve({ data: null }),
-    db.from("utente_mansioni").select(`mansione:mansioni(id, testo, ordine, parametro:parametri_radar(id, nome, colore))`).eq("utente_id", sessione.utente_id),
-    db.from("risposte_valutazione").select("mansione_id, skill_id, punteggio, tipo").eq("sessione_utente_id", sessioneId),
-    db.from("certificato_config").select("*").limit(1).maybeSingle(),
-  ]);
+  let parallelData: Awaited<ReturnType<typeof Promise.all<[unknown, unknown, unknown, unknown, unknown]>>>;
+  try {
+    parallelData = await Promise.all([
+      db.from("utenti").select("id, nome, cognome, email, reparto, ruolo, data_assunzione").eq("id", sessione.utente_id).single(),
+      sessione.responsabile_id
+        ? db.from("utenti").select("id, nome, cognome").eq("id", sessione.responsabile_id).single()
+        : Promise.resolve({ data: null }),
+      db.from("utente_mansioni").select(`mansione:mansioni(id, testo, ordine, parametro:parametri_radar(id, nome, colore))`).eq("utente_id", sessione.utente_id),
+      db.from("risposte_valutazione").select("mansione_id, skill_id, punteggio, tipo").eq("sessione_utente_id", sessioneId),
+      db.from("certificato_config").select("*").limit(1).maybeSingle(),
+    ]);
+  } catch (err) {
+    console.error("Certificato parallel fetch error:", err);
+    return NextResponse.json({ error: "Errore nel caricamento dei dati" }, { status: 500 });
+  }
+
+  const [utenteRes, responsabileRes, utenteMansioni, risposteRes, configRes] =
+    parallelData as unknown as [
+      { data: { id: string; nome: string; cognome: string; email: string; reparto: string | null; ruolo: string; data_assunzione: string | null } | null },
+      { data: { id: string; nome: string; cognome: string } | null },
+      { data: Array<{ mansione: unknown }> | null },
+      { data: Array<{ mansione_id: string | null; skill_id: string | null; punteggio: number; tipo: string }> | null },
+      { data: Record<string, unknown> | null },
+    ];
 
   const utenteData = utenteRes.data;
   const responsabileData = responsabileRes.data;
@@ -101,11 +110,11 @@ export async function GET(
     parametro: (m!.parametro as { nome: string; colore: string } | null)?.nome ?? "—",
     parametroColore: (m!.parametro as { nome: string; colore: string } | null)?.colore ?? "#747373",
     punteggioAuto: risposteMap.auto.get(m!.id) ?? null,
-    punteggioResp: risposteMap.responsabile.get(m!.id) ?? 0,
+    punteggioResp: risposteMap.responsabile.get(m!.id) ?? null,
   }));
 
-  // Media responsabile
-  const valoriResp = righe.map((r) => r.punteggioResp).filter((v) => v > 0);
+  // Media responsabile (esclude null e 0)
+  const valoriResp = righe.map((r) => r.punteggioResp).filter((v): v is number => v !== null && v > 0);
   const mediaResponsabile =
     valoriResp.length > 0
       ? valoriResp.reduce((a, b) => a + b, 0) / valoriResp.length
@@ -143,28 +152,28 @@ export async function GET(
 
   const certConfig: Partial<CertificatoConfig> = configRow
     ? {
-        titoli_scheda: configRow.titoli_scheda ?? DEFAULT_CONFIG.titoli_scheda,
-        codice_documento: configRow.codice_documento,
-        data_edizione: configRow.data_edizione,
-        data_aggiornamento: configRow.data_aggiornamento,
-        colore_primario: configRow.colore_primario,
-        colore_testo: configRow.colore_testo,
-        font_corpo: configRow.font_corpo,
-        orientamento: configRow.orientamento,
-        mostra_radar: configRow.mostra_radar,
-        etichetta_area: configRow.etichetta_area,
-        etichetta_responsabile: configRow.etichetta_responsabile,
-        etichetta_valutatore: configRow.etichetta_valutatore,
-        etichetta_data_assunzione: configRow.etichetta_data_assunzione,
-        etichetta_data_valutazione: configRow.etichetta_data_valutazione,
-        etichetta_anzianita: configRow.etichetta_anzianita,
+        titoli_scheda: (configRow.titoli_scheda as CertificatoConfig["titoli_scheda"] | null) ?? DEFAULT_CONFIG.titoli_scheda,
+        codice_documento: configRow.codice_documento as string | undefined,
+        data_edizione: configRow.data_edizione as string | undefined,
+        data_aggiornamento: configRow.data_aggiornamento as string | undefined,
+        colore_primario: configRow.colore_primario as string | undefined,
+        colore_testo: configRow.colore_testo as string | undefined,
+        font_corpo: configRow.font_corpo as string | undefined,
+        orientamento: configRow.orientamento as CertificatoConfig["orientamento"] | undefined,
+        mostra_radar: configRow.mostra_radar as boolean | undefined,
+        etichetta_area: configRow.etichetta_area as string | undefined,
+        etichetta_responsabile: configRow.etichetta_responsabile as string | undefined,
+        etichetta_valutatore: configRow.etichetta_valutatore as string | undefined,
+        etichetta_data_assunzione: configRow.etichetta_data_assunzione as string | undefined,
+        etichetta_data_valutazione: configRow.etichetta_data_valutazione as string | undefined,
+        etichetta_anzianita: configRow.etichetta_anzianita as string | undefined,
       }
     : {};
 
   // Logo: usa URL configurato oppure converti il file SICS in base64 (compatibile con react-pdf su Windows)
   let logoSrc: string | undefined;
   if (configRow?.logo_url) {
-    logoSrc = configRow.logo_url;
+    logoSrc = configRow.logo_url as string;
   } else {
     try {
       const logoFilePath = path.join(process.cwd(), "public", "logo", "sics-logo.png");

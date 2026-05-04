@@ -102,7 +102,12 @@ export async function handleGemini(
     },
   ];
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", tools, systemInstruction });
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    tools,
+    systemInstruction,
+    generationConfig: { maxOutputTokens: 2048 },
+  });
 
   const history = messages.slice(0, -1).map((m) => ({
     role: m.role === "assistant" ? "model" : ("user" as "model" | "user"),
@@ -110,7 +115,16 @@ export async function handleGemini(
   }));
 
   const chat = model.startChat({ history });
-  const result = await chat.sendMessage(messages[messages.length - 1].content);
+
+  // Timeout 30s: AbortSignal non supportato dal SDK Gemini, usiamo Promise.race
+  const timeoutMs = 30_000;
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Gemini timeout")), timeoutMs)
+  );
+  const result = await Promise.race([
+    chat.sendMessage(messages[messages.length - 1].content),
+    timeoutPromise,
+  ]);
   const response = result.response;
 
   const parts = response.candidates?.[0]?.content?.parts ?? [];
