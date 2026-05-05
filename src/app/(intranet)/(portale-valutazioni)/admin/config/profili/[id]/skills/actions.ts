@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireValutazioniAdmin } from "@/lib/auth/require-admin";
 import { revalidatePath } from "next/cache";
 
 export async function createSkill(data: {
@@ -9,6 +10,7 @@ export async function createSkill(data: {
   descrizione?: string;
   ordine: number;
 }): Promise<{ error?: string }> {
+  await requireValutazioniAdmin();
   const supabase = createAdminClient();
 
   const { error } = await supabase.from("skills").insert({
@@ -29,6 +31,7 @@ export async function updateSkill(
   ruoloProfessionaleId: string,
   data: { nome: string; descrizione?: string; ordine: number }
 ): Promise<{ error?: string }> {
+  await requireValutazioniAdmin();
   const supabase = createAdminClient();
 
   const { error } = await supabase
@@ -50,6 +53,7 @@ export async function deleteSkill(
   id: string,
   ruoloProfessionaleId: string
 ): Promise<{ error?: string }> {
+  await requireValutazioniAdmin();
   const supabase = createAdminClient();
 
   const { error } = await supabase.from("skills").delete().eq("id", id);
@@ -64,6 +68,7 @@ export async function importSkillsXlsx(
   ruoloProfessionaleId: string,
   rows: { nome: string; descrizione?: string; ordine?: number }[]
 ): Promise<{ error?: string; inserted?: number }> {
+  await requireValutazioniAdmin();
   const supabase = createAdminClient();
 
   const inserts = rows.map((r, i) => ({

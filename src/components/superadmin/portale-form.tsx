@@ -121,7 +121,7 @@ export function PortaleForm({ portale }: Props) {
           {...register("nome")}
           type="text"
           placeholder="es. Valutazione del personale"
-          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150"
         />
         {errors.nome && (
           <p className="text-danger text-xs">{errors.nome.message}</p>
@@ -141,7 +141,7 @@ export function PortaleForm({ portale }: Props) {
             setSlugManuallyEdited(true);
             register("slug").onChange(e);
           }}
-          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg font-mono placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg font-mono placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150"
         />
         <p className="text-text-muted text-xs">
           Identificatore URL univoco — auto-generato dal nome, modificabile manualmente
@@ -158,7 +158,7 @@ export function PortaleForm({ portale }: Props) {
           {...register("descrizione")}
           rows={3}
           placeholder="Breve descrizione del portale…"
-          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms] resize-none"
+          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150 resize-none"
         />
       </div>
 
@@ -170,7 +170,7 @@ export function PortaleForm({ portale }: Props) {
             {...register("icona")}
             type="text"
             placeholder="es. ClipboardList"
-            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg font-mono placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg font-mono placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150"
           />
           <p className="text-text-muted text-xs">Nome componente icona Lucide</p>
         </div>
@@ -193,7 +193,7 @@ export function PortaleForm({ portale }: Props) {
             {...register("ordine")}
             type="number"
             min={0}
-            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors duration-150"
           />
           {errors.ordine && (
             <p className="text-danger text-xs">{errors.ordine.message}</p>

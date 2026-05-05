@@ -3,15 +3,17 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 
+export const dynamic = "force-dynamic";
+
 // GET    /api/portali/preventivatore/sessioni/[id]   → messaggi della sessione
 // DELETE /api/portali/preventivatore/sessioni/[id]   → elimina sessione
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
+    const { id } = params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
@@ -34,12 +36,26 @@ export async function GET(
       return NextResponse.json({ error: "Sessione non trovata" }, { status: 404 });
     }
 
-    const { data: messaggi, error: msgErr } = await admin
+    const messaggiQuery = admin
       .schema("preventivatore")
       .from("chat_messaggi")
-      .select("id, ruolo, contenuto, tool_usato, risultati, created_at")
+      .select("id, ruolo, contenuto, modalita, tool_usato, risultati, created_at")
       .eq("sessione_id", id)
       .order("created_at", { ascending: true });
+
+    let { data: messaggi, error: msgErr } = await messaggiQuery;
+
+    if (msgErr?.code === "42703") {
+      const fallback = await admin
+        .schema("preventivatore")
+        .from("chat_messaggi")
+        .select("id, ruolo, contenuto, tool_usato, risultati, created_at")
+        .eq("sessione_id", id)
+        .order("created_at", { ascending: true });
+
+      messaggi = fallback.data?.map((m) => ({ ...m, modalita: null })) ?? null;
+      msgErr = fallback.error;
+    }
 
     if (msgErr) {
       console.error("GET messaggi error:", msgErr);
@@ -55,10 +71,10 @@ export async function GET(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
+    const { id } = params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });

@@ -1,7 +1,23 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+async function requireSuperadmin() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/auth/login");
+
+  const { data: profile } = await supabase
+    .from("utenti")
+    .select("ruolo")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.ruolo !== "superadmin") redirect("/");
+}
 
 // === RUOLI CONFIG ===
 
@@ -11,6 +27,7 @@ export async function createRuolo(data: {
   colore: string;
   ordine: number;
 }): Promise<{ error?: string }> {
+  await requireSuperadmin();
   const supabase = createAdminClient();
 
   const { error } = await supabase.from("ruoli_config").insert({
@@ -34,6 +51,7 @@ export async function updateRuolo(
   id: string,
   data: { nome: string; colore: string; ordine: number }
 ): Promise<{ error?: string }> {
+  await requireSuperadmin();
   const supabase = createAdminClient();
 
   const { error } = await supabase
@@ -48,6 +66,7 @@ export async function updateRuolo(
 }
 
 export async function deleteRuolo(id: string): Promise<{ error?: string }> {
+  await requireSuperadmin();
   const supabase = createAdminClient();
 
   // Can only delete non-system ruoli
@@ -76,6 +95,7 @@ export async function createReparto(data: {
   descrizione?: string;
   ordine: number;
 }): Promise<{ error?: string }> {
+  await requireSuperadmin();
   const supabase = createAdminClient();
 
   const { error } = await supabase.from("reparti").insert({
@@ -103,6 +123,7 @@ export async function updateReparto(
     attivo: boolean;
   }
 ): Promise<{ error?: string }> {
+  await requireSuperadmin();
   const supabase = createAdminClient();
 
   const { error } = await supabase
@@ -122,6 +143,7 @@ export async function updateReparto(
 }
 
 export async function deleteReparto(id: string): Promise<{ error?: string }> {
+  await requireSuperadmin();
   const supabase = createAdminClient();
 
   const { error } = await supabase.from("reparti").delete().eq("id", id);

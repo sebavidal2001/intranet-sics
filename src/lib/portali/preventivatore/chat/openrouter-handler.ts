@@ -10,6 +10,13 @@ import {
 } from "./tool-definitions";
 import type { ChatMessage, ToolName, ChatHandlerResult } from "./types";
 
+type OpenRouterUsage = {
+  completion_tokens?: number;
+  prompt_tokens?: number;
+  total_tokens?: number;
+  cost?: number;
+}
+
 // ─── OpenRouter tool definitions ──────────────────────────────────────────────
 
 const OPENROUTER_TOOLS = [
@@ -116,7 +123,39 @@ export async function handleOpenRouter(
           tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
         };
       }>;
+      usage?: OpenRouterUsage;
     }>;
+  };
+
+  const totalUsage: Required<OpenRouterUsage> = {
+    completion_tokens: 0,
+    prompt_tokens: 0,
+    total_tokens: 0,
+    cost: 0,
+  };
+  let hasUsage = false;
+
+  const addUsage = (usage?: OpenRouterUsage) => {
+    if (!usage) return;
+    hasUsage = true;
+    totalUsage.completion_tokens += usage.completion_tokens ?? 0;
+    totalUsage.prompt_tokens += usage.prompt_tokens ?? 0;
+    totalUsage.total_tokens += usage.total_tokens ?? 0;
+    totalUsage.cost += usage.cost ?? 0;
+  };
+
+  const buildUsage = (): ChatHandlerResult["usage"] => {
+    if (!hasUsage) return null;
+    return {
+      provider: "openrouter",
+      model,
+      prompt_tokens: totalUsage.prompt_tokens || null,
+      completion_tokens: totalUsage.completion_tokens || null,
+      total_tokens: totalUsage.total_tokens || null,
+      cost: totalUsage.cost || null,
+      currency: "usd",
+      source: "exact",
+    };
   };
 
   // Multi-step tool loop
@@ -127,10 +166,11 @@ export async function handleOpenRouter(
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const data = await call(currentMessages);
+    addUsage(data.usage);
     const msg = data.choices[0].message;
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
-      return { risposta: msg.content ?? "", tool_usato: lastToolName, risultati: lastRisultati };
+      return { risposta: msg.content ?? "", tool_usato: lastToolName, risultati: lastRisultati, usage: buildUsage() };
     }
 
     const toolCall = msg.tool_calls[0];
@@ -164,9 +204,11 @@ export async function handleOpenRouter(
     ...currentMessages,
     { role: "user", content: "Per favore rispondi all'utente basandoti sui dati che hai già raccolto." },
   ]);
+  addUsage(fallbackData.usage);
   return {
     risposta: fallbackData.choices[0].message.content ?? "",
     tool_usato: lastToolName,
     risultati: lastRisultati,
+    usage: buildUsage(),
   };
 }

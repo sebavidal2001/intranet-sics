@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 
+export const dynamic = "force-dynamic";
+
 // GET  /api/portali/preventivatore/sessioni   → lista sessioni utente
 // POST /api/portali/preventivatore/sessioni   → crea nuova sessione
 

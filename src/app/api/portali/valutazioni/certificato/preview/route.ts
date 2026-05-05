@@ -8,6 +8,8 @@ import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
 import path from "path";
 import fs from "fs";
 
+export const dynamic = "force-dynamic";
+
 const MOCK_RIGHE = [
   { mansione: "Gestione pratiche amministrative", parametro: "Competenze tecniche", parametroColore: "#00A1BE", punteggioAuto: 4, punteggioResp: 4 },
   { mansione: "Relazione con il cliente", parametro: "Competenze relazionali", parametroColore: "#22c55e", punteggioAuto: 3, punteggioResp: 4 },

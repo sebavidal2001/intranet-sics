@@ -3,10 +3,14 @@ import type { Transporter } from "nodemailer";
 import { env } from "@/lib/config/env";
 
 // Configurazione SMTP Zoho
+const smtpSecure = process.env.SMTP_SECURE
+  ? process.env.SMTP_SECURE === "true"
+  : env.email.port === 465;
+
 const transporter: Transporter = nodemailer.createTransport({
   host: env.email.host || "smtp.zoho.eu", // smtp.zoho.com per US
   port: env.email.port || 465,
-  secure: process.env.SMTP_SECURE === "true" || true, // true per port 465, false per 587
+  secure: smtpSecure, // true per 465, false per 587/STARTTLS
   auth: {
     user: env.email.user,
     pass: env.email.password,

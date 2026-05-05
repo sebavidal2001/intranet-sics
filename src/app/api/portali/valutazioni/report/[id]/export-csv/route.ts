@@ -11,6 +11,8 @@ import type {
   RadarDataPoint, BarDataPoint, LineDataPoint, PieDataPoint, TableRow, KpiCardData,
 } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 function rowsToCSV(headers: string[], rows: string[][]): string {
   const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
   return [headers.map(escape).join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");

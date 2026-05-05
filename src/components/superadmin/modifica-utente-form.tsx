@@ -123,7 +123,7 @@ export function ModificaUtenteForm({ utente, responsabili, ruoliConfig }: Props)
             {...register("nome")}
             type="text"
             placeholder="Mario"
-            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150"
           />
           {errors.nome && (
             <p className="text-danger text-xs">{errors.nome.message}</p>
@@ -138,7 +138,7 @@ export function ModificaUtenteForm({ utente, responsabili, ruoliConfig }: Props)
             {...register("cognome")}
             type="text"
             placeholder="Rossi"
-            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150"
           />
           {errors.cognome && (
             <p className="text-danger text-xs">{errors.cognome.message}</p>
@@ -151,7 +151,7 @@ export function ModificaUtenteForm({ utente, responsabili, ruoliConfig }: Props)
         <label className="block font-tenorite text-sm text-text">
           Username <span className="text-danger">*</span>
         </label>
-        <div className="flex items-center border border-border rounded-lg overflow-hidden focus-within:border-primary transition-colors duration-[120ms]">
+        <div className="flex items-center border border-border rounded-lg overflow-hidden focus-within:border-primary transition-colors duration-150">
           <input
             {...register("username")}
             type="text"
@@ -177,7 +177,7 @@ export function ModificaUtenteForm({ utente, responsabili, ruoliConfig }: Props)
           {...register("password")}
           type="password"
           placeholder="Minimo 8 caratteri"
-          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150"
         />
         {errors.password && (
           <p className="text-danger text-xs">{errors.password.message}</p>
@@ -192,7 +192,7 @@ export function ModificaUtenteForm({ utente, responsabili, ruoliConfig }: Props)
           </label>
           <select
             {...register("ruolo")}
-            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors duration-150"
           >
             {ruoli.map((r) => (
               <option key={r.value} value={r.value}>
@@ -211,7 +211,7 @@ export function ModificaUtenteForm({ utente, responsabili, ruoliConfig }: Props)
             {...register("reparto")}
             type="text"
             placeholder="es. Amministrazione"
-            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150"
           />
         </div>
       </div>
@@ -223,7 +223,7 @@ export function ModificaUtenteForm({ utente, responsabili, ruoliConfig }: Props)
         </label>
         <select
           {...register("stato")}
-          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors duration-150"
         >
           <option value="attivo">Attivo</option>
           <option value="inattivo">Inattivo</option>
@@ -238,7 +238,7 @@ export function ModificaUtenteForm({ utente, responsabili, ruoliConfig }: Props)
         <label className="block font-tenorite text-sm text-text">Responsabile</label>
         <select
           {...register("responsabile_id")}
-          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors duration-[120ms]"
+          className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors duration-150"
         >
           <option value="">— Nessun responsabile —</option>
           {responsabili

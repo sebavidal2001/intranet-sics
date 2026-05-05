@@ -11,6 +11,9 @@ import {
   CREATIVO_FALLBACK,
 } from "@/lib/portali/preventivatore/chat/tool-definitions";
 import type { ChatRequestBody, ChatMessage, ToolName } from "@/lib/portali/preventivatore/chat/types";
+import type { ChatHandlerResult } from "@/lib/portali/preventivatore/chat/types";
+
+export const dynamic = "force-dynamic";
 
 // ─── Session persistence ──────────────────────────────────────────────────────
 
@@ -18,11 +21,37 @@ async function saveMessages(
   sessione_id: string,
   userMsg: ChatMessage,
   assistantContent: string,
+  modalita: "preciso" | "creativo",
   toolUsato: ToolName | null,
   risultati: unknown[] | null
 ) {
   try {
     const adminClient = createAdminClient();
+
+    const rowsWithMode = [
+      { sessione_id, ruolo: "user", contenuto: userMsg.content },
+      {
+        sessione_id,
+        ruolo: "assistant",
+        contenuto: assistantContent,
+        modalita,
+        tool_usato: toolUsato,
+        risultati: risultati ? risultati : null,
+      },
+    ];
+
+    const { error } = await adminClient
+      .schema("preventivatore")
+      .from("chat_messaggi")
+      .insert(rowsWithMode);
+
+    if (!error) return;
+
+    // Compatibility fallback for databases not migrated yet with chat_messaggi.modalita.
+    if (error.code !== "42703") {
+      console.error("saveMessages insert error:", error);
+      return;
+    }
 
     await adminClient
       .schema("preventivatore")
@@ -43,6 +72,58 @@ async function saveMessages(
   }
 }
 
+async function sessioneAppartieneUtente(sessioneId: string, userId: string) {
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .schema("preventivatore")
+    .from("chat_sessioni")
+    .select("id")
+    .eq("id", sessioneId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function saveUsageEvent({
+  userId,
+  sessioneId,
+  modalita,
+  usage,
+}: {
+  userId: string;
+  sessioneId: string | null | undefined;
+  modalita: "preciso" | "creativo";
+  usage: ChatHandlerResult["usage"];
+}) {
+  if (!usage || usage.provider !== "openrouter" || usage.cost == null) return;
+
+  try {
+    const adminClient = createAdminClient();
+    const { error } = await adminClient
+      .schema("preventivatore")
+      .from("ai_usage_events")
+      .insert({
+        user_id: userId,
+        sessione_id: sessioneId ?? null,
+        provider: usage.provider,
+        model: usage.model,
+        modalita,
+        prompt_tokens: usage.prompt_tokens,
+        completion_tokens: usage.completion_tokens,
+        total_tokens: usage.total_tokens,
+        cost_amount: usage.cost,
+        currency: usage.currency,
+        cost_source: usage.source,
+      });
+
+    if (error) console.error("saveUsageEvent error:", error);
+  } catch (err) {
+    console.error("saveUsageEvent unexpected:", err);
+  }
+}
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -60,6 +141,16 @@ export async function POST(request: NextRequest) {
 
     if (!messages || !Array.isArray(messages) || messages.length === 0)
       return NextResponse.json({ error: "Messages obbligatori" }, { status: 400 });
+    if (messages.length > 50)
+      return NextResponse.json({ error: "Troppi messaggi nella richiesta" }, { status: 400 });
+    if (!["archivio", "nuovo"].includes(contesto) || !["preciso", "creativo"].includes(modalita))
+      return NextResponse.json({ error: "Parametri chat non validi" }, { status: 400 });
+    if (messages.some((msg) => !["user", "assistant"].includes(msg.role) || typeof msg.content !== "string" || msg.content.length > 8000))
+      return NextResponse.json({ error: "Formato messaggi non valido" }, { status: 400 });
+    if (sessione_id && typeof sessione_id !== "string")
+      return NextResponse.json({ error: "Sessione non valida" }, { status: 400 });
+    if (sessione_id && !(await sessioneAppartieneUtente(sessione_id, user.id)))
+      return NextResponse.json({ error: "Sessione non trovata" }, { status: 404 });
 
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage || lastMessage.role !== "user")
@@ -106,7 +197,7 @@ export async function POST(request: NextRequest) {
         : "L'utente sta consultando l'archivio preventivi per analisi e aggiornamenti di stato.");
 
     // Esegui l'handler AI con fallback automatico OpenRouter → Gemini
-    let result: { risposta: string; tool_usato: ToolName | null; risultati: unknown[] | null };
+    let result: ChatHandlerResult;
     if (process.env.OPENROUTER_API_KEY) {
       try {
         result = await handleOpenRouter(messages, systemInstruction, temperature, top_p);
@@ -123,8 +214,9 @@ export async function POST(request: NextRequest) {
 
     // Salva i messaggi se c'è una sessione attiva (fire-and-forget)
     if (sessione_id) {
-      void saveMessages(sessione_id, lastMessage, result.risposta, result.tool_usato, result.risultati);
+      void saveMessages(sessione_id, lastMessage, result.risposta, modalita, result.tool_usato, result.risultati);
     }
+    void saveUsageEvent({ userId: user.id, sessioneId: sessione_id, modalita, usage: result.usage });
 
     return NextResponse.json(result);
   } catch (error) {

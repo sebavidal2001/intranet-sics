@@ -1,7 +1,7 @@
 "use client"
 
 import { PlusCircle, Trash2, ChevronDown, ChevronUp, Search, X, Package } from "lucide-react"
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, type CSSProperties } from "react"
 import { Input } from "@/components/ui/input"
 import {
   fmtEur,
@@ -238,9 +238,8 @@ function ServiziSection({
                                 background: "rgba(255,255,255,0.05)",
                                 border: "1px solid rgba(255,255,255,0.12)",
                                 color: "inherit",
-                                // @ts-ignore
                                 "--tw-ring-color": "rgba(0,161,190,0.4)",
-                              }}
+                              } as CSSProperties}
                             />
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -258,9 +257,8 @@ function ServiziSection({
                                 background: "rgba(255,255,255,0.05)",
                                 border: "1px solid rgba(255,255,255,0.12)",
                                 color: "inherit",
-                                // @ts-ignore
                                 "--tw-ring-color": "rgba(0,161,190,0.4)",
-                              }}
+                              } as CSSProperties}
                             />
                           </div>
                           <span className="text-[11px] text-text-muted ml-auto font-mono">

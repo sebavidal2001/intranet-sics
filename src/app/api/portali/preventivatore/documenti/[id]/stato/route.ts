@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
+import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+
+export const dynamic = "force-dynamic";
 
 export async function PATCH(
   request: NextRequest,
@@ -25,7 +27,7 @@ export async function PATCH(
     }
 
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) {
+    if (!hasMinLivello(livello, "admin")) {
       return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
@@ -48,6 +50,12 @@ export async function PATCH(
         { error: "Motivo rifiuto obbligatorio" },
         { status: 400 }
       );
+    }
+    if (codici_articolo !== undefined && !Array.isArray(codici_articolo)) {
+      return NextResponse.json({ error: "Codici articolo non validi" }, { status: 400 });
+    }
+    if (importo_ordinato !== undefined && typeof importo_ordinato !== "number") {
+      return NextResponse.json({ error: "Importo ordinato non valido" }, { status: 400 });
     }
 
     const updatePayload: Record<string, unknown> = {

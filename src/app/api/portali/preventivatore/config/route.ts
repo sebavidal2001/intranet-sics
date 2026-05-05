@@ -3,6 +3,21 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 
+export const dynamic = "force-dynamic";
+
+const ALLOWED_CONFIG_KEYS = new Set([
+  "company_knowledge",
+  "system_prompt_preciso",
+  "system_prompt_creativo",
+  "soglia_similarity",
+  "temperatura_precisa",
+  "temperatura_creativa",
+  "max_chunks_per_query",
+  "modello_embedding",
+  "modello_generazione",
+  "ai_cost_counter_enabled",
+]);
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -56,16 +71,18 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
-    const body = await request.json() as Record<string, string>;
+    const body = await request.json() as Record<string, unknown>;
     const adminClient = createAdminClient();
 
-    const upsertRows = Object.entries(body).map(([chiave, valore]) => ({
-      chiave,
-      valore: String(valore),
-    }));
+    const upsertRows = Object.entries(body)
+      .filter(([chiave]) => ALLOWED_CONFIG_KEYS.has(chiave))
+      .map(([chiave, valore]) => ({
+        chiave,
+        valore: String(valore ?? ""),
+      }));
 
     if (upsertRows.length === 0) {
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ error: "Nessuna chiave valida da salvare" }, { status: 400 });
     }
 
     const { error } = await adminClient

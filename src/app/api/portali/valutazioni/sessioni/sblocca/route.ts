@@ -4,6 +4,8 @@ import { sendEmail, getSessioneApertainEmailTemplate } from "@/lib/email/nodemai
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
 import { env } from "@/lib/config/env";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();

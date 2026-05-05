@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { Send, History, ChevronRight } from "lucide-react"
+import { Send, History, ChevronRight, Maximize2, Minimize2, Plus, Trash2 } from "lucide-react"
 import { Mascot, type MascotStato } from "@/components/portali/preventivatore/mascot"
 import { SessionsPanel, type Sessione } from "@/components/portali/preventivatore/chat-ai-sessions-panel"
 
@@ -92,8 +92,18 @@ type ToolUsato = "list_preventivi" | "cerca_simili" | "cerca_articolo" | "aggreg
 interface ChatMessage {
   role: "user" | "assistant"
   content: string
+  modalita?: "preciso" | "creativo" | null
   tool?: ToolUsato
   risultati?: ListaRisultato[] | SemanticaRisultato[] | ArticoloRisultato[] | AggRisultato[] | TopArticoloRisultato[] | RigaDistintaRisultato[] | DettaglioRisultato | null
+}
+
+interface UsageSummary {
+  enabled: boolean
+  currency: "usd"
+  today: number
+  last_30_days: number
+  session: number
+  source: "openrouter"
 }
 
 // ─── Markdown renderer ────────────────────────────────────────────────────────
@@ -105,14 +115,98 @@ function parseBold(text: string): React.ReactNode[] {
   )
 }
 
+function splitMarkdownTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim())
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const cells = splitMarkdownTableRow(line)
+  return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")))
+}
+
+function isMarkdownTableStart(lines: string[], index: number): boolean {
+  return (
+    index + 1 < lines.length &&
+    lines[index].includes("|") &&
+    lines[index + 1].includes("|") &&
+    isMarkdownTableSeparator(lines[index + 1])
+  )
+}
+
+function MarkdownTable({ rows }: { rows: string[][] }) {
+  const [header, ...body] = rows
+
+  return (
+    <div className="my-2 max-w-full overflow-x-auto rounded-lg" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>
+      <table className="w-full min-w-max border-collapse text-[11px]">
+        <thead>
+          <tr style={{ backgroundColor: "rgba(0,161,190,0.16)", borderBottom: "1px solid rgba(0,161,190,0.22)" }}>
+            {header.map((cell, i) => (
+              <th
+                key={i}
+                className="px-2.5 py-2 text-left font-semibold uppercase"
+                style={{ color: "#00a1be", borderRight: i < header.length - 1 ? "1px solid rgba(255,255,255,0.08)" : undefined }}
+              >
+                {parseBold(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, rowIndex) => (
+            <tr
+              key={rowIndex}
+              style={{
+                backgroundColor: rowIndex % 2 === 0 ? "rgba(255,255,255,0.025)" : "rgba(255,255,255,0.05)",
+                borderBottom: rowIndex < body.length - 1 ? "1px solid rgba(255,255,255,0.06)" : undefined,
+              }}
+            >
+              {header.map((_, cellIndex) => (
+                <td
+                  key={cellIndex}
+                  className="px-2.5 py-2 align-top"
+                  style={{
+                    color: "rgba(255,255,255,0.78)",
+                    borderRight: cellIndex < header.length - 1 ? "1px solid rgba(255,255,255,0.06)" : undefined,
+                  }}
+                >
+                  {parseBold(row[cellIndex] ?? "")}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function SimpleMarkdown({ text }: { text: string }) {
   const lines = text.split("\n")
   const nodes: React.ReactNode[] = []
   let i = 0
   while (i < lines.length) {
     const line = lines[i]
-    const isBullet = /^[*\-]\s/.test(line)
-    if (isBullet) {
+
+    if (isMarkdownTableStart(lines, i)) {
+      const tableRows: string[][] = [splitMarkdownTableRow(lines[i])]
+      i += 2
+
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") {
+        tableRows.push(splitMarkdownTableRow(lines[i]))
+        i++
+      }
+
+      nodes.push(<MarkdownTable key={`table${i}`} rows={tableRows} />)
+      continue
+    }
+
+    if (/^[*\-]\s/.test(line)) {
       const items: React.ReactNode[] = []
       while (i < lines.length && /^[*\-]\s/.test(lines[i])) {
         items.push(<li key={i} className="ml-3 list-disc">{parseBold(lines[i].slice(2))}</li>)
@@ -705,12 +799,207 @@ function ThreeDots() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+function fmtSessionDate(iso: string) {
+  const date = new Date(iso)
+  const today = new Date()
+  if (date.toDateString() === today.toDateString()) {
+    return date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })
+  }
+  return date.toLocaleDateString("it-IT", { day: "2-digit", month: "short" })
+}
+
+function FullscreenSessionsSidebar({
+  sessioni,
+  currentId,
+  loading,
+  onLoad,
+  onDelete,
+  onNew,
+}: {
+  sessioni: Sessione[]
+  currentId: string | null
+  loading: boolean
+  onLoad: (s: Sessione) => void
+  onDelete: (id: string) => void
+  onNew: () => void
+}) {
+  return (
+    <aside
+      className="relative hidden w-[280px] shrink-0 flex-col md:flex"
+      style={{ borderRight: "1px solid rgba(255,255,255,0.09)", backgroundColor: "rgba(5,12,18,0.34)" }}
+    >
+      <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="flex items-center gap-2">
+          <History className="h-3.5 w-3.5" style={{ color: "#00a1be" }} />
+          <span className="text-sm font-semibold text-white font-tenorite">Archivio chat</span>
+        </div>
+      </div>
+
+      <div className="px-3 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <button
+          onClick={onNew}
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150"
+          style={{ backgroundColor: "rgba(0,161,190,0.18)", border: "1px solid rgba(0,161,190,0.28)", color: "#ffffff" }}
+          onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(0,161,190,0.28)")}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = "rgba(0,161,190,0.18)")}
+        >
+          <Plus className="h-3.5 w-3.5" style={{ color: "#00a1be" }} />
+          Nuova chat
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-2" style={{ scrollbarWidth: "none" }}>
+        {loading && (
+          <div className="flex justify-center py-8">
+            <ThreeDots />
+          </div>
+        )}
+
+        {!loading && sessioni.length === 0 && (
+          <p className="px-5 py-8 text-center text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+            Nessuna conversazione salvata
+          </p>
+        )}
+
+        {!loading && sessioni.map((s) => {
+          const isActive = s.id === currentId
+          return (
+            <div
+              key={s.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onLoad(s)}
+              onKeyDown={e => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  onLoad(s)
+                }
+              }}
+              className="group mx-2 mb-1 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left transition-all duration-150"
+              style={{
+                backgroundColor: isActive ? "rgba(0,161,190,0.18)" : "transparent",
+                border: isActive ? "1px solid rgba(0,161,190,0.28)" : "1px solid transparent",
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)" }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent" }}
+            >
+              <ChevronRight className="h-3 w-3 shrink-0" style={{ color: isActive ? "#00a1be" : "rgba(255,255,255,0.30)" }} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium" style={{ color: isActive ? "#ffffff" : "rgba(255,255,255,0.72)" }}>
+                  {s.titolo}
+                </span>
+                <span className="block text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  {fmtSessionDate(s.updated_at)} · {s.contesto}
+                </span>
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={e => { e.stopPropagation(); onDelete(s.id) }}
+                onKeyDown={e => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onDelete(s.id)
+                  }
+                }}
+                className="rounded p-1 opacity-0 transition-all duration-150 group-hover:opacity-100"
+                style={{ color: "rgba(231,51,49,0.70)" }}
+                title="Elimina"
+              >
+                <Trash2 className="h-3 w-3" />
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </aside>
+  )
+}
+
+function ModalitaSwitch({
+  modalita,
+  onChange,
+}: {
+  modalita: "preciso" | "creativo"
+  onChange: (value: "preciso" | "creativo") => void
+}) {
+  const isCreativo = modalita === "creativo"
+
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(isCreativo ? "preciso" : "creativo")}
+      className="relative flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[11px] font-medium transition-all duration-200"
+      style={{
+        backgroundColor: isCreativo ? "rgba(238,115,38,0.16)" : "rgba(0,161,190,0.14)",
+        border: isCreativo ? "1px solid rgba(238,115,38,0.35)" : "1px solid rgba(0,161,190,0.28)",
+        color: isCreativo ? "#ffb076" : "#8bdceb",
+      }}
+      title={isCreativo ? "Modalità creativa attiva" : "Modalità precisa attiva"}
+      aria-label={isCreativo ? "Passa a modalità precisa" : "Passa a modalità creativa"}
+      aria-pressed={isCreativo}
+    >
+      <span className="w-12 text-left">{isCreativo ? "Creativa" : "Precisa"}</span>
+      <span
+        className="relative h-5 w-9 rounded-full transition-colors duration-200"
+        style={{ backgroundColor: isCreativo ? "rgba(238,115,38,0.32)" : "rgba(0,161,190,0.32)" }}
+      >
+        <span
+          className="absolute top-0.5 h-4 w-4 rounded-full transition-all duration-200"
+          style={{
+            left: isCreativo ? "18px" : "2px",
+            backgroundColor: isCreativo ? "#ee7326" : "#00a1be",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.30)",
+          }}
+        />
+      </span>
+    </button>
+  )
+}
+
+function fmtUsd(value: number) {
+  if (value < 0.01 && value > 0) return "< $0.01"
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+function UsageCounter({ usage }: { usage: UsageSummary | null }) {
+  if (!usage?.enabled) return null
+
+  return (
+    <div className="relative grid grid-cols-3 gap-1.5 px-3 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+      {[
+        { label: "Oggi", value: usage.today },
+        { label: "30 gg", value: usage.last_30_days },
+        { label: "Chat", value: usage.session },
+      ].map((item) => (
+        <div
+          key={item.label}
+          className="rounded-lg px-2 py-1.5"
+          style={{ backgroundColor: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.07)" }}
+          title="Spesa OpenRouter rilevata per le richieste AI"
+        >
+          <p className="text-[9px] uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.35)" }}>{item.label}</p>
+          <p className="text-[11px] font-semibold tabular-nums" style={{ color: "#95c11f" }}>{fmtUsd(item.value)}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ChatAI({ contesto, placeholder }: ChatAIProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [mascotStato, setMascotStato] = useState<MascotStato>("idle")
   const [modalita, setModalita] = useState<"preciso" | "creativo">("preciso")
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null)
 
   // Session state
   const [sessioneId, setSessioneId] = useState<string | null>(null)
@@ -724,6 +1013,39 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, loading])
+
+  const fetchUsageSummary = useCallback(async (sid: string | null = sessioneId) => {
+    try {
+      const suffix = sid ? `?sessione_id=${encodeURIComponent(sid)}` : ""
+      const res = await fetch(`/api/portali/preventivatore/usage${suffix}`)
+      if (!res.ok) return
+      const data = await res.json() as UsageSummary
+      setUsageSummary(data)
+    } catch {
+      // non blocca la chat
+    }
+  }, [sessioneId])
+
+  useEffect(() => {
+    void fetchUsageSummary()
+  }, [fetchUsageSummary])
+
+  useEffect(() => {
+    if (!isFullscreen) return
+
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsFullscreen(false)
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [isFullscreen])
 
   // ─── Carica lista sessioni ──────────────────────────────────────────────────
 
@@ -747,6 +1069,12 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
     void fetchSessioni()
   }, [fetchSessioni])
 
+  useEffect(() => {
+    if (!isFullscreen) return
+    setShowHistory(false)
+    void fetchSessioni()
+  }, [isFullscreen, fetchSessioni])
+
   // ─── Carica sessione ────────────────────────────────────────────────────────
 
   const handleLoadSession = useCallback(async (s: Sessione) => {
@@ -758,6 +1086,7 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
         messaggi: Array<{
           ruolo: string
           contenuto: string
+          modalita?: "preciso" | "creativo" | null
           tool_usato: ToolUsato
           risultati: unknown
         }>
@@ -765,19 +1094,21 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
       const loaded: ChatMessage[] = (data.messaggi ?? []).map(m => ({
         role: m.ruolo as "user" | "assistant",
         content: m.contenuto,
+        modalita: m.modalita ?? null,
         tool: m.tool_usato,
         risultati: m.risultati as ChatMessage["risultati"],
       }))
       setMessages(loaded)
       setSessioneId(s.id)
       setShowHistory(false)
+      void fetchUsageSummary(s.id)
     } catch {
       // silenzioso
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
-  }, [])
+  }, [fetchUsageSummary])
 
   // ─── Elimina sessione ───────────────────────────────────────────────────────
 
@@ -874,12 +1205,14 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
       const assistantMsg: ChatMessage = {
         role: "assistant",
         content: data.risposta,
+        modalita,
         tool: data.tool_usato,
         risultati: data.risultati,
       }
 
       setMessages((prev) => [...prev, assistantMsg])
       setMascotStato("success")
+      setTimeout(() => void fetchUsageSummary(activeSessId), 250)
     } catch (err) {
       const errMsg: ChatMessage = {
         role: "assistant",
@@ -891,7 +1224,7 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
       setLoading(false)
       inputRef.current?.focus()
     }
-  }, [input, loading, messages, contesto, modalita, sessioneId, ensureSession])
+  }, [input, loading, messages, contesto, modalita, sessioneId, ensureSession, fetchUsageSummary])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); invia() }
@@ -903,16 +1236,28 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
   const darkBg = { background: "linear-gradient(180deg, #0f1720 0%, #18222e 100%)" }
 
   return (
-    <div className="w-80 shrink-0 sticky top-6 self-start relative">
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[100] flex items-center justify-center bg-black/35 p-8"
+          : "w-80 shrink-0 sticky top-6 self-start relative"
+      }
+    >
 
       {/* Mascot */}
-      <div className="absolute -top-5 -left-4 z-20 pointer-events-none">
+      <div className={`absolute z-20 pointer-events-none ${isFullscreen ? "top-10 left-10" : "-top-5 -left-4"}`}>
         <Mascot stato={mascotStato} size={50} successDuration={1800} />
       </div>
 
       <div
-        className="rounded-2xl overflow-hidden flex flex-col relative"
-        style={{ ...darkBg, height: "600px", boxShadow: "0 2px 0 rgba(0,0,0,.24), 0 16px 40px rgba(0,0,0,.28)" }}
+        className={`${isFullscreen ? "w-full max-w-[1320px]" : "w-full"} rounded-2xl overflow-hidden flex relative`}
+        style={{
+          ...darkBg,
+          height: isFullscreen ? "calc(100vh - 4rem)" : "600px",
+          boxShadow: isFullscreen
+            ? "0 0 0 1px rgba(255,255,255,.10), 0 24px 80px rgba(0,0,0,.55)"
+            : "0 2px 0 rgba(0,0,0,.24), 0 16px 40px rgba(0,0,0,.28)",
+        }}
       >
         {/* Grid overlay */}
         <div
@@ -924,8 +1269,21 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
           }}
         />
 
+        {isFullscreen && (
+          <FullscreenSessionsSidebar
+            sessioni={sessioni}
+            currentId={sessioneId}
+            loading={loadingSessioni}
+            onLoad={handleLoadSession}
+            onDelete={handleDeleteSession}
+            onNew={handleNewChat}
+          />
+        )}
+
+        <div className="relative flex min-w-0 flex-1 flex-col">
+
         {/* Sessions panel overlay */}
-        {showHistory && (
+        {showHistory && !isFullscreen && (
           <SessionsPanel
             sessioni={sessioni}
             currentId={sessioneId}
@@ -962,6 +1320,17 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
             >
               <History className="w-3.5 h-3.5" />
             </button>
+            <button
+              onClick={() => setIsFullscreen((value) => !value)}
+              className="p-1 rounded-lg transition-colors"
+              style={{ color: "rgba(255,255,255,0.45)" }}
+              onMouseEnter={e => (e.currentTarget.style.color = "#00a1be")}
+              onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.45)")}
+              title={isFullscreen ? "Riduci chat" : "Espandi chat a schermo intero"}
+              aria-label={isFullscreen ? "Riduci chat" : "Espandi chat a schermo intero"}
+            >
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
             {/* Pulse dot */}
             <div className="flex items-center gap-1.5">
               <span className="relative flex h-2 w-2">
@@ -973,23 +1342,15 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
           </div>
         </div>
 
-        {/* Modalita toggle */}
-        <div className="relative flex shrink-0" style={{ borderBottom: darkBorder }}>
-          {(["preciso", "creativo"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setModalita(m)}
-              className="flex-1 px-3 py-1.5 text-xs font-medium transition-all duration-150 capitalize"
-              style={{
-                color: modalita === m ? "#ffffff" : "rgba(255,255,255,0.40)",
-                backgroundColor: modalita === m ? "rgba(0,161,190,0.20)" : "transparent",
-                borderBottom: modalita === m ? "2px solid #00a1be" : "2px solid transparent",
-              }}
-            >
-              {m.charAt(0).toUpperCase() + m.slice(1)}
-            </button>
-          ))}
+        {/* Modalita */}
+        <div className="relative flex shrink-0 items-center justify-between px-3 py-2" style={{ borderBottom: darkBorder }}>
+          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: "rgba(255,255,255,0.34)" }}>
+            Modalità AI
+          </span>
+          <ModalitaSwitch modalita={modalita} onChange={setModalita} />
         </div>
+
+        <UsageCounter usage={usageSummary} />
 
         {/* Messages */}
         <div className="relative flex-1 overflow-y-auto p-3 space-y-3" style={{ scrollbarWidth: "none" }}>
@@ -1012,11 +1373,13 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className="max-w-[90%] rounded-xl px-3 py-2 text-xs leading-relaxed"
+                className={`${msg.role === "assistant" && isFullscreen ? "max-w-[96%]" : "max-w-[90%]"} rounded-xl px-3 py-2 text-xs leading-relaxed`}
                 style={
                   msg.role === "user"
                     ? { backgroundColor: "rgba(0,161,190,0.22)", border: "1px solid rgba(0,161,190,0.35)", color: "#ffffff" }
-                    : { backgroundColor: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", color: "rgba(255,255,255,0.85)" }
+                    : msg.modalita === "creativo"
+                      ? { backgroundColor: "rgba(238,115,38,0.11)", border: "1px solid rgba(238,115,38,0.24)", color: "rgba(255,244,235,0.90)" }
+                      : { backgroundColor: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", color: "rgba(255,255,255,0.85)" }
                 }
               >
                 <SimpleMarkdown text={msg.content} />
@@ -1084,6 +1447,7 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
           >
             <Send className="w-3.5 h-3.5" />
           </button>
+        </div>
         </div>
       </div>
     </div>

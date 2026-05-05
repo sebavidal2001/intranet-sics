@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import type { ExportRow } from "@/lib/types";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();

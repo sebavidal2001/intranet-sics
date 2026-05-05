@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
 import { DEFAULT_CONFIG } from "@/lib/portali/valutazioni/pdf/certificato";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const db = createAdminClient();
   const { data } = await db

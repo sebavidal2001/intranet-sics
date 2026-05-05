@@ -99,4 +99,14 @@ export interface ChatHandlerResult {
   risposta: string;
   tool_usato: ToolName | null;
   risultati: unknown[] | null;
+  usage?: {
+    provider: "openrouter";
+    model: string;
+    prompt_tokens: number | null;
+    completion_tokens: number | null;
+    total_tokens: number | null;
+    cost: number | null;
+    currency: "usd";
+    source: "exact";
+  } | null;
 }

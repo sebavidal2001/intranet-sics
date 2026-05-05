@@ -37,6 +37,10 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Route pubbliche
+  if (pathname === "/api/ping") {
+    return supabaseResponse;
+  }
+
   if (pathname.startsWith("/auth/login")) {
     if (user) return NextResponse.redirect(new URL("/", request.url));
     return supabaseResponse;

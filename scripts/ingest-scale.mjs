@@ -51,6 +51,19 @@ const genai = new GoogleGenerativeAI(GEMINI_API_KEY);
 /** Pausa per rate limiting */
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+const parseNum = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const raw = String(value).trim();
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw;
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const fmtNum = (value) => Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+
 /** Genera embedding con gemini-embedding-2 (3072 dim) */
 async function getEmbedding(text) {
   const model = genai.getGenerativeModel({ model: 'gemini-embedding-2' });
@@ -236,11 +249,11 @@ function processaExcel(filePath, codiceProgetto, cliente) {
 
         const desc     = descCol === 0 ? cellA : cellB;
         const cod      = codCol  === 0 ? cellA : cellB;
-        const qtyRow   = parseFloat(cellC) || 0;
+        const qtyRow   = parseNum(cellC) || 0;
         const prezzoRaw = data[i]?.[prezzoCol];
-        const prezzoU  = prezzoRaw !== '' && prezzoRaw !== undefined ? parseFloat(prezzoRaw) || null : null;
-        const ricarico = parseFloat(data[i]?.[ricaricCol]) || null;
-        const totale   = parseFloat(data[i]?.[totaleCol]) || null;
+        const prezzoU  = prezzoRaw !== '' && prezzoRaw !== undefined ? parseNum(prezzoRaw) : null;
+        const ricarico = parseNum(data[i]?.[ricaricCol]);
+        const totale   = parseNum(data[i]?.[totaleCol]);
 
         if (!desc) continue;
 
@@ -268,7 +281,7 @@ function processaExcel(filePath, codiceProgetto, cliente) {
       // Footer manodopera (PROGETTAZIONE, TAGLIO, MONTAGGIO come righe separate)
       for (let i = headerIdx + 1; i < data.length; i++) {
         const cellA = String(data[i]?.[0] || '').trim();
-        const cellC = parseFloat(data[i]?.[2]) || 0;
+        const cellC = parseNum(data[i]?.[2]) || 0;
         if (/^PROGETTAZIONE$|^TAGLIO|^MONTAGGIO$/i.test(cellA) && cellC > 0) {
           if (!manodopera.find(m => m.startsWith(cellA))) {
             manodopera.push(`${cellA} ${cellC}h`);
@@ -289,11 +302,11 @@ function processaExcel(filePath, codiceProgetto, cliente) {
         const cellC = data[i]?.[2];
         const cellD = data[i]?.[prezzoCol];
         const cellT = data[i]?.[totaleCol]; // colonna totale (usata per i footer)
-        const valC = parseFloat(cellC) || null;
-        const valD = parseFloat(cellD) || null;
+        const valC = parseNum(cellC);
+        const valD = parseNum(cellD);
         // I footer (TOTALE, PREZZO FINALE ecc.) hanno il valore nella colonna totale,
         // non in quella del prezzo unitario — prova totaleCol prima, poi prezzoCol
-        const valFooter = parseFloat(cellT) || parseFloat(cellD) || null;
+        const valFooter = parseNum(cellT) ?? parseNum(cellD);
 
         if (/^TOTALE\s*(MATERIALE|MAT\.?)\b/i.test(cellA) && valFooter != null) totMat = valFooter;
         if (/^TOTALE\s*(MANODOPERA|MAN\.?|MANOD\.?)\b/i.test(cellA) && valFooter != null) totMan = valFooter;
@@ -324,13 +337,66 @@ function processaExcel(filePath, codiceProgetto, cliente) {
         if (/^PREZZO\s*FINALE/i.test(cellA)) break;
         if (/PROGETTAZIONE|TAGLIO\s*&|MONTAGGIO|COLLAUDO/i.test(cellA)) inMano = true;
         if (inMano && /PROGETTAZIONE|TAGLIO|MONTAGGIO|COLLAUDO|VERNICIATURA\s+MANODOP/i.test(cellA)) {
-          const ore = parseFloat(data[i]?.[qtyCol] ?? data[i]?.[2]) || 0;
-          const costoH = parseFloat(data[i]?.[prezzoCol]) || null;
-          const totaleMan = parseFloat(data[i]?.[totaleCol]) || null;
+          // Nei fogli di calcolo SICS le righe riepilogo manodopera usano spesso
+          // le colonne E/F/G: ore, costo orario, totale. La distinta materiali usa
+          // invece C/D/G. Prova prima il layout manodopera, poi il fallback distinto.
+          const ore = parseNum(data[i]?.[4]) ?? parseNum(data[i]?.[qtyCol]) ?? parseNum(data[i]?.[2]) ?? 0;
+          const costoH = parseNum(data[i]?.[5]) ?? parseNum(data[i]?.[prezzoCol]);
+          const totaleMan = parseNum(data[i]?.[6]) ?? parseNum(data[i]?.[totaleCol]);
           if (ore > 0) {
             manodoperaStrutturata.push({ voce: cellA, ore, costoH, totaleMan });
           }
         }
+      }
+    }
+
+    // ── Leggi ore di lavorazione per singolo componente ─────────────────────
+    // Layout tipico in fondo al foglio:
+    // CODICE | DESCRIZIONE | COSTO | costo materiale | costo manodopera | h | q.tà | tot. Ore man. | MONTAGGIO
+    const lavorazioniComponenti = [];
+    let lavHeaderIdx = -1;
+    let lavCols = {};
+    for (let i = 0; i < data.length; i++) {
+      const header = data[i].map(v => String(v || '').trim().toUpperCase());
+      if (header.includes('CODICE') && header.includes('DESCRIZIONE') && header.some(h => /ORE\s*MAN|TOT\.\s*ORE/i.test(h))) {
+        lavHeaderIdx = i;
+        lavCols = {
+          codice: header.findIndex(h => h === 'CODICE'),
+          descrizione: header.findIndex(h => h === 'DESCRIZIONE'),
+          costoManodopera: header.findIndex(h => /COSTO\s+MANODOPERA/i.test(h)),
+          oreUnitarie: header.findIndex(h => h === 'H'),
+          quantita: header.findIndex(h => /Q\.?T[ÀA]/i.test(h)),
+          oreTotali: header.findIndex(h => /TOT\.\s*ORE\s*MAN/i.test(h)),
+          montaggio: header.findIndex(h => /MONTAGGIO/i.test(h)),
+        };
+        break;
+      }
+    }
+
+    if (lavHeaderIdx >= 0) {
+      for (let i = lavHeaderIdx + 1; i < data.length; i++) {
+        const row = data[i];
+        const codice = String(row?.[lavCols.codice] || '').trim();
+        const descrizione = String(row?.[lavCols.descrizione] || '').trim();
+        if (!codice && !descrizione) continue;
+        if (/^TOTALE|^PREZZO|^MARGINE/i.test(descrizione || codice)) break;
+
+        const oreTotali = parseNum(row?.[lavCols.oreTotali]);
+        const oreUnitarie = parseNum(row?.[lavCols.oreUnitarie]);
+        const quantitaLav = parseNum(row?.[lavCols.quantita]);
+        const costoManodopera = parseNum(row?.[lavCols.costoManodopera]);
+        const montaggio = parseNum(row?.[lavCols.montaggio]);
+        if ((oreTotali ?? 0) <= 0 && (oreUnitarie ?? 0) <= 0 && (montaggio ?? 0) <= 0) continue;
+
+        lavorazioniComponenti.push({
+          codice_articolo: codice && codice !== '0' ? codice : null,
+          descrizione,
+          costo_manodopera: costoManodopera,
+          ore_unitarie: oreUnitarie,
+          quantita: quantitaLav,
+          ore_totali: oreTotali,
+          montaggio,
+        });
       }
     }
 
@@ -375,6 +441,20 @@ function processaExcel(filePath, codiceProgetto, cliente) {
       }
     }
 
+    if (lavorazioniComponenti.length > 0) {
+      lines.push('');
+      lines.push('ORE LAVORAZIONE PER COMPONENTE:');
+      for (const l of lavorazioniComponenti) {
+        const codPart = l.codice_articolo ? ` (${l.codice_articolo})` : '';
+        const costoPart = l.costo_manodopera != null ? `, costo manodopera €${l.costo_manodopera.toFixed(2)}` : '';
+        const orePart = l.ore_unitarie != null ? `, h ${fmtNum(l.ore_unitarie)}` : '';
+        const qtaPart = l.quantita != null ? `, q.tà ${fmtNum(l.quantita)}` : '';
+        const totOrePart = l.ore_totali != null ? `, tot. ore man. ${fmtNum(l.ore_totali)}` : '';
+        const montaggioPart = l.montaggio != null ? `, montaggio ${fmtNum(l.montaggio)}` : '';
+        lines.push(`  - ${l.descrizione}${codPart}${costoPart}${orePart}${qtaPart}${totOrePart}${montaggioPart}`);
+      }
+    }
+
     if (imballo != null || tempiAcc != null || speseGen != null) {
       lines.push('');
       lines.push('ALTRI COSTI:');
@@ -395,8 +475,7 @@ function processaExcel(filePath, codiceProgetto, cliente) {
     const getSpecVal = (label) => {
       const found = specs.find(s => s.toLowerCase().startsWith(label.toLowerCase()));
       if (!found) return null;
-      const num = parseFloat(found.split(':')[1]);
-      return isNaN(num) ? null : num;
+      return parseNum(found.split(':')[1]);
     };
 
     chunks.push({

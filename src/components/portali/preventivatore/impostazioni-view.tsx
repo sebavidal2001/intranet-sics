@@ -35,6 +35,7 @@ const LABEL_MAP: Record<string, string> = {
   max_chunks_per_query:  "Max chunks per query",
   modello_embedding:     "Modello embedding",
   modello_generazione:   "Modello generazione",
+  ai_cost_counter_enabled: "Contatore spesa AI",
 }
 const CHIAVI_SLIDER: Record<string, { min: number; max: number; step: number }> = {
   soglia_similarity: { min: 0, max: 1, step: 0.05 },
@@ -42,6 +43,7 @@ const CHIAVI_SLIDER: Record<string, { min: number; max: number; step: number }> 
   temperatura_creativa: { min: 0, max: 1, step: 0.1 },
 }
 const CHIAVE_NUMBER = "max_chunks_per_query"
+const CHIAVI_BOOLEAN = ["ai_cost_counter_enabled"]
 
 function configToMap(configs: AIConfig[]): Record<string, string> {
   const map: Record<string, string> = {}
@@ -122,6 +124,36 @@ export function ImpostazioniView() {
   }
 
   const renderField = (chiave: string, valore: string, descrizione: string | null) => {
+    if (CHIAVI_BOOLEAN.includes(chiave)) {
+      const checked = valore === "true"
+      return (
+        <div key={chiave} className="flex items-start justify-between gap-4 rounded-lg border border-border bg-bg-page px-4 py-3">
+          <div>
+            <Label htmlFor={chiave}>
+              {LABEL_MAP[chiave] ?? chiave.replace(/_/g, " ")}
+            </Label>
+            <p className="text-xs text-text-muted mt-0.5">
+              {descrizione ?? "Mostra agli utenti il contatore di spesa OpenRouter nella chat AI."}
+            </p>
+          </div>
+          <button
+            id={chiave}
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            onClick={() => handleChange(chiave, checked ? "false" : "true")}
+            className="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors"
+            style={{ backgroundColor: checked ? "#00a1be" : "rgba(100,116,139,0.35)" }}
+          >
+            <span
+              className="absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-all"
+              style={{ left: checked ? "23px" : "4px" }}
+            />
+          </button>
+        </div>
+      )
+    }
+
     if (CHIAVI_TEXTAREA.includes(chiave)) {
       const rows = chiave === "company_knowledge" ? 14 : 6
       return (

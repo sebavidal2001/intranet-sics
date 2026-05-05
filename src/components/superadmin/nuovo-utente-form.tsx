@@ -48,7 +48,7 @@ interface Props {
 }
 
 const inputClass =
-  "w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-[120ms]";
+  "w-full border border-border rounded-lg px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors duration-150";
 
 export function NuovoUtenteForm({ responsabili, ruoliConfig, reparti }: Props) {
   const [serverError, setServerError] = useState<string | null>(null);
@@ -120,7 +120,7 @@ export function NuovoUtenteForm({ responsabili, ruoliConfig, reparti }: Props) {
         <label className="block font-tenorite text-sm text-text">
           Username <span className="text-danger">*</span>
         </label>
-        <div className="flex items-center border border-border rounded-lg overflow-hidden focus-within:border-primary transition-colors duration-[120ms]">
+        <div className="flex items-center border border-border rounded-lg overflow-hidden focus-within:border-primary transition-colors duration-150">
           <input
             {...register("username")}
             type="text"
