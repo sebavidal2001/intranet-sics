@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import dynamic from "next/dynamic"
 import { PlusCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ChatAI } from "@/components/portali/preventivatore/chat-ai"
 import { AutocompleteCliente } from "@/components/portali/preventivatore/autocomplete-cliente"
 import { BloccoCard } from "@/components/portali/preventivatore/blocco-card"
 import {
@@ -19,6 +19,19 @@ import {
 } from "@/components/portali/preventivatore/nuovo-view-types"
 
 // ─── Main component ───────────────────────────────────────────────────────────
+
+const ChatAI = dynamic(
+  () => import("@/components/portali/preventivatore/chat-ai").then((m) => m.ChatAI),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="w-80 shrink-0 sticky top-6 self-start rounded-2xl"
+        style={{ height: "600px", background: "linear-gradient(180deg, #0f1720 0%, #18222e 100%)" }}
+      />
+    ),
+  }
+)
 
 export function NuovoView() {
   const [titolo, setTitolo] = useState("")

@@ -1,9 +1,6 @@
 import { redirect } from "next/navigation";
 import { IntranetNavbar } from "@/components/layout/intranet-navbar";
 import { getSessionUser, getSessionProfile, getSessionIsAdmin } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
-import { getPortaleAccesso } from "@/lib/auth/portale";
-import { PORTALE_SLUGS } from "@/lib/config/portali";
 
 export default async function IntranetLayout({
   children,
@@ -13,12 +10,9 @@ export default async function IntranetLayout({
   const user = await getSessionUser();
   if (!user) redirect("/auth/login");
 
-  const supabase = await createClient();
-
-  const [profile, valutazioniAdmin, livelloPreventivatore] = await Promise.all([
+  const [profile, valutazioniAdmin] = await Promise.all([
     getSessionProfile(),
     getSessionIsAdmin(),
-    getPortaleAccesso(supabase, user.id, PORTALE_SLUGS.PREVENTIVATORE),
   ]);
 
   const navProfile = profile
@@ -26,7 +20,6 @@ export default async function IntranetLayout({
         ...profile,
         ruoli_aggiuntivi: [],
         is_valutazioni_admin: valutazioniAdmin,
-        can_access_preventivatore: livelloPreventivatore !== null,
       }
     : null;
 

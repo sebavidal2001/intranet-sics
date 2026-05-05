@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -51,16 +52,17 @@ export function PreventivatoreSidebar({ livello, profile }: PreventivatoreSideba
       >
         <div className="flex items-center gap-3">
           <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: "linear-gradient(135deg, #00a1be 0%, #007a91 100%)" }}
+            className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0"
+            style={{ background: "rgba(0,161,190,0.16)" }}
           >
-            {/* Mini SICS-style icon */}
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="2" y="2" width="5" height="5" rx="1" fill="rgba(255,255,255,0.9)" />
-              <rect x="9" y="2" width="5" height="5" rx="1" fill="rgba(255,255,255,0.9)" />
-              <rect x="2" y="9" width="5" height="5" rx="1" fill="rgba(255,255,255,0.9)" />
-              <rect x="9" y="9" width="5" height="5" rx="1" fill="rgba(255,255,255,0.55)" />
-            </svg>
+            <Image
+              src="/logo/sics-logo.png"
+              alt="SICS"
+              width={70}
+              height={22}
+              className="absolute left-0 top-1/2 max-w-none -translate-y-1/2 object-contain"
+              priority
+            />
           </div>
           <div className="min-w-0">
             <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.40)" }}>

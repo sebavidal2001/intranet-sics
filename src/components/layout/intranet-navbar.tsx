@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { TubelightNavBar } from "@/components/ui/tubelight-navbar"
-import { Home, Settings, User, LogOut, ChevronDown, Shield, ClipboardList, BarChart2, Calculator } from "lucide-react"
+import { Home, Settings, User, LogOut, ChevronDown, Shield, BarChart2 } from "lucide-react"
 
 interface NavbarProfile {
   id: string
@@ -16,11 +16,6 @@ interface NavbarProfile {
   ruoli_aggiuntivi: string[]
   reparto: string | null
   is_valutazioni_admin: boolean
-  can_access_preventivatore: boolean
-}
-
-function hasRole(profile: NavbarProfile, role: string): boolean {
-  return profile.ruolo === role || profile.ruoli_aggiuntivi.includes(role)
 }
 
 export function IntranetNavbar({ profile }: { profile: NavbarProfile | null }) {
@@ -29,17 +24,12 @@ export function IntranetNavbar({ profile }: { profile: NavbarProfile | null }) {
 
   const isSuperadmin = profile?.ruolo === "superadmin"
   const isValutazioniAdmin = profile?.is_valutazioni_admin ?? false
-  const canAccessValutazioni =
-    isValutazioniAdmin ||
-    (profile && ["responsabile", "responsabile_intermedio", "collaboratore"].some(r => hasRole(profile, r)))
-  const canAccessPreventivatore = profile?.can_access_preventivatore ?? false
+  const canAccessAnalisi = isValutazioniAdmin
 
   const navItems = [
     { name: "Home", url: "/", icon: Home },
     ...(isSuperadmin ? [{ name: "Superadmin", url: "/superadmin", icon: Shield }] : []),
-    ...(canAccessValutazioni ? [{ name: "Valutazioni", url: "/valutazioni", icon: ClipboardList }] : []),
-    ...(canAccessValutazioni ? [{ name: "Analisi", url: "/analisi", icon: BarChart2 }] : []),
-    ...(canAccessPreventivatore ? [{ name: "Preventivatore", url: "/preventivatore/archivio", icon: Calculator }] : []),
+    ...(canAccessAnalisi ? [{ name: "Analisi", url: "/analisi", icon: BarChart2 }] : []),
   ]
 
   const handleLogout = async () => {

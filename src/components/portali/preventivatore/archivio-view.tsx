@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import dynamic from "next/dynamic"
 import { Search, ChevronDown, Loader2, FileText, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,7 +18,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { ChatAI } from "@/components/portali/preventivatore/chat-ai"
+
+const ChatAI = dynamic(
+  () => import("@/components/portali/preventivatore/chat-ai").then((m) => m.ChatAI),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="w-80 shrink-0 sticky top-6 self-start rounded-2xl"
+        style={{ height: "600px", background: "linear-gradient(180deg, #0f1720 0%, #18222e 100%)" }}
+      />
+    ),
+  }
+)
 
 type StatoDocumento = "pending" | "ordinato" | "rifiutato"
 
