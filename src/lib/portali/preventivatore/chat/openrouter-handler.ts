@@ -84,10 +84,11 @@ export async function handleOpenRouter(
   messages: ChatMessage[],
   systemInstruction: string,
   temperature: number = 0.2,
-  top_p: number = 0.9
+  top_p: number = 0.9,
+  configuredModel?: string
 ): Promise<ChatHandlerResult> {
   const apiKey = process.env.OPENROUTER_API_KEY!;
-  const model = process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4-5";
+  const model = configuredModel?.trim() || process.env.OPENROUTER_MODEL || "anthropic/claude-haiku-4-5";
 
   const isAnthropicModel = model.startsWith("anthropic/");
   const openaiMessages: Array<Record<string, unknown>> = [

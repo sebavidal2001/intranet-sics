@@ -167,6 +167,12 @@ export async function POST(request: NextRequest) {
       modalita === "preciso" ? (cfg.temperatura_precisa ?? "0.2") : (cfg.temperatura_creativa ?? "0.8")
     ) || (modalita === "preciso" ? 0.2 : 0.8)));
     const top_p = modalita === "creativo" ? 1.0 : 0.9;
+    const configuredGenerationModel = cfg.modello_generazione?.trim();
+    const openrouterModel = configuredGenerationModel?.startsWith("openrouter:")
+      ? configuredGenerationModel.slice("openrouter:".length)
+      : configuredGenerationModel?.includes("/")
+        ? configuredGenerationModel
+        : undefined;
 
     const systemInstruction =
       companyKnowledge +
@@ -200,7 +206,7 @@ export async function POST(request: NextRequest) {
     let result: ChatHandlerResult;
     if (process.env.OPENROUTER_API_KEY) {
       try {
-        result = await handleOpenRouter(messages, systemInstruction, temperature, top_p);
+        result = await handleOpenRouter(messages, systemInstruction, temperature, top_p, openrouterModel);
       } catch (openrouterErr) {
         console.warn("OpenRouter fallito, fallback su Gemini:", openrouterErr instanceof Error ? openrouterErr.message : openrouterErr);
         if (!process.env.GEMINI_API_KEY) {

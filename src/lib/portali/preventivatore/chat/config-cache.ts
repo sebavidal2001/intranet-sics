@@ -14,3 +14,7 @@ export async function loadAiConfig(): Promise<Record<string, string>> {
   _cfgCache = { data: cfg, ts: Date.now() };
   return cfg;
 }
+
+export function invalidateAiConfigCache() {
+  _cfgCache = null;
+}

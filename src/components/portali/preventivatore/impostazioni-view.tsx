@@ -21,6 +21,16 @@ interface DocumentiStats {
   total_chunks: number
 }
 
+interface OpenRouterModel {
+  id: string
+  name: string
+  context_length: number | null
+  input_cost_per_million: number | null
+  output_cost_per_million: number | null
+  tags: string[]
+  description: string
+}
+
 type FeedbackType = { type: "success" | "error"; msg: string } | null
 
 const CHIAVI_TEXTAREA = ["company_knowledge", "system_prompt_preciso", "system_prompt_creativo"]
@@ -44,6 +54,7 @@ const CHIAVI_SLIDER: Record<string, { min: number; max: number; step: number }> 
 }
 const CHIAVE_NUMBER = "max_chunks_per_query"
 const CHIAVI_BOOLEAN = ["ai_cost_counter_enabled"]
+const OPENROUTER_PREFIX = "openrouter:"
 
 function configToMap(configs: AIConfig[]): Record<string, string> {
   const map: Record<string, string> = {}
@@ -60,6 +71,9 @@ export function ImpostazioniView() {
 
   const [stats, setStats] = useState<DocumentiStats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
+  const [models, setModels] = useState<OpenRouterModel[]>([])
+  const [loadingModels, setLoadingModels] = useState(true)
+  const [modelsError, setModelsError] = useState<string | null>(null)
 
   const fetchConfig = useCallback(async () => {
     setLoadingConfig(true)
@@ -90,10 +104,26 @@ export function ImpostazioniView() {
     }
   }, [])
 
+  const fetchModels = useCallback(async () => {
+    setLoadingModels(true)
+    setModelsError(null)
+    try {
+      const res = await fetch("/api/portali/preventivatore/config/models")
+      if (!res.ok) throw new Error("Errore fetch modelli")
+      const data = await res.json() as { models: OpenRouterModel[] }
+      setModels(data.models ?? [])
+    } catch {
+      setModelsError("Impossibile caricare i modelli OpenRouter. Puoi comunque inserire manualmente l'ID.")
+    } finally {
+      setLoadingModels(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchConfig()
     fetchStats()
-  }, [fetchConfig, fetchStats])
+    fetchModels()
+  }, [fetchConfig, fetchStats, fetchModels])
 
   const handleChange = (chiave: string, valore: string) => {
     setValues((prev) => ({ ...prev, [chiave]: valore }))
@@ -124,6 +154,21 @@ export function ImpostazioniView() {
   }
 
   const renderField = (chiave: string, valore: string, descrizione: string | null) => {
+    if (chiave === "modello_generazione") {
+      return (
+        <ModelSelector
+          key={chiave}
+          value={valore}
+          models={models}
+          loading={loadingModels}
+          error={modelsError}
+          onChange={(nextValue) => handleChange(chiave, nextValue)}
+          onRefresh={fetchModels}
+          description={descrizione}
+        />
+      )
+    }
+
     if (CHIAVI_BOOLEAN.includes(chiave)) {
       const checked = valore === "true"
       return (
@@ -355,6 +400,159 @@ export function ImpostazioniView() {
             </p>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function modelValueToOpenRouterId(value: string) {
+  return value.startsWith(OPENROUTER_PREFIX) ? value.slice(OPENROUTER_PREFIX.length) : value
+}
+
+function formatCost(value: number | null) {
+  if (value == null) return "-"
+  if (value === 0) return "$0"
+  return `$${value >= 10 ? value.toFixed(0) : value.toFixed(2)}`
+}
+
+function formatContext(value: number | null) {
+  if (!value) return ""
+  if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M token`
+  if (value >= 1000) return `${Math.round(value / 1000)}k token`
+  return `${value} token`
+}
+
+function ModelSelector({
+  value,
+  models,
+  loading,
+  error,
+  description,
+  onChange,
+  onRefresh,
+}: {
+  value: string
+  models: OpenRouterModel[]
+  loading: boolean
+  error: string | null
+  description: string | null
+  onChange: (value: string) => void
+  onRefresh: () => void
+}) {
+  const [search, setSearch] = useState("")
+  const selectedId = modelValueToOpenRouterId(value)
+  const selectedModel = models.find((model) => model.id === selectedId)
+  const normalizedSearch = search.trim().toLowerCase()
+  const filteredModels = normalizedSearch
+    ? models.filter((model) =>
+        [
+          model.name,
+          model.id,
+          model.description,
+          ...model.tags,
+        ].some((field) => field.toLowerCase().includes(normalizedSearch))
+      )
+    : models
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <Label htmlFor="modello_generazione">
+            {LABEL_MAP.modello_generazione}
+          </Label>
+          <p className="text-xs text-text-muted mt-0.5">
+            {description ?? "Modello usato da OpenRouter per la chat del preventivatore."}
+          </p>
+          <p className="text-xs text-text-muted mt-1">
+            Se OpenRouter non e disponibile, la chat usa Gemini come fallback.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onRefresh}
+          disabled={loading}
+          className="gap-1.5 text-xs shrink-0"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+          Modelli
+        </Button>
+      </div>
+
+      <Input
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Cerca modello, provider o specialita..."
+        disabled={loading || models.length === 0}
+      />
+
+      <select
+        id="modello_generazione"
+        value={selectedModel ? selectedModel.id : ""}
+        onChange={(event) => {
+          if (event.target.value) onChange(`${OPENROUTER_PREFIX}${event.target.value}`)
+        }}
+        disabled={loading || models.length === 0}
+        className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40"
+      >
+        <option value="">
+          {loading ? "Caricamento modelli OpenRouter..." : "Seleziona un modello OpenRouter"}
+        </option>
+        {filteredModels.map((model) => (
+          <option key={model.id} value={model.id}>
+            {model.name} - {model.id}
+          </option>
+        ))}
+      </select>
+
+      {!loading && models.length > 0 && (
+        <p className="text-[11px] text-text-muted">
+          {filteredModels.length} modelli mostrati su {models.length}, ordinati alfabeticamente.
+        </p>
+      )}
+
+      {selectedModel && (
+        <div className="rounded-lg border border-border bg-bg-page px-4 py-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-text">{selectedModel.name}</p>
+            {selectedModel.tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                style={{ backgroundColor: "rgba(0,161,190,0.12)", color: "#007a91" }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-text-muted">{selectedModel.description}</p>
+          <div className="flex flex-wrap gap-3 text-[11px] text-text-muted">
+            <span>Input: {formatCost(selectedModel.input_cost_per_million)} / 1M token</span>
+            <span>Output: {formatCost(selectedModel.output_cost_per_million)} / 1M token</span>
+            {selectedModel.context_length && <span>Contesto: {formatContext(selectedModel.context_length)}</span>}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor="modello_generazione_manual" className="text-xs text-text-muted">
+          ID modello salvato
+        </Label>
+        <Input
+          id="modello_generazione_manual"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="openrouter:anthropic/claude-haiku-4-5"
+          className="font-mono text-xs"
+        />
       </div>
     </div>
   )

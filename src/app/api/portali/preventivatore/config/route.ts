@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+import { invalidateAiConfigCache } from "@/lib/portali/preventivatore/chat/config-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,8 @@ export async function PATCH(request: NextRequest) {
       console.error("Config upsert error:", error);
       return NextResponse.json({ error: "Errore salvataggio configurazione" }, { status: 500 });
     }
+
+    invalidateAiConfigCache();
 
     return NextResponse.json({ success: true });
   } catch (error) {
