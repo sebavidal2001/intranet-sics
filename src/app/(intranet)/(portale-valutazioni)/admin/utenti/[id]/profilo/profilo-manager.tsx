@@ -173,9 +173,16 @@ function RuoloCard({
         )}
       </div>
 
-      {/* Mansioni espanse */}
-      {attivo && espansoEffettivo && ruolo.mansioni.length > 0 && (
+      {/* Mansioni espanse — visibili se attivo o se la ricerca globale trova risultati */}
+      {(attivo || matchGlobale) && espansoEffettivo && ruolo.mansioni.length > 0 && (
         <div className="border-t border-border">
+          {/* Banner ruolo non attivo in modalità ricerca */}
+          {!attivo && matchGlobale && (
+            <div className="px-5 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-700">
+              Questo profilo non è assegnato all&apos;utente — attivalo con il toggle per abilitarne le mansioni.
+            </div>
+          )}
+
           {/* Barra ricerca + seleziona/deseleziona tutte */}
           <div className="px-5 py-3 bg-bg-page border-b border-border flex items-center gap-3">
             <div className="flex-1 relative">
