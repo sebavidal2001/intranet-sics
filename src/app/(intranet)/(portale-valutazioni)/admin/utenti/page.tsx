@@ -65,10 +65,11 @@ export default async function UtentiPage({
         .in("utente_id", utenteIds)
     : { data: [] };
 
+  type RespRef = { nome: string; cognome: string };
   type UtenteRow = {
     id: string; nome: string; cognome: string; email: string;
     username: string | null; ruolo: string; stato: string | null;
-    reparto: string | null; responsabile: { nome: string; cognome: string } | null;
+    reparto: string | null; responsabile: RespRef | RespRef[] | null;
   };
   type ProfiloEntry = {
     utente_id: string;
@@ -163,7 +164,12 @@ export default async function UtentiPage({
                       </TableCell>
                       <TableCell>{utente.reparto}</TableCell>
                       <TableCell className="text-text-muted">
-                        {utente.responsabile ? `${utente.responsabile.nome} ${utente.responsabile.cognome}` : "-"}
+                        {(() => {
+                          const resp = Array.isArray(utente.responsabile)
+                            ? utente.responsabile[0]
+                            : utente.responsabile;
+                          return resp ? `${resp.nome} ${resp.cognome}` : "-";
+                        })()}
                       </TableCell>
                       <TableCell>
                         {profili.length > 0 ? (
