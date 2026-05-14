@@ -27,7 +27,7 @@ export default async function IntranetLayout({
     <div className="relative min-h-screen bg-bg-page">
       <div className="relative z-10 flex flex-col min-h-screen">
         <IntranetNavbar profile={navProfile} />
-        <main className="flex-1">
+        <main className="flex-1 min-w-0 overflow-x-auto">
           {children}
         </main>
         <footer className="py-4 text-center text-xs text-text-muted border-t border-border bg-bg/80 backdrop-blur-sm">

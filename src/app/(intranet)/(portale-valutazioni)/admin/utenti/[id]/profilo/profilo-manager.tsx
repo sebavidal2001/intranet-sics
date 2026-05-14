@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Check, AlertCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, AlertCircle, Search, Save } from "lucide-react";
 import { setUtenteProfiloWithMansioni } from "./actions";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -35,42 +35,28 @@ function RuoloCard({
   ruolo,
   inizialmenteAttivo,
   mansioniAssegnateIniziali,
+  saveTrigger,
 }: {
   utenteId: string;
   ruolo: RuoloProfessionale;
   inizialmenteAttivo: boolean;
   mansioniAssegnateIniziali: string[];
+  saveTrigger: number;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [attivo, setAttivo] = useState(inizialmenteAttivo);
-  const [espanso, setEspanso] = useState(inizialmenteAttivo);
+  const [espanso, setEspanso] = useState(false); // collapsed di default
   const [mansioniSelezionate, setMansioniSelezionate] = useState<string[]>(
     inizialmenteAttivo
       ? mansioniAssegnateIniziali
       : ruolo.mansioni.map((m) => m.id)
   );
+  const [ricerca, setRicerca] = useState("");
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
-  const toggleAttivo = (nuovoAttivo: boolean) => {
-    setAttivo(nuovoAttivo);
-    setEspanso(nuovoAttivo);
-    if (nuovoAttivo) {
-      // Pre-seleziona tutte le mansioni del ruolo
-      setMansioniSelezionate(ruolo.mansioni.map((m) => m.id));
-    }
-  };
-
-  const toggleMansione = (mansioneId: string) => {
-    setMansioniSelezionate((prev) =>
-      prev.includes(mansioneId)
-        ? prev.filter((id) => id !== mansioneId)
-        : [...prev, mansioneId]
-    );
-  };
-
-  const handleSalva = () => {
+  const handleSalva = useCallback(() => {
     setError("");
     setSaved(false);
 
@@ -88,10 +74,41 @@ function RuoloCard({
       }
 
       setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      setTimeout(() => setSaved(false), 5000); // visibile 5s
       router.refresh();
     });
+  }, [attivo, mansioniSelezionate, utenteId, ruolo.id, router]);
+
+  // Salva tutto: reagisce al trigger del parent
+  const prevTrigger = useRef(0);
+  useEffect(() => {
+    if (saveTrigger > 0 && saveTrigger !== prevTrigger.current) {
+      prevTrigger.current = saveTrigger;
+      if (attivo || inizialmenteAttivo) {
+        handleSalva();
+      }
+    }
+  }, [saveTrigger, handleSalva, attivo, inizialmenteAttivo]);
+
+  const toggleAttivo = (nuovoAttivo: boolean) => {
+    setAttivo(nuovoAttivo);
+    setEspanso(nuovoAttivo);
+    if (nuovoAttivo) {
+      setMansioniSelezionate(ruolo.mansioni.map((m) => m.id));
+    }
   };
+
+  const toggleMansione = (mansioneId: string) => {
+    setMansioniSelezionate((prev) =>
+      prev.includes(mansioneId)
+        ? prev.filter((id) => id !== mansioneId)
+        : [...prev, mansioneId]
+    );
+  };
+
+  const mansioniFiltrate = ruolo.mansioni.filter((m) =>
+    m.testo.toLowerCase().includes(ricerca.toLowerCase())
+  );
 
   return (
     <div className="bg-bg rounded-xl border border-border overflow-hidden">
@@ -122,8 +139,11 @@ function RuoloCard({
           )}
         </div>
 
+        {/* Badge mansioni selezionate / totale */}
         <span className="text-xs text-text-muted shrink-0">
-          {ruolo.mansioni.length} mansioni
+          {attivo
+            ? `${mansioniSelezionate.length}/${ruolo.mansioni.length} selezionate`
+            : `${ruolo.mansioni.length} mansioni`}
         </span>
 
         {attivo && ruolo.mansioni.length > 0 && (
@@ -143,59 +163,87 @@ function RuoloCard({
       {/* Mansioni espanse */}
       {attivo && espanso && ruolo.mansioni.length > 0 && (
         <div className="border-t border-border">
-          <div className="px-5 py-3 bg-bg-page border-b border-border">
-            <p className="text-xs font-tenorite text-text-muted uppercase tracking-wide">
-              Mansioni assegnate
-            </p>
+          {/* Barra ricerca + seleziona/deseleziona tutte */}
+          <div className="px-5 py-3 bg-bg-page border-b border-border flex items-center gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Cerca mansione…"
+                value={ricerca}
+                onChange={(e) => setRicerca(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-bg text-text placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
+              />
+            </div>
+            <button
+              onClick={() => setMansioniSelezionate(ruolo.mansioni.map((m) => m.id))}
+              className="text-xs text-primary hover:text-primary-dark transition-colors shrink-0 font-medium"
+            >
+              Seleziona tutte
+            </button>
+            <span className="text-text-muted text-xs">·</span>
+            <button
+              onClick={() => setMansioniSelezionate([])}
+              className="text-xs text-text-muted hover:text-danger transition-colors shrink-0"
+            >
+              Deseleziona tutte
+            </button>
           </div>
+
           <div className="divide-y divide-border">
-            {ruolo.mansioni.map((mansione) => {
-              const selezionata = mansioniSelezionate.includes(mansione.id);
-              return (
-                <label
-                  key={mansione.id}
-                  className="flex items-start gap-3 px-5 py-3 hover:bg-bg-page transition-colors cursor-pointer"
-                >
-                  <div className="relative mt-0.5 shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={selezionata}
-                      onChange={() => toggleMansione(mansione.id)}
-                      className="sr-only"
-                    />
-                    <div
-                      className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                        selezionata
-                          ? "bg-primary border-primary"
-                          : "border-border bg-bg"
-                      }`}
-                    >
-                      {selezionata && (
-                        <Check className="w-2.5 h-2.5 text-white" />
+            {mansioniFiltrate.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-text-muted italic">
+                Nessun risultato per &ldquo;{ricerca}&rdquo;
+              </p>
+            ) : (
+              mansioniFiltrate.map((mansione) => {
+                const selezionata = mansioniSelezionate.includes(mansione.id);
+                return (
+                  <label
+                    key={mansione.id}
+                    className="flex items-start gap-3 px-5 py-3 hover:bg-bg-page transition-colors cursor-pointer"
+                  >
+                    <div className="relative mt-0.5 shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={selezionata}
+                        onChange={() => toggleMansione(mansione.id)}
+                        className="sr-only"
+                      />
+                      <div
+                        className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          selezionata
+                            ? "bg-primary border-primary"
+                            : "border-border bg-bg"
+                        }`}
+                      >
+                        {selezionata && (
+                          <Check className="w-2.5 h-2.5 text-white" />
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-text leading-snug">
+                        {mansione.testo}
+                      </p>
+                      {mansione.parametro && (
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <div
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{
+                              backgroundColor: mansione.parametro.colore,
+                            }}
+                          />
+                          <span className="text-xs text-text-muted">
+                            {mansione.parametro.nome}
+                          </span>
+                        </div>
                       )}
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-text leading-snug">
-                      {mansione.testo}
-                    </p>
-                    {mansione.parametro && (
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <div
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{
-                            backgroundColor: mansione.parametro.colore,
-                          }}
-                        />
-                        <span className="text-xs text-text-muted">
-                          {mansione.parametro.nome}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </label>
-              );
-            })}
+                  </label>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -238,6 +286,8 @@ export default function ProfiloManager({
   profiliAssegnati,
   mansioniAssegnate,
 }: Props) {
+  const [saveTrigger, setSaveTrigger] = useState(0);
+
   if (ruoli.length === 0) {
     return (
       <div className="bg-bg rounded-xl border border-border p-8 text-center">
@@ -260,6 +310,17 @@ export default function ProfiloManager({
 
   return (
     <div className="space-y-4">
+      {/* Salva tutto */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setSaveTrigger((v) => v + 1)}
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-primary hover:bg-primary-dark text-white font-tenorite rounded-lg transition-colors shadow-sm"
+        >
+          <Save className="w-4 h-4" />
+          Salva tutto
+        </button>
+      </div>
+
       {ruoli.map((ruolo) => {
         const attivo = profiliAssegnati.includes(ruolo.id);
         const mansioniRuoloAssegnate = mansioniAssegnate.filter((mid) =>
@@ -273,6 +334,7 @@ export default function ProfiloManager({
             ruolo={ruolo}
             inizialmenteAttivo={attivo}
             mansioniAssegnateIniziali={mansioniRuoloAssegnate}
+            saveTrigger={saveTrigger}
           />
         );
       })}
