@@ -36,12 +36,14 @@ function RuoloCard({
   inizialmenteAttivo,
   mansioniAssegnateIniziali,
   saveTrigger,
+  ricercaGlobale,
 }: {
   utenteId: string;
   ruolo: RuoloProfessionale;
   inizialmenteAttivo: boolean;
   mansioniAssegnateIniziali: string[];
   saveTrigger: number;
+  ricercaGlobale: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -52,8 +54,11 @@ function RuoloCard({
       ? mansioniAssegnateIniziali
       : ruolo.mansioni.map((m) => m.id)
   );
-  const [ricerca, setRicerca] = useState("");
+  const [ricercaLocale, setRicercaLocale] = useState("");
   const [saved, setSaved] = useState(false);
+
+  // La ricerca attiva è quella globale (se presente) oppure quella locale
+  const ricercaAttiva = ricercaGlobale || ricercaLocale;
   const [error, setError] = useState("");
 
   const handleSalva = useCallback(() => {
@@ -106,8 +111,16 @@ function RuoloCard({
     );
   };
 
+  // Auto-espandi se la ricerca globale trova mansioni in questo ruolo
+  const matchGlobale = ricercaGlobale
+    ? ruolo.mansioni.some((m) =>
+        m.testo.toLowerCase().includes(ricercaGlobale.toLowerCase())
+      )
+    : false;
+  const espansoEffettivo = espanso || matchGlobale;
+
   const mansioniFiltrate = ruolo.mansioni.filter((m) =>
-    m.testo.toLowerCase().includes(ricerca.toLowerCase())
+    m.testo.toLowerCase().includes(ricercaAttiva.toLowerCase())
   );
 
   return (
@@ -161,7 +174,7 @@ function RuoloCard({
       </div>
 
       {/* Mansioni espanse */}
-      {attivo && espanso && ruolo.mansioni.length > 0 && (
+      {attivo && espansoEffettivo && ruolo.mansioni.length > 0 && (
         <div className="border-t border-border">
           {/* Barra ricerca + seleziona/deseleziona tutte */}
           <div className="px-5 py-3 bg-bg-page border-b border-border flex items-center gap-3">
@@ -169,10 +182,11 @@ function RuoloCard({
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
               <input
                 type="text"
-                placeholder="Cerca mansione…"
-                value={ricerca}
-                onChange={(e) => setRicerca(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-bg text-text placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
+                placeholder={ricercaGlobale ? `Filtrando per "${ricercaGlobale}"…` : "Cerca mansione…"}
+                value={ricercaLocale}
+                onChange={(e) => setRicercaLocale(e.target.value)}
+                disabled={!!ricercaGlobale}
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-bg text-text placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
             <button
@@ -193,7 +207,7 @@ function RuoloCard({
           <div className="divide-y divide-border">
             {mansioniFiltrate.length === 0 ? (
               <p className="px-5 py-4 text-sm text-text-muted italic">
-                Nessun risultato per &ldquo;{ricerca}&rdquo;
+                Nessun risultato per &ldquo;{ricercaAttiva}&rdquo;
               </p>
             ) : (
               mansioniFiltrate.map((mansione) => {
@@ -287,6 +301,7 @@ export default function ProfiloManager({
   mansioniAssegnate,
 }: Props) {
   const [saveTrigger, setSaveTrigger] = useState(0);
+  const [ricercaGlobale, setRicercaGlobale] = useState("");
 
   if (ruoli.length === 0) {
     return (
@@ -310,11 +325,29 @@ export default function ProfiloManager({
 
   return (
     <div className="space-y-4">
-      {/* Salva tutto */}
-      <div className="flex justify-end">
+      {/* Barra globale ricerca + Salva tutto */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Cerca mansione tra tutti i profili…"
+            value={ricercaGlobale}
+            onChange={(e) => setRicercaGlobale(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm rounded-xl border border-border bg-bg text-text placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
+          />
+          {ricercaGlobale && (
+            <button
+              onClick={() => setRicercaGlobale("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text transition-colors text-lg leading-none"
+            >
+              ×
+            </button>
+          )}
+        </div>
         <button
           onClick={() => setSaveTrigger((v) => v + 1)}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-primary hover:bg-primary-dark text-white font-tenorite rounded-lg transition-colors shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-primary hover:bg-primary-dark text-white font-tenorite rounded-lg transition-colors shadow-sm shrink-0"
         >
           <Save className="w-4 h-4" />
           Salva tutto
@@ -335,6 +368,7 @@ export default function ProfiloManager({
             inizialmenteAttivo={attivo}
             mansioniAssegnateIniziali={mansioniRuoloAssegnate}
             saveTrigger={saveTrigger}
+            ricercaGlobale={ricercaGlobale}
           />
         );
       })}
