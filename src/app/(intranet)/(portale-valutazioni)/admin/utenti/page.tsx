@@ -45,13 +45,34 @@ export default async function UtentiPage({
   const sb = createAdminClient();
   let query = sb
     .from("utenti")
-    .select("*, responsabile:utenti!responsabile_id(nome, cognome)", { count: "exact" })
+    .select("*", { count: "exact" })
     .order(dbCol, { ascending: dir === "asc" })
     .range(from, to);
 
   if (!mostraTutti) query = query.or("stato.eq.attivo,stato.is.null");
 
   const { data: utenti, count: totaleCount } = await query;
+
+  // Fetch responsabili separatamente per evitare l'ambiguità della
+  // relazione self-referencing in Supabase (che restituirebbe i
+  // subordinati invece del capo).
+  const responsabileIds = Array.from(
+    new Set(
+      (utenti ?? [])
+        .map((u) => (u as { responsabile_id: string | null }).responsabile_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const { data: responsabili } = responsabileIds.length > 0
+    ? await sb
+        .from("utenti")
+        .select("id, nome, cognome")
+        .in("id", responsabileIds)
+    : { data: [] };
+  const responsabiliMap = new Map<string, { nome: string; cognome: string }>();
+  for (const r of (responsabili ?? []) as { id: string; nome: string; cognome: string }[]) {
+    responsabiliMap.set(r.id, { nome: r.nome, cognome: r.cognome });
+  }
 
   const paginaCorrente = page;
   const totalePagine = Math.ceil((totaleCount ?? 0) / PAGE_SIZE);
@@ -65,11 +86,10 @@ export default async function UtentiPage({
         .in("utente_id", utenteIds)
     : { data: [] };
 
-  type RespRef = { nome: string; cognome: string };
   type UtenteRow = {
     id: string; nome: string; cognome: string; email: string;
     username: string | null; ruolo: string; stato: string | null;
-    reparto: string | null; responsabile: RespRef | RespRef[] | null;
+    reparto: string | null; responsabile_id: string | null;
   };
   type ProfiloEntry = {
     utente_id: string;
@@ -165,9 +185,9 @@ export default async function UtentiPage({
                       <TableCell>{utente.reparto}</TableCell>
                       <TableCell className="text-text-muted">
                         {(() => {
-                          const resp = Array.isArray(utente.responsabile)
-                            ? utente.responsabile[0]
-                            : utente.responsabile;
+                          const resp = utente.responsabile_id
+                            ? responsabiliMap.get(utente.responsabile_id)
+                            : null;
                           return resp ? `${resp.nome} ${resp.cognome}` : "-";
                         })()}
                       </TableCell>
