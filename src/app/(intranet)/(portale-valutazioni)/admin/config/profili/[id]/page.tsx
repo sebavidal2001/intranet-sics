@@ -41,8 +41,8 @@ export default async function ProfiloDetailPage({
       sb
         .from("parametri_radar")
         .select("id, nome, colore")
-        .eq("is_attivo", true)
-        .order("nome"),
+        .eq("is_storico", false)
+        .order("ordine"),
     ]);
 
   if (!ruolo) redirect("/admin/config/profili");
