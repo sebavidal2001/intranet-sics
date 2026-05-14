@@ -179,7 +179,7 @@ export default function MansioniManager({
   return (
     <div className="space-y-6">
       {/* Lista mansioni */}
-      <div className="bg-bg rounded-xl border border-border overflow-hidden">
+      <div className="bg-bg rounded-xl border border-border">
         <div className="px-4 py-3 border-b border-border bg-bg-page">
           <h2 className="font-tenorite text-sm text-text">
             Mansioni ({mansioni.length})
