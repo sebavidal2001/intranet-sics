@@ -316,61 +316,76 @@ export default function MansioniManager({
           Aggiungi mansione
         </h2>
 
-        {error && (
-          <div className="flex items-start gap-2 bg-danger/10 border border-danger/30 text-danger rounded-lg px-3 py-2.5 text-sm mb-4">
+        {parametri.length === 0 ? (
+          <div className="flex items-start gap-2 bg-warning/10 border border-warning/30 text-warning rounded-lg px-4 py-3 text-sm">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-3">
-          <div>
-            <label className="block font-tenorite text-xs text-text-muted mb-1">
-              Testo della mansione <span className="text-danger">*</span>
-            </label>
-            <textarea
-              value={nuovoTesto}
-              onChange={(e) => setNuovoTesto(e.target.value)}
-              rows={2}
-              placeholder="Es. Gestione degli ordini in entrata e uscita…"
-              className={`${inputClass} resize-none`}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleAdd();
-              }}
-            />
-          </div>
-
-          <div>
-            <label className="block font-tenorite text-xs text-text-muted mb-1">
-              Parametro radar <span className="text-danger">*</span>
-            </label>
-            <select
-              value={nuovoParametroId}
-              onChange={(e) => setNuovoParametroId(e.target.value)}
-              className={inputClass}
-            >
-              {parametri.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              onClick={handleAdd}
-              disabled={isPending || !nuovoTesto.trim()}
-              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white font-tenorite px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
-            >
-              <Plus className="w-4 h-4" />
-              {isPending ? "Aggiunta…" : "Aggiungi"}
-            </button>
-            <span className="text-xs text-text-muted">
-              Ctrl+Invio per aggiungere rapidamente
+            <span>
+              Nessun parametro radar attivo configurato. Prima di aggiungere mansioni, crea i parametri radar in{" "}
+              <a href="/admin/config/parametri" className="underline hover:text-primary transition-colors">
+                Config → Parametri radar
+              </a>
+              .
             </span>
           </div>
-        </div>
+        ) : (
+          <>
+            {error && (
+              <div className="flex items-start gap-2 bg-danger/10 border border-danger/30 text-danger rounded-lg px-3 py-2.5 text-sm mb-4">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block font-tenorite text-xs text-text-muted mb-1">
+                  Testo della mansione <span className="text-danger">*</span>
+                </label>
+                <textarea
+                  value={nuovoTesto}
+                  onChange={(e) => setNuovoTesto(e.target.value)}
+                  rows={2}
+                  placeholder="Es. Gestione degli ordini in entrata e uscita…"
+                  className={`${inputClass} resize-none`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleAdd();
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="block font-tenorite text-xs text-text-muted mb-1">
+                  Parametro radar <span className="text-danger">*</span>
+                </label>
+                <select
+                  value={nuovoParametroId}
+                  onChange={(e) => setNuovoParametroId(e.target.value)}
+                  className={inputClass}
+                >
+                  {parametri.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  onClick={handleAdd}
+                  disabled={isPending || !nuovoTesto.trim()}
+                  className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white font-tenorite px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  {isPending ? "Aggiunta…" : "Aggiungi"}
+                </button>
+                <span className="text-xs text-text-muted">
+                  Ctrl+Invio per aggiungere rapidamente
+                </span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

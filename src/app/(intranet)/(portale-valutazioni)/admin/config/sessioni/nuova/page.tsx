@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import NuovaSessioneForm from "./nuova-sessione-form";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
 
 export default async function NuovaSessionePage() {
   const supabase = await createClient();
@@ -10,13 +11,8 @@ export default async function NuovaSessionePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  const { data: profile } = await supabase
-    .from("utenti")
-    .select("ruolo")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile || profile.ruolo !== "admin") redirect("/");
+  const isAdmin = await isValutazioniAdmin(supabase, user.id);
+  if (!isAdmin) redirect("/");
 
   const { data: scale } = await supabase
     .from("scale_valutazione")
