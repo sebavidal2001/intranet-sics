@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Mail } from "lucide-react";
 import { SortableHeader } from "@/components/ui/sortable-header";
 import { parseSortParams } from "@/lib/sort-params";
 
@@ -52,13 +52,22 @@ export default async function UtentiPage({
           <h1 className="font-tenorite text-3xl text-text">Utenti</h1>
           <p className="text-text-muted mt-1">Gestisci utenti, ruoli e credenziali</p>
         </div>
-        <Link
-          href="/superadmin/utenti/nuovo"
-          className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white font-tenorite text-sm px-4 py-2.5 rounded-lg transition-colors"
-        >
-          <UserPlus className="w-4 h-4" />
-          Nuovo utente
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/superadmin/utenti/allinea-email"
+            className="inline-flex items-center gap-2 border border-border hover:border-primary hover:text-primary text-text-muted font-tenorite text-sm px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <Mail className="w-4 h-4" />
+            Allinea email
+          </Link>
+          <Link
+            href="/superadmin/utenti/nuovo"
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white font-tenorite text-sm px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            Nuovo utente
+          </Link>
+        </div>
       </div>
 
       <div className="bg-bg rounded-xl border border-border overflow-hidden">

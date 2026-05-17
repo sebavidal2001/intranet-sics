@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
 import SessioneDetail from "./sessione-detail";
 
 export default async function SessioneDetailPage({
@@ -16,15 +17,8 @@ export default async function SessioneDetailPage({
 
   if (!user) redirect("/auth/login");
 
-  const { data: userProfile } = await supabase
-    .from("utenti")
-    .select("ruolo")
-    .eq("id", user.id)
-    .single();
-
-  if (!userProfile || userProfile.ruolo !== "admin") {
-    redirect("/");
-  }
+  const isAdmin = await isValutazioniAdmin(supabase, user.id);
+  if (!isAdmin) redirect("/");
 
   const { data: sessione } = await supabase
     .from("sessioni_valutazione")

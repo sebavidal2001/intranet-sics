@@ -33,6 +33,13 @@ type SerieMeseRow = {
   ordinati: number;
 };
 
+type SerieCategoriaRow = {
+  mese: string; // ISO date
+  categoria: string;
+  preventivi: number;
+  valore: string | number;
+};
+
 type TopArticoloRow = {
   codice_articolo: string;
   descrizione: string;
@@ -71,10 +78,11 @@ export async function GET() {
     const admin = createAdminClient();
     const sb = admin.schema("preventivatore");
 
-    const [kpiRes, topClientiRes, serieRes, topArticoliRes, attivitaRes, usageRes] = await Promise.all([
+    const [kpiRes, topClientiRes, serieRes, serieCategorieRes, topArticoliRes, attivitaRes, usageRes] = await Promise.all([
       sb.rpc("dashboard_kpi", { window_months: 12 }),
       sb.rpc("dashboard_top_clienti", { limit_n: 5, window_months: 12 }),
       sb.rpc("dashboard_serie_mensile", { months: 12 }),
+      sb.rpc("dashboard_serie_mensile_categoria", { months: 12 }),
       sb.rpc("dashboard_top_articoli", { limit_n: 5 }),
       sb.rpc("dashboard_attivita_recente", { limit_n: 6 }),
       sb.from("ai_usage_events")
@@ -83,7 +91,7 @@ export async function GET() {
         .gte("created_at", new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
     ]);
 
-    const err = kpiRes.error ?? topClientiRes.error ?? serieRes.error ?? topArticoliRes.error ?? attivitaRes.error;
+    const err = kpiRes.error ?? topClientiRes.error ?? serieRes.error ?? serieCategorieRes.error ?? topArticoliRes.error ?? attivitaRes.error;
     if (err) {
       console.error("dashboard rpc error:", err);
       return NextResponse.json({ error: "Errore caricamento dashboard" }, { status: 500 });
@@ -92,6 +100,7 @@ export async function GET() {
     const k = (kpiRes.data?.[0] ?? null) as KpiRow | null;
     const topClienti = (topClientiRes.data ?? []) as TopClienteRow[];
     const serie = (serieRes.data ?? []) as SerieMeseRow[];
+    const serieCategorie = (serieCategorieRes.data ?? []) as SerieCategoriaRow[];
     const topArticoli = (topArticoliRes.data ?? []) as TopArticoloRow[];
     const attivita = (attivitaRes.data ?? []) as AttivitaRow[];
 
@@ -129,6 +138,13 @@ export async function GET() {
         preventivi: Number(s.preventivi),
         valore: num(s.valore),
         ordinati: Number(s.ordinati),
+        categorie: serieCategorie
+          .filter((c) => c.mese === s.mese)
+          .map((c) => ({
+            categoria: c.categoria,
+            preventivi: Number(c.preventivi),
+            valore: num(c.valore),
+          })),
       })),
       top_articoli: topArticoli.map((a) => ({
         codice: a.codice_articolo,

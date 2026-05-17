@@ -8,6 +8,8 @@ import {
   TOOL_QUERY_RIGHE_DEF,
   TOOL_TOP_ARTICOLI_DEF,
   TOOL_DETTAGLIO_DEF,
+  TOOL_ANALISI_SQL_DEF,
+  TOOL_ANOMALIE_DEF,
 } from "./tool-definitions";
 import type { ChatMessage, ToolName, ChatHandlerResult } from "./types";
 
@@ -96,6 +98,24 @@ export async function handleGemini(
             type: SchemaType.OBJECT,
             properties: toGeminiProps(TOOL_DETTAGLIO_DEF.parameters_obj),
             required: TOOL_DETTAGLIO_DEF.required,
+          },
+        },
+        {
+          name: TOOL_ANALISI_SQL_DEF.name,
+          description: TOOL_ANALISI_SQL_DEF.description,
+          parameters: {
+            type: SchemaType.OBJECT,
+            properties: toGeminiProps(TOOL_ANALISI_SQL_DEF.parameters_obj),
+            required: TOOL_ANALISI_SQL_DEF.required,
+          },
+        },
+        {
+          name: TOOL_ANOMALIE_DEF.name,
+          description: TOOL_ANOMALIE_DEF.description,
+          parameters: {
+            type: SchemaType.OBJECT,
+            properties: toGeminiProps(TOOL_ANOMALIE_DEF.parameters_obj),
+            required: TOOL_ANOMALIE_DEF.required,
           },
         },
       ],

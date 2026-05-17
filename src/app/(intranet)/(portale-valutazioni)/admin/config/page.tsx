@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Lock, Unlock, ClipboardList, Briefcase, Calendar, TrendingUp, FileCheck, Award, FileBarChart2 } from "lucide-react";
+import { Plus, Lock, Unlock, ClipboardList, Briefcase, Calendar, TrendingUp, FileCheck, Award, FileBarChart2, ListChecks, Layers } from "lucide-react";
 import Link from "next/link";
 import DeleteParametroButton from "./delete-parametro-button";
 import DeleteKpiButton from "./delete-kpi-button";
@@ -127,6 +127,30 @@ export default async function ConfigPage() {
             <div>
               <h3 className="font-tenorite text-base text-text group-hover:text-primary transition-colors">Template certificato</h3>
               <p className="text-sm text-text-muted mt-0.5">Personalizza colori, testi e layout del PDF</p>
+            </div>
+          </Link>
+          <Link
+            href="/admin/config/mansioni"
+            className="group flex items-center gap-4 p-5 bg-bg rounded-xl border border-border hover:shadow-card hover:-translate-y-0.5 transition-[transform,box-shadow] duration-150"
+          >
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "#8b5cf620" }}>
+              <ListChecks className="w-5 h-5" style={{ color: "#8b5cf6" }} />
+            </div>
+            <div>
+              <h3 className="font-tenorite text-base text-text group-hover:text-primary transition-colors">Mansioni globali</h3>
+              <p className="text-sm text-text-muted mt-0.5">Gestisci tutte le mansioni e unisci i duplicati</p>
+            </div>
+          </Link>
+          <Link
+            href="/admin/config/skills"
+            className="group flex items-center gap-4 p-5 bg-bg rounded-xl border border-border hover:shadow-card hover:-translate-y-0.5 transition-[transform,box-shadow] duration-150"
+          >
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "#ec489920" }}>
+              <Layers className="w-5 h-5" style={{ color: "#ec4899" }} />
+            </div>
+            <div>
+              <h3 className="font-tenorite text-base text-text group-hover:text-primary transition-colors">Skills globali</h3>
+              <p className="text-sm text-text-muted mt-0.5">Vedi tutte le skills, modificale e rimuovi i duplicati</p>
             </div>
           </Link>
           <Link

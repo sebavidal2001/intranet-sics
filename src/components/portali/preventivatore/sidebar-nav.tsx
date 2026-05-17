@@ -8,6 +8,7 @@ import {
   PlusCircle,
   LayoutDashboard,
   Settings,
+  BarChart3,
 } from "lucide-react"
 import type { LivelloAccesso } from "@/lib/auth/portale"
 import { hasMinLivello } from "@/lib/auth/portale"
@@ -26,6 +27,7 @@ interface PreventivatoreSidebarProps {
 
 const NAV_ITEMS = [
   { name: "Dashboard", url: "/preventivatore/dashboard", icon: LayoutDashboard },
+  { name: "BI", url: "/preventivatore/bi", icon: BarChart3 },
   { name: "Nuovo preventivo", url: "/preventivatore/nuovo", icon: PlusCircle },
   { name: "Archivio", url: "/preventivatore/archivio", icon: Archive },
 ]

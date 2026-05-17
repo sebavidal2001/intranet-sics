@@ -191,12 +191,14 @@ export async function POST(request: NextRequest) {
       "Se l'utente chiede di creare/suggerire un preventivo, usa prima cerca_simili o list_preventivi per trovare preventivi di riferimento, poi usa dettaglio_preventivo per approfondire quelli più rilevanti, poi proponi la struttura completa. " +
       modeText +
       "Usa list_preventivi per filtrare/ordinare per cliente, stato, importo. " +
+      "ATTENZIONE per query a soglia di importo: 'quanti preventivi sopra X €', 'lista preventivi sotto Y €', 'preventivi tra X e Y' → usa SEMPRE list_preventivi con importo_min e/o importo_max, NON contare manualmente i risultati. Per la sola conta usa count_only=true. " +
       "Usa cerca_simili per trovare configurazioni tecnicamente simili (ricerca semantica). " +
       "Usa cerca_articolo per cercare codici articolo specifici, materiali, dimensioni, n° gradini o qualsiasi testo nelle distinte — NON dire mai che i codici articolo non sono disponibili. " +
       "Usa aggrega_preventivi per rispondere a domande statistiche e aggregate: quanti preventivi per cliente, valore totale per stato, tasso di conferma, medie per categoria, distribuzione mensile, ecc. " +
       "Usa top_articoli per trovare i codici articolo più ricorrenti nei preventivi: 'articoli più usati', 'top 10 codici nelle scale', 'materiali più frequenti', 'componenti più comuni'. Non usare cerca_articolo per queste domande. " +
       "Usa query_righe_distinta per domande su prezzi unitari e costi delle singole voci: 'articolo con prezzo più alto', 'quanto costa il codice X', 'top 10 articoli per costo unitario', 'in quale preventivo è stato usato un certo codice'. È il tool più preciso per qualsiasi domanda su prezzi e costi singoli articoli. " +
       "Usa dettaglio_preventivo SEMPRE quando l'utente vuole vedere tutti i dati di UN SINGOLO preventivo specifico: distinta materiali completa, manodopera, quantità, prezzi, totali. Non usare cerca_articolo o cerca_simili per questo scopo. " +
+      "Usa cerca_anomalie_importi per domande tipo: 'preventivi sospetti', 'preventivi fuori range', 'quali preventivi sono troppo alti/bassi rispetto alla media cliente', 'anomalie nei prezzi'. Restituisce z-score e classificazione (molto_alto/alto/molto_basso/basso). " +
       "Gli importi SONO disponibili: usa list_preventivi con order_by='importo_preventivo' e order_dir='desc' per ordinarli. " +
       (contesto === "nuovo"
         ? "L'utente sta costruendo un nuovo preventivo e cerca ispirazione dai precedenti. Aiutalo a trovare configurazioni simili e suggerisci strutture e prezzi ragionevoli."

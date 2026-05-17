@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
-import { usernameToEmail } from "@/lib/auth/username";
+import { usernameToEmailCandidates } from "@/lib/auth/username";
 import { Particles } from "@/components/ui/particles";
 import { Eye, EyeOff } from "lucide-react";
 
@@ -22,14 +22,23 @@ export default function LoginPage() {
     setLoading(true);
 
     const supabase = createClient();
-    const email = usernameToEmail(username);
+    // Durante la migrazione email proviamo entrambi i domini (legacy + nuovo)
+    const candidates = usernameToEmailCandidates(username);
 
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"] | null = null;
+    let authError: Error | null = null;
 
-    if (authError || !data.user) {
+    for (const email of candidates) {
+      const res = await supabase.auth.signInWithPassword({ email, password });
+      if (!res.error && res.data.user) {
+        data = res.data;
+        authError = null;
+        break;
+      }
+      authError = res.error ?? new Error("login failed");
+    }
+
+    if (authError || !data?.user) {
       setError("Credenziali non valide. Riprova.");
       setLoading(false);
       return;

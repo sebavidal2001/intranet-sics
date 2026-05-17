@@ -3,15 +3,20 @@
 export const TOOL_LIST_PREVENTIVI_DEF = {
   name: "list_preventivi",
   description:
-    "Elenca preventivi dal database con filtri e ordinamento. Usare per: 'tutti i preventivi', 'preventivi di [cliente]', 'preventivi ordinati/rifiutati', 'preventivi del 2024', 'top N per importo', 'il preventivo più costoso', 'ordina per valore', ecc.",
+    "Elenca preventivi dal database con filtri e ordinamento. Usare per: 'tutti i preventivi', 'preventivi di [cliente]', 'preventivi ordinati/rifiutati', 'preventivi del 2024', 'top N per importo', 'il preventivo più costoso', 'ordina per valore', 'preventivi sopra/sotto X euro', 'quanti preventivi con importo > Y', ecc. " +
+    "Supporta filtri di importo (importo_min/importo_max) per query soglia. " +
+    "Se l'utente chiede 'quanti preventivi sopra X €', usa importo_min=X e count_only=true.",
   parameters_obj: {
-    cliente:   { type: "string",  description: "Nome cliente, es. ALPHAMAC" },
-    stato:     { type: "string",  description: "Stato: pending, ordinato o rifiutato" },
-    categoria: { type: "string",  description: "Categoria prodotto, es. scale" },
-    anno:      { type: "number",  description: "Anno di riferimento, es. 2024" },
-    order_by:  { type: "string",  description: "Campo: codice, importo_preventivo, importo_ordinato, data_offerta" },
-    order_dir: { type: "string",  description: "Direzione: desc (default) o asc" },
-    limit:     { type: "number",  description: "Max risultati (default 50, max 100)" },
+    cliente:      { type: "string",  description: "Nome cliente, es. ALPHAMAC" },
+    stato:        { type: "string",  description: "Stato: pending, ordinato o rifiutato" },
+    categoria:    { type: "string",  description: "Categoria prodotto, es. scale, nastri, protezioni, strutture" },
+    anno:         { type: "number",  description: "Anno di riferimento, es. 2024" },
+    importo_min:  { type: "number",  description: "Filtra preventivi con importo_preventivo >= importo_min (€)" },
+    importo_max:  { type: "number",  description: "Filtra preventivi con importo_preventivo <= importo_max (€)" },
+    order_by:     { type: "string",  description: "Campo: codice, importo_preventivo, importo_ordinato, data_offerta" },
+    order_dir:    { type: "string",  description: "Direzione: desc (default) o asc" },
+    limit:        { type: "number",  description: "Max risultati (default 50, max 200)" },
+    count_only:   { type: "boolean", description: "Se true, restituisce solo il conteggio totale (no items). Usalo per 'quanti preventivi...'" },
   },
   required: [] as string[],
 };
@@ -45,12 +50,14 @@ export const TOOL_AGGREGA_DEF = {
   description:
     "Dati aggregati (group by) sui preventivi. Usare per: 'quanti preventivi per cliente', 'valore totale per stato', 'tasso di conferma per categoria', 'preventivi per mese', 'quale cliente ha il maggior numero di ordinati', statistiche aggregate, conteggi, somme, medie.",
   parameters_obj: {
-    group_by:       { type: "string", description: "Dimensione di raggruppamento: stato | cliente | categoria | anno | mese" },
-    metrica:        { type: "string", description: "Metrica di ordinamento: count (default) | sum_importo | avg_importo | tasso_ordinato" },
-    filtro_stato:   { type: "string", description: "Filtra per stato: pending, ordinato, rifiutato" },
-    filtro_cliente: { type: "string", description: "Filtra per nome cliente (ricerca parziale)" },
-    filtro_anno:    { type: "number", description: "Filtra per anno, es. 2024" },
-    limit:          { type: "number", description: "Max righe nel risultato, default 20" },
+    group_by:           { type: "string", description: "Dimensione di raggruppamento: stato | cliente | categoria | anno | mese" },
+    metrica:            { type: "string", description: "Metrica di ordinamento: count (default) | sum_importo | avg_importo | tasso_ordinato" },
+    filtro_stato:       { type: "string", description: "Filtra per stato: pending, ordinato, rifiutato" },
+    filtro_cliente:     { type: "string", description: "Filtra per nome cliente (ricerca parziale)" },
+    filtro_anno:        { type: "number", description: "Filtra per anno, es. 2024" },
+    filtro_importo_min: { type: "number", description: "Filtra preventivi con importo_preventivo >= valore" },
+    filtro_importo_max: { type: "number", description: "Filtra preventivi con importo_preventivo <= valore" },
+    limit:              { type: "number", description: "Max righe nel risultato, default 20" },
   },
   required: ["group_by"] as string[],
 };
@@ -90,6 +97,26 @@ export const TOOL_TOP_ARTICOLI_DEF = {
   required: [] as string[],
 };
 
+export const TOOL_ANOMALIE_DEF = {
+  name: "cerca_anomalie_importi",
+  description:
+    "Trova preventivi anomali per importo, ovvero quelli che si discostano significativamente dalla media storica del loro cliente+categoria. " +
+    "Restituisce preventivi con z-score > 2 (molto_alto/molto_basso) o > 1 (alto/basso). " +
+    "Usare per domande tipo: 'preventivi sospetti', 'preventivi fuori range', 'preventivo anomalo per ALPHAMAC', 'quali preventivi sono molto sopra media cliente'. " +
+    "Restituisce: codice, cliente, categoria, importo, media_storica, z_score, classificazione.",
+  parameters_obj: {
+    classificazione: {
+      type: "string",
+      description: "Filtra per classificazione: molto_alto | alto | molto_basso | basso. Se omesso restituisce tutti con z>1.",
+    },
+    cliente:   { type: "string", description: "Filtra per cliente (ricerca parziale)" },
+    categoria: { type: "string", description: "Filtra per categoria (scale, nastri, protezioni, ecc.)" },
+    anno:      { type: "number", description: "Filtra per anno" },
+    limit:     { type: "number", description: "Max risultati, default 20" },
+  },
+  required: [] as string[],
+};
+
 export const TOOL_DETTAGLIO_DEF = {
   name: "dettaglio_preventivo",
   description:
@@ -102,6 +129,32 @@ export const TOOL_DETTAGLIO_DEF = {
     codice: { type: "string", description: "Codice preventivo, es. S_24/041 oppure S_24_041" },
   },
   required: ["codice"] as string[],
+};
+
+export const TOOL_ANALISI_SQL_DEF = {
+  name: "analisi_preventivi_sql",
+  description:
+    "Esegue analisi numeriche affidabili tramite funzioni SQL dedicate nel database. " +
+    "Usare per domande aggregate e confronti: statistiche per categoria/cliente/tipo prodotto, confronto anni, " +
+    "top codici per valore o frequenza, analisi ricarichi, ore/tariffe lavorazioni, controllo qualita dati e preventivi incompleti. " +
+    "Preferisci questo tool a calcoli manuali quando l'utente chiede numeri, classifiche, medie, totali o controlli di completezza.",
+  parameters_obj: {
+    modalita: {
+      type: "string",
+      description:
+        "statistiche_categoria | statistiche_cliente | statistiche_tipo_prodotto | confronta_anni | top_codici_valore | top_codici_frequenza | analisi_ricarichi | analisi_lavorazioni | controllo_qualita | preventivi_da_completare",
+    },
+    anno: { type: "number", description: "Anno filtro, es. 2026" },
+    anno_a: { type: "number", description: "Primo anno per confronta_anni" },
+    anno_b: { type: "number", description: "Secondo anno per confronta_anni" },
+    stato: { type: "string", description: "Filtro stato: pending, ordinato, rifiutato" },
+    cliente: { type: "string", description: "Filtro cliente, ricerca parziale" },
+    categoria: { type: "string", description: "Filtro categoria, es. nastri, protezioni, scale" },
+    tipo_prodotto: { type: "string", description: "Filtro tipo prodotto" },
+    group_by: { type: "string", description: "Per analisi_ricarichi: categoria | cliente | tipo_prodotto | codice_articolo" },
+    limit: { type: "number", description: "Numero massimo risultati, default variabile, max gestito dal DB" },
+  },
+  required: ["modalita"] as string[],
 };
 
 // ─── Fallback constants (used if the row is missing in ai_config) ─────────────

@@ -19,32 +19,66 @@ export async function toolListPreventivi(args: {
   stato?: string;
   categoria?: string;
   anno?: number;
+  importo_min?: number;
+  importo_max?: number;
   order_by?: string;
   order_dir?: string;
   limit?: number;
-}): Promise<DocumentoRow[]> {
+  count_only?: boolean;
+}): Promise<DocumentoRow[] | { count: number; filters: Record<string, unknown> }> {
   const adminClient = createAdminClient();
+
+  // Quando si vuole solo il conteggio (es. "quanti preventivi sopra X €"),
+  // facciamo una query separata di count per evitare di restituire l'array.
+  if (args.count_only) {
+    let countQ = adminClient
+      .schema("preventivatore")
+      .from("documenti")
+      .select("*", { count: "exact", head: true });
+    if (args.cliente) countQ = countQ.ilike("cliente", `%${args.cliente}%`);
+    if (args.stato && ["pending", "ordinato", "rifiutato"].includes(args.stato))
+      countQ = countQ.eq("stato", args.stato);
+    if (args.categoria) countQ = countQ.eq("categoria", args.categoria);
+    if (args.anno) countQ = countQ.eq("anno", args.anno);
+    if (typeof args.importo_min === "number") countQ = countQ.gte("importo_preventivo", args.importo_min);
+    if (typeof args.importo_max === "number") countQ = countQ.lte("importo_preventivo", args.importo_max);
+    const { count, error } = await countQ;
+    if (error) {
+      console.error("list_preventivi count error:", error);
+      throw new Error("Errore conteggio preventivi");
+    }
+    return {
+      count: count ?? 0,
+      filters: {
+        cliente: args.cliente ?? null,
+        stato: args.stato ?? null,
+        categoria: args.categoria ?? null,
+        anno: args.anno ?? null,
+        importo_min: args.importo_min ?? null,
+        importo_max: args.importo_max ?? null,
+      },
+    };
+  }
 
   let q = adminClient
     .schema("preventivatore")
     .from("documenti")
     .select(
-      "codice, cliente, stato, categoria, numero_offerta, data_offerta, importo_preventivo, importo_ordinato"
+      "codice, cliente, stato, categoria, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, anno, tipo_prodotto"
     );
 
   if (args.cliente) q = q.ilike("cliente", `%${args.cliente}%`);
   if (args.stato && ["pending", "ordinato", "rifiutato"].includes(args.stato))
     q = q.eq("stato", args.stato);
   if (args.categoria) q = q.eq("categoria", args.categoria);
-  if (args.anno) {
-    const yy = String(args.anno).slice(2);
-    q = q.ilike("codice", `%_${yy}_%`);
-  }
+  if (args.anno) q = q.eq("anno", args.anno);
+  if (typeof args.importo_min === "number") q = q.gte("importo_preventivo", args.importo_min);
+  if (typeof args.importo_max === "number") q = q.lte("importo_preventivo", args.importo_max);
 
   const validOrderFields = ["codice", "importo_preventivo", "importo_ordinato", "data_offerta"];
   const orderField = validOrderFields.includes(args.order_by ?? "") ? args.order_by! : "codice";
   const ascending = args.order_dir === "asc";
-  const rowLimit = Math.min(args.limit ?? 50, 100);
+  const rowLimit = Math.min(args.limit ?? 50, 200);
 
   const { data, error } = await q
     .order(orderField, { ascending, nullsFirst: false })
@@ -367,6 +401,8 @@ export async function toolAggregatPreventivi(args: {
   filtro_stato?: string;
   filtro_cliente?: string;
   filtro_anno?: number;
+  filtro_importo_min?: number;
+  filtro_importo_max?: number;
   limit?: number;
 }): Promise<AggRow[]> {
   const adminClient = createAdminClient();
@@ -374,16 +410,17 @@ export async function toolAggregatPreventivi(args: {
   let q = adminClient
     .schema("preventivatore")
     .from("documenti")
-    .select("stato, cliente, categoria, importo_preventivo, importo_ordinato, data_offerta, codice");
+    .select("stato, cliente, categoria, importo_preventivo, importo_ordinato, data_offerta, codice, anno, numero_offerta");
 
   if (args.filtro_stato && ["pending", "ordinato", "rifiutato"].includes(args.filtro_stato))
     q = q.eq("stato", args.filtro_stato);
   if (args.filtro_cliente)
     q = q.ilike("cliente", `%${args.filtro_cliente}%`);
   if (args.filtro_anno) {
-    const yy = String(args.filtro_anno).slice(2);
-    q = q.ilike("codice", `%_${yy}_%`);
+    q = q.eq("anno", args.filtro_anno);
   }
+  if (typeof args.filtro_importo_min === "number") q = q.gte("importo_preventivo", args.filtro_importo_min);
+  if (typeof args.filtro_importo_max === "number") q = q.lte("importo_preventivo", args.filtro_importo_max);
 
   const { data, error } = await q.limit(2000);
   if (error) {
@@ -405,7 +442,11 @@ export async function toolAggregatPreventivi(args: {
     } else if (gb === "categoria") {
       key = row.categoria ?? "N/D";
     } else if (gb === "anno") {
-      if (row.data_offerta) {
+      // Preferenza: colonna anno (popolata da V2). Fallback: data_offerta o codice.
+      const annoCol = (row as DocumentoRow & { anno?: number | null }).anno;
+      if (annoCol != null) {
+        key = String(annoCol);
+      } else if (row.data_offerta) {
         key = new Date(row.data_offerta).getFullYear().toString();
       } else {
         const m = row.codice?.match(/_(\d{2})_/);
@@ -503,15 +544,193 @@ export async function toolDettaglioPreventivo(args: { codice: string }): Promise
   };
 }
 
+// ─── Tool: analisi_preventivi_sql ───────────────────────────────────────────
+
+export async function toolAnalisiPreventiviSql(args: {
+  modalita:
+    | "statistiche_categoria"
+    | "statistiche_cliente"
+    | "statistiche_tipo_prodotto"
+    | "confronta_anni"
+    | "top_codici_valore"
+    | "top_codici_frequenza"
+    | "analisi_ricarichi"
+    | "analisi_lavorazioni"
+    | "controllo_qualita"
+    | "preventivi_da_completare";
+  anno?: number;
+  anno_a?: number;
+  anno_b?: number;
+  stato?: string;
+  cliente?: string;
+  categoria?: string;
+  tipo_prodotto?: string;
+  group_by?: string;
+  limit?: number;
+}): Promise<unknown[]> {
+  const adminClient = createAdminClient().schema("preventivatore");
+  const limit = typeof args.limit === "number" ? args.limit : undefined;
+
+  const runRpc = async (fn: string, params: Record<string, unknown>) => {
+    const { data, error } = await adminClient.rpc(fn, params);
+    if (error) {
+      console.error(`${fn} RPC error:`, error);
+      throw new Error(`Errore analisi SQL: ${fn}`);
+    }
+    return (data ?? []) as unknown[];
+  };
+
+  if (args.modalita === "statistiche_categoria") {
+    return runRpc("ai_statistiche_per_categoria", {
+      p_anno: args.anno ?? null,
+      p_stato: args.stato ?? null,
+      p_cliente: args.cliente ?? null,
+    });
+  }
+
+  if (args.modalita === "statistiche_cliente") {
+    return runRpc("ai_statistiche_per_cliente", {
+      p_anno: args.anno ?? null,
+      p_stato: args.stato ?? null,
+      p_categoria: args.categoria ?? null,
+      p_limit: limit ?? 50,
+    });
+  }
+
+  if (args.modalita === "statistiche_tipo_prodotto") {
+    return runRpc("ai_statistiche_per_tipo_prodotto", {
+      p_anno: args.anno ?? null,
+      p_stato: args.stato ?? null,
+      p_categoria: args.categoria ?? null,
+    });
+  }
+
+  if (args.modalita === "confronta_anni") {
+    if (!args.anno_a || !args.anno_b) throw new Error("confronta_anni richiede anno_a e anno_b");
+    return runRpc("ai_confronta_anni", {
+      p_anno_a: args.anno_a,
+      p_anno_b: args.anno_b,
+      p_categoria: args.categoria ?? null,
+      p_tipo_prodotto: args.tipo_prodotto ?? null,
+    });
+  }
+
+  if (args.modalita === "top_codici_valore") {
+    return runRpc("ai_top_codici_per_valore", {
+      p_anno: args.anno ?? null,
+      p_categoria: args.categoria ?? null,
+      p_cliente: args.cliente ?? null,
+      p_limit: limit ?? 20,
+    });
+  }
+
+  if (args.modalita === "top_codici_frequenza") {
+    return runRpc("ai_top_codici_per_frequenza", {
+      p_anno: args.anno ?? null,
+      p_categoria: args.categoria ?? null,
+      p_cliente: args.cliente ?? null,
+      p_limit: limit ?? 20,
+    });
+  }
+
+  if (args.modalita === "analisi_ricarichi") {
+    return runRpc("ai_analisi_ricarichi", {
+      p_group_by: args.group_by ?? "categoria",
+      p_anno: args.anno ?? null,
+      p_categoria: args.categoria ?? null,
+      p_cliente: args.cliente ?? null,
+      p_limit: limit ?? 50,
+    });
+  }
+
+  if (args.modalita === "analisi_lavorazioni") {
+    return runRpc("ai_analisi_lavorazioni_ore_tariffe", {
+      p_anno: args.anno ?? null,
+      p_categoria: args.categoria ?? null,
+      p_tipo_prodotto: args.tipo_prodotto ?? null,
+      p_cliente: args.cliente ?? null,
+    });
+  }
+
+  if (args.modalita === "controllo_qualita") {
+    return runRpc("ai_controllo_qualita_dati", { p_anno: args.anno ?? null });
+  }
+
+  if (args.modalita === "preventivi_da_completare") {
+    return runRpc("ai_preventivi_da_completare", {
+      p_anno: args.anno ?? null,
+      p_limit: limit ?? 100,
+    });
+  }
+
+  throw new Error(`Modalita analisi SQL sconosciuta: ${args.modalita}`);
+}
+
+// ─── Tool: cerca_anomalie_importi ─────────────────────────────────────────────
+
+export async function toolCercaAnomalieImporti(args: {
+  classificazione?: "molto_alto" | "alto" | "molto_basso" | "basso";
+  cliente?: string;
+  categoria?: string;
+  anno?: number;
+  limit?: number;
+}): Promise<Array<{
+  codice: string; cliente: string | null; categoria: string | null;
+  importo: number; media: number; sigma: number; z_score: number;
+  classificazione: string; n_storico: number;
+}>> {
+  const adminClient = createAdminClient();
+  let q = adminClient
+    .schema("preventivatore")
+    .from("v_anomalie_importi")
+    .select("codice, cliente, categoria, importo_preventivo, media, sigma, z_score, classificazione, n_storico");
+
+  if (args.classificazione) {
+    q = q.eq("classificazione", args.classificazione);
+  } else {
+    // Default: solo anomalie reali (z > 1)
+    q = q.in("classificazione", ["molto_alto", "alto", "molto_basso", "basso"]);
+  }
+  if (args.cliente) q = q.ilike("cliente", `%${args.cliente}%`);
+  if (args.categoria) q = q.eq("categoria", args.categoria);
+  if (args.anno) q = q.eq("anno", args.anno);
+
+  const limit = Math.min(args.limit ?? 20, 100);
+  const { data, error } = await q.order("z_score", { ascending: false }).limit(limit);
+  if (error) {
+    console.error("cerca_anomalie error:", error);
+    throw new Error("Errore ricerca anomalie");
+  }
+
+  type Row = {
+    codice: string; cliente: string | null; categoria: string | null;
+    importo_preventivo: number; media: number; sigma: number;
+    z_score: number; classificazione: string; n_storico: number;
+  };
+  return (data ?? []).map((r: Row) => ({
+    codice: r.codice,
+    cliente: r.cliente,
+    categoria: r.categoria,
+    importo: r.importo_preventivo,
+    media: r.media,
+    sigma: r.sigma,
+    z_score: r.z_score,
+    classificazione: r.classificazione,
+    n_storico: r.n_storico,
+  }));
+}
+
 // ─── Tool dispatch ────────────────────────────────────────────────────────────
 
 export async function dispatchTool(name: string, args: Record<string, unknown>) {
-  if (name === "list_preventivi")       return toolListPreventivi(args as Parameters<typeof toolListPreventivi>[0]);
-  if (name === "cerca_simili")          return toolCercaSimili(args as Parameters<typeof toolCercaSimili>[0]);
-  if (name === "cerca_articolo")        return toolCercaArticolo(args as Parameters<typeof toolCercaArticolo>[0]);
-  if (name === "aggrega_preventivi")    return toolAggregatPreventivi(args as Parameters<typeof toolAggregatPreventivi>[0]);
-  if (name === "top_articoli")          return toolTopArticoli(args as Parameters<typeof toolTopArticoli>[0]);
-  if (name === "query_righe_distinta")  return toolQueryRigheDistinta(args as Parameters<typeof toolQueryRigheDistinta>[0]);
-  if (name === "dettaglio_preventivo")  return toolDettaglioPreventivo(args as Parameters<typeof toolDettaglioPreventivo>[0]);
+  if (name === "list_preventivi")        return toolListPreventivi(args as Parameters<typeof toolListPreventivi>[0]);
+  if (name === "cerca_simili")           return toolCercaSimili(args as Parameters<typeof toolCercaSimili>[0]);
+  if (name === "cerca_articolo")         return toolCercaArticolo(args as Parameters<typeof toolCercaArticolo>[0]);
+  if (name === "aggrega_preventivi")     return toolAggregatPreventivi(args as Parameters<typeof toolAggregatPreventivi>[0]);
+  if (name === "top_articoli")           return toolTopArticoli(args as Parameters<typeof toolTopArticoli>[0]);
+  if (name === "query_righe_distinta")   return toolQueryRigheDistinta(args as Parameters<typeof toolQueryRigheDistinta>[0]);
+  if (name === "dettaglio_preventivo")   return toolDettaglioPreventivo(args as Parameters<typeof toolDettaglioPreventivo>[0]);
+  if (name === "analisi_preventivi_sql") return toolAnalisiPreventiviSql(args as Parameters<typeof toolAnalisiPreventiviSql>[0]);
+  if (name === "cerca_anomalie_importi") return toolCercaAnomalieImporti(args as Parameters<typeof toolCercaAnomalieImporti>[0]);
   throw new Error(`Tool sconosciuto: ${name}`);
 }

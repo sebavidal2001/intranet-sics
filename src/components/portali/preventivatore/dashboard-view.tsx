@@ -37,7 +37,13 @@ type DashboardData = {
     workflow_stati_attivo: boolean
   }
   top_clienti: { cliente: string; preventivi: number; valore: number; ordinati: number }[]
-  serie_mensile: { mese: string; preventivi: number; valore: number; ordinati: number }[]
+  serie_mensile: {
+    mese: string
+    preventivi: number
+    valore: number
+    ordinati: number
+    categorie?: { categoria: string; preventivi: number; valore: number }[]
+  }[]
   top_articoli: { codice: string; descrizione: string; occorrenze: number; qta: number; valore: number }[]
   attivita_recente: {
     id: string
@@ -73,6 +79,27 @@ const monthLabel = (iso: string) => {
   const d = new Date(iso)
   return MONTH_LABELS[d.getUTCMonth()]
 }
+
+const CATEGORY_COLORS: Record<string, string> = {
+  nastri: "#00a1be",
+  scale: "#95c11f",
+  protezioni: "#ee7326",
+  strutture: "#747373",
+  automazioni: "#c82381",
+  altro: "#e73331",
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  nastri: "Nastri",
+  scale: "Scale",
+  protezioni: "Protezioni",
+  strutture: "Strutture",
+  automazioni: "Automazioni",
+  altro: "Altro",
+}
+
+const categoryColor = (categoria: string) => CATEGORY_COLORS[categoria] ?? "#007a91"
+const categoryLabel = (categoria: string) => CATEGORY_LABELS[categoria] ?? categoria.replace(/_/g, " ")
 
 const fmtRelativeIt = (iso: string) => {
   const ms = Date.now() - new Date(iso).getTime()
@@ -267,6 +294,14 @@ function TopClienti({ data }: { data: DashboardData["top_clienti"] }) {
 function BarSerieMensile({ data }: { data: DashboardData["serie_mensile"] }) {
   const last6 = data.slice(-6)
   const max = Math.max(1, ...last6.map((d) => d.preventivi))
+  const categories = Array.from(
+    new Set(last6.flatMap((d) => (d.categorie ?? []).filter((c) => c.preventivi > 0).map((c) => c.categoria)))
+  ).sort((a, b) => {
+    const order = ["nastri", "scale", "protezioni", "strutture", "automazioni", "altro"]
+    const ai = order.indexOf(a)
+    const bi = order.indexOf(b)
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+  })
   return (
     <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 1px 0 rgba(15,23,32,.04), 0 8px 24px rgba(0,161,190,.06)" }}>
       <div className="flex items-center justify-between mb-4">
@@ -277,24 +312,51 @@ function BarSerieMensile({ data }: { data: DashboardData["serie_mensile"] }) {
         <Chip label="6 mesi" variant="info" />
       </div>
 
-      <div className="flex items-end gap-2 h-24">
-        {last6.map((d, i) => {
-          const isLast = i === last6.length - 1
-          const height = Math.round((d.preventivi / max) * 80)
+      <div className="flex items-end gap-2 sm:gap-3 h-36">
+        {last6.map((d) => {
+          const height = Math.round((d.preventivi / max) * 118)
+          const stacked = categories
+            .map((categoria) => ({
+              categoria,
+              item: (d.categorie ?? []).find((c) => c.categoria === categoria),
+            }))
+            .filter((entry) => entry.item && entry.item.preventivi > 0)
           return (
             <div key={d.mese} className="flex-1 flex flex-col items-center gap-1" title={`${d.preventivi} preventivi · ${fmtEuroFull(d.valore)}`}>
               <div
-                className="w-full rounded-t-md transition-all duration-500"
+                className="w-full rounded-t-lg overflow-hidden transition-all duration-500 flex flex-col-reverse"
                 style={{
-                  height: `${Math.max(d.preventivi > 0 ? 4 : 1, height)}px`,
-                  backgroundColor: isLast ? "#00a1be" : "rgba(0,161,190,0.25)",
+                  height: `${Math.max(d.preventivi > 0 ? 8 : 2, height)}px`,
+                  backgroundColor: "rgba(0,161,190,0.10)",
                 }}
-              />
+              >
+                {stacked.map(({ categoria, item }) => (
+                  <div
+                    key={`${d.mese}-${categoria}`}
+                    style={{
+                      height: `${Math.round(((item?.preventivi ?? 0) / d.preventivi) * 100)}%`,
+                      backgroundColor: categoryColor(categoria),
+                    }}
+                    title={`${categoryLabel(categoria)}: ${item?.preventivi ?? 0} preventivi - ${fmtEuroFull(item?.valore ?? 0)}`}
+                  />
+                ))}
+              </div>
               <span className="text-[9px] font-medium text-text-muted">{monthLabel(d.mese)}</span>
             </div>
           )
         })}
       </div>
+
+      {categories.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 border-t border-[#e2e8f0] pt-3">
+          {categories.map((categoria) => (
+            <div key={categoria} className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: categoryColor(categoria) }} />
+              <span className="text-[10px] font-medium text-text-muted">{categoryLabel(categoria)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

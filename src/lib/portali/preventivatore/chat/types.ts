@@ -93,7 +93,8 @@ export type ToolName =
   | "aggrega_preventivi"
   | "top_articoli"
   | "query_righe_distinta"
-  | "dettaglio_preventivo";
+  | "dettaglio_preventivo"
+  | "analisi_preventivi_sql";
 
 export interface ChatHandlerResult {
   risposta: string;

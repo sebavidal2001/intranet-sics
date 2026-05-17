@@ -128,7 +128,7 @@ export function NuovoUtenteForm({ responsabili, ruoliConfig, reparti }: Props) {
             className="flex-1 px-3 py-2.5 text-sm text-text bg-bg placeholder:text-text-muted focus:outline-none"
           />
           <span className="px-3 py-2.5 text-sm text-text-muted bg-bg-page border-l border-border select-none">
-            @sics.interno
+            @s-ics.com
           </span>
         </div>
         {errors.username && <p className="text-danger text-xs">{errors.username.message}</p>}

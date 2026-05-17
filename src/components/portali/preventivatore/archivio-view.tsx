@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import dynamic from "next/dynamic"
+import { useRouter } from "next/navigation"
 import { Search, ChevronDown, Loader2, FileText, AlertCircle, Sparkles, X, ArrowUpDown, ArrowUp, ArrowDown, SlidersHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -126,6 +127,7 @@ const fmtEuro = (v: number | string | null) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ArchivioView() {
+  const router = useRouter()
   // Filtri
   const [q, setQ] = useState("")
   const [filtroStato, setFiltroStato] = useState<string>("tutti")
@@ -568,7 +570,19 @@ export function ArchivioView() {
               {items.map((r) => {
                 const badge = STATO_BADGE[r.stato] ?? STATO_BADGE.pending
                 return (
-                  <div key={r.id} className="border border-border rounded-xl p-4 bg-bg space-y-2 hover:border-[#00a1be]/40 transition-colors">
+                  <div
+                    key={r.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => router.push(`/preventivatore/archivio/${r.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        router.push(`/preventivatore/archivio/${r.id}`)
+                      }
+                    }}
+                    className="border border-border rounded-xl p-4 bg-bg space-y-2 hover:border-[#00a1be]/60 hover:shadow-sm transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -613,7 +627,7 @@ export function ArchivioView() {
                       </p>
                     )}
 
-                    <div className="flex justify-end">
+                    <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="sm" className="gap-1 text-xs">
@@ -621,10 +635,10 @@ export function ArchivioView() {
                             <ChevronDown className="w-3 h-3" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openModalOrdinato(r.id)}>Segna come Ordinato</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openModalRifiutato(r.id)}>Segna come Rifiutato</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => aggiornaStato(r.id, "pending")}>Lascia Pending</DropdownMenuItem>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem onSelect={() => openModalOrdinato(r.id)}>Segna come Ordinato</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => openModalRifiutato(r.id)}>Segna come Rifiutato</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => aggiornaStato(r.id, "pending")}>Lascia Pending</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

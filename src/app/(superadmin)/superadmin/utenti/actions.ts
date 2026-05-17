@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { usernameToEmailNew, USERNAME_EMAIL_DOMAIN } from "@/lib/auth/username";
 
 async function requireSuperadmin() {
   const supabase = await createClient();
@@ -65,7 +66,7 @@ export async function creaUtente(
 
   const adminClient = createAdminClient();
 
-  const email = `${username}@sics.interno`;
+  const email = usernameToEmailNew(username);
 
   // Crea utente in Supabase Auth passando i dati nei metadati
   // così il trigger handle_new_user crea già la riga utenti corretta
@@ -137,6 +138,76 @@ const ModificaUtenteSchema = z.object({
   stato: z.enum(["attivo", "inattivo"]).default("attivo"),
   data_assunzione: z.string().optional(),
 });
+
+/**
+ * Allinea l'email di tutti gli utenti che hanno un'email "tecnica" (legacy `@sics.interno`),
+ * oppure che hanno una mail nulla/vuota ma username valorizzato, sostituendola con
+ * `username@s-ics.com`. Aggiorna sia `auth.users` sia la tabella `utenti`.
+ */
+export async function allineaEmailUtenti(): Promise<{
+  success: boolean;
+  updated: number;
+  skipped: { id: string; username: string | null; email: string | null; motivo: string }[];
+  error?: string;
+}> {
+  await requireSuperadmin();
+  const adminClient = createAdminClient();
+
+  // Carica tutti gli utenti
+  const { data: utenti, error: fetchErr } = await adminClient
+    .from("utenti")
+    .select("id, username, email");
+  if (fetchErr) {
+    return { success: false, updated: 0, skipped: [], error: fetchErr.message };
+  }
+
+  const skipped: { id: string; username: string | null; email: string | null; motivo: string }[] = [];
+  let updated = 0;
+
+  for (const u of (utenti ?? []) as { id: string; username: string | null; email: string | null }[]) {
+    const currentEmail = (u.email ?? "").toLowerCase();
+    const username = (u.username ?? "").trim();
+
+    const isLegacy =
+      currentEmail.endsWith("@sics.interno") ||
+      currentEmail === "" ||
+      currentEmail === null;
+
+    if (!isLegacy) continue;
+
+    if (!username) {
+      skipped.push({ id: u.id, username: u.username, email: u.email, motivo: "Username mancante: impossibile generare email" });
+      continue;
+    }
+
+    const newEmail = `${username.toLowerCase()}@${USERNAME_EMAIL_DOMAIN}`;
+    if (newEmail === currentEmail) continue;
+
+    // 1) Aggiorna in auth.users
+    const { error: authErr } = await adminClient.auth.admin.updateUserById(u.id, {
+      email: newEmail,
+      email_confirm: true,
+    });
+    if (authErr) {
+      skipped.push({ id: u.id, username, email: u.email, motivo: `Auth update: ${authErr.message}` });
+      continue;
+    }
+
+    // 2) Aggiorna in tabella utenti
+    const { error: dbErr } = await adminClient
+      .from("utenti")
+      .update({ email: newEmail })
+      .eq("id", u.id);
+    if (dbErr) {
+      skipped.push({ id: u.id, username, email: u.email, motivo: `DB update: ${dbErr.message}` });
+      continue;
+    }
+
+    updated++;
+  }
+
+  return { success: true, updated, skipped };
+}
 
 export async function modificaUtente(
   formData: FormData
