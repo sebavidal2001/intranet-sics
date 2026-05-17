@@ -312,7 +312,7 @@ function BarSerieMensile({ data }: { data: DashboardData["serie_mensile"] }) {
         <Chip label="6 mesi" variant="info" />
       </div>
 
-      <div className="flex items-end gap-2 sm:gap-3 h-36">
+      <div className="flex items-end justify-around gap-2 sm:gap-4 h-36 px-2">
         {last6.map((d) => {
           const height = Math.round((d.preventivi / max) * 118)
           const stacked = categories
@@ -322,12 +322,18 @@ function BarSerieMensile({ data }: { data: DashboardData["serie_mensile"] }) {
             }))
             .filter((entry) => entry.item && entry.item.preventivi > 0)
           return (
-            <div key={d.mese} className="flex-1 flex flex-col items-center gap-1" title={`${d.preventivi} preventivi · ${fmtEuroFull(d.valore)}`}>
+            <div
+              key={d.mese}
+              className="flex flex-col items-center gap-1"
+              style={{ width: 32 }}
+              title={`${d.preventivi} preventivi · ${fmtEuroFull(d.valore)}`}
+            >
+              <span className="text-[10px] font-semibold text-text-muted leading-none">{d.preventivi || ""}</span>
               <div
-                className="w-full rounded-t-lg overflow-hidden transition-all duration-500 flex flex-col-reverse"
+                className="w-full rounded-t-md overflow-hidden transition-all duration-500 flex flex-col-reverse shadow-sm"
                 style={{
                   height: `${Math.max(d.preventivi > 0 ? 8 : 2, height)}px`,
-                  backgroundColor: "rgba(0,161,190,0.10)",
+                  backgroundColor: "rgba(0,161,190,0.08)",
                 }}
               >
                 {stacked.map(({ categoria, item }) => (
