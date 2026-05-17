@@ -292,10 +292,10 @@ function TopClienti({ data }: { data: DashboardData["top_clienti"] }) {
 // ─── Bar chart serie mensile ─────────────────────────────────────────────────
 
 function BarSerieMensile({ data }: { data: DashboardData["serie_mensile"] }) {
-  const last6 = data.slice(-6)
-  const max = Math.max(1, ...last6.map((d) => d.preventivi))
+  const last12 = data.slice(-12)
+  const max = Math.max(1, ...last12.map((d) => d.preventivi))
   const categories = Array.from(
-    new Set(last6.flatMap((d) => (d.categorie ?? []).filter((c) => c.preventivi > 0).map((c) => c.categoria)))
+    new Set(last12.flatMap((d) => (d.categorie ?? []).filter((c) => c.preventivi > 0).map((c) => c.categoria)))
   ).sort((a, b) => {
     const order = ["nastri", "scale", "protezioni", "strutture", "automazioni", "altro"]
     const ai = order.indexOf(a)
@@ -309,11 +309,11 @@ function BarSerieMensile({ data }: { data: DashboardData["serie_mensile"] }) {
           <BarChart3 className="w-4 h-4" style={{ color: "#00a1be" }} />
           <h3 className="text-sm font-semibold text-[#0f1720]">Preventivi mensili</h3>
         </div>
-        <Chip label="6 mesi" variant="info" />
+        <Chip label="12 mesi" variant="info" />
       </div>
 
-      <div className="flex items-end justify-around gap-2 sm:gap-4 h-36 px-2">
-        {last6.map((d) => {
+      <div className="flex items-end justify-around gap-1.5 sm:gap-2 h-36 px-2 overflow-x-auto">
+        {last12.map((d) => {
           const height = Math.round((d.preventivi / max) * 118)
           const stacked = categories
             .map((categoria) => ({
@@ -324,7 +324,7 @@ function BarSerieMensile({ data }: { data: DashboardData["serie_mensile"] }) {
           return (
             <div
               key={d.mese}
-              className="flex flex-col items-center gap-1"
+              className="flex flex-col items-center gap-1 shrink-0"
               style={{ width: 32 }}
               title={`${d.preventivi} preventivi · ${fmtEuroFull(d.valore)}`}
             >
