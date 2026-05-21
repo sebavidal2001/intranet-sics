@@ -93,7 +93,7 @@ export default function SessioneDetail({ sessione }: SessioneDetailProps) {
           <p className="text-xs text-text-muted mb-4">
             {sessione.is_aperta
               ? "Chiudendo la sessione, gli utenti non potranno più compilare o modificare le valutazioni."
-              : "Sbloccando la sessione, verrà inviata una email automatica a tutti gli utenti (esclusi admin) con l'invito a compilare la valutazione."}
+              : "Sbloccando la sessione, gli utenti potranno compilare le valutazioni."}
           </p>
           <Button
             onClick={handleToggleStato}
@@ -104,7 +104,7 @@ export default function SessioneDetail({ sessione }: SessioneDetailProps) {
               ? "Operazione in corso..."
               : sessione.is_aperta
               ? "Chiudi Sessione"
-              : "Sblocca e Notifica Utenti"}
+              : "Sblocca Sessione"}
           </Button>
         </div>
 
@@ -113,26 +113,6 @@ export default function SessioneDetail({ sessione }: SessioneDetailProps) {
           <div className="flex items-start gap-3 bg-danger/10 border border-danger text-danger px-4 py-3 rounded-lg">
             <AlertCircle className="h-5 w-5 mt-0.5" />
             <p className="text-sm">{error}</p>
-          </div>
-        )}
-
-        {/* Info Email */}
-        {!sessione.is_aperta && (
-          <div className="bg-secondary-light border border-border p-4 rounded-lg">
-            <p className="font-tenorite text-sm font-medium text-text mb-2">
-              Email Automatica
-            </p>
-            <div className="text-xs text-text-muted space-y-1">
-              <p>
-                <strong>Destinatari:</strong> Tutti gli utenti (esclusi admin)
-              </p>
-              <p>
-                <strong>Oggetto:</strong> Sessione Valutazione {sessione.anno} - Aperta
-              </p>
-              <p>
-                <strong>Contenuto:</strong> Link diretto alla sezione valutazioni
-              </p>
-            </div>
           </div>
         )}
       </CardContent>

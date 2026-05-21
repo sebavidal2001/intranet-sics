@@ -7,9 +7,17 @@ import { SessionsPanel, type Sessione } from "@/components/portali/preventivator
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+import type { BuilderState } from "@/components/portali/preventivatore/nuovo-view-types"
+
 interface ChatAIProps {
   contesto: "archivio" | "nuovo"
   placeholder?: string
+  /**
+   * Snapshot live del builder (solo per contesto="nuovo"). Quando presente,
+   * viene inviato all'API e iniettato nel system prompt dell'AI per dare
+   * risposte e suggerimenti contestuali sul preventivo in costruzione.
+   */
+  builderState?: BuilderState
 }
 
 interface ListaRisultato {
@@ -992,7 +1000,7 @@ function UsageCounter({ usage }: { usage: UsageSummary | null }) {
   )
 }
 
-export function ChatAI({ contesto, placeholder }: ChatAIProps) {
+export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -1188,6 +1196,8 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
           contesto,
           modalita,
           sessione_id: activeSessId,
+          // Per il builder: snapshot live del preventivo per risposte contestuali
+          ...(contesto === "nuovo" && builderState ? { builder_state: builderState } : {}),
         }),
       })
 
@@ -1224,7 +1234,7 @@ export function ChatAI({ contesto, placeholder }: ChatAIProps) {
       setLoading(false)
       inputRef.current?.focus()
     }
-  }, [input, loading, messages, contesto, modalita, sessioneId, ensureSession, fetchUsageSummary])
+  }, [input, loading, messages, contesto, modalita, sessioneId, builderState, ensureSession, fetchUsageSummary])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); invia() }

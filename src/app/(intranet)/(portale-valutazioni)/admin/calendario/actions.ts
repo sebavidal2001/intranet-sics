@@ -73,6 +73,7 @@ export async function updateSessioneUtente(
     stato?: string;
     note_admin?: string;
     scala_id?: string;
+    orario?: string | null;
   }
 ): Promise<ActionResult> {
   const supabase = await requireAdmin();

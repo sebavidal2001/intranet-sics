@@ -9,6 +9,8 @@
  * - `usernameToEmail()` ritorna l'email "legacy" per retro-compatibilità
  *   con codice esistente che si aspetta un singolo valore.
  * - `usernameToEmailCandidates()` ritorna entrambe le forme: usala per il login.
+ *   Se l'input è già un'email completa (contiene `@`) viene usato tal quale —
+ *   serve agli utenti senza mail aziendale, registrati con email personale.
  * - I nuovi utenti vengono creati direttamente con `USERNAME_EMAIL_DOMAIN`
  *   (vedi `superadmin/utenti/actions.ts`).
  */
@@ -26,9 +28,19 @@ export function usernameToEmailNew(username: string): string {
   return `${username.trim().toLowerCase()}@${USERNAME_EMAIL_DOMAIN}`;
 }
 
-/** Ritorna i candidati email da provare per il login (legacy + nuovo). */
+/**
+ * Ritorna i candidati email da provare per il login.
+ *
+ * - Se l'input è già un'email completa (contiene `@`): viene usato tal quale.
+ *   Caso degli utenti senza mail aziendale, registrati con email personale.
+ * - Altrimenti è uno username: si provano entrambi i domini tecnici
+ *   (legacy `sics.interno` + nuovo `s-ics.com`).
+ */
 export function usernameToEmailCandidates(username: string): string[] {
   const u = username.trim().toLowerCase();
+  if (u.includes("@")) {
+    return [u];
+  }
   return [
     `${u}@${USERNAME_EMAIL_DOMAIN_LEGACY}`,
     `${u}@${USERNAME_EMAIL_DOMAIN}`,

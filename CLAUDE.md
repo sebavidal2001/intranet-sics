@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Vault sync (REGOLA OBBLIGATORIA)
+
+Esiste una knowledge base Obsidian-style in `C:\Users\sebav\Desktop\Vault\` che documenta tutto il progetto (`Progetti/`, `Moduli/`, `Database/`, `Stack/`, `Concetti/`).
+
+**Dopo OGNI modifica al codice o al DB, aggiornare il Vault** con le nuove informazioni:
+
+1. **Completezza** — descrivere cosa è cambiato, perché, dove (file/migration/route), e l'impatto operativo.
+2. **Precisione** — riportare nomi reali di tabelle, colonne, RPC, route, env, comandi.
+3. **Comprensibilità** — scrivere in italiano, con tabelle, esempi pratici, callouts (`> [!info]`, `> [!warning]`, `> [!todo]`).
+4. **Link Obsidian** — usare la sintassi `[[Nome Pagina]]` per ogni riferimento incrociato (Schema DB, Moduli, Progetti, Stack). Aggiungere/aggiornare le sezioni "Collegato a" in coda alle pagine modificate.
+
+Sezioni e file tipici da toccare:
+- Nuova migration → `Database/<Progetto> - Schema DB.md` (tabella migrazioni + dettaglio tabelle/RPC)
+- Nuova feature/modulo → file in `Moduli/` (creare se manca) + link dal `Progetti/<Nome>.md`
+- Cambio operativo (cron, deploy, env) → aggiungere sezione "Operatività" nella pagina del modulo
+- Sempre: aggiornare il frontmatter `aggiornato: YYYY-MM-DD`
+
+Non considerare "completa" una modifica se il Vault non riflette già lo stato finale.
+
 ## Commands
 
 ```bash

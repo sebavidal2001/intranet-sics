@@ -5,11 +5,61 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * Snapshot dello stato builder, inviato solo quando contesto="nuovo".
+ * Il route handler lo serializza nel system prompt per chat builder-aware.
+ */
+export interface BuilderStateForChat {
+  titolo: string | null;
+  cliente: {
+    ragione_sociale: string;
+    piva: string | null;
+    citta: string | null;
+    provincia: string | null;
+  } | null;
+  data_consegna: string | null;
+  blocchi: Array<{
+    numero: number;
+    tipo: string;
+    nome: string;
+    note: string;
+    articoli: Array<{
+      codice: string;
+      descrizione: string;
+      qty: number;
+      ult_costo: number;
+      coeff_ricarico: number;
+      netto: number;
+    }>;
+    lavorazioni: Array<{
+      nome: string;
+      categoria: string;
+      ore: number;
+      tariffa_ora: number;
+      markup_pct: number;
+      totale: number;
+    }>;
+    totale_materiali: number;
+    totale_servizi: number;
+    totale_blocco: number;
+  }>;
+  totali: {
+    materiali: number;
+    servizi: number;
+    netto_totale: number;
+    n_blocchi: number;
+    n_articoli: number;
+    ore_totali: number;
+    coeff_ricarico_medio: number;
+  };
+}
+
 export interface ChatRequestBody {
   messages: ChatMessage[];
   contesto?: "archivio" | "nuovo";
   modalita?: "preciso" | "creativo";
   sessione_id?: string | null;
+  builder_state?: BuilderStateForChat;
 }
 
 export interface DocumentoRow {

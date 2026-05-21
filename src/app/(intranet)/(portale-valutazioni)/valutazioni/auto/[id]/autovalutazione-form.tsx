@@ -45,11 +45,11 @@ interface AutvalutazioneFormProps {
   scala: ScalaValutazione;
   risposteAutoMansioni: Record<string, { punteggio: number; note: string | null }>;
   risposteAutoSkills: Record<string, { punteggio: number; note: string | null }>;
-  risposteRespMansioni: Record<string, { punteggio: number; note: string | null }>;
-  risposteRespSkills: Record<string, { punteggio: number; note: string | null }>;
   isReadOnly: boolean;
   ordineProfili?: string[];
 }
+// NOTA: il form NON riceve le risposte del responsabile — l'autovalutazione
+// deve essere "alla cieca" (il dipendente non deve vedere i voti del capo).
 
 function buildScaleValues(min: number, max: number): number[] {
   const values: number[] = [];
@@ -65,8 +65,6 @@ export function AutvalutazioneForm({
   scala,
   risposteAutoMansioni,
   risposteAutoSkills,
-  risposteRespMansioni,
-  risposteRespSkills,
   isReadOnly,
   ordineProfili = [],
 }: AutvalutazioneFormProps) {
@@ -171,14 +169,12 @@ export function AutvalutazioneForm({
     itemId: string,
     label: string,
     valoreAuto: number | null,
-    valoreResp: number | null,
     onSelect: (val: number) => void,
     noteVal: string,
     onNoteChange: (val: string) => void,
     badge?: React.ReactNode
   ) {
     const labelAuto = valoreAuto !== null ? getLabelForValue(valoreAuto) : null;
-    const labelResp = valoreResp !== null ? getLabelForValue(valoreResp) : null;
 
     return (
       <div
@@ -340,7 +336,6 @@ export function AutvalutazioneForm({
                     m.id,
                     m.testo,
                     valoriMansioni[m.id],
-                    risposteRespMansioni[m.id]?.punteggio ?? null,
                     (val) => setValoriMansioni((prev) => ({ ...prev, [m.id]: val })),
                     noteMansioni[m.id] ?? "",
                     (val) => setNoteMansioni((prev) => ({ ...prev, [m.id]: val })),
@@ -392,7 +387,6 @@ export function AutvalutazioneForm({
                     s.id,
                     s.nome,
                     valoriSkills[s.id],
-                    risposteRespSkills[s.id]?.punteggio ?? null,
                     (val) => setValoriSkills((prev) => ({ ...prev, [s.id]: val })),
                     noteSkills[s.id] ?? "",
                     (val) => setNoteSkills((prev) => ({ ...prev, [s.id]: val })),

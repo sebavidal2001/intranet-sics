@@ -33,27 +33,44 @@ interface OpenRouterModel {
 
 type FeedbackType = { type: "success" | "error"; msg: string } | null
 
-const CHIAVI_TEXTAREA = ["company_knowledge", "system_prompt_preciso", "system_prompt_creativo"]
+const CHIAVI_TEXTAREA = [
+  "company_knowledge",
+  "system_prompt_preciso",
+  "system_prompt_creativo",
+  "system_prompt_builder",
+  "system_prompt_scheda_tecnica",
+  "system_prompt_domande_scheda",
+]
 
 const LABEL_MAP: Record<string, string> = {
   company_knowledge:     "Profilo aziendale (conoscenza AI)",
   system_prompt_preciso: "Comportamento modalità Preciso",
   system_prompt_creativo:"Comportamento modalità Creativo",
+  system_prompt_builder: "Chat builder (configuratore)",
+  system_prompt_scheda_tecnica: "Generazione scheda tecnica",
+  system_prompt_domande_scheda: "Domande di completamento info (scheda tecnica)",
   soglia_similarity:     "Soglia similarità semantica",
+  soglia_similarity_scheda: "Soglia similarità per esempi scheda tecnica",
   temperatura_precisa:   "Temperatura modalità Preciso",
   temperatura_creativa:  "Temperatura modalità Creativo",
+  temperatura_scheda_tecnica: "Temperatura scheda tecnica",
   max_chunks_per_query:  "Max chunks per query",
+  max_esempi_scheda:     "Numero esempi storici per scheda tecnica",
   modello_embedding:     "Modello embedding",
-  modello_generazione:   "Modello generazione",
+  modello_generazione:   "Modello generazione chat",
+  modello_scheda_tecnica: "Modello generazione scheda tecnica",
   ai_cost_counter_enabled: "Contatore spesa AI",
 }
 const CHIAVI_SLIDER: Record<string, { min: number; max: number; step: number }> = {
   soglia_similarity: { min: 0, max: 1, step: 0.05 },
+  soglia_similarity_scheda: { min: 0, max: 1, step: 0.05 },
   temperatura_precisa: { min: 0, max: 1, step: 0.1 },
   temperatura_creativa: { min: 0, max: 1, step: 0.1 },
+  temperatura_scheda_tecnica: { min: 0, max: 1, step: 0.05 },
 }
-const CHIAVE_NUMBER = "max_chunks_per_query"
+const CHIAVI_NUMBER = ["max_chunks_per_query", "max_esempi_scheda"]
 const CHIAVI_BOOLEAN = ["ai_cost_counter_enabled"]
+const CHIAVI_MODEL_SELECTOR = ["modello_generazione", "modello_scheda_tecnica"]
 const OPENROUTER_PREFIX = "openrouter:"
 
 function configToMap(configs: AIConfig[]): Record<string, string> {
@@ -154,7 +171,7 @@ export function ImpostazioniView() {
   }
 
   const renderField = (chiave: string, valore: string, descrizione: string | null) => {
-    if (chiave === "modello_generazione") {
+    if (CHIAVI_MODEL_SELECTOR.includes(chiave)) {
       return (
         <ModelSelector
           key={chiave}
@@ -164,7 +181,7 @@ export function ImpostazioniView() {
           error={modelsError}
           onChange={(nextValue) => handleChange(chiave, nextValue)}
           onRefresh={fetchModels}
-          description={descrizione}
+          description={descrizione ?? (LABEL_MAP[chiave] ?? chiave)}
         />
       )
     }
@@ -252,7 +269,7 @@ export function ImpostazioniView() {
       )
     }
 
-    if (chiave === CHIAVE_NUMBER) {
+    if (CHIAVI_NUMBER.includes(chiave)) {
       return (
         <div key={chiave} className="space-y-1.5">
           <Label htmlFor={chiave}>

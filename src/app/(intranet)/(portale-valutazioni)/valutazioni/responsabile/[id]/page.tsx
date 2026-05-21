@@ -35,8 +35,20 @@ export default async function ValutazioneResponsabilePage({
   // Permette accesso se l'utente è il responsabile OPPURE è admin
   if (!isAdmin && sessione.responsabile_id !== user.id) redirect("/valutazioni");
 
+  // Interruttore generale: se la sessione globale dell'anno è chiusa,
+  // la valutazione è in sola lettura (nessuno può modificarla).
+  const { data: sessioneGlobale } = await supabase
+    .from("sessioni_valutazione")
+    .select("is_aperta")
+    .eq("anno", sessione.anno)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle() as unknown as { data: { is_aperta: boolean } | null };
+  const sessioneAperta = sessioneGlobale?.is_aperta ?? true;
+
   const stato = sessione.stato;
   const isReadOnly =
+    !sessioneAperta ||
     stato === "resp_completata" ||
     stato === "collab_in_corso" ||
     stato === "completata" ||

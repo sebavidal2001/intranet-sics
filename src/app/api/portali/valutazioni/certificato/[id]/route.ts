@@ -54,7 +54,7 @@ export async function GET(
   }
 
   // Carica in parallelo: dati utente, mansioni, risposte, config
-  let parallelData: Awaited<ReturnType<typeof Promise.all<[unknown, unknown, unknown, unknown, unknown]>>>;
+  let parallelData: Awaited<ReturnType<typeof Promise.all<[unknown, unknown, unknown, unknown, unknown, unknown]>>>;
   try {
     parallelData = await Promise.all([
       db.from("utenti").select("id, nome, cognome, email, reparto, ruolo, data_assunzione").eq("id", sessione.utente_id).single(),
@@ -64,19 +64,21 @@ export async function GET(
       db.from("utente_mansioni").select(`mansione:mansioni(id, testo, ordine, parametro:parametri_radar(id, nome, colore))`).eq("utente_id", sessione.utente_id),
       db.from("risposte_valutazione").select("mansione_id, skill_id, punteggio, tipo").eq("sessione_utente_id", sessioneId),
       db.from("certificato_config").select("*").limit(1).maybeSingle(),
+      db.from("sessione_skills").select(`skill:skills(id, nome, ordine, parametro:parametri_radar(id, nome, colore))`).eq("sessione_id", sessioneId),
     ]);
   } catch (err) {
     console.error("Certificato parallel fetch error:", err);
     return NextResponse.json({ error: "Errore nel caricamento dei dati" }, { status: 500 });
   }
 
-  const [utenteRes, responsabileRes, utenteMansioni, risposteRes, configRes] =
+  const [utenteRes, responsabileRes, utenteMansioni, risposteRes, configRes, sessioneSkillsRes] =
     parallelData as unknown as [
       { data: { id: string; nome: string; cognome: string; email: string; reparto: string | null; ruolo: string; data_assunzione: string | null } | null },
       { data: { id: string; nome: string; cognome: string } | null },
       { data: Array<{ mansione: unknown }> | null },
       { data: Array<{ mansione_id: string | null; skill_id: string | null; punteggio: number; tipo: string }> | null },
       { data: Record<string, unknown> | null },
+      { data: Array<{ skill: unknown }> | null },
     ];
 
   const utenteData = utenteRes.data;
@@ -99,39 +101,52 @@ export async function GET(
     if (r.tipo === "autovalutazione") risposteMap.auto.set(key, r.punteggio);
   }
 
-  // Costruisce righe tabella
+  // Costruisce righe tabella — mansioni + skill
   // Cast necessario: Supabase inferisce il tipo del join annidato come array, ma è sempre singolo
-  type MansioneCon = { id: string; testo: string; ordine: number; parametro: { id: string; nome: string; colore: string } | null } | null;
-  const mansioni = ((utenteMansioni.data ?? []) as unknown as { mansione: MansioneCon }[])
+  type VoceCon = { id: string; testo: string; ordine: number; parametro: { id: string; nome: string; colore: string } | null } | null;
+  const mansioni = ((utenteMansioni.data ?? []) as unknown as { mansione: VoceCon }[])
     .map((um) => um.mansione)
     .filter(Boolean)
     .sort((a, b) => (a!.ordine ?? 0) - (b!.ordine ?? 0));
 
-  const righe: RigaCertificato[] = mansioni.map((m) => ({
-    mansione: m!.testo,
-    parametro: (m!.parametro as { nome: string; colore: string } | null)?.nome ?? "—",
-    parametroColore: (m!.parametro as { nome: string; colore: string } | null)?.colore ?? "#747373",
-    punteggioAuto: risposteMap.auto.get(m!.id) ?? null,
-    punteggioResp: risposteMap.responsabile.get(m!.id) ?? null,
-  }));
+  // Le skill della sessione: normalizzate alla stessa forma delle mansioni (nome → testo)
+  const skills = ((sessioneSkillsRes.data ?? []) as unknown as { skill: { id: string; nome: string; ordine: number; parametro: { id: string; nome: string; colore: string } | null } | null }[])
+    .map((ss) => ss.skill)
+    .filter(Boolean)
+    .map((s) => ({ id: s!.id, testo: s!.nome, ordine: s!.ordine, parametro: s!.parametro }))
+    .sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0));
 
-  // Media responsabile (esclude null e 0)
+  const rigaDaVoce = (v: { id: string; testo: string; parametro: { nome: string; colore: string } | null }, tipo: "mansione" | "skill"): RigaCertificato => ({
+    tipo,
+    mansione: v.testo,
+    parametro: v.parametro?.nome ?? "—",
+    parametroColore: v.parametro?.colore ?? "#747373",
+    punteggioAuto: risposteMap.auto.get(v.id) ?? null,
+    punteggioResp: risposteMap.responsabile.get(v.id) ?? null,
+  });
+
+  const righe: RigaCertificato[] = [
+    ...mansioni.map((m) => rigaDaVoce(m!, "mansione")),
+    ...skills.map((s) => rigaDaVoce(s, "skill")),
+  ];
+
+  // Media responsabile (esclude null e 0) — su mansioni + skill
   const valoriResp = righe.map((r) => r.punteggioResp).filter((v): v is number => v !== null && v > 0);
   const mediaResponsabile =
     valoriResp.length > 0
       ? valoriResp.reduce((a, b) => a + b, 0) / valoriResp.length
       : 0;
 
-  // Calcola dati radar (raggruppa per parametro)
+  // Calcola dati radar (raggruppa per parametro) — mansioni + skill
   const parametriRadar: Record<string, { nome: string; colore: string; autoVals: number[]; respVals: number[] }> = {};
-  for (const m of mansioni) {
-    const parametro = m!.parametro as { id: string; nome: string; colore: string } | null;
+  for (const v of [...mansioni.map((m) => m!), ...skills]) {
+    const parametro = v.parametro as { id: string; nome: string; colore: string } | null;
     if (!parametro) continue;
     if (!parametriRadar[parametro.id]) {
       parametriRadar[parametro.id] = { nome: parametro.nome, colore: parametro.colore, autoVals: [], respVals: [] };
     }
-    const autoVal = risposteMap.auto.get(m!.id);
-    const respVal = risposteMap.responsabile.get(m!.id);
+    const autoVal = risposteMap.auto.get(v.id);
+    const respVal = risposteMap.responsabile.get(v.id);
     if (autoVal !== undefined) parametriRadar[parametro.id].autoVals.push(autoVal);
     if (respVal !== undefined) parametriRadar[parametro.id].respVals.push(respVal);
   }

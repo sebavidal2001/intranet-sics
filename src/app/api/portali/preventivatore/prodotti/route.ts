@@ -5,6 +5,18 @@ import { getPortaleAccesso } from "@/lib/auth/portale";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * GET /api/portali/preventivatore/prodotti?q=<testo>
+ *
+ * Cerca articoli nell'anagrafica cruscotto (preventivatore.prodotti) via RPC
+ * search_prodotti (match per codice, codice_norm, descrizione con trigram).
+ *
+ * Risposta: array di Prodotto compatibile col builder.
+ *   {
+ *     id, codice, descrizione, ult_costo, fornitore, unita_misura, giacenza,
+ *     categoria, n_magazzini, prezzo_stale
+ *   }
+ */
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -23,28 +35,48 @@ export async function GET(request: NextRequest) {
     }
 
     const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
+    if (!q) return NextResponse.json([]);
 
     const adminClient = createAdminClient();
 
-    let query = adminClient
+    const { data, error } = await adminClient
       .schema("preventivatore")
-      .from("prodotti")
-      .select("id, codice, descrizione, categoria, unita_misura, prezzo_listino, fornitore, giacenza")
-      .eq("is_attivo", true)
-      .limit(20);
-
-    if (q) {
-      query = query.or(`codice.ilike.%${q}%,descrizione.ilike.%${q}%`);
-    }
-
-    const { data, error } = await query;
+      .rpc("search_prodotti", { q, limite: 20 });
 
     if (error) {
-      console.error("Prodotti fetch error:", error);
+      console.error("Prodotti search_prodotti error:", error);
       return NextResponse.json({ error: "Errore recupero prodotti" }, { status: 500 });
     }
 
-    return NextResponse.json(data ?? []);
+    type RpcRow = {
+      codice: string;
+      descrizione: string | null;
+      uc: string | null;
+      categoria: string | null;
+      ult_costo: number | null;
+      esistenza_totale: number | null;
+      disponibilita_totale: number | null;
+      n_magazzini: number;
+      prezzo_stale: boolean;
+      score: number;
+    };
+
+    // Mapping verso il tipo `Prodotto` usato dal builder
+    const mapped = ((data as RpcRow[]) ?? []).map((r) => ({
+      id: r.codice, // il codice è la PK
+      codice: r.codice,
+      descrizione: r.descrizione ?? "",
+      ult_costo: r.ult_costo,
+      fornitore: r.categoria, // riusiamo lo slot "fornitore" del builder per mostrare la categoria
+      unita_misura: r.uc ?? "PZ",
+      giacenza: r.esistenza_totale,
+      // campi extra (UI builder può ignorarli)
+      categoria: r.categoria,
+      n_magazzini: r.n_magazzini,
+      prezzo_stale: r.prezzo_stale,
+    }));
+
+    return NextResponse.json(mapped);
   } catch (error) {
     console.error("Prodotti route error:", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });

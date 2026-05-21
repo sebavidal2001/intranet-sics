@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import {
   Document,
   Page,
@@ -13,6 +14,8 @@ import { RadarChartSvg } from "./sections/radar-section";
 // Tipi
 // ============================================================
 export interface RigaCertificato {
+  /** Tipo voce: "mansione" o "skill". Opzionale per retro-compatibilità. */
+  tipo?: "mansione" | "skill";
   mansione: string;
   parametro: string;
   parametroColore: string;
@@ -270,6 +273,21 @@ export function makeStyles(cfg: CertificatoConfig) {
       alignItems: "center",
     },
     tableRowAlt: { backgroundColor: bgPage },
+    tableGroupRow: {
+      flexDirection: "row",
+      backgroundColor: bgPage,
+      paddingVertical: 3,
+      paddingHorizontal: 6,
+      borderBottomWidth: 0.5,
+      borderBottomColor: border,
+    },
+    tableGroupText: {
+      fontFamily: fontBold,
+      fontSize: 6.5,
+      letterSpacing: 1,
+      color: primary,
+      textTransform: "uppercase",
+    },
     tableRowTotal: {
       flexDirection: "row",
       paddingVertical: 6,
@@ -443,10 +461,10 @@ export function CertificatoPDF({ dati }: { dati: DatiCertificato }) {
             </View>
           </View>
 
-          {/* ── Tabella mansioni ─────────────────────────── */}
+          {/* ── Tabella voci (mansioni + skill) ──────────── */}
           <View style={s.table}>
             <View style={s.tableHeader}>
-              <Text style={[s.tableHeaderCell, s.colMansione]}>Mansione</Text>
+              <Text style={[s.tableHeaderCell, s.colMansione]}>Voce valutata</Text>
               <Text style={[s.tableHeaderCell, s.colAuto]}>Autoval.</Text>
               <Text style={[s.tableHeaderCell, s.colResp]}>Val. Resp.</Text>
               <Text style={[s.tableHeaderCell, s.colPunteggio]}>Punteggio</Text>
@@ -455,8 +473,20 @@ export function CertificatoPDF({ dati }: { dati: DatiCertificato }) {
 
             {righe.map((r, i) => {
               const diff = r.punteggioAuto !== null && r.punteggioResp !== null ? r.punteggioAuto - r.punteggioResp : null;
+              // Intestazione di gruppo: prima riga di un blocco "mansione" o "skill"
+              const tipoCorr = r.tipo ?? "mansione";
+              const tipoPrec = i > 0 ? (righe[i - 1].tipo ?? "mansione") : null;
+              const mostraGruppo = tipoPrec !== null && tipoCorr !== tipoPrec;
               return (
-                <View key={i} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}>
+                <Fragment key={i}>
+                  {mostraGruppo && (
+                    <View style={s.tableGroupRow}>
+                      <Text style={s.tableGroupText}>
+                        {tipoCorr === "skill" ? "SKILL" : "MANSIONI"}
+                      </Text>
+                    </View>
+                  )}
+                <View style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}>
                   <View style={s.colMansione}>
                     <Text style={{ fontSize: 8, lineHeight: 1.3 }}>{r.mansione}</Text>
                     <Text style={{ fontSize: 6.5, color: r.parametroColore, marginTop: 1 }}>
@@ -480,6 +510,7 @@ export function CertificatoPDF({ dati }: { dati: DatiCertificato }) {
                     )}
                   </View>
                 </View>
+                </Fragment>
               );
             })}
 

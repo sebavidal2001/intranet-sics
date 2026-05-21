@@ -9,6 +9,7 @@ import {
   calcNettoArticolo,
   calcTotaleServizio,
   calcTotaleBlocco,
+  COEFF_RICARICO_DEFAULT,
   TIPI_BLOCCO,
   COLORI_BLOCCO,
   type Blocco,
@@ -96,16 +97,36 @@ function SearchArticoli({
                 }}
                 className="w-full text-left px-3 py-2 hover:bg-bg-page transition-colors border-b border-border last:border-0"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-medium text-[#00a1be]">{p.codice}</span>
-                  {p.prezzo_listino != null && (
-                    <span className="text-xs text-text-muted">{fmtEur(p.prezzo_listino)}/{p.unita_misura}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-mono font-medium text-[#00a1be] truncate">{p.codice}</span>
+                  {p.ult_costo != null && (
+                    <span className="text-xs text-text-muted shrink-0 flex items-center gap-1">
+                      {fmtEur(p.ult_costo)}/{p.unita_misura}
+                      {p.prezzo_stale && (
+                        <span
+                          title="Prezzo aggiornato più di 1 anno fa"
+                          className="text-[10px] px-1 rounded bg-amber-500/15 text-amber-600 font-medium"
+                        >
+                          ?
+                        </span>
+                      )}
+                    </span>
                   )}
                 </div>
                 <div className="text-sm text-text truncate">{p.descrizione}</div>
-                {p.fornitore && (
-                  <div className="text-xs text-text-muted">{p.fornitore}</div>
-                )}
+                <div className="flex items-center justify-between gap-2 text-xs text-text-muted">
+                  <span className="truncate">{p.categoria || p.fornitore || ""}</span>
+                  <span className="shrink-0 flex items-center gap-2">
+                    {p.giacenza != null && p.giacenza > 0 && (
+                      <span className="text-emerald-600">stock {p.giacenza}</span>
+                    )}
+                    {p.n_magazzini != null && p.n_magazzini > 1 && (
+                      <span title={`Registrato in ${p.n_magazzini} magazzini`}>
+                        ({p.n_magazzini} mag)
+                      </span>
+                    )}
+                  </span>
+                </div>
               </button>
             ))
           )}
@@ -343,9 +364,9 @@ export function BloccoCard({
       prodotto_id: p.id,
       codice: p.codice,
       descrizione: p.descrizione,
-      prezzo_listino: p.prezzo_listino ?? 0,
+      ult_costo: p.ult_costo ?? 0,
       qty: 1,
-      markup: 20,
+      coeff_ricarico: COEFF_RICARICO_DEFAULT,
     }
     onChange({ ...blocco, articoli: [...blocco.articoli, articolo] })
   }
@@ -461,11 +482,11 @@ export function BloccoCard({
                       <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-16">
                         Q.tà
                       </th>
-                      <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
-                        Listino
+                      <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-28">
+                        Ult. Costo
                       </th>
-                      <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20">
-                        Markup%
+                      <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
+                        Coeff. ricarico
                       </th>
                       <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
                         Netto
@@ -493,19 +514,30 @@ export function BloccoCard({
                             className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
                           />
                         </td>
-                        <td className="px-2 py-1.5 border border-border text-right text-xs text-text-muted">
-                          {fmtEur(a.prezzo_listino)}
-                        </td>
                         <td className="px-2 py-1.5 border border-border">
                           <input
                             type="number"
                             min={0}
-                            step={0.1}
-                            value={a.markup}
+                            step={0.01}
+                            value={a.ult_costo}
                             onChange={(e) =>
-                              aggiornaArticolo(a._key, "markup", Number(e.target.value))
+                              aggiornaArticolo(a._key, "ult_costo", Math.max(0, Number(e.target.value)))
+                            }
+                            className="w-full text-right text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 border border-border">
+                          <input
+                            type="number"
+                            min={0.01}
+                            max={1}
+                            step={0.01}
+                            value={a.coeff_ricarico}
+                            onChange={(e) =>
+                              aggiornaArticolo(a._key, "coeff_ricarico", Math.max(0.01, Number(e.target.value)))
                             }
                             className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                            title="Convenzione SICS: prezzo = ult_costo / coeff_ricarico (es. 0.5 = ricarico 100%)"
                           />
                         </td>
                         <td className="px-2 py-1.5 border border-border text-right text-sm font-medium text-text">

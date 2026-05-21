@@ -10,6 +10,7 @@ import {
   PRECISO_FALLBACK,
   CREATIVO_FALLBACK,
 } from "@/lib/portali/preventivatore/chat/tool-definitions";
+import { formatBuilderStateForPrompt } from "@/lib/portali/preventivatore/chat/builder-state-prompt";
 import type { ChatRequestBody, ChatMessage, ToolName } from "@/lib/portali/preventivatore/chat/types";
 import type { ChatHandlerResult } from "@/lib/portali/preventivatore/chat/types";
 
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
     if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
 
     const body = (await request.json()) as ChatRequestBody;
-    const { messages, contesto = "archivio", modalita = "preciso", sessione_id } = body;
+    const { messages, contesto = "archivio", modalita = "preciso", sessione_id, builder_state } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0)
       return NextResponse.json({ error: "Messages obbligatori" }, { status: 400 });
@@ -202,7 +203,13 @@ export async function POST(request: NextRequest) {
       "Gli importi SONO disponibili: usa list_preventivi con order_by='importo_preventivo' e order_dir='desc' per ordinarli. " +
       (contesto === "nuovo"
         ? "L'utente sta costruendo un nuovo preventivo e cerca ispirazione dai precedenti. Aiutalo a trovare configurazioni simili e suggerisci strutture e prezzi ragionevoli."
-        : "L'utente sta consultando l'archivio preventivi per analisi e aggiornamenti di stato.");
+        : "L'utente sta consultando l'archivio preventivi per analisi e aggiornamenti di stato.") +
+      // Builder-aware: se l'utente sta nel configuratore con uno stato builder,
+      // aggiungiamo il prompt builder dedicato + lo snapshot live del preventivo.
+      (contesto === "nuovo" && builder_state
+        ? "\n\n" + (cfg.system_prompt_builder ?? "Sei un consulente che assiste l'utente nel configuratore. Usa lo stato del preventivo sotto come fonte primaria.") +
+          "\n" + formatBuilderStateForPrompt(builder_state)
+        : "");
 
     // Esegui l'handler AI con fallback automatico OpenRouter → Gemini
     let result: ChatHandlerResult;

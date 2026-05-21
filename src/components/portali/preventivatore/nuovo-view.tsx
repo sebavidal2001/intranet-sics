@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
-import { PlusCircle, Loader2 } from "lucide-react"
+import { PlusCircle, Loader2, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AutocompleteCliente } from "@/components/portali/preventivatore/autocomplete-cliente"
@@ -13,10 +13,12 @@ import {
   calcTotaleServizio,
   calcTotaleBlocco,
   creaBlocco,
+  buildBuilderState,
   type Cliente,
   type ServizioDB,
   type Blocco,
 } from "@/components/portali/preventivatore/nuovo-view-types"
+import { useMemo } from "react"
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -33,6 +35,12 @@ const ChatAI = dynamic(
   }
 )
 
+const SchedaTecnicaDialog = dynamic(
+  () =>
+    import("@/components/portali/preventivatore/scheda-tecnica-dialog").then((m) => m.SchedaTecnicaDialog),
+  { ssr: false }
+)
+
 export function NuovoView() {
   const [titolo, setTitolo] = useState("")
   const [cliente, setCliente] = useState<Cliente | null>(null)
@@ -40,6 +48,7 @@ export function NuovoView() {
   const [blocchi, setBlocchi] = useState<Blocco[]>([])
   const [serviziDB, setServiziDB] = useState<ServizioDB[]>([])
   const [loadingServizi, setLoadingServizi] = useState(true)
+  const [schedaOpen, setSchedaOpen] = useState(false)
 
   // Load servizi at mount
   useEffect(() => {
@@ -91,12 +100,18 @@ export function NuovoView() {
     0
   )
 
-  const markupMedio =
+  const coeffRicaricoMedio =
     nArticoliTotali > 0
       ? blocchi
           .flatMap((b) => b.articoli)
-          .reduce((sum, a) => sum + a.markup, 0) / nArticoliTotali
+          .reduce((sum, a) => sum + a.coeff_ricarico, 0) / nArticoliTotali
       : 0
+
+  // Snapshot del preventivo per la chat AI builder-aware e per la scheda tecnica
+  const builderState = useMemo(
+    () => buildBuilderState({ titolo, cliente, dataConsegna, blocchi }),
+    [titolo, cliente, dataConsegna, blocchi]
+  )
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -235,8 +250,8 @@ export function NuovoView() {
                 </div>
                 {nArticoliTotali > 0 && (
                   <div>
-                    <div className="text-xs text-text-muted uppercase tracking-wide">Markup medio</div>
-                    <div className="text-lg font-bold text-text">{markupMedio.toFixed(1)}%</div>
+                    <div className="text-xs text-text-muted uppercase tracking-wide">Coeff. ricarico medio</div>
+                    <div className="text-lg font-bold text-text">{coeffRicaricoMedio.toFixed(2)}</div>
                   </div>
                 )}
                 <div>
@@ -247,20 +262,45 @@ export function NuovoView() {
                 </div>
               </div>
 
-              <Button
-                onClick={() => alert("Funzionalità di salvataggio in arrivo")}
-                className="text-white px-6"
-                style={{ backgroundColor: "#00a1be" }}
-              >
-                Salva Preventivo
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSchedaOpen(true)}
+                  className="gap-1.5"
+                  disabled={blocchi.length === 0}
+                  title="Genera scheda tecnica AI con il preventivo corrente"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  Scheda tecnica
+                </Button>
+                <Button
+                  onClick={() => alert("Funzionalità di salvataggio in arrivo")}
+                  className="text-white px-6"
+                  style={{ backgroundColor: "#00a1be" }}
+                >
+                  Salva Preventivo
+                </Button>
+              </div>
             </div>
           )}
         </div>
 
         {/* ── AI Chat sidebar ── */}
-        <ChatAI contesto="nuovo" placeholder="Chiedi ai preventivi storici..." />
+        <ChatAI
+          contesto="nuovo"
+          placeholder="Chiedi suggerimenti sul preventivo, confronti storici, ottimizzazioni..."
+          builderState={builderState}
+        />
       </div>
+
+      {/* ── Dialog scheda tecnica ── */}
+      {schedaOpen && (
+        <SchedaTecnicaDialog
+          open={schedaOpen}
+          onClose={() => setSchedaOpen(false)}
+          builderState={builderState}
+        />
+      )}
     </div>
   )
 }

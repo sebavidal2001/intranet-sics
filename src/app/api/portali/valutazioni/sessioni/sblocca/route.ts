@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sendEmail, getSessioneApertainEmailTemplate } from "@/lib/email/nodemailer";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
-import { env } from "@/lib/config/env";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * POST /api/portali/valutazioni/sessioni/sblocca
+ *
+ * Apre o chiude una sessione di valutazione globale (`sessioni_valutazione`).
+ * NON invia alcuna email: l'invio di notifiche è stato disabilitato su
+ * richiesta esplicita (la sessione si comunica internamente in altri modi).
+ *
+ * Body: { sessioneId: string, isAperta: boolean }
+ */
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // Verifica autenticazione
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -19,76 +25,52 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
     }
 
-    // Verifica che sia admin
     const isAdmin = await isValutazioniAdmin(supabase, user.id);
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: "Accesso negato" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
     const body = await request.json();
     const { sessioneId, isAperta } = body;
 
     if (!sessioneId || typeof isAperta !== "boolean") {
+      return NextResponse.json({ error: "Parametri non validi" }, { status: 400 });
+    }
+
+    // Verifica esistenza sessione (diagnostica chiara: distingue "non trovata"
+    // da "errore di scrittura/permesso")
+    const { data: esistente, error: readError } = await supabase
+      .from("sessioni_valutazione")
+      .select("id")
+      .eq("id", sessioneId)
+      .maybeSingle();
+
+    if (readError) {
+      console.error("Sblocca sessione - lettura:", readError);
       return NextResponse.json(
-        { error: "Parametri non validi" },
-        { status: 400 }
+        { error: "Errore lettura sessione" },
+        { status: 500 }
+      );
+    }
+    if (!esistente) {
+      return NextResponse.json(
+        { error: "Sessione non trovata" },
+        { status: 404 }
       );
     }
 
-    // 1. Aggiorna stato sessione
-    const { data: sessione, error: updateError } = await supabase
+    // Aggiorna lo stato della sessione
+    const { error: updateError } = await supabase
       .from("sessioni_valutazione")
       .update({ is_aperta: isAperta })
-      .eq("id", sessioneId)
-      .select("anno")
-      .single();
+      .eq("id", sessioneId);
 
-    if (updateError || !sessione) {
+    if (updateError) {
+      console.error("Sblocca sessione - update:", updateError);
       return NextResponse.json(
         { error: "Errore aggiornamento sessione" },
         { status: 500 }
       );
-    }
-
-    // 2. Se sbloccata (is_aperta = true), invia email a tutti gli utenti
-    if (isAperta) {
-      const { data: utenti } = await supabase
-        .from("utenti")
-        .select("nome, cognome, email")
-        .neq("ruolo", "admin"); // Escludi admin dalle notifiche
-
-      if (utenti && utenti.length > 0) {
-        const urlPiattaforma = env.app.url;
-
-        // Invia email a tutti gli utenti in parallelo, tracciando i fallimenti
-        const emailFallite: string[] = [];
-        const emailPromises = utenti.map((utente) =>
-          sendEmail({
-            to: utente.email,
-            subject: `Sessione Valutazione ${sessione.anno} - Aperta`,
-            html: getSessioneApertainEmailTemplate(
-              `${utente.nome} ${utente.cognome}`,
-              sessione.anno,
-              urlPiattaforma
-            ),
-            text: `Ciao ${utente.nome}, la sessione di valutazione ${sessione.anno} è stata aperta. Accedi a ${urlPiattaforma}/valutazioni per completare la tua autovalutazione.`,
-          }).catch((error) => {
-            console.error(`Errore invio email a ${utente.email}:`, error);
-            emailFallite.push(utente.email);
-          })
-        );
-
-        await Promise.all(emailPromises);
-
-        return NextResponse.json({
-          success: true,
-          message: `Sessione ${isAperta ? "aperta" : "chiusa"}. ${utenti.length - emailFallite.length}/${utenti.length} email inviate.`,
-          emailFallite: emailFallite.length > 0 ? emailFallite : undefined,
-        });
-      }
     }
 
     return NextResponse.json({
@@ -97,9 +79,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Sblocca sessione error:", error);
-    return NextResponse.json(
-      { error: "Errore del server" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

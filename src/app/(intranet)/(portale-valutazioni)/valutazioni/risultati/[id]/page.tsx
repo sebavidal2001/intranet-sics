@@ -16,7 +16,7 @@ import type { StatoSessioneUtente, RadarDataPoint } from "@/lib/types";
 import { STATO_SESSIONE_LABELS } from "@/lib/types";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
 
-interface MansioneConParametro {
+interface VoceConParametro {
   id: string;
   testo: string;
   ordine: number;
@@ -24,14 +24,15 @@ interface MansioneConParametro {
 }
 
 interface RispostaRaw {
-  mansione_id: string;
+  mansione_id: string | null;
+  skill_id: string | null;
   punteggio: number;
   tipo: "responsabile" | "autovalutazione";
   note: string | null;
 }
 
 interface ConfrontoRow {
-  mansione_id: string;
+  id: string;
   testo: string;
   parametro: string | null;
   parametroColore: string | null;
@@ -111,7 +112,6 @@ export default async function RisultatiPage({
     redirect("/valutazioni");
   }
 
-  // Solo se completata o certificata mostriamo i risultati completi
   const stato = sessione.stato as StatoSessioneUtente;
 
   // Carica scala
@@ -127,9 +127,9 @@ export default async function RisultatiPage({
 
   if (!scala) redirect("/valutazioni");
 
-  // Carica mansioni attive dell'utente
   const utente = sessione.utente as { id: string; nome: string; cognome: string; reparto: string };
 
+  // Carica mansioni attive dell'utente
   const { data: utenteMansioni } = await supabase
     .from("utente_mansioni")
     .select(
@@ -145,69 +145,113 @@ export default async function RisultatiPage({
     )
     .eq("utente_id", utente.id);
 
-  const mansioni: MansioneConParametro[] = (utenteMansioni ?? [])
-    .map((um) => (um as unknown as { mansione: MansioneConParametro | null }).mansione)
-    .filter((m): m is MansioneConParametro => m !== null)
+  const mansioni: VoceConParametro[] = (utenteMansioni ?? [])
+    .map((um) => (um as unknown as { mansione: VoceConParametro | null }).mansione)
+    .filter((m): m is VoceConParametro => m !== null)
     .sort((a, b) => a.ordine - b.ordine);
 
-  // Carica tutte le risposte per questa sessione
+  // Carica skill della sessione
+  const { data: sessioneSkills } = await supabase
+    .from("sessione_skills")
+    .select(
+      `
+      skill_id,
+      skill:skills!sessione_skills_skill_id_fkey(
+        id,
+        nome,
+        ordine,
+        parametro_radar:parametri_radar(id, nome, colore)
+      )
+    `
+    )
+    .eq("sessione_id", id) as unknown as {
+      data: Array<{ skill_id: string; skill: {
+        id: string;
+        nome: string;
+        ordine: number;
+        parametro_radar: { id: string; nome: string; colore: string } | null;
+      } | null }> | null;
+    };
+
+  const skills: VoceConParametro[] = (sessioneSkills ?? [])
+    .map((ss) => ss.skill)
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+    .map((s) => ({ id: s.id, testo: s.nome, ordine: s.ordine, parametro_radar: s.parametro_radar }))
+    .sort((a, b) => a.ordine - b.ordine);
+
+  // Carica tutte le risposte per questa sessione (mansioni + skill)
   const { data: risposte } = await supabase
     .from("risposte_valutazione")
-    .select("mansione_id, punteggio, tipo, note")
+    .select("mansione_id, skill_id, punteggio, tipo, note")
     .eq("sessione_utente_id", id);
 
   const risposteRaw: RispostaRaw[] = (risposte ?? []) as RispostaRaw[];
 
-  const risposteAutoMap = risposteRaw
-    .filter((r) => r.tipo === "autovalutazione")
-    .reduce<Record<string, { punteggio: number; note: string | null }>>((acc, r) => {
-      acc[r.mansione_id] = { punteggio: r.punteggio, note: r.note };
-      return acc;
-    }, {});
+  // Map indicizzate per voce (sia mansioni sia skill: gli id UUID non collidono)
+  const buildMap = (tipo: "autovalutazione" | "responsabile", chiave: "mansione_id" | "skill_id") =>
+    risposteRaw
+      .filter((r) => r.tipo === tipo && r[chiave])
+      .reduce<Record<string, { punteggio: number; note: string | null }>>((acc, r) => {
+        acc[r[chiave]!] = { punteggio: r.punteggio, note: r.note };
+        return acc;
+      }, {});
 
-  const risposteRespMap = risposteRaw
-    .filter((r) => r.tipo === "responsabile")
-    .reduce<Record<string, { punteggio: number; note: string | null }>>((acc, r) => {
-      acc[r.mansione_id] = { punteggio: r.punteggio, note: r.note };
-      return acc;
-    }, {});
+  const autoMansMap = buildMap("autovalutazione", "mansione_id");
+  const respMansMap = buildMap("responsabile", "mansione_id");
+  const autoSkillMap = buildMap("autovalutazione", "skill_id");
+  const respSkillMap = buildMap("responsabile", "skill_id");
 
-  // Calcola tabella confronto
-  const confrontoRows: ConfrontoRow[] = mansioni.map((m) => {
-    const auto = risposteAutoMap[m.id]?.punteggio ?? null;
-    const resp = risposteRespMap[m.id]?.punteggio ?? null;
-    const delta = auto !== null && resp !== null ? auto - resp : null;
+  // Costruisce le righe di confronto per una lista di voci
+  function buildConfronto(
+    voci: VoceConParametro[],
+    autoMap: Record<string, { punteggio: number; note: string | null }>,
+    respMap: Record<string, { punteggio: number; note: string | null }>
+  ): ConfrontoRow[] {
+    return voci.map((v) => {
+      const auto = autoMap[v.id]?.punteggio ?? null;
+      const resp = respMap[v.id]?.punteggio ?? null;
+      return {
+        id: v.id,
+        testo: v.testo,
+        parametro: v.parametro_radar?.nome ?? null,
+        parametroColore: v.parametro_radar?.colore ?? null,
+        auto,
+        responsabile: resp,
+        delta: auto !== null && resp !== null ? auto - resp : null,
+        noteAuto: autoMap[v.id]?.note ?? null,
+        noteResp: respMap[v.id]?.note ?? null,
+      };
+    });
+  }
 
-    return {
-      mansione_id: m.id,
-      testo: m.testo,
-      parametro: m.parametro_radar?.nome ?? null,
-      parametroColore: m.parametro_radar?.colore ?? null,
-      auto,
-      responsabile: resp,
-      delta,
-      noteAuto: risposteAutoMap[m.id]?.note ?? null,
-      noteResp: risposteRespMap[m.id]?.note ?? null,
-    };
-  });
+  const confrontoMansioni = buildConfronto(mansioni, autoMansMap, respMansMap);
+  const confrontoSkills = buildConfronto(skills, autoSkillMap, respSkillMap);
 
-  // Calcola dati radar: raggruppa per parametro_radar (media)
+  // Radar: raggruppa per parametro_radar la media di mansioni + skill insieme
   const parametriMap: Record<
     string,
     { nome: string; autoVals: number[]; respVals: number[] }
   > = {};
 
-  for (const m of mansioni) {
-    if (!m.parametro_radar) continue;
-    const pid = m.parametro_radar.id;
-    if (!parametriMap[pid]) {
-      parametriMap[pid] = { nome: m.parametro_radar.nome, autoVals: [], respVals: [] };
+  function accumulaRadar(
+    voci: VoceConParametro[],
+    autoMap: Record<string, { punteggio: number; note: string | null }>,
+    respMap: Record<string, { punteggio: number; note: string | null }>
+  ) {
+    for (const v of voci) {
+      if (!v.parametro_radar) continue;
+      const pid = v.parametro_radar.id;
+      if (!parametriMap[pid]) {
+        parametriMap[pid] = { nome: v.parametro_radar.nome, autoVals: [], respVals: [] };
+      }
+      const autoVal = autoMap[v.id]?.punteggio;
+      const respVal = respMap[v.id]?.punteggio;
+      if (autoVal !== undefined) parametriMap[pid].autoVals.push(autoVal);
+      if (respVal !== undefined) parametriMap[pid].respVals.push(respVal);
     }
-    const autoVal = risposteAutoMap[m.id]?.punteggio;
-    const respVal = risposteRespMap[m.id]?.punteggio;
-    if (autoVal !== undefined) parametriMap[pid].autoVals.push(autoVal);
-    if (respVal !== undefined) parametriMap[pid].respVals.push(respVal);
   }
+  accumulaRadar(mansioni, autoMansMap, respMansMap);
+  accumulaRadar(skills, autoSkillMap, respSkillMap);
 
   const radarData: RadarDataPoint[] = Object.values(parametriMap).map((p) => ({
     parametro: p.nome,
@@ -221,14 +265,12 @@ export default async function RisultatiPage({
         : 0,
   }));
 
-  // Media finale responsabile
-  const risposteRespAll = Object.values(risposteRespMap);
+  // Media finale responsabile — su mansioni + skill
+  const respTutti = [...Object.values(respMansMap), ...Object.values(respSkillMap)];
   const mediaResponsabile =
-    risposteRespAll.length > 0
+    respTutti.length > 0
       ? Math.round(
-          (risposteRespAll.reduce((acc, r) => acc + r.punteggio, 0) /
-            risposteRespAll.length) *
-            10
+          (respTutti.reduce((acc, r) => acc + r.punteggio, 0) / respTutti.length) * 10
         ) / 10
       : null;
 
@@ -245,6 +287,150 @@ export default async function RisultatiPage({
     completata: "success",
     certificata: "success",
   };
+
+  // ── Render di una tabella di confronto (riusata per mansioni e skill) ────────
+  function TabellaConfronto({
+    titolo,
+    colonnaVoce,
+    rows,
+  }: {
+    titolo: string;
+    colonnaVoce: string;
+    rows: ConfrontoRow[];
+  }) {
+    if (rows.length === 0) return null;
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-tenorite text-xl">{titolo}</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-3 pr-4 font-tenorite text-text font-semibold">
+                  {colonnaVoce}
+                </th>
+                <th className="text-center py-3 px-3 font-tenorite text-text font-semibold whitespace-nowrap">
+                  Autoval.
+                </th>
+                <th className="text-center py-3 px-3 font-tenorite text-text font-semibold whitespace-nowrap">
+                  Responsabile
+                </th>
+                <th className="text-center py-3 px-3 font-tenorite text-text font-semibold">
+                  Delta
+                </th>
+                <th className="text-center py-3 pl-3 font-tenorite text-text font-semibold">
+                  Note
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const absDelta = row.delta !== null ? Math.abs(row.delta) : null;
+
+                let deltaBadge: React.ReactNode = <span className="text-text-muted">—</span>;
+                if (row.delta === 0) {
+                  deltaBadge = (
+                    <Badge variant="secondary" className="font-tenorite">=</Badge>
+                  );
+                } else if (absDelta === 1) {
+                  deltaBadge = (
+                    <Badge variant="warning" className="font-tenorite">
+                      {row.delta! > 0 ? "+" : ""}
+                      {row.delta}
+                    </Badge>
+                  );
+                } else if (absDelta !== null && absDelta >= 2) {
+                  deltaBadge = (
+                    <Badge variant="danger" className="font-tenorite gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      {row.delta! > 0 ? "+" : ""}
+                      {row.delta}
+                    </Badge>
+                  );
+                }
+
+                const hasAlert = absDelta !== null && absDelta >= 2;
+
+                return (
+                  <tr
+                    key={row.id}
+                    className={`border-b border-border last:border-0 ${
+                      hasAlert ? "bg-danger/5" : ""
+                    }`}
+                  >
+                    <td className="py-3 pr-4 text-text leading-snug">
+                      <div className="flex items-start gap-2">
+                        {hasAlert && (
+                          <AlertTriangle className="h-4 w-4 text-danger mt-0.5 shrink-0" />
+                        )}
+                        <div>
+                          <span>{row.testo}</span>
+                          {row.parametro && (
+                            <div className="mt-0.5">
+                              <Badge
+                                className="text-white text-xs"
+                                style={{
+                                  backgroundColor: row.parametroColore ?? "#747373",
+                                  borderColor: row.parametroColore ?? "#747373",
+                                }}
+                              >
+                                {row.parametro}
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-center">
+                      {row.auto !== null ? (
+                        <span className="font-tenorite font-semibold text-primary">
+                          {row.auto}
+                        </span>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-center">
+                      {row.responsabile !== null ? (
+                        <span className="font-tenorite font-semibold text-warning">
+                          {row.responsabile}
+                        </span>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-center">{deltaBadge}</td>
+                    <td className="py-3 pl-3 text-center">
+                      {(row.noteAuto || row.noteResp) ? (
+                        <div className="text-xs text-text-muted space-y-1 text-left max-w-48">
+                          {row.noteResp && (
+                            <p>
+                              <span className="font-medium text-text">R:</span>{" "}
+                              {row.noteResp}
+                            </p>
+                          )}
+                          {row.noteAuto && (
+                            <p>
+                              <span className="font-medium text-text">A:</span>{" "}
+                              {row.noteAuto}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -319,152 +505,24 @@ export default async function RisultatiPage({
         </Card>
       )}
 
-      {/* Radar chart — client component */}
+      {/* Radar chart — client component (mansioni + skill aggregate per parametro) */}
       {radarData.length > 0 && (
         <RisultatiClient radarData={radarData} scalaMax={scala.max} />
       )}
 
-      {/* Tabella confronto */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-tenorite text-xl">
-            Confronto per mansione
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-3 pr-4 font-tenorite text-text font-semibold">
-                  Mansione
-                </th>
-                <th className="text-center py-3 px-3 font-tenorite text-text font-semibold whitespace-nowrap">
-                  Autoval.
-                </th>
-                <th className="text-center py-3 px-3 font-tenorite text-text font-semibold whitespace-nowrap">
-                  Responsabile
-                </th>
-                <th className="text-center py-3 px-3 font-tenorite text-text font-semibold">
-                  Delta
-                </th>
-                <th className="text-center py-3 pl-3 font-tenorite text-text font-semibold">
-                  Note
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {confrontoRows.map((row) => {
-                const absDelta =
-                  row.delta !== null ? Math.abs(row.delta) : null;
+      {/* Tabella confronto mansioni */}
+      <TabellaConfronto
+        titolo="Confronto per mansione"
+        colonnaVoce="Mansione"
+        rows={confrontoMansioni}
+      />
 
-                let deltaBadge: React.ReactNode = (
-                  <Badge variant="secondary">=</Badge>
-                );
-                if (row.delta === null) {
-                  deltaBadge = <span className="text-text-muted">—</span>;
-                } else if (row.delta === 0) {
-                  deltaBadge = (
-                    <Badge variant="secondary" className="font-tenorite">
-                      =
-                    </Badge>
-                  );
-                } else if (absDelta === 1) {
-                  deltaBadge = (
-                    <Badge variant="warning" className="font-tenorite">
-                      {row.delta > 0 ? "+" : ""}
-                      {row.delta}
-                    </Badge>
-                  );
-                } else if (absDelta !== null && absDelta >= 2) {
-                  deltaBadge = (
-                    <Badge variant="danger" className="font-tenorite gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {row.delta > 0 ? "+" : ""}
-                      {row.delta}
-                    </Badge>
-                  );
-                }
-
-                const hasAlert = absDelta !== null && absDelta >= 2;
-
-                return (
-                  <tr
-                    key={row.mansione_id}
-                    className={`border-b border-border last:border-0 ${
-                      hasAlert ? "bg-danger/5" : ""
-                    }`}
-                  >
-                    <td className="py-3 pr-4 text-text leading-snug">
-                      <div className="flex items-start gap-2">
-                        {hasAlert && (
-                          <AlertTriangle className="h-4 w-4 text-danger mt-0.5 shrink-0" />
-                        )}
-                        <div>
-                          <span>{row.testo}</span>
-                          {row.parametro && (
-                            <div className="mt-0.5">
-                              <Badge
-                                className="text-white text-xs"
-                                style={{
-                                  backgroundColor:
-                                    row.parametroColore ?? "#747373",
-                                  borderColor:
-                                    row.parametroColore ?? "#747373",
-                                }}
-                              >
-                                {row.parametro}
-                              </Badge>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      {row.auto !== null ? (
-                        <span className="font-tenorite font-semibold text-primary">
-                          {row.auto}
-                        </span>
-                      ) : (
-                        <span className="text-text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      {row.responsabile !== null ? (
-                        <span className="font-tenorite font-semibold text-warning">
-                          {row.responsabile}
-                        </span>
-                      ) : (
-                        <span className="text-text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-center">{deltaBadge}</td>
-                    <td className="py-3 pl-3 text-center">
-                      {(row.noteAuto || row.noteResp) ? (
-                        <div className="text-xs text-text-muted space-y-1 text-left max-w-48">
-                          {row.noteResp && (
-                            <p>
-                              <span className="font-medium text-text">R:</span>{" "}
-                              {row.noteResp}
-                            </p>
-                          )}
-                          {row.noteAuto && (
-                            <p>
-                              <span className="font-medium text-text">A:</span>{" "}
-                              {row.noteAuto}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-text-muted">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+      {/* Tabella confronto skill */}
+      <TabellaConfronto
+        titolo="Confronto per skill"
+        colonnaVoce="Skill"
+        rows={confrontoSkills}
+      />
     </div>
   );
 }

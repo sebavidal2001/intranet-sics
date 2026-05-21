@@ -160,6 +160,7 @@ export default function CalendarioClient({
   // ── Dettaglio modifica ────────────────────────────────────────────────────
   const [editData, setEditData] = useState("");
   const [editStato, setEditStato] = useState<StatoSessione>("programmata");
+  const [editOrario, setEditOrario] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // ── Chiudi modal con Escape ───────────────────────────────────────────────
@@ -242,6 +243,7 @@ export default function CalendarioClient({
     setModalDettaglio(s);
     setEditData(s.data_programmata ?? "");
     setEditStato(s.stato);
+    setEditOrario(s.orario ?? "");
     setConfirmDelete(false);
     setError("");
   };
@@ -290,6 +292,7 @@ export default function CalendarioClient({
       const result = await updateSessioneUtente(modalDettaglio.id, {
         data_programmata: editData || undefined,
         stato: editStato,
+        orario: editOrario || null,
       });
 
       if (result.error) {
@@ -705,6 +708,18 @@ export default function CalendarioClient({
                   type="date"
                   value={editData}
                   onChange={(e) => setEditData(e.target.value)}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block font-tenorite text-xs text-text-muted mb-1.5">
+                  Orario
+                </label>
+                <input
+                  type="time"
+                  value={editOrario}
+                  onChange={(e) => setEditOrario(e.target.value)}
                   className="w-full border border-border rounded-lg px-3 py-2 text-sm text-text bg-bg focus:outline-none focus:border-primary transition-colors"
                 />
               </div>
