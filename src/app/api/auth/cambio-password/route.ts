@@ -58,7 +58,10 @@ export async function POST(request: NextRequest) {
       });
       if (!error && data.user) {
         userId = data.user.id;
-        await verifier.auth.signOut(); // chiude la sessione del client usa-e-getta
+        // scope:"local" → chiude solo la sessione del client usa-e-getta.
+        // Senza scope, signOut() è GLOBAL e revocherebbe TUTTE le sessioni
+        // dell'utente (incluso il browser da cui sta cambiando la password).
+        await verifier.auth.signOut({ scope: "local" });
         break;
       }
     }

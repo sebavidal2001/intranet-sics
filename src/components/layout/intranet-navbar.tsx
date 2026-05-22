@@ -130,11 +130,10 @@ export function IntranetNavbar({ profile }: { profile: NavbarProfile | null }) {
         <CambioPasswordModal
           forzato={false}
           onClose={() => setCambioPwdOpen(false)}
-          onSuccess={async () => {
-            // Password cambiata: chiudiamo la sessione e si rientra dal login
-            const supabase = createClient()
-            await supabase.auth.signOut()
-            window.location.href = "/auth/login"
+          onSuccess={() => {
+            // Il cambio password via Admin API non revoca la sessione corrente:
+            // l'utente resta loggato, ricarichiamo la intranet.
+            window.location.href = "/"
           }}
         />
       )}

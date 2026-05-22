@@ -202,8 +202,18 @@ export default function LoginPage() {
           identificativoIniziale={modaleCambioPwd.identificativo}
           onClose={modaleCambioPwd.forzato ? undefined : () => setModaleCambioPwd(null)}
           onSuccess={async () => {
-            // Dopo il cambio password si rientra dal login con la nuova password
-            // (cambiare la password puo invalidare la sessione corrente).
+            if (modaleCambioPwd.forzato) {
+              // Primo accesso: l'utente è già autenticato. Il cambio password
+              // via Admin API NON revoca la sessione corrente, quindi entriamo
+              // diretti nella intranet senza ripassare dal login. Così si evita
+              // che il gestore password del browser ricompili la vecchia
+              // password nel form di login.
+              setModaleCambioPwd(null);
+              window.location.href = "/";
+              return;
+            }
+            // Cambio volontario da non loggati: nessuna sessione attiva,
+            // si rientra dal login con la nuova password.
             const supabase = createClient();
             await supabase.auth.signOut();
             setModaleCambioPwd(null);
