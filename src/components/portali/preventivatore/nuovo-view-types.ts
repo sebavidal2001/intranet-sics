@@ -44,16 +44,26 @@ export interface ArticoloBlocco {
    * Prezzo riga = ult_costo * qty / coeff_ricarico. Convenzione storica `righe_distinta`.
    */
   coeff_ricarico: number
+  /**
+   * true = voce inserita manualmente, non presente nell'anagrafica cruscotto.
+   * Per queste righe codice e descrizione sono editabili direttamente in tabella.
+   */
+  manuale?: boolean
 }
 
+/**
+ * Servizio/lavorazione aggiunto a un blocco.
+ * Un servizio presente in `blocco.servizi` è per definizione attivo: i blocchi
+ * nascono senza servizi e l'utente aggiunge solo quelli che gli servono.
+ */
 export interface ServizioBlocco {
+  _key: string
   servizio_id: string
   nome: string
   categoria: string
   tariffa_ora: number
   ore: number
   markup: number
-  attivo: boolean
 }
 
 export interface Blocco {
@@ -113,7 +123,6 @@ export function calcNettoArticolo(a: ArticoloBlocco): number {
 }
 
 export function calcTotaleServizio(s: ServizioBlocco): number {
-  if (!s.attivo) return 0
   return s.tariffa_ora * s.ore * (1 + s.markup / 100)
 }
 
@@ -195,7 +204,7 @@ export function buildBuilderState(input: {
   const totMat = blocchi.reduce((s, b) => s + b.articoli.reduce((x, a) => x + calcNettoArticolo(a), 0), 0)
   const totSrv = blocchi.reduce((s, b) => s + b.servizi.reduce((x, sv) => x + calcTotaleServizio(sv), 0), 0)
   const allArt = blocchi.flatMap((b) => b.articoli)
-  const oreTot = blocchi.reduce((s, b) => s + b.servizi.filter((sv) => sv.attivo).reduce((x, sv) => x + sv.ore, 0), 0)
+  const oreTot = blocchi.reduce((s, b) => s + b.servizi.reduce((x, sv) => x + sv.ore, 0), 0)
   const coeffMedio = allArt.length > 0 ? allArt.reduce((s, a) => s + a.coeff_ricarico, 0) / allArt.length : 0
   return {
     titolo: titolo.trim() || null,
@@ -221,7 +230,7 @@ export function buildBuilderState(input: {
         coeff_ricarico: a.coeff_ricarico,
         netto: calcNettoArticolo(a),
       })),
-      lavorazioni: b.servizi.filter((s) => s.attivo).map((s) => ({
+      lavorazioni: b.servizi.map((s) => ({
         nome: s.nome,
         categoria: s.categoria,
         ore: s.ore,
@@ -245,7 +254,11 @@ export function buildBuilderState(input: {
   }
 }
 
-export function creaBlocco(serviziDB: ServizioDB[]): Blocco {
+/**
+ * Crea un blocco vuoto. I servizi NON vengono precaricati: il blocco nasce
+ * senza lavorazioni e l'utente aggiunge solo quelle che gli servono dal picker.
+ */
+export function creaBlocco(): Blocco {
   return {
     _key: genKey(),
     tipo: TIPI_BLOCCO[0],
@@ -253,14 +266,19 @@ export function creaBlocco(serviziDB: ServizioDB[]): Blocco {
     note: "",
     espanso: true,
     articoli: [],
-    servizi: serviziDB.map((s) => ({
-      servizio_id: s.id,
-      nome: s.nome,
-      categoria: s.categoria,
-      tariffa_ora: s.tariffa_ora,
-      ore: 0,
-      markup: 0,
-      attivo: false,
-    })),
+    servizi: [],
+  }
+}
+
+/** Costruisce un ServizioBlocco da un servizio del catalogo DB. */
+export function servizioBloccoDaDB(s: ServizioDB): ServizioBlocco {
+  return {
+    _key: genKey(),
+    servizio_id: s.id,
+    nome: s.nome,
+    categoria: s.categoria,
+    tariffa_ora: s.tariffa_ora,
+    ore: 1,
+    markup: 0,
   }
 }

@@ -14,6 +14,7 @@ import {
   calcTotaleBlocco,
   creaBlocco,
   buildBuilderState,
+  COLORI_BLOCCO,
   type Cliente,
   type ServizioDB,
   type Blocco,
@@ -50,7 +51,12 @@ export function NuovoView() {
   const [loadingServizi, setLoadingServizi] = useState(true)
   const [schedaOpen, setSchedaOpen] = useState(false)
 
-  // Load servizi at mount
+  // Blocco iniziale (i servizi non vengono precaricati nei blocchi)
+  useEffect(() => {
+    setBlocchi([creaBlocco()])
+  }, [])
+
+  // Carica il catalogo servizi (per il picker delle lavorazioni nei blocchi)
   useEffect(() => {
     async function caricaServizi() {
       try {
@@ -58,12 +64,9 @@ export function NuovoView() {
         if (res.ok) {
           const data: ServizioDB[] = await res.json()
           setServiziDB(data)
-          // Create initial empty block with loaded services
-          setBlocchi([creaBlocco(data)])
         }
       } catch {
-        // silently ignore — blocchi inizializzeranno senza servizi
-        setBlocchi([creaBlocco([])])
+        // silently ignore — il picker servizi resterà vuoto
       } finally {
         setLoadingServizi(false)
       }
@@ -72,15 +75,32 @@ export function NuovoView() {
   }, [])
 
   function aggiungiBlocco() {
-    setBlocchi((prev) => [...prev, creaBlocco(serviziDB)])
+    setBlocchi((prev) => [...prev, creaBlocco()])
   }
 
   function aggiornaBlocco(key: string, b: Blocco) {
-    setBlocchi((prev) => prev.map((x) => (x._key === key ? b : x)))
+    // Accordion: se il blocco viene appena espanso, gli altri si chiudono
+    setBlocchi((prev) => {
+      const precedente = prev.find((x) => x._key === key)
+      const appenaEspanso = b.espanso && precedente !== undefined && !precedente.espanso
+      return prev.map((x) => {
+        if (x._key === key) return b
+        return appenaEspanso ? { ...x, espanso: false } : x
+      })
+    })
   }
 
   function eliminaBlocco(key: string) {
     setBlocchi((prev) => prev.filter((x) => x._key !== key))
+  }
+
+  /** Espande un blocco e chiude tutti gli altri (usato dalla vista d'insieme). */
+  function espandiBlocco(key: string) {
+    setBlocchi((prev) => prev.map((x) => ({ ...x, espanso: x._key === key })))
+    // scroll al blocco dopo il render
+    requestAnimationFrame(() => {
+      document.getElementById(`blocco-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
   }
 
   // Aggregated totals
@@ -96,7 +116,7 @@ export function NuovoView() {
 
   const nArticoliTotali = blocchi.reduce((n, b) => n + b.articoli.length, 0)
   const oreTotali = blocchi.reduce(
-    (ore, b) => ore + b.servizi.filter((s) => s.attivo).reduce((o, s) => o + s.ore, 0),
+    (ore, b) => ore + b.servizi.reduce((o, s) => o + s.ore, 0),
     0
   )
 
@@ -106,6 +126,16 @@ export function NuovoView() {
           .flatMap((b) => b.articoli)
           .reduce((sum, a) => sum + a.coeff_ricarico, 0) / nArticoliTotali
       : 0
+
+  // Indicatore di completezza per la vista d'insieme
+  const coseDaCompletare: string[] = []
+  if (!cliente) coseDaCompletare.push("cliente")
+  const nBlocchiVuoti = blocchi.filter(
+    (b) => b.articoli.length === 0 && b.servizi.length === 0
+  ).length
+  if (nBlocchiVuoti > 0) {
+    coseDaCompletare.push(`${nBlocchiVuoti} blocc${nBlocchiVuoti === 1 ? "o vuoto" : "hi vuoti"}`)
+  }
 
   // Snapshot del preventivo per la chat AI builder-aware e per la scheda tecnica
   const builderState = useMemo(
@@ -194,6 +224,50 @@ export function NuovoView() {
             </div>
           </div>
 
+          {/* Vista d'insieme blocchi */}
+          {blocchi.length > 0 && (
+            <div className="border border-border rounded-xl bg-bg-page p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+                  Riepilogo blocchi
+                </span>
+                {coseDaCompletare.length > 0 && (
+                  <span className="text-xs text-amber-600">
+                    Da completare: {coseDaCompletare.join(" · ")}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {blocchi.map((b, i) => {
+                  const vuoto = b.articoli.length === 0 && b.servizi.length === 0
+                  return (
+                    <button
+                      key={b._key}
+                      onClick={() => espandiBlocco(b._key)}
+                      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+                        b.espanso
+                          ? "border-[#00a1be] bg-[#00a1be]/10"
+                          : "border-border bg-bg hover:border-[#00a1be]/50"
+                      }`}
+                      title={vuoto ? "Blocco vuoto" : ""}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${COLORI_BLOCCO[i % COLORI_BLOCCO.length]}`} />
+                      <span className="font-semibold text-text-muted">B{i + 1}</span>
+                      <span className="text-text truncate max-w-[120px]">
+                        {b.nome || b.tipo}
+                      </span>
+                      {vuoto ? (
+                        <span className="text-amber-600">vuoto</span>
+                      ) : (
+                        <span className="font-medium text-text">{fmtEur(calcTotaleBlocco(b))}</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Blocchi header + add button */}
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-text uppercase tracking-wide">
@@ -203,14 +277,9 @@ export function NuovoView() {
               variant="outline"
               size="sm"
               onClick={aggiungiBlocco}
-              disabled={loadingServizi}
               className="gap-1.5 text-xs"
             >
-              {loadingServizi ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <PlusCircle className="w-3.5 h-3.5" />
-              )}
+              <PlusCircle className="w-3.5 h-3.5" />
               Aggiungi Blocco
             </Button>
           </div>
@@ -218,13 +287,15 @@ export function NuovoView() {
           {/* Blocchi list */}
           <div className="space-y-4">
             {blocchi.map((b, i) => (
-              <BloccoCard
-                key={b._key}
-                blocco={b}
-                indice={i}
-                onChange={(updated) => aggiornaBlocco(b._key, updated)}
-                onDelete={() => eliminaBlocco(b._key)}
-              />
+              <div key={b._key} id={`blocco-${b._key}`} className="scroll-mt-6">
+                <BloccoCard
+                  blocco={b}
+                  indice={i}
+                  serviziDB={serviziDB}
+                  onChange={(updated) => aggiornaBlocco(b._key, updated)}
+                  onDelete={() => eliminaBlocco(b._key)}
+                />
+              </div>
             ))}
 
             {blocchi.length === 0 && !loadingServizi && (

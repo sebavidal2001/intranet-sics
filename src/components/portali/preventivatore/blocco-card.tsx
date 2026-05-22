@@ -1,7 +1,7 @@
 "use client"
 
 import { PlusCircle, Trash2, ChevronDown, ChevronUp, Search, X, Package } from "lucide-react"
-import { useState, useCallback, useRef, useEffect, type CSSProperties } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import {
   fmtEur,
@@ -9,12 +9,14 @@ import {
   calcNettoArticolo,
   calcTotaleServizio,
   calcTotaleBlocco,
+  servizioBloccoDaDB,
   COEFF_RICARICO_DEFAULT,
   TIPI_BLOCCO,
   COLORI_BLOCCO,
   type Blocco,
   type ArticoloBlocco,
   type ServizioBlocco,
+  type ServizioDB,
   type Prodotto,
 } from "@/components/portali/preventivatore/nuovo-view-types"
 
@@ -22,8 +24,11 @@ import {
 
 function SearchArticoli({
   onAggiungi,
+  onAggiungiManuale,
 }: {
   onAggiungi: (p: Prodotto) => void
+  /** Inserisce una voce libera non presente in anagrafica. Riceve il testo digitato. */
+  onAggiungiManuale: (testo: string) => void
 }) {
   const [testo, setTesto] = useState("")
   const [risultati, setRisultati] = useState<Prodotto[]>([])
@@ -82,9 +87,24 @@ function SearchArticoli({
       {aperto && (
         <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-bg shadow-lg overflow-hidden max-h-64 overflow-y-auto">
           {risultati.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-text-muted flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              Nessun articolo trovato nel catalogo
+            <div className="p-2">
+              <div className="px-1 py-2 text-sm text-text-muted flex items-center gap-2">
+                <Package className="w-4 h-4" />
+                Nessun articolo trovato nel catalogo
+              </div>
+              <button
+                onClick={() => {
+                  onAggiungiManuale(testo.trim())
+                  setTesto("")
+                  setAperto(false)
+                }}
+                className="w-full text-left px-2.5 py-2 rounded-md text-sm flex items-center gap-2 bg-[#00a1be]/8 text-[#00a1be] hover:bg-[#00a1be]/15 transition-colors"
+              >
+                <PlusCircle className="w-4 h-4 shrink-0" />
+                <span>
+                  Aggiungi {testo.trim() ? <span className="font-mono font-medium">&quot;{testo.trim()}&quot;</span> : "una voce"} come articolo manuale
+                </span>
+              </button>
             </div>
           ) : (
             risultati.map((p) => (
@@ -138,192 +158,155 @@ function SearchArticoli({
 
 // ─── ServiziSection ───────────────────────────────────────────────────────────
 
+/**
+ * Lavorazioni del blocco. I servizi non sono precaricati: si aggiungono dal
+ * picker solo quelli necessari. Ogni servizio aggiunto è una riga editabile.
+ */
 function ServiziSection({
   servizi,
-  onToggle,
+  serviziDisponibili,
+  onAggiungi,
+  onRimuovi,
   onAggiorna,
 }: {
   servizi: ServizioBlocco[]
-  onToggle: (sid: string) => void
-  onAggiorna: (sid: string, campo: "ore" | "markup", valore: number) => void
+  serviziDisponibili: ServizioDB[]
+  onAggiungi: (s: ServizioDB) => void
+  onRimuovi: (key: string) => void
+  onAggiorna: (key: string, campo: "ore" | "markup", valore: number) => void
 }) {
-  const categorie = Array.from(new Set(servizi.map((s) => s.categoria)))
-  const nAttivi = servizi.filter((s) => s.attivo).length
-  const totaleAttivi = servizi
-    .filter((s) => s.attivo)
-    .reduce((sum, s) => sum + calcTotaleServizio(s), 0)
+  const [pickerAperto, setPickerAperto] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerAperto(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  const totale = servizi.reduce((sum, s) => sum + calcTotaleServizio(s), 0)
 
   return (
     <div>
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-text uppercase tracking-wide">
-            Servizi &amp; Lavorazioni
-          </span>
-          {nAttivi > 0 && (
-            <span
-              className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-              style={{ background: "rgba(0,161,190,0.15)", color: "#00a1be" }}
-            >
-              {nAttivi} {nAttivi === 1 ? "attivo" : "attivi"}
-            </span>
-          )}
-        </div>
-        {nAttivi > 0 && (
-          <span className="text-sm font-semibold text-text">{fmtEur(totaleAttivi)}</span>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs font-semibold text-text uppercase tracking-wide">
+          Servizi &amp; Lavorazioni
+        </span>
+        <span className="text-xs text-text-muted">({servizi.length})</span>
+        {servizi.length > 0 && (
+          <span className="ml-auto text-sm font-semibold text-text">{fmtEur(totale)}</span>
         )}
       </div>
 
-      {/* Categories */}
-      <div className="space-y-2">
-        {categorie.map((cat) => {
-          const items = servizi.filter((s) => s.categoria === cat)
-          const totCat = items
-            .filter((s) => s.attivo)
-            .reduce((sum, s) => sum + calcTotaleServizio(s), 0)
+      {/* Righe servizi aggiunti */}
+      {servizi.length > 0 && (
+        <div className="overflow-x-auto mb-2">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-bg-page">
+                <th className="text-left text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border">
+                  Lavorazione
+                </th>
+                <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-16">
+                  Ore
+                </th>
+                <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20">
+                  Tariffa/h
+                </th>
+                <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20">
+                  Markup%
+                </th>
+                <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
+                  Totale
+                </th>
+                <th className="border border-border w-8" />
+              </tr>
+            </thead>
+            <tbody>
+              {servizi.map((s) => (
+                <tr key={s._key} className="hover:bg-bg-page/50">
+                  <td className="px-2 py-1.5 border border-border text-sm text-text">
+                    {s.nome}
+                    <span className="text-[10px] text-text-muted ml-1.5">{s.categoria}</span>
+                  </td>
+                  <td className="px-2 py-1.5 border border-border">
+                    <input
+                      type="number"
+                      min={0.5}
+                      step={0.5}
+                      value={s.ore}
+                      onChange={(e) => onAggiorna(s._key, "ore", Math.max(0, Number(e.target.value)))}
+                      className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 border border-border text-right text-xs text-text-muted">
+                    {fmtEur(s.tariffa_ora)}
+                  </td>
+                  <td className="px-2 py-1.5 border border-border">
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={s.markup}
+                      onChange={(e) => onAggiorna(s._key, "markup", Number(e.target.value))}
+                      className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 border border-border text-right text-sm font-medium text-text">
+                    {fmtEur(calcTotaleServizio(s))}
+                  </td>
+                  <td className="px-2 py-1.5 border border-border text-center">
+                    <button
+                      onClick={() => onRimuovi(s._key)}
+                      className="text-text-muted hover:text-red-500 transition-colors"
+                      title="Rimuovi lavorazione"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-          return (
-            <div
-              key={cat}
-              className="rounded-lg overflow-hidden"
-              style={{ border: "1px solid rgba(255,255,255,0.07)" }}
-            >
-              {/* Category header */}
-              <div
-                className="flex items-center gap-2 px-3 py-1.5"
-                style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}
-              >
-                <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">
-                  {cat}
-                </span>
-                {totCat > 0 && (
-                  <span className="ml-auto text-xs font-medium" style={{ color: "#00a1be" }}>
-                    {fmtEur(totCat)}
+      {/* Picker per aggiungere lavorazioni */}
+      <div ref={pickerRef} className="relative">
+        <button
+          onClick={() => setPickerAperto((v) => !v)}
+          className="text-xs flex items-center gap-1 text-[#00a1be] hover:underline"
+        >
+          <PlusCircle className="w-3.5 h-3.5" />
+          Aggiungi lavorazione
+        </button>
+        {pickerAperto && (
+          <div className="absolute z-50 mt-1 w-72 rounded-lg border border-border bg-bg shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+            {serviziDisponibili.length === 0 ? (
+              <div className="px-3 py-3 text-sm text-text-muted">
+                Nessuna lavorazione configurata. Aggiungile da Impostazioni.
+              </div>
+            ) : (
+              serviziDisponibili.map((sd) => (
+                <button
+                  key={sd.id}
+                  onClick={() => { onAggiungi(sd); setPickerAperto(false) }}
+                  className="w-full text-left px-3 py-2 hover:bg-bg-page transition-colors border-b border-border last:border-0 flex items-center justify-between gap-2"
+                >
+                  <span className="text-sm text-text">
+                    {sd.nome}
+                    <span className="text-[10px] text-text-muted ml-1.5">{sd.categoria}</span>
                   </span>
-                )}
-              </div>
-
-              {/* Service rows */}
-              <div>
-                {items.map((s, idx) => (
-                  <div
-                    key={s.servizio_id}
-                    style={
-                      s.attivo
-                        ? {
-                            borderLeft: "2px solid #00a1be",
-                            background: "rgba(0,161,190,0.06)",
-                            borderBottom: idx < items.length - 1 ? "1px solid rgba(255,255,255,0.06)" : undefined,
-                          }
-                        : {
-                            borderLeft: "2px solid transparent",
-                            borderBottom: idx < items.length - 1 ? "1px solid rgba(255,255,255,0.06)" : undefined,
-                          }
-                    }
-                    className="transition-colors"
-                  >
-                    {s.attivo ? (
-                      /* ── Active: expanded ── */
-                      <div className="px-3 py-2.5 space-y-2">
-                        {/* Top row: name + total + deactivate */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-text flex-1 leading-tight">
-                            {s.nome}
-                          </span>
-                          <span className="text-sm font-semibold shrink-0" style={{ color: "#00a1be" }}>
-                            {fmtEur(calcTotaleServizio(s))}
-                          </span>
-                          <button
-                            onClick={() => onToggle(s.servizio_id)}
-                            title="Disattiva"
-                            className="shrink-0 text-text-muted hover:text-red-400 transition-colors"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        {/* Bottom row: ore + markup + formula */}
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-text-muted">Ore</span>
-                            <input
-                              type="number"
-                              min={0.5}
-                              step={0.5}
-                              value={s.ore}
-                              onChange={(e) =>
-                                onAggiorna(s.servizio_id, "ore", Math.max(0.5, Number(e.target.value)))
-                              }
-                              className="w-14 text-center text-sm rounded px-1.5 py-0.5 focus:outline-none focus:ring-1"
-                              style={{
-                                background: "rgba(255,255,255,0.05)",
-                                border: "1px solid rgba(255,255,255,0.12)",
-                                color: "inherit",
-                                "--tw-ring-color": "rgba(0,161,190,0.4)",
-                              } as CSSProperties}
-                            />
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-text-muted">Markup %</span>
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={s.markup}
-                              onChange={(e) =>
-                                onAggiorna(s.servizio_id, "markup", Number(e.target.value))
-                              }
-                              className="w-14 text-center text-sm rounded px-1.5 py-0.5 focus:outline-none focus:ring-1"
-                              style={{
-                                background: "rgba(255,255,255,0.05)",
-                                border: "1px solid rgba(255,255,255,0.12)",
-                                color: "inherit",
-                                "--tw-ring-color": "rgba(0,161,190,0.4)",
-                              } as CSSProperties}
-                            />
-                          </div>
-                          <span className="text-[11px] text-text-muted ml-auto font-mono">
-                            {fmtEur(s.tariffa_ora)}/h
-                            {s.markup > 0 && ` + ${s.markup}%`}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      /* ── Inactive: compact row ── */
-                      <div className="flex items-center gap-3 px-3 py-2 hover:bg-white/[0.02] transition-colors">
-                        <span className="text-sm text-text-muted flex-1 leading-tight">{s.nome}</span>
-                        <span className="text-[11px] text-text-muted font-mono shrink-0">
-                          {fmtEur(s.tariffa_ora)}/h
-                        </span>
-                        <button
-                          onClick={() => onToggle(s.servizio_id)}
-                          title="Attiva servizio"
-                          className="shrink-0 flex items-center justify-center w-5 h-5 rounded-full transition-all"
-                          style={{
-                            border: "1px solid rgba(255,255,255,0.15)",
-                            color: "rgba(255,255,255,0.35)",
-                          }}
-                          onMouseEnter={(e) => {
-                            ;(e.currentTarget as HTMLButtonElement).style.borderColor = "#00a1be"
-                            ;(e.currentTarget as HTMLButtonElement).style.color = "#00a1be"
-                            ;(e.currentTarget as HTMLButtonElement).style.background = "rgba(0,161,190,0.1)"
-                          }}
-                          onMouseLeave={(e) => {
-                            ;(e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.15)"
-                            ;(e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.35)"
-                            ;(e.currentTarget as HTMLButtonElement).style.background = "transparent"
-                          }}
-                        >
-                          <PlusCircle className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
+                  <span className="text-xs text-text-muted shrink-0">{fmtEur(sd.tariffa_ora)}/{sd.unita}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -334,11 +317,13 @@ function ServiziSection({
 export function BloccoCard({
   blocco,
   indice,
+  serviziDB,
   onChange,
   onDelete,
 }: {
   blocco: Blocco
   indice: number
+  serviziDB: ServizioDB[]
   onChange: (b: Blocco) => void
   onDelete: () => void
 }) {
@@ -371,22 +356,34 @@ export function BloccoCard({
     onChange({ ...blocco, articoli: [...blocco.articoli, articolo] })
   }
 
-  function toggleServizio(sid: string) {
-    onChange({
-      ...blocco,
-      servizi: blocco.servizi.map((s) =>
-        s.servizio_id === sid
-          ? { ...s, attivo: !s.attivo, ore: s.attivo ? s.ore : (s.ore === 0 ? 1 : s.ore) }
-          : s
-      ),
-    })
+  /** Aggiunge una voce libera non presente in anagrafica (codice/descrizione editabili). */
+  function aggiungiArticoloManuale(testo: string) {
+    const articolo: ArticoloBlocco = {
+      _key: genKey(),
+      prodotto_id: "",
+      codice: testo || "",
+      descrizione: "",
+      ult_costo: 0,
+      qty: 1,
+      coeff_ricarico: COEFF_RICARICO_DEFAULT,
+      manuale: true,
+    }
+    onChange({ ...blocco, articoli: [...blocco.articoli, articolo] })
   }
 
-  function aggiornaServizio(sid: string, campo: "ore" | "markup", valore: number) {
+  function aggiungiServizio(sd: ServizioDB) {
+    onChange({ ...blocco, servizi: [...blocco.servizi, servizioBloccoDaDB(sd)] })
+  }
+
+  function rimuoviServizio(key: string) {
+    onChange({ ...blocco, servizi: blocco.servizi.filter((s) => s._key !== key) })
+  }
+
+  function aggiornaServizio(key: string, campo: "ore" | "markup", valore: number) {
     onChange({
       ...blocco,
       servizi: blocco.servizi.map((s) =>
-        s.servizio_id === sid ? { ...s, [campo]: valore } : s
+        s._key === key ? { ...s, [campo]: valore } : s
       ),
     })
   }
@@ -464,9 +461,17 @@ export function BloccoCard({
               <span className="text-xs text-text-muted">
                 ({blocco.articoli.length})
               </span>
+              <button
+                onClick={() => aggiungiArticoloManuale("")}
+                className="ml-auto text-xs flex items-center gap-1 text-[#00a1be] hover:underline"
+                title="Aggiungi una voce non presente nel catalogo articoli"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Voce manuale
+              </button>
             </div>
 
-            <SearchArticoli onAggiungi={aggiungiArticolo} />
+            <SearchArticoli onAggiungi={aggiungiArticolo} onAggiungiManuale={aggiungiArticoloManuale} />
 
             {blocco.articoli.length > 0 && (
               <div className="mt-3 overflow-x-auto">
@@ -498,10 +503,28 @@ export function BloccoCard({
                     {blocco.articoli.map((a) => (
                       <tr key={a._key} className="hover:bg-bg-page/50">
                         <td className="px-2 py-1.5 border border-border">
-                          <span className="font-mono text-xs text-[#00a1be]">{a.codice}</span>
+                          {a.manuale ? (
+                            <input
+                              value={a.codice}
+                              onChange={(e) => aggiornaArticolo(a._key, "codice", e.target.value)}
+                              placeholder="Codice"
+                              className="w-full font-mono text-xs text-[#00a1be] bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                            />
+                          ) : (
+                            <span className="font-mono text-xs text-[#00a1be]">{a.codice}</span>
+                          )}
                         </td>
                         <td className="px-2 py-1.5 border border-border text-xs text-text">
-                          {a.descrizione}
+                          {a.manuale ? (
+                            <input
+                              value={a.descrizione}
+                              onChange={(e) => aggiornaArticolo(a._key, "descrizione", e.target.value)}
+                              placeholder="Descrizione voce manuale"
+                              className="w-full text-xs text-text bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                            />
+                          ) : (
+                            a.descrizione
+                          )}
                         </td>
                         <td className="px-2 py-1.5 border border-border">
                           <input
@@ -566,13 +589,13 @@ export function BloccoCard({
           </div>
 
           {/* Servizi & Lavorazioni */}
-          {blocco.servizi.length > 0 && (
-            <ServiziSection
-              servizi={blocco.servizi}
-              onToggle={toggleServizio}
-              onAggiorna={aggiornaServizio}
-            />
-          )}
+          <ServiziSection
+            servizi={blocco.servizi}
+            serviziDisponibili={serviziDB}
+            onAggiungi={aggiungiServizio}
+            onRimuovi={rimuoviServizio}
+            onAggiorna={aggiornaServizio}
+          />
         </div>
       )}
     </div>
