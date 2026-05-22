@@ -1,14 +1,60 @@
 import { Fragment } from "react";
+import path from "path";
+import fs from "fs";
 import {
   Document,
   Page,
   Text,
   View,
   StyleSheet,
+  Font,
 } from "@react-pdf/renderer";
 import { HeaderBar } from "./sections/header-section";
 import { BarraPunteggio } from "./sections/barre-section";
 import { RadarChartSvg } from "./sections/radar-section";
+
+const FONTS_DIR = path.join(process.cwd(), "public", "fonts");
+const TENORITE_FILES = {
+  regular: path.join(FONTS_DIR, "tenorite-regular.ttf"),
+  italic: path.join(FONTS_DIR, "tenorite-italic.ttf"),
+  bold: path.join(FONTS_DIR, "tenorite-bold.ttf"),
+  boldItalic: path.join(FONTS_DIR, "tenorite-bolditalic.ttf"),
+};
+
+const TENORITE_READY = Object.values(TENORITE_FILES).every((file) => fs.existsSync(file));
+
+if (TENORITE_READY) {
+  try {
+    Font.register({
+      family: "Tenorite",
+      fonts: [
+        { src: TENORITE_FILES.regular },
+        { src: TENORITE_FILES.italic, fontStyle: "italic" },
+      ],
+    });
+    Font.register({
+      family: "Tenorite-Bold",
+      fonts: [
+        { src: TENORITE_FILES.bold },
+        { src: TENORITE_FILES.boldItalic, fontStyle: "italic" },
+      ],
+    });
+  } catch {
+    // Font.register can be called more than once in dev.
+  }
+}
+
+function bodyFamily(font: string): string {
+  if (font === "Tenorite" && !TENORITE_READY) return "Helvetica";
+  return font;
+}
+
+function boldFamily(font: string): string {
+  if (font === "Times-Roman") return "Times-Bold";
+  if (font === "Courier") return "Courier-Bold";
+  if (font === "Tenorite" && TENORITE_READY) return "Tenorite-Bold";
+  return "Helvetica-Bold";
+}
 
 // ============================================================
 // Tipi
@@ -21,6 +67,7 @@ export interface RigaCertificato {
   parametroColore: string;
   punteggioAuto: number | null;
   punteggioResp: number | null;
+  note?: string | null;
 }
 
 export interface RadarPoint {
@@ -135,10 +182,8 @@ function formatData(isoDate: string | null | undefined): string {
 export function makeStyles(cfg: CertificatoConfig) {
   const primary = cfg.colore_primario;
   const textColor = cfg.colore_testo;
-  const font = cfg.font_corpo;
-  const fontBold = font === "Times-Roman" ? "Times-Bold"
-    : font === "Courier" ? "Courier-Bold"
-    : "Helvetica-Bold";
+  const font = bodyFamily(cfg.font_corpo);
+  const fontBold = boldFamily(font);
 
   const border = "#d1d5db";
   const bgPage = "#f8fafc";
@@ -298,11 +343,11 @@ export function makeStyles(cfg: CertificatoConfig) {
       alignItems: "center",
     },
 
-    colMansione: { width: isLandscape ? "36%" : "34%", paddingRight: 4 },
-    colAuto:     { width: "12%", textAlign: "center" },
-    colResp:     { width: "12%", textAlign: "center" },
-    colPunteggio:{ width: isLandscape ? "26%" : "28%", paddingHorizontal: 4 },
-    colOss:      { width: "14%", textAlign: "center" },
+    colMansione: { width: isLandscape ? "34%" : "32%", paddingRight: 4 },
+    colAuto:     { width: "11%", textAlign: "center" },
+    colResp:     { width: "11%", textAlign: "center" },
+    colPunteggio:{ width: isLandscape ? "20%" : "22%", paddingHorizontal: 4 },
+    colOss:      { width: "24%", textAlign: "left" },
 
     barBg: { height: 7, backgroundColor: border, borderRadius: 3, overflow: "hidden" },
     barFill: { height: 7, borderRadius: 3, backgroundColor: primary },
@@ -373,6 +418,7 @@ export function makeStyles(cfg: CertificatoConfig) {
     seriesDot: { width: 10, height: 4, borderRadius: 2 },
     seriesLabel: { fontSize: 7.5, color: muted },
     warningText: { fontSize: 8.5, color: "#f59e0b" },
+    noteText: { fontSize: 6.5, lineHeight: 1.25, color: textColor },
   });
 }
 
@@ -395,9 +441,7 @@ export function CertificatoPDF({ dati }: { dati: DatiCertificato }) {
   const anzianita = calcolaAnzianita(utente.data_assunzione);
   const dataAssunzioneFormatted = formatData(utente.data_assunzione);
   const orientation = cfg.orientamento;
-  const fontBold = cfg.font_corpo === "Times-Roman" ? "Times-Bold"
-    : cfg.font_corpo === "Courier" ? "Courier-Bold"
-    : "Helvetica-Bold";
+  const fontBold = boldFamily(cfg.font_corpo);
 
   return (
     <Document
@@ -473,6 +517,7 @@ export function CertificatoPDF({ dati }: { dati: DatiCertificato }) {
 
             {righe.map((r, i) => {
               const diff = r.punteggioAuto !== null && r.punteggioResp !== null ? r.punteggioAuto - r.punteggioResp : null;
+              const notaResponsabile = r.note?.trim();
               // Intestazione di gruppo: prima riga di un blocco "mansione" o "skill"
               const tipoCorr = r.tipo ?? "mansione";
               const tipoPrec = i > 0 ? (righe[i - 1].tipo ?? "mansione") : null;
@@ -502,12 +547,15 @@ export function CertificatoPDF({ dati }: { dati: DatiCertificato }) {
                   <View style={s.colPunteggio}>
                     <BarraPunteggio valore={r.punteggioResp ?? 0} max={scala.max} primary={cfg.colore_primario} />
                   </View>
-                  <View style={[s.colOss, { alignItems: "center" }]}>
+                  <View style={[s.colOss, { paddingLeft: 4 }]}>
                     {diff !== null && Math.abs(diff) >= 2 ? (
-                      <Text style={s.warningText}>⚠ {diff > 0 ? "+" : ""}{diff}</Text>
-                    ) : (
-                      <Text>—</Text>
-                    )}
+                      <Text style={s.warningText}>{diff > 0 ? "+" : ""}{diff}</Text>
+                    ) : null}
+                    {notaResponsabile ? (
+                      <Text style={s.noteText}>{notaResponsabile}</Text>
+                    ) : diff === null || Math.abs(diff) < 2 ? (
+                      <Text style={s.noteText}>-</Text>
+                    ) : null}
                   </View>
                 </View>
                 </Fragment>

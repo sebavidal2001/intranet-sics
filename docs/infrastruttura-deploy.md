@@ -114,6 +114,7 @@ NEXT_PUBLIC_APP_URL=https://intranet.azienda.it
 # 1. Build (in locale o su CI)
 npm ci
 npm run build
+npm run ensure:fonts
 
 # 2. Copiare sul server
 .next/standalone/
@@ -127,6 +128,12 @@ pm2 startup
 
 # 4. Nginx: proxy pass da :443 a :3000
 ```
+
+> I certificati PDF usano Tenorite lato server con `@react-pdf/renderer`.
+> `npm run ensure:fonts` verifica che i quattro file `.ttf` siano presenti in
+> `public/fonts` e li copia nel bundle runtime standalone quando esiste. Se il
+> deploy non esegue la build sul server, eseguire comunque `npm run ensure:fonts`
+> nella directory dell'app prima del restart PM2.
 
 ---
 

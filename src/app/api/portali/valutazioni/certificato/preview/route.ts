@@ -5,14 +5,13 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { CertificatoPDF, type DatiCertificato, type CertificatoConfig, DEFAULT_CONFIG } from "@/lib/portali/valutazioni/pdf/certificato";
 import React, { createElement } from "react";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
-import path from "path";
-import fs from "fs";
+import { getDefaultLogoDataUri } from "@/lib/portali/valutazioni/pdf/logo";
 
 export const dynamic = "force-dynamic";
 
 const MOCK_RIGHE = [
-  { mansione: "Gestione pratiche amministrative", parametro: "Competenze tecniche", parametroColore: "#00A1BE", punteggioAuto: 4, punteggioResp: 4 },
-  { mansione: "Relazione con il cliente", parametro: "Competenze relazionali", parametroColore: "#22c55e", punteggioAuto: 3, punteggioResp: 4 },
+  { mansione: "Gestione pratiche amministrative", parametro: "Competenze tecniche", parametroColore: "#00A1BE", punteggioAuto: 4, punteggioResp: 4, note: "Processo gestito con precisione e buona autonomia." },
+  { mansione: "Relazione con il cliente", parametro: "Competenze relazionali", parametroColore: "#22c55e", punteggioAuto: 3, punteggioResp: 4, note: "Comunicazione chiara anche nelle situazioni piu' complesse." },
   { mansione: "Rispetto delle scadenze", parametro: "Organizzazione", parametroColore: "#f59e0b", punteggioAuto: 5, punteggioResp: 4 },
   { mansione: "Lavoro in team", parametro: "Competenze relazionali", parametroColore: "#22c55e", punteggioAuto: 4, punteggioResp: 3 },
   { mansione: "Utilizzo strumenti informatici", parametro: "Competenze tecniche", parametroColore: "#00A1BE", punteggioAuto: 3, punteggioResp: 3 },
@@ -67,13 +66,7 @@ export async function GET() {
   if (configRow?.logo_url) {
     logoSrc = configRow.logo_url;
   } else {
-    try {
-      const logoFilePath = path.join(process.cwd(), "public", "logo", "sics-logo.png");
-      const logoBuffer = fs.readFileSync(logoFilePath);
-      logoSrc = `data:image/png;base64,${logoBuffer.toString("base64")}`;
-    } catch {
-      logoSrc = undefined;
-    }
+    logoSrc = getDefaultLogoDataUri(certConfig.colore_primario ?? DEFAULT_CONFIG.colore_primario);
   }
 
   const valoriResp = MOCK_RIGHE.map((r) => r.punteggioResp);

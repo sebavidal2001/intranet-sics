@@ -5,8 +5,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { CertificatoPDF, type DatiCertificato, type RigaCertificato, type RadarPoint, type CertificatoConfig, DEFAULT_CONFIG } from "@/lib/portali/valutazioni/pdf/certificato";
 import React, { createElement } from "react";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
-import path from "path";
-import fs from "fs/promises";
+import { getDefaultLogoDataUri } from "@/lib/portali/valutazioni/pdf/logo";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +61,7 @@ export async function GET(
         ? db.from("utenti").select("id, nome, cognome").eq("id", sessione.responsabile_id).single()
         : Promise.resolve({ data: null }),
       db.from("utente_mansioni").select(`mansione:mansioni(id, testo, ordine, parametro:parametri_radar(id, nome, colore))`).eq("utente_id", sessione.utente_id),
-      db.from("risposte_valutazione").select("mansione_id, skill_id, punteggio, tipo").eq("sessione_utente_id", sessioneId),
+      db.from("risposte_valutazione").select("mansione_id, skill_id, punteggio, tipo, note").eq("sessione_utente_id", sessioneId),
       db.from("certificato_config").select("*").limit(1).maybeSingle(),
       db.from("sessione_skills").select(`skill:skills(id, nome, ordine, parametro:parametri_radar(id, nome, colore))`).eq("sessione_id", sessioneId),
     ]);
@@ -76,7 +75,7 @@ export async function GET(
       { data: { id: string; nome: string; cognome: string; email: string; reparto: string | null; ruolo: string; data_assunzione: string | null } | null },
       { data: { id: string; nome: string; cognome: string } | null },
       { data: Array<{ mansione: unknown }> | null },
-      { data: Array<{ mansione_id: string | null; skill_id: string | null; punteggio: number; tipo: string }> | null },
+      { data: Array<{ mansione_id: string | null; skill_id: string | null; punteggio: number; tipo: string; note: string | null }> | null },
       { data: Record<string, unknown> | null },
       { data: Array<{ skill: unknown }> | null },
     ];
@@ -84,21 +83,22 @@ export async function GET(
   const utenteData = utenteRes.data;
   const responsabileData = responsabileRes.data;
   const configRow = configRes.data;
-  const risposte = risposteRes.data as Array<{ mansione_id: string | null; skill_id: string | null; punteggio: number; tipo: string }> | null;
+  const risposte = risposteRes.data as Array<{ mansione_id: string | null; skill_id: string | null; punteggio: number; tipo: string; note: string | null }> | null;
 
   if (!utenteData) {
     return NextResponse.json({ error: "Utente non trovato" }, { status: 404 });
   }
 
   const risposteMap = {
-    responsabile: new Map<string, number>(),
-    auto: new Map<string, number>(),
+    responsabile: new Map<string, { punteggio: number; note: string | null }>(),
+    auto: new Map<string, { punteggio: number; note: string | null }>(),
   };
   for (const r of risposte ?? []) {
     const key = r.mansione_id ?? r.skill_id;
     if (!key) continue;
-    if (r.tipo === "responsabile") risposteMap.responsabile.set(key, r.punteggio);
-    if (r.tipo === "autovalutazione") risposteMap.auto.set(key, r.punteggio);
+    const value = { punteggio: r.punteggio, note: r.note ?? null };
+    if (r.tipo === "responsabile") risposteMap.responsabile.set(key, value);
+    if (r.tipo === "autovalutazione") risposteMap.auto.set(key, value);
   }
 
   // Costruisce righe tabella — mansioni + skill
@@ -121,8 +121,9 @@ export async function GET(
     mansione: v.testo,
     parametro: v.parametro?.nome ?? "—",
     parametroColore: v.parametro?.colore ?? "#747373",
-    punteggioAuto: risposteMap.auto.get(v.id) ?? null,
-    punteggioResp: risposteMap.responsabile.get(v.id) ?? null,
+    punteggioAuto: risposteMap.auto.get(v.id)?.punteggio ?? null,
+    punteggioResp: risposteMap.responsabile.get(v.id)?.punteggio ?? null,
+    note: risposteMap.responsabile.get(v.id)?.note ?? null,
   });
 
   const righe: RigaCertificato[] = [
@@ -145,8 +146,8 @@ export async function GET(
     if (!parametriRadar[parametro.id]) {
       parametriRadar[parametro.id] = { nome: parametro.nome, colore: parametro.colore, autoVals: [], respVals: [] };
     }
-    const autoVal = risposteMap.auto.get(v.id);
-    const respVal = risposteMap.responsabile.get(v.id);
+    const autoVal = risposteMap.auto.get(v.id)?.punteggio;
+    const respVal = risposteMap.responsabile.get(v.id)?.punteggio;
     if (autoVal !== undefined) parametriRadar[parametro.id].autoVals.push(autoVal);
     if (respVal !== undefined) parametriRadar[parametro.id].respVals.push(respVal);
   }
@@ -187,18 +188,13 @@ export async function GET(
       }
     : {};
 
-  // Logo: usa URL configurato oppure converti il file SICS in base64 (compatibile con react-pdf su Windows)
+  // Logo: usa URL configurato oppure il logo SICS predefinito ricolorato in turchese,
+  // come nella pagina di login (il PNG originale e' bianco e su A4 sparisce).
   let logoSrc: string | undefined;
   if (configRow?.logo_url) {
     logoSrc = configRow.logo_url as string;
   } else {
-    try {
-      const logoFilePath = path.join(process.cwd(), "public", "logo", "sics-logo.png");
-      const logoBuffer = await fs.readFile(logoFilePath);
-      logoSrc = `data:image/png;base64,${logoBuffer.toString("base64")}`;
-    } catch {
-      logoSrc = undefined;
-    }
+    logoSrc = getDefaultLogoDataUri(certConfig.colore_primario ?? DEFAULT_CONFIG.colore_primario);
   }
 
   const dati: DatiCertificato = {

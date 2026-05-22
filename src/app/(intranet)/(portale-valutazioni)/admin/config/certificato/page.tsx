@@ -7,6 +7,7 @@ import { ColorPicker } from "@/components/ui/color-picker";
 import { FileDown, Plus, Trash2, ChevronDown } from "lucide-react";
 
 const FONT_OPTIONS = [
+  { value: "Tenorite", label: "Tenorite (Corporate SICS)" },
   { value: "Helvetica", label: "Helvetica (Sans-serif)" },
   { value: "Times-Roman", label: "Times Roman (Serif)" },
   { value: "Courier", label: "Courier (Monospaced)" },
