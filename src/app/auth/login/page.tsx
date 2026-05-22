@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { usernameToEmailCandidates } from "@/lib/auth/username";
 import { Particles } from "@/components/ui/particles";
 import { Eye, EyeOff } from "lucide-react";
+import { CambioPasswordModal } from "@/components/auth/cambio-password-modal";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,6 +16,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Modale cambio password: { forzato } = primo accesso obbligatorio; null = chiusa
+  const [modaleCambioPwd, setModaleCambioPwd] = useState<{ forzato: boolean; identificativo?: string } | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +50,7 @@ export default function LoginPage() {
     // Verifica che l'utente esista nella tabella utenti
     const { data: userProfile, error: profileError } = await supabase
       .from("utenti")
-      .select("id, ruolo")
+      .select("id, ruolo, primo_accesso")
       .eq("id", data.user.id)
       .single();
 
@@ -55,6 +58,13 @@ export default function LoginPage() {
       setError("Profilo utente non trovato. Contatta l'amministratore.");
       await supabase.auth.signOut();
       setLoading(false);
+      return;
+    }
+
+    // Primo accesso: l'utente deve sostituire la password assegnata.
+    if ((userProfile as { primo_accesso?: boolean }).primo_accesso) {
+      setLoading(false);
+      setModaleCambioPwd({ forzato: true, identificativo: data.user.email ?? username });
       return;
     }
 
@@ -168,12 +178,15 @@ export default function LoginPage() {
 
           {/* Cambio password */}
           <div className="mt-6 text-center">
-            <a
-              href="/auth/change-password"
+            <button
+              type="button"
+              onClick={() =>
+                setModaleCambioPwd({ forzato: false, identificativo: username.trim() || undefined })
+              }
               className="text-sm text-primary hover:text-primary-dark transition-colors"
             >
               Cambia password
-            </a>
+            </button>
           </div>
 
           <p className="text-center text-text-muted text-xs mt-6">
@@ -181,6 +194,24 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Modale cambio password (primo accesso o volontaria) */}
+      {modaleCambioPwd && (
+        <CambioPasswordModal
+          forzato={modaleCambioPwd.forzato}
+          identificativoIniziale={modaleCambioPwd.identificativo}
+          onClose={modaleCambioPwd.forzato ? undefined : () => setModaleCambioPwd(null)}
+          onSuccess={async () => {
+            // Dopo il cambio password si rientra dal login con la nuova password
+            // (cambiare la password puo invalidare la sessione corrente).
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            setModaleCambioPwd(null);
+            setPassword("");
+            window.location.href = "/auth/login";
+          }}
+        />
+      )}
     </div>
   );
 }
