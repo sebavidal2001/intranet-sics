@@ -41,7 +41,27 @@ export function RadarChartSvg({
     return x > cx ? "start" : "end";
   };
   const labelX = (x: number) => Math.min(Math.max(x, LABEL_MARGIN), WIDTH - LABEL_MARGIN);
-  const labelText = (text: string) => text.length > 18 ? `${text.slice(0, 17)}...` : text;
+  const labelLines = (text: string): string[] => {
+    if (text.length <= 18) return [text];
+
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let current = "";
+
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length <= 18) {
+        current = next;
+      } else {
+        if (current) lines.push(current);
+        current = word;
+      }
+      if (lines.length === 1 && current.length > 18) break;
+    }
+
+    if (current) lines.push(current);
+    return lines.slice(0, 2);
+  };
 
   return (
     <Svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
@@ -70,17 +90,20 @@ export function RadarChartSvg({
         const rawX = cx + LABEL_R * Math.cos(a);
         const x = labelX(rawX);
         const y = cy + LABEL_R * Math.sin(a);
-        return (
+        const lines = labelLines(d.parametro);
+        const lineHeight = 8;
+        const yOffset = lines.length > 1 ? -2 : 3;
+        return lines.map((line, lineIndex) => (
           <SvgText
-            key={`label${i}`}
+            key={`label${i}-${lineIndex}`}
             x={x}
-            y={y + 3}
+            y={y + yOffset + lineIndex * lineHeight}
             textAnchor={labelAnchor(x)}
             style={{ fontSize: 7, fill: "#1f2937" }}
           >
-            {labelText(d.parametro)}
+            {line}
           </SvgText>
-        );
+        ));
       })}
       <Polygon points={polyPts(data.map((d) => d.autovalutazione))} fill={primary} fillOpacity={0.15} stroke={primary} strokeWidth={1.2} />
       <Polygon points={polyPts(data.map((d) => d.responsabile))} fill="#f59e0b" fillOpacity={0.15} stroke="#f59e0b" strokeWidth={1.2} />
