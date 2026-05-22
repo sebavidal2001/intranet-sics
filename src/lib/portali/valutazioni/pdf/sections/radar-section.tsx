@@ -1,4 +1,4 @@
-import { Svg, Polygon, Line, Circle, G } from "@react-pdf/renderer";
+import { Svg, Polygon, Line, Circle, G, Text as SvgText } from "@react-pdf/renderer";
 import type { RadarPoint } from "../certificato";
 
 export function RadarChartSvg({
@@ -10,10 +10,11 @@ export function RadarChartSvg({
   scalaMax: number;
   primary: string;
 }) {
-  const SIZE = 200;
+  const SIZE = 220;
   const cx = SIZE / 2;
   const cy = SIZE / 2;
-  const R = 72;
+  const R = 68;
+  const LABEL_R = 96;
   const n = data.length;
   if (n < 3) return null;
 
@@ -33,6 +34,10 @@ export function RadarChartSvg({
       const [x, y] = ptCoords(i, v);
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     }).join(" ");
+  const labelAnchor = (x: number) => {
+    if (Math.abs(x - cx) < 4) return "middle";
+    return x > cx ? "start" : "end";
+  };
 
   return (
     <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
@@ -42,6 +47,35 @@ export function RadarChartSvg({
       {Array.from({ length: n }, (_, i) => {
         const a = ang(i);
         return <Line key={`ax${i}`} x1={cx} y1={cy} x2={cx + R * Math.cos(a)} y2={cy + R * Math.sin(a)} stroke="#cbd5e1" strokeWidth={0.4} />;
+      })}
+      {[0, Math.round(scalaMax / 2), scalaMax].map((tick, i) => {
+        const y = cy - (R * tick) / scalaMax;
+        return (
+          <SvgText
+            key={`tick${i}`}
+            x={cx + 4}
+            y={y + 3}
+            style={{ fontSize: 6, fill: "#94a3b8" }}
+          >
+            {tick}
+          </SvgText>
+        );
+      })}
+      {data.map((d, i) => {
+        const a = ang(i);
+        const x = cx + LABEL_R * Math.cos(a);
+        const y = cy + LABEL_R * Math.sin(a);
+        return (
+          <SvgText
+            key={`label${i}`}
+            x={x}
+            y={y + 3}
+            textAnchor={labelAnchor(x)}
+            style={{ fontSize: 7, fill: "#1f2937" }}
+          >
+            {d.parametro}
+          </SvgText>
+        );
       })}
       <Polygon points={polyPts(data.map((d) => d.autovalutazione))} fill={primary} fillOpacity={0.15} stroke={primary} strokeWidth={1.2} />
       <Polygon points={polyPts(data.map((d) => d.responsabile))} fill="#f59e0b" fillOpacity={0.15} stroke="#f59e0b" strokeWidth={1.2} />
