@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { TubelightNavBar } from "@/components/ui/tubelight-navbar"
 import { Home, Settings, User, LogOut, ChevronDown, Shield, BarChart2 } from "lucide-react"
+import { CambioPasswordModal } from "@/components/auth/cambio-password-modal"
 
 interface NavbarProfile {
   id: string
@@ -21,6 +22,7 @@ interface NavbarProfile {
 export function IntranetNavbar({ profile }: { profile: NavbarProfile | null }) {
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [cambioPwdOpen, setCambioPwdOpen] = useState(false)
 
   const isSuperadmin = profile?.ruolo === "superadmin"
   const isValutazioniAdmin = profile?.is_valutazioni_admin ?? false
@@ -103,14 +105,13 @@ export function IntranetNavbar({ profile }: { profile: NavbarProfile | null }) {
                     <p className="font-tenorite text-sm text-text">{displayName}</p>
                     <p className="text-xs text-text-muted capitalize">{ruoloLabel}</p>
                   </div>
-                  <Link
-                    href="/auth/change-password"
-                    className="flex items-center gap-2 px-3 py-2 text-sm text-text-muted hover:text-text hover:bg-bg-page transition-colors"
-                    onClick={() => setMenuOpen(false)}
+                  <button
+                    onClick={() => { setMenuOpen(false); setCambioPwdOpen(true) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-muted hover:text-text hover:bg-bg-page transition-colors"
                   >
                     <Settings className="w-4 h-4" />
                     Cambia password
-                  </Link>
+                  </button>
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-danger hover:bg-danger/5 transition-colors"
@@ -124,6 +125,19 @@ export function IntranetNavbar({ profile }: { profile: NavbarProfile | null }) {
           </div>
         </div>
       </div>
+
+      {cambioPwdOpen && (
+        <CambioPasswordModal
+          forzato={false}
+          onClose={() => setCambioPwdOpen(false)}
+          onSuccess={async () => {
+            // Password cambiata: chiudiamo la sessione e si rientra dal login
+            const supabase = createClient()
+            await supabase.auth.signOut()
+            window.location.href = "/auth/login"
+          }}
+        />
+      )}
     </header>
   )
 }
