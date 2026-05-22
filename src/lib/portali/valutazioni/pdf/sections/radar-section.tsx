@@ -10,11 +10,13 @@ export function RadarChartSvg({
   scalaMax: number;
   primary: string;
 }) {
-  const SIZE = 220;
-  const cx = SIZE / 2;
-  const cy = SIZE / 2;
+  const WIDTH = 340;
+  const HEIGHT = 220;
+  const cx = WIDTH / 2;
+  const cy = HEIGHT / 2;
   const R = 68;
-  const LABEL_R = 96;
+  const LABEL_R = 98;
+  const LABEL_MARGIN = 14;
   const n = data.length;
   if (n < 3) return null;
 
@@ -38,9 +40,11 @@ export function RadarChartSvg({
     if (Math.abs(x - cx) < 4) return "middle";
     return x > cx ? "start" : "end";
   };
+  const labelX = (x: number) => Math.min(Math.max(x, LABEL_MARGIN), WIDTH - LABEL_MARGIN);
+  const labelText = (text: string) => text.length > 18 ? `${text.slice(0, 17)}...` : text;
 
   return (
-    <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+    <Svg width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
       {[0.25, 0.5, 0.75, 1.0].map((lvl, i) => (
         <Polygon key={`g${i}`} points={gridPts(lvl)} fill="none" stroke="#e2e8f0" strokeWidth={lvl === 1.0 ? 0.8 : 0.4} />
       ))}
@@ -63,7 +67,8 @@ export function RadarChartSvg({
       })}
       {data.map((d, i) => {
         const a = ang(i);
-        const x = cx + LABEL_R * Math.cos(a);
+        const rawX = cx + LABEL_R * Math.cos(a);
+        const x = labelX(rawX);
         const y = cy + LABEL_R * Math.sin(a);
         return (
           <SvgText
@@ -73,7 +78,7 @@ export function RadarChartSvg({
             textAnchor={labelAnchor(x)}
             style={{ fontSize: 7, fill: "#1f2937" }}
           >
-            {d.parametro}
+            {labelText(d.parametro)}
           </SvgText>
         );
       })}
