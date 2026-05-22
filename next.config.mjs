@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Standalone output for self-hosted VM deployment
-  output: "standalone",
+  // Deploy su VM con PM2 + `next start` e node_modules presenti:
+  // `output: standalone` (pensato per Docker) non serve e genera un warning
+  // con `next start`. Rimosso per coerenza con la modalità di deploy reale.
   reactStrictMode: true,
   poweredByHeader: false,
   images: {
