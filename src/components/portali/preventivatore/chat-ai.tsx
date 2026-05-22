@@ -36,6 +36,8 @@ interface SemanticaRisultato {
   stato: string | null
   similarity: number
   estratto: string
+  blocco?: string | null
+  importo_preventivo?: number | null
 }
 
 interface ArticoloRisultato {

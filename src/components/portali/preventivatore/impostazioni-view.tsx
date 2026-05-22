@@ -5,6 +5,7 @@ import { Loader2, Save, AlertCircle, CheckCircle2, Database, RefreshCw } from "l
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ServiziConfig } from "@/components/portali/preventivatore/servizi-config"
 
 interface AIConfig {
   id: string
@@ -389,6 +390,9 @@ export function ImpostazioniView() {
           </div>
         )}
       </div>
+
+      {/* Servizi e lavorazioni */}
+      <ServiziConfig />
 
       {/* Stats section */}
       <div className="border border-border rounded-xl bg-bg overflow-hidden">

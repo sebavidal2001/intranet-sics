@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCachedEmbedding } from "./embedding-cache";
+import { loadAiConfig } from "./config-cache";
 import type {
   DocumentoRow,
   ChunkRow,
@@ -94,6 +95,17 @@ export async function toolListPreventivi(args: {
 
 // ─── Tool: cerca_simili ───────────────────────────────────────────────────────
 
+/**
+ * Ricerca semantica a livello di BLOCCO (non di documento).
+ *
+ * Ogni risultato è un singolo chunk-blocco di un preventivo storico, con il
+ * riferimento al blocco (`blocco` = sheet_name/codice_blocco). Questo permette
+ * di trovare un blocco molto simile anche se appartiene a un preventivo grande
+ * e con importo totale molto diverso da quello in costruzione.
+ *
+ * Soglia e numero di candidati sono configurabili da `ai_config`
+ * (`soglia_similarity_simili`, `match_count_simili`) — niente valori hard-coded.
+ */
 export async function toolCercaSimili(args: {
   query: string;
   cliente?: string;
@@ -104,12 +116,19 @@ export async function toolCercaSimili(args: {
     codice: string | null;
     cliente: string | null;
     stato: string | null;
+    importo_preventivo: number | null;
+    blocco: string | null;
     similarity: number;
     estratto: string;
   }>
 > {
-  const limite = args.limite ?? 5;
+  const limite = args.limite ?? 8;
   const adminClient = createAdminClient();
+
+  // Parametri configurabili (con fallback prudenti)
+  const cfg = await loadAiConfig();
+  const matchThreshold = Math.max(0, Math.min(1, parseFloat(cfg.soglia_similarity_simili ?? "0.5") || 0.5));
+  const matchCount = Math.max(limite, parseInt(cfg.match_count_simili ?? "40", 10) || 40);
 
   const queryEmbedding = await getCachedEmbedding(args.query);
 
@@ -117,8 +136,8 @@ export async function toolCercaSimili(args: {
     .schema("preventivatore")
     .rpc("match_chunks", {
       query_embedding: queryEmbedding,
-      match_threshold: 0.58,
-      match_count: limite * 3,
+      match_threshold: matchThreshold,
+      match_count: matchCount,
     });
 
   if (rpcError) {
@@ -126,23 +145,16 @@ export async function toolCercaSimili(args: {
     throw new Error("Errore ricerca vettoriale");
   }
 
-  if (!chunks || (chunks as ChunkRow[]).length === 0) return [];
+  const typedChunks = (chunks ?? []) as ChunkRow[];
+  if (typedChunks.length === 0) return [];
 
-  const typedChunks = chunks as ChunkRow[];
-  const byDoc = new Map<string, { maxSimilarity: number; topChunk: ChunkRow }>();
-  for (const chunk of typedChunks) {
-    const existing = byDoc.get(chunk.documento_id);
-    if (!existing || chunk.similarity > existing.maxSimilarity)
-      byDoc.set(chunk.documento_id, { maxSimilarity: chunk.similarity, topChunk: chunk });
-  }
-
-  const docIds = Array.from(byDoc.keys());
+  // Metadati dei documenti coinvolti (codice, cliente, stato, importo)
+  const docIds = [...new Set(typedChunks.map((c) => c.documento_id))];
   let docsQuery = adminClient
     .schema("preventivatore")
     .from("documenti")
-    .select("id, codice, cliente, stato")
+    .select("id, codice, cliente, stato, importo_preventivo")
     .in("id", docIds);
-
   if (args.cliente) docsQuery = docsQuery.ilike("cliente", `%${args.cliente}%`);
 
   const { data: documenti, error: docError } = await docsQuery;
@@ -150,17 +162,30 @@ export async function toolCercaSimili(args: {
     console.error("Documenti fetch error:", docError);
     throw new Error("Errore recupero metadati documenti");
   }
+  const docMap = new Map(
+    (documenti ?? []).map((d: { id: string; codice: string | null; cliente: string | null; stato: string | null; importo_preventivo: number | null }) => [d.id, d])
+  );
 
-  return (documenti ?? [])
-    .map((doc: { id: string; codice: string | null; cliente: string | null; stato: string | null }) => {
-      const entry = byDoc.get(doc.id)!;
+  // Un risultato per chunk-blocco (NO deduplica per documento): un preventivo
+  // grande può comparire con più blocchi diversi, ognuno col suo punteggio.
+  return typedChunks
+    .filter((c) => docMap.has(c.documento_id))
+    .map((c) => {
+      const doc = docMap.get(c.documento_id)!;
+      const meta = c.metadata ?? {};
+      const blocco =
+        (typeof meta.sheet_name === "string" && meta.sheet_name.trim()) ||
+        (typeof meta.codice_blocco === "string" && meta.codice_blocco.trim()) ||
+        null;
       return {
         documento_id: doc.id,
         codice: doc.codice,
         cliente: doc.cliente,
         stato: doc.stato,
-        similarity: entry.maxSimilarity,
-        estratto: entry.topChunk.contenuto.slice(0, 300),
+        importo_preventivo: doc.importo_preventivo,
+        blocco,
+        similarity: c.similarity,
+        estratto: c.contenuto.slice(0, 300),
       };
     })
     .sort((a, b) => b.similarity - a.similarity)

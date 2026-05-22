@@ -24,11 +24,11 @@ export const TOOL_LIST_PREVENTIVI_DEF = {
 export const TOOL_CERCA_SIMILI_DEF = {
   name: "cerca_simili",
   description:
-    "Ricerca semantica nei preventivi storici per trovare configurazioni tecnicamente simili. Usare per query come 'trova scale con...', 'preventivi simili a...', 'configurazioni con motoriduttore...' ecc.",
+    "Ricerca semantica nei preventivi storici a livello di BLOCCO/configurazione. Ogni risultato è un singolo blocco di un preventivo (campo 'blocco') con il suo punteggio di similarità: un blocco molto simile viene trovato anche se appartiene a un preventivo grande e con importo totale diverso. Usare per 'trova configurazioni simili a quella che sto costruendo', 'a quale preventivo somiglia questo blocco', 'preventivi con motoriduttore...'. Quando l'utente sta costruendo/copiando un blocco, usa come query i CODICI ARTICOLO esatti del blocco corrente (presenti nello stato del builder), non una descrizione generica.",
   parameters_obj: {
-    query:   { type: "string", description: "Descrizione tecnica da cercare semanticamente" },
+    query:   { type: "string", description: "Codici articolo e/o descrizione tecnica da cercare semanticamente. Se l'utente sta replicando un blocco, elenca i codici articolo esatti." },
     cliente: { type: "string", description: "Filtro opzionale per cliente" },
-    limite:  { type: "number", description: "Max risultati, default 5" },
+    limite:  { type: "number", description: "Max blocchi da restituire, default 8" },
   },
   required: ["query"] as string[],
 };
