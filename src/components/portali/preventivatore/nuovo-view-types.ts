@@ -63,6 +63,9 @@ export interface ArticoloBlocco {
  * Servizio/lavorazione aggiunto a un blocco.
  * Un servizio presente in `blocco.servizi` è per definizione attivo: i blocchi
  * nascono senza servizi e l'utente aggiunge solo quelli che gli servono.
+ *
+ * Prezzo riga = (ore × tariffa_ora) / coeff_ricarico
+ * Stessa convenzione SICS dei materiali (vedi calcNettoArticolo).
  */
 export interface ServizioBlocco {
   _key: string
@@ -71,7 +74,7 @@ export interface ServizioBlocco {
   categoria: string
   tariffa_ora: number
   ore: number
-  markup: number
+  coeff_ricarico: number
 }
 
 export interface Blocco {
@@ -131,7 +134,8 @@ export function calcNettoArticolo(a: ArticoloBlocco): number {
 }
 
 export function calcTotaleServizio(s: ServizioBlocco): number {
-  return s.tariffa_ora * s.ore * (1 + s.markup / 100)
+  if (!s.coeff_ricarico || s.coeff_ricarico <= 0) return 0
+  return (s.tariffa_ora * s.ore) / s.coeff_ricarico
 }
 
 export function calcTotaleBlocco(b: Blocco): number {
@@ -164,7 +168,7 @@ export interface BuilderStateLavorazione {
   categoria: string
   ore: number
   tariffa_ora: number
-  markup_pct: number
+  coeff_ricarico: number
   totale: number
 }
 
@@ -243,7 +247,7 @@ export function buildBuilderState(input: {
         categoria: s.categoria,
         ore: s.ore,
         tariffa_ora: s.tariffa_ora,
-        markup_pct: s.markup,
+        coeff_ricarico: s.coeff_ricarico,
         totale: calcTotaleServizio(s),
       })),
       totale_materiali: b.articoli.reduce((s, a) => s + calcNettoArticolo(a), 0),
@@ -287,6 +291,6 @@ export function servizioBloccoDaDB(s: ServizioDB): ServizioBlocco {
     categoria: s.categoria,
     tariffa_ora: s.tariffa_ora,
     ore: 1,
-    markup: 0,
+    coeff_ricarico: COEFF_RICARICO_DEFAULT,
   }
 }

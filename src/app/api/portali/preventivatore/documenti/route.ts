@@ -150,13 +150,15 @@ export async function GET(request: NextRequest) {
 //   blocchi: Array<{
 //     nome?: string, tipo?: string, note?: string,
 //     articoli: Array<{ codice: string, descrizione: string, qty: number, ult_costo: number, coeff_ricarico: number }>,
-//     servizi:  Array<{ nome: string, categoria?: string, ore: number, tariffa_ora: number, markup: number }>
+//     servizi:  Array<{ nome: string, categoria?: string, ore: number, tariffa_ora: number, coeff_ricarico: number }>
 //   }>
 // }
 //
 // Crea: 1 documenti (tipo='generato', tipo_cartella='G', stato='aperta') +
 // N blocchi + M righe_distinta (materiale + manodopera con tipo_riga) +
 // 1 chunks testo riassuntivo (embedding generato fuori banda).
+//
+// Coefficiente di ricarico SICS: prezzo = costo / coeff (vale per materiali e manodopera).
 
 interface BloccoInput {
   nome?: string;
@@ -174,7 +176,7 @@ interface BloccoInput {
     categoria?: string;
     ore: number;
     tariffa_ora: number;
-    markup: number;
+    coeff_ricarico: number;
   }>;
 }
 
@@ -194,8 +196,9 @@ function calcNettoArticolo(a: { ult_costo: number; qty: number; coeff_ricarico: 
   return (a.ult_costo * a.qty) / a.coeff_ricarico;
 }
 
-function calcTotaleServizio(s: { tariffa_ora: number; ore: number; markup: number }) {
-  return s.tariffa_ora * s.ore * (1 + (s.markup ?? 0) / 100);
+function calcTotaleServizio(s: { tariffa_ora: number; ore: number; coeff_ricarico: number }) {
+  if (!s.coeff_ricarico || s.coeff_ricarico <= 0) return 0;
+  return (s.tariffa_ora * s.ore) / s.coeff_ricarico;
 }
 
 export async function POST(request: NextRequest) {
@@ -348,7 +351,8 @@ export async function POST(request: NextRequest) {
           descrizione: s.nome,
           quantita: s.ore,
           prezzo_unitario: s.tariffa_ora,
-          ricarico_pct: s.markup ?? 0,
+          ricarico_pct: s.coeff_ricarico,
+          ricarico_coefficiente: s.coeff_ricarico,
           totale_riga: calcTotaleServizio(s),
           totale_riga_ceil_2: Math.ceil(calcTotaleServizio(s) * 100) / 100,
           tipo_riga: "manodopera",

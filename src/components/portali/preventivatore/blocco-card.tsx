@@ -173,7 +173,7 @@ function ServiziSection({
   serviziDisponibili: ServizioDB[]
   onAggiungi: (s: ServizioDB) => void
   onRimuovi: (key: string) => void
-  onAggiorna: (key: string, campo: "ore" | "markup", valore: number) => void
+  onAggiorna: (key: string, campo: "ore" | "coeff_ricarico", valore: number) => void
 }) {
   const [pickerAperto, setPickerAperto] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -217,8 +217,8 @@ function ServiziSection({
                 <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20">
                   Tariffa/h
                 </th>
-                <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20">
-                  Markup%
+                <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20" title="Coefficiente di ricarico SICS: prezzo = (ore × tariffa) / coeff">
+                  Ricarico
                 </th>
                 <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
                   Totale
@@ -249,11 +249,13 @@ function ServiziSection({
                   <td className="px-2 py-1.5 border border-border">
                     <input
                       type="number"
-                      min={0}
-                      step={1}
-                      value={s.markup}
-                      onChange={(e) => onAggiorna(s._key, "markup", Number(e.target.value))}
-                      className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                      min={0.01}
+                      max={1}
+                      step={0.05}
+                      value={s.coeff_ricarico}
+                      onChange={(e) => onAggiorna(s._key, "coeff_ricarico", Math.max(0.01, Number(e.target.value)))}
+                      className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1 tabular-nums"
+                      title="Coefficiente di ricarico SICS (es. 0.5 = costo × 2, 0.65 = costo × 1.538)"
                     />
                   </td>
                   <td className="px-2 py-1.5 border border-border text-right text-sm font-medium text-text">
@@ -493,7 +495,7 @@ export function BloccoCard({
     onChange({ ...blocco, servizi: blocco.servizi.filter((s) => s._key !== key) })
   }
 
-  function aggiornaServizio(key: string, campo: "ore" | "markup", valore: number) {
+  function aggiornaServizio(key: string, campo: "ore" | "coeff_ricarico", valore: number) {
     onChange({
       ...blocco,
       servizi: blocco.servizi.map((s) =>

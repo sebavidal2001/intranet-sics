@@ -89,7 +89,7 @@ export function NuovoView() {
             categoria: s.categoria,
             ore: s.ore,
             tariffa_ora: s.tariffa_ora,
-            markup: s.markup,
+            coeff_ricarico: s.coeff_ricarico,
           })),
         })),
       }
