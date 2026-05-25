@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ModificaUtenteForm } from "@/components/superadmin/modifica-utente-form";
+import { PreventivatorePermessiUtente } from "@/components/superadmin/preventivatore-permessi-utente";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 
 interface UtenteDettaglio {
@@ -105,6 +106,11 @@ export default async function ModificaUtentePage({
           responsabili={responsabili}
           ruoliConfig={ruoliConfig}
         />
+      </div>
+
+      <div className="bg-bg rounded-xl border border-border p-6">
+        <h2 className="font-tenorite text-lg text-text mb-3">Permessi Preventivatore</h2>
+        <PreventivatorePermessiUtente utenteId={utente.id} />
       </div>
     </div>
   );

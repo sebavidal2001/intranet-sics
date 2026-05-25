@@ -1,5 +1,11 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getPortaleAccesso } from "@/lib/auth/portale";
+import {
+  getFiltroCommerciale,
+  getIdClientiVisibili,
+} from "@/lib/portali/preventivatore/ruoli";
 import { DettaglioPreventivoView } from "@/components/portali/preventivatore/dettaglio-view";
 import type {
   PreventivoDettaglio,
@@ -23,6 +29,16 @@ export default async function DettaglioPreventivoPage({
   // Validazione UUID minimale per evitare query a vuoto
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
+  // Auth + filtro commerciale ristretto
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/auth/login");
+
+  const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
+  if (livello === null) redirect("/");
+
+  const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+
   const sb = createAdminClient();
 
   const [docRes, chunksRes, righeRes] = await Promise.all([
@@ -30,7 +46,7 @@ export default async function DettaglioPreventivoPage({
       .schema("preventivatore")
       .from("documenti")
       .select(
-        "id, codice, cliente, tipo, categoria, tipo_prodotto, anno, stato, motivo_rifiuto_id, stato_note, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, importo_finale_raw, importo_source, codici_articolo, tags, note, versione_ingest, created_at, updated_at"
+        "id, codice, cliente, cliente_master_id, tipo, categoria, tipo_prodotto, anno, stato, motivo_rifiuto_id, stato_note, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, importo_finale_raw, importo_source, codici_articolo, tags, note, versione_ingest, created_at, updated_at"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -53,6 +69,17 @@ export default async function DettaglioPreventivoPage({
   if (!docRes.data) notFound();
   if (chunksRes.error) throw chunksRes.error;
   if (righeRes.error) throw righeRes.error;
+
+  // Enforce filtro commerciale ristretto sulla scheda dettaglio
+  if (agenteCommerciale) {
+    const cmId = (docRes.data as { cliente_master_id: string | null }).cliente_master_id;
+    if (!cmId) {
+      notFound();
+    } else {
+      const visibili = await getIdClientiVisibili(agenteCommerciale);
+      if (!visibili.includes(cmId)) notFound();
+    }
+  }
 
   let motivoRifiutoLabel: string | null = null;
   if (docRes.data.motivo_rifiuto_id) {

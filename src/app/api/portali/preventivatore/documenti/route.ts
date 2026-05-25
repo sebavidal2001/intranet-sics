@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import {
+  getFiltroCommerciale,
+  getIdClientiVisibili,
+} from "@/lib/portali/preventivatore/ruoli";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +85,19 @@ export async function GET(request: NextRequest) {
       )
       .order(sort, { ascending: dir === "asc", nullsFirst: false })
       .range(offset, offset + limit - 1);
+
+    // Filtro "io commerciale vedo solo i miei clienti" (vedi lib/portali/preventivatore/ruoli.ts).
+    // Trasparente per admin/back_office/preventivatore o per utenti senza ruolo commerciale.
+    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    if (agenteCommerciale) {
+      const idsClienti = await getIdClientiVisibili(agenteCommerciale);
+      if (idsClienti.length === 0) {
+        // Commerciale senza clienti: restituisce 0 record
+        query = query.in("cliente_master_id", ["00000000-0000-0000-0000-000000000000"]);
+      } else {
+        query = query.in("cliente_master_id", idsClienti);
+      }
+    }
 
     if (stato && stato !== "tutti") query = query.eq("stato", stato);
     if (cliente) query = query.eq("cliente", cliente);

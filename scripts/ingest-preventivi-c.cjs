@@ -274,16 +274,47 @@ function parseFolderMeta(folderName) {
   return { cliente: txt(m[1]), descrizione: txt(m[2] ?? null) };
 }
 
-// Cliente master lookup
+// Cliente master lookup — con fallback a destinazione e a token (es. "IMA SAFE"
+// trova IMA spa + dest "div.SAFE"; "SER.MAC." trova SER.MAC srl).
 async function lookupClienteMaster(ragione) {
   if (!ragione) return null;
   const cleaned = ragione.replace(/['"]/g, "").trim().toUpperCase();
-  // 1) exact match (con tolleranza spazi)
-  const { data } = await db.schema("preventivatore").from("clienti_master")
+
+  // Strategia 1: prefix match sulla ragione_sociale
+  let { data } = await db.schema("preventivatore").from("clienti_master")
     .select("id, ragione_sociale, destinazione, id_destinazione")
-    .ilike("ragione_sociale", `${cleaned}%`);
+    .ilike("ragione_sociale", `${cleaned}%`)
+    .limit(50);
+
+  // Strategia 2: se nulla, prova con il primo token (es. "IMA SAFE" → "IMA")
+  // poi filtra per destinazione che contiene il resto.
+  if (!data || data.length === 0) {
+    const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
+    if (tokens.length > 1) {
+      const primo = tokens[0];
+      const resto = tokens.slice(1).join(" ").toUpperCase();
+      const { data: d2 } = await db.schema("preventivatore").from("clienti_master")
+        .select("id, ragione_sociale, destinazione, id_destinazione")
+        .ilike("ragione_sociale", `${primo}%`)
+        .limit(200);
+      data = (d2 ?? []).filter((r) => (r.destinazione ?? "").toUpperCase().includes(resto));
+      if (data.length === 0 && d2 && d2.length > 0) {
+        // fallback: prendi HQ del primo token
+        data = d2;
+      }
+    } else {
+      // Strategia 3: contains sulla destinazione
+      const { data: d3 } = await db.schema("preventivatore").from("clienti_master")
+        .select("id, ragione_sociale, destinazione, id_destinazione")
+        .ilike("destinazione", `%${cleaned}%`)
+        .limit(50);
+      data = d3 ?? [];
+    }
+  }
+
   if (!data || data.length === 0) return null;
-  // Preferenza HQ pura (ragione=destinazione)
+
+  // Preferenza HQ pura (ragione=destinazione), poi id_destinazione minore
   const sorted = data.sort((a, b) => {
     const ah = (a.ragione_sociale ?? "").trim() === (a.destinazione ?? "").trim() ? 0 : 1;
     const bh = (b.ragione_sociale ?? "").trim() === (b.destinazione ?? "").trim() ? 0 : 1;
