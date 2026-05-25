@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { PlusCircle, Loader2, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -50,6 +51,69 @@ export function NuovoView() {
   const [serviziDB, setServiziDB] = useState<ServizioDB[]>([])
   const [loadingServizi, setLoadingServizi] = useState(true)
   const [schedaOpen, setSchedaOpen] = useState(false)
+  const [savingPreventivo, setSavingPreventivo] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const router = useRouter()
+
+  async function handleSalvaPreventivo() {
+    if (savingPreventivo) return
+    if (!cliente) {
+      setSaveError("Seleziona un cliente prima di salvare")
+      return
+    }
+    if (blocchi.length === 0 || blocchi.every((b) => b.articoli.length === 0 && b.servizi.length === 0)) {
+      setSaveError("Aggiungi almeno un articolo o servizio in un blocco")
+      return
+    }
+    setSavingPreventivo(true)
+    setSaveError(null)
+    try {
+      const payload = {
+        titolo: titolo.trim() || undefined,
+        cliente_master_id: cliente.id,
+        cliente_text: cliente.ragione_sociale,
+        data_consegna: dataConsegna || undefined,
+        blocchi: blocchi.map((b) => ({
+          nome: b.nome || undefined,
+          tipo: b.tipo,
+          note: b.note || undefined,
+          articoli: b.articoli.map((a) => ({
+            codice: a.codice,
+            descrizione: a.descrizione,
+            qty: a.qty,
+            ult_costo: a.ult_costo,
+            coeff_ricarico: a.coeff_ricarico,
+          })),
+          servizi: b.servizi.map((s) => ({
+            nome: s.nome,
+            categoria: s.categoria,
+            ore: s.ore,
+            tariffa_ora: s.tariffa_ora,
+            markup: s.markup,
+          })),
+        })),
+      }
+      const res = await fetch("/api/portali/preventivatore/documenti", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error ?? "Errore salvataggio")
+      }
+      // Redirect alla scheda del nuovo preventivo creato
+      const id = (data as { id?: string }).id
+      if (id) {
+        router.push(`/preventivatore/archivio/${id}`)
+      } else {
+        router.push("/preventivatore/archivio")
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Errore sconosciuto")
+      setSavingPreventivo(false)
+    }
+  }
 
   // Blocco iniziale (i servizi non vengono precaricati nei blocchi)
   useEffect(() => {
@@ -334,6 +398,9 @@ export function NuovoView() {
               </div>
 
               <div className="flex items-center gap-2">
+                {saveError && (
+                  <span className="text-xs text-danger mr-2 max-w-[260px]">{saveError}</span>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => setSchedaOpen(true)}
@@ -345,11 +412,12 @@ export function NuovoView() {
                   Scheda tecnica
                 </Button>
                 <Button
-                  onClick={() => alert("Funzionalità di salvataggio in arrivo")}
+                  onClick={handleSalvaPreventivo}
+                  disabled={savingPreventivo || !cliente || blocchi.length === 0}
                   className="text-white px-6"
                   style={{ backgroundColor: "#00a1be" }}
                 >
-                  Salva Preventivo
+                  {savingPreventivo ? "Salvataggio…" : "Salva Preventivo"}
                 </Button>
               </div>
             </div>
