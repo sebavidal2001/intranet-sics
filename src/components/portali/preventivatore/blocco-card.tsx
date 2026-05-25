@@ -276,39 +276,153 @@ function ServiziSection({
       )}
 
       {/* Picker per aggiungere lavorazioni */}
-      <div ref={pickerRef} className="relative">
-        <button
-          onClick={() => setPickerAperto((v) => !v)}
-          className="text-xs flex items-center gap-1 text-[#00a1be] hover:underline"
+      <ServiziPicker
+        anchorRef={pickerRef}
+        aperto={pickerAperto}
+        onToggle={() => setPickerAperto((v) => !v)}
+        onClose={() => setPickerAperto(false)}
+        serviziDisponibili={serviziDisponibili}
+        onAggiungi={onAggiungi}
+      />
+    </div>
+  )
+}
+
+// ─── ServiziPicker (popover smart-positioned, niente tagliature) ─────────────
+// Dropdown in position:fixed con calcolo runtime della posizione: si apre verso
+// il basso se c'è spazio, altrimenti verso l'alto. Niente più clipping dal parent.
+function ServiziPicker({
+  anchorRef,
+  aperto,
+  onToggle,
+  onClose,
+  serviziDisponibili,
+  onAggiungi,
+}: {
+  anchorRef: React.RefObject<HTMLDivElement | null>
+  aperto: boolean
+  onToggle: () => void
+  onClose: () => void
+  serviziDisponibili: ServizioDB[]
+  onAggiungi: (s: ServizioDB) => void
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; openUpward: boolean } | null>(null)
+  const [query, setQuery] = useState("")
+
+  useEffect(() => {
+    if (!aperto) {
+      setQuery("")
+      return
+    }
+    function recompute() {
+      const btn = triggerRef.current
+      if (!btn) return
+      const r = btn.getBoundingClientRect()
+      const PANEL_H = 320
+      const PANEL_W = 320
+      const spaceBelow = window.innerHeight - r.bottom
+      const openUpward = spaceBelow < PANEL_H && r.top > PANEL_H
+      const top = openUpward ? Math.max(8, r.top - PANEL_H - 8) : Math.min(window.innerHeight - PANEL_H - 8, r.bottom + 6)
+      const left = Math.min(window.innerWidth - PANEL_W - 8, Math.max(8, r.left))
+      setPos({ top, left, openUpward })
+    }
+    recompute()
+    window.addEventListener("scroll", recompute, true)
+    window.addEventListener("resize", recompute)
+    return () => {
+      window.removeEventListener("scroll", recompute, true)
+      window.removeEventListener("resize", recompute)
+    }
+  }, [aperto])
+
+  // Click fuori chiude (anche se il panel è in fixed)
+  useEffect(() => {
+    if (!aperto) return
+    function handler(e: MouseEvent) {
+      const t = e.target as Node
+      if (anchorRef.current?.contains(t)) return
+      const panel = document.getElementById("servizi-picker-panel")
+      if (panel?.contains(t)) return
+      onClose()
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [aperto, anchorRef, onClose])
+
+  const filtered = query.trim().length === 0
+    ? serviziDisponibili
+    : serviziDisponibili.filter((s) =>
+        (s.nome + " " + s.categoria).toLowerCase().includes(query.trim().toLowerCase())
+      )
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        onClick={onToggle}
+        className={`text-xs inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-all ${
+          aperto
+            ? "bg-[#00a1be] text-white shadow-sm"
+            : "text-[#00a1be] bg-[#00a1be]/10 hover:bg-[#00a1be]/15"
+        }`}
+      >
+        <PlusCircle className="w-3.5 h-3.5" />
+        Aggiungi lavorazione
+      </button>
+      {aperto && pos && (
+        <div
+          id="servizi-picker-panel"
+          style={{ top: pos.top, left: pos.left, width: 320, maxHeight: 320 }}
+          className="fixed z-[60] rounded-xl border border-border bg-bg/95 backdrop-blur-md shadow-2xl overflow-hidden flex flex-col animate-in fade-in slide-in-from-top-2 duration-150"
         >
-          <PlusCircle className="w-3.5 h-3.5" />
-          Aggiungi lavorazione
-        </button>
-        {pickerAperto && (
-          <div className="absolute z-50 mt-1 w-72 rounded-lg border border-border bg-bg shadow-lg overflow-hidden max-h-64 overflow-y-auto">
-            {serviziDisponibili.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-text-muted">
-                Nessuna lavorazione configurata. Aggiungile da Impostazioni.
+          <div className="px-3 py-2 border-b border-border bg-bg-page/80 flex items-center gap-2">
+            <Search className="w-3.5 h-3.5 text-text-muted shrink-0" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Cerca lavorazione..."
+              className="flex-1 bg-transparent border-0 focus:outline-none text-sm text-text placeholder:text-text-muted"
+            />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                className="text-text-muted hover:text-text text-xs"
+                title="Cancella"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-4 text-sm text-text-muted text-center">
+                {serviziDisponibili.length === 0
+                  ? "Nessuna lavorazione configurata. Aggiungile da Impostazioni."
+                  : "Nessun risultato."}
               </div>
             ) : (
-              serviziDisponibili.map((sd) => (
+              filtered.map((sd) => (
                 <button
                   key={sd.id}
-                  onClick={() => { onAggiungi(sd); setPickerAperto(false) }}
-                  className="w-full text-left px-3 py-2 hover:bg-bg-page transition-colors border-b border-border last:border-0 flex items-center justify-between gap-2"
+                  onClick={() => { onAggiungi(sd); onClose() }}
+                  className="w-full text-left px-3 py-2 hover:bg-[#00a1be]/8 transition-colors border-b border-border last:border-0 flex items-center justify-between gap-2 group"
                 >
-                  <span className="text-sm text-text">
-                    {sd.nome}
-                    <span className="text-[10px] text-text-muted ml-1.5">{sd.categoria}</span>
+                  <span className="text-sm text-text flex items-baseline gap-2 min-w-0">
+                    <span className="truncate group-hover:text-[#007a91] transition-colors">{sd.nome}</span>
+                    <span className="text-[10px] text-text-muted shrink-0 px-1.5 py-0.5 rounded-full bg-bg-page">{sd.categoria}</span>
                   </span>
-                  <span className="text-xs text-text-muted shrink-0">{fmtEur(sd.tariffa_ora)}/{sd.unita}</span>
+                  <span className="text-xs font-mono text-text-muted shrink-0 tabular-nums">
+                    {fmtEur(sd.tariffa_ora)}/{sd.unita}
+                  </span>
                 </button>
               ))
             )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+    </>
   )
 }
 
