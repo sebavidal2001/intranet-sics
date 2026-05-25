@@ -40,11 +40,11 @@ export async function GET(request: NextRequest) {
       .schema("preventivatore")
       .from("clienti_master")
       .select(
-        "id, ragione_sociale, destinazione, id_destinazione, cap, localita, cat_zona, agente_nome, agente_codice, cat_commerciale"
+        "id, codice_cliente, ragione_sociale, destinazione, id_destinazione, cap, localita, cat_zona, agente_nome, agente_codice, cat_commerciale"
       )
       .eq("attivo", true)
       .order("ragione_sociale", { ascending: true })
-      .limit(30);
+      .limit(60);
 
     if (q) {
       // Match su ragione OR destinazione
@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
       const provMatch = zona.match(/^([A-Z]{2})-/);
       return {
         id: r.id as string,
+        codice_cliente: r.codice_cliente as string,
         ragione_sociale: r.ragione_sociale as string,
         destinazione: r.destinazione as string | null,
         id_destinazione: r.id_destinazione as string | null,
@@ -74,6 +75,7 @@ export async function GET(request: NextRequest) {
         agente_nome: r.agente_nome as string | null,
         agente_codice: r.agente_codice as string | null,
         cat_commerciale: r.cat_commerciale as string | null,
+        is_hq: (r.ragione_sociale as string)?.trim() === (r.destinazione as string)?.trim(),
       };
     });
 

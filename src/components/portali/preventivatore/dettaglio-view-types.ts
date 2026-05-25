@@ -1,6 +1,10 @@
 // Types per la scheda di dettaglio di un preventivo storico/generato.
 
-export type StatoDocumento = "pending" | "ordinato" | "rifiutato";
+export type StatoDocumento =
+  // legacy (compat con vecchi import)
+  | "pending" | "ordinato" | "rifiutato"
+  // workflow nuovo (migration 039)
+  | "storico" | "aperta" | "presa_in_carico" | "completato" | "inviata" | "ordinata" | "fallita";
 export type TipoDocumento = "storico" | "generato";
 
 export interface PreventivoDocumento {

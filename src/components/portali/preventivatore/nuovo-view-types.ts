@@ -6,6 +6,14 @@ export interface Cliente {
   piva: string | null
   citta: string | null
   provincia: string | null
+  // Campi opzionali popolati dal Cruscotto (clienti_master)
+  codice_cliente?: string
+  destinazione?: string | null
+  id_destinazione?: string | null
+  agente_nome?: string | null
+  agente_codice?: string | null
+  cat_commerciale?: string | null
+  is_hq?: boolean
 }
 
 export interface Prodotto {

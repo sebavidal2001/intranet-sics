@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DocumentoWordDialog } from "./documento-word-dialog";
 import { MarkdownLight } from "./markdown-light";
 import { CorreggiTotaliDialog } from "./correggi-totali-dialog";
+import { WorkflowActions } from "./workflow-actions";
 import {
   TOTAL_LABELS,
   TOTAL_ORDER,
@@ -107,9 +108,18 @@ function buildTotalsView(totals: Record<string, { raw: number; ceil_2: number }>
 }
 
 const STATO_BADGE: Record<string, { label: string; className: string }> = {
-  pending: { label: "In attesa", className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  ordinato: { label: "Ordinato", className: "bg-green-100 text-green-800 border-green-200" },
-  rifiutato: { label: "Rifiutato", className: "bg-red-100 text-red-800 border-red-200" },
+  // legacy (compat con vecchi import)
+  pending:   { label: "In attesa",  className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+  ordinato:  { label: "Ordinato",   className: "bg-green-100 text-green-800 border-green-200" },
+  rifiutato: { label: "Rifiutato",  className: "bg-red-100 text-red-800 border-red-200" },
+  // workflow nuovo (migration 039)
+  storico:          { label: "Archivio storico",   className: "bg-slate-100 text-slate-700 border-slate-200" },
+  aperta:           { label: "Aperta",             className: "bg-slate-100 text-slate-700 border-slate-200" },
+  presa_in_carico:  { label: "Presa in carico",    className: "bg-blue-100 text-blue-800 border-blue-200" },
+  completato:       { label: "Pronto per offerta", className: "bg-violet-100 text-violet-800 border-violet-200" },
+  inviata:          { label: "Offerta inviata",    className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+  ordinata:         { label: "Ordinata",           className: "bg-green-100 text-green-800 border-green-200" },
+  fallita:          { label: "Fallita",            className: "bg-red-100 text-red-800 border-red-200" },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -292,6 +302,18 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
             <Stat label="Codici unici" value={String(documento.codici_articolo.length)} />
           )}
         </div>
+
+        {/* Workflow actions (solo per preventivi 'generato' con stato workflow attivo) */}
+        <WorkflowActions
+          documentoId={documento.id}
+          statoCorrente={documento.stato}
+          tipo={documento.tipo}
+          importoCorrente={
+            documento.importo_preventivo != null
+              ? Number(documento.importo_preventivo)
+              : null
+          }
+        />
 
         {/* Stato note + motivo rifiuto */}
         {(documento.stato_note || motivo_rifiuto_label) && (
