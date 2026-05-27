@@ -2,8 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+import {
+  getRuoliFunzionali,
+  PREVENTIVATORE_RUOLI,
+  getFiltroCommerciale,
+  getIdClientiVisibili,
+} from "@/lib/portali/preventivatore/ruoli";
 
 export const dynamic = "force-dynamic";
+
+// ── Transizioni workflow valide ────────────────────────────────────────────
+// stato_corrente → array di stati raggiungibili.
+// Da uno stato "finale" (ordinata/fallita/storico) NON si torna indietro.
+const TRANSIZIONI_VALIDE: Record<string, string[]> = {
+  aperta:          ["presa_in_carico", "completato"],
+  presa_in_carico: ["aperta", "completato"],            // rollback ammesso
+  completato:      ["presa_in_carico", "inviata"],     // rollback ammesso prima invio
+  inviata:         ["ordinata", "fallita"],
+  // Stati finali (ammessi solo da chi ha accesso totale admin)
+  ordinata:        [],
+  fallita:         [],
+  storico:         [],
+  // Legacy V2 (compat)
+  pending:         [],
+  ordinato:        [],
+  rifiutato:       [],
+};
+
+// Ruoli funzionali ammessi per ogni transizione di stato (target)
+const RUOLI_PER_STATO_TARGET: Record<string, string[]> = {
+  presa_in_carico: [PREVENTIVATORE_RUOLI.preventivatore],
+  completato:      [PREVENTIVATORE_RUOLI.preventivatore],
+  inviata:         [PREVENTIVATORE_RUOLI.back_office],
+  ordinata:        [PREVENTIVATORE_RUOLI.back_office],
+  fallita:         [PREVENTIVATORE_RUOLI.back_office],
+  aperta:          [PREVENTIVATORE_RUOLI.preventivatore, PREVENTIVATORE_RUOLI.back_office, PREVENTIVATORE_RUOLI.commerciale],
+};
 
 /**
  * PATCH /api/portali/preventivatore/documenti/[id]/stato
@@ -52,6 +86,28 @@ export async function PATCH(
       return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
+    // Recupera stato corrente del documento (per validare la transizione)
+    const adminCheckClient = createAdminClient();
+    const { data: docCorrente, error: dcErr } = await adminCheckClient
+      .schema("preventivatore")
+      .from("documenti")
+      .select("id, stato, cliente_master_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (dcErr || !docCorrente) {
+      return NextResponse.json({ error: "Documento non trovato" }, { status: 404 });
+    }
+    const statoCorrente = docCorrente.stato as string;
+
+    // Filtro commerciale: un commerciale ristretto può cambiare stato SOLO sui suoi
+    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    if (agenteCommerciale && docCorrente.cliente_master_id) {
+      const ids = await getIdClientiVisibili(agenteCommerciale);
+      if (!ids.includes(docCorrente.cliente_master_id as string)) {
+        return NextResponse.json({ error: "Documento fuori dal tuo portfolio" }, { status: 403 });
+      }
+    }
+
     const body = await request.json() as {
       stato: string;
       codici_articolo?: string[];
@@ -68,6 +124,39 @@ export async function PATCH(
 
     if (!stato || !STATI_VALIDI.has(stato)) {
       return NextResponse.json({ error: "Stato non valido" }, { status: 400 });
+    }
+
+    // ── Validazione transizione workflow ────────────────────────────────────
+    // Se stato corrente è uno workflow nuovo, controlla che la transizione sia valida.
+    if (TRANSIZIONI_VALIDE[statoCorrente] !== undefined) {
+      const transizioniAmmesse = TRANSIZIONI_VALIDE[statoCorrente];
+      // Caso "storico/legacy → workflow": ammesso solo da superadmin (livello superadmin) per re-aprire
+      const isUnlock = ["storico","pending","ordinato","rifiutato"].includes(statoCorrente);
+      if (!isUnlock && !transizioniAmmesse.includes(stato) && stato !== statoCorrente) {
+        return NextResponse.json({
+          error: `Transizione non valida: da '${statoCorrente}' non si può passare a '${stato}'. Ammesse: ${transizioniAmmesse.join(", ") || "(nessuna)"}.`
+        }, { status: 400 });
+      }
+      if (isUnlock && livello !== "superadmin") {
+        return NextResponse.json({
+          error: `Lo stato '${statoCorrente}' è archivio: solo superadmin può rimetterlo in workflow.`
+        }, { status: 403 });
+      }
+    }
+
+    // ── Validazione ruolo funzionale per il nuovo stato ─────────────────────
+    // superadmin/admin del portale bypass; altrimenti l'utente deve avere uno dei ruoli ammessi.
+    if (livello !== "superadmin" && livello !== "admin") {
+      const ruoliRichiesti = RUOLI_PER_STATO_TARGET[stato];
+      if (ruoliRichiesti && ruoliRichiesti.length > 0) {
+        const ruoliUtente = await getRuoliFunzionali(user.id);
+        const ok = ruoliUtente.some((r) => ruoliRichiesti.includes(r));
+        if (!ok) {
+          return NextResponse.json({
+            error: `Per passare allo stato '${stato}' serve uno dei ruoli: ${ruoliRichiesti.join(", ")}.`
+          }, { status: 403 });
+        }
+      }
     }
 
     // Validazioni per stati specifici

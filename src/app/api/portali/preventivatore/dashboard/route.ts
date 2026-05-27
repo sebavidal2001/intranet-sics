@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { getFiltroCommerciale } from "@/lib/portali/preventivatore/ruoli";
 
 export const dynamic = "force-dynamic";
 
@@ -78,9 +79,14 @@ export async function GET() {
     const admin = createAdminClient();
     const sb = admin.schema("preventivatore");
 
+    // Filtro commerciale ristretto: passa p_agente_codice a dashboard_top_clienti
+    // (le altre RPC kpi/serie/articoli restano aggregate globali — i commerciali
+    // ne vedono solo il top_clienti scoped; refactor futuro per scoping completo).
+    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+
     const [kpiRes, topClientiRes, serieRes, serieCategorieRes, topArticoliRes, attivitaRes, usageRes] = await Promise.all([
       sb.rpc("dashboard_kpi", { window_months: 12 }),
-      sb.rpc("dashboard_top_clienti", { limit_n: 5, window_months: 12 }),
+      sb.rpc("dashboard_top_clienti", { limit_n: 5, window_months: 12, p_agente_codice: agenteCommerciale }),
       sb.rpc("dashboard_serie_mensile", { months: 12 }),
       sb.rpc("dashboard_serie_mensile_categoria", { months: 12 }),
       sb.rpc("dashboard_top_articoli", { limit_n: 5 }),

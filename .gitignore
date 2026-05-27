@@ -36,3 +36,8 @@ npm-debug.log*
 
 # TypeScript build cache
 tsconfig.tsbuildinfo
+
+# Artefatti audit dell'ingest C (locali)
+ingest-c-audit.json
+ingest-*-audit.json
+ingest-*-audit.csv

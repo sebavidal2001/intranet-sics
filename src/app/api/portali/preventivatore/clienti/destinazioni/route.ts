@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { getFiltroCommerciale, AGENTE_AIRFLUID } from "@/lib/portali/preventivatore/ruoli";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
     }
 
     const admin = createAdminClient();
-    const { data, error } = await admin
+    let q = admin
       .schema("preventivatore")
       .from("clienti_master")
       .select(
@@ -39,6 +40,13 @@ export async function GET(request: NextRequest) {
       .eq("attivo", true)
       .order("destinazione", { ascending: true, nullsFirst: true })
       .limit(200);
+
+    // Filtro commerciale: blocca accesso a destinazioni di clienti non in portfolio
+    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    if (agenteCommerciale) {
+      q = q.in("agente_codice", [agenteCommerciale, AGENTE_AIRFLUID]);
+    }
+    const { data, error } = await q;
 
     if (error) {
       console.error("destinazioni fetch error:", error);

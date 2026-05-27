@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getFiltroCommerciale, getIdClientiVisibili } from "@/lib/portali/preventivatore/ruoli";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,16 @@ export async function POST(request: NextRequest) {
       .from("documenti")
       .select("id, codice, cliente, stato, categoria, numero_offerta, data_offerta")
       .in("id", documentoIds);
+
+    // Filtro commerciale: nasconde i documenti di clienti fuori portfolio (anche dalla RAG)
+    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    if (agenteCommerciale) {
+      const idsVisibili = await getIdClientiVisibili(agenteCommerciale);
+      if (idsVisibili.length === 0) {
+        return NextResponse.json([]);
+      }
+      documentiQuery = documentiQuery.in("cliente_master_id", idsVisibili);
+    }
 
     if (filtro_stato && filtro_stato !== "tutti") {
       documentiQuery = documentiQuery.eq("stato", filtro_stato);

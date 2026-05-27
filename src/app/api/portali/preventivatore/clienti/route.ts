@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { getFiltroCommerciale, AGENTE_AIRFLUID } from "@/lib/portali/preventivatore/ruoli";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,12 @@ export async function GET(request: NextRequest) {
       .eq("attivo", true)
       .order("ragione_sociale", { ascending: true })
       .limit(60);
+
+    // Filtro commerciale ristretto: vede solo i propri clienti + AIRFLUID (casa SICS)
+    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    if (agenteCommerciale) {
+      query = query.in("agente_codice", [agenteCommerciale, AGENTE_AIRFLUID]);
+    }
 
     if (q) {
       // Match su ragione OR destinazione

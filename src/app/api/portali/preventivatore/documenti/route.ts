@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
@@ -160,46 +161,51 @@ export async function GET(request: NextRequest) {
 //
 // Coefficiente di ricarico SICS: prezzo = costo / coeff (vale per materiali e manodopera).
 
-interface BloccoInput {
-  nome?: string;
-  tipo?: string;
-  note?: string;
-  articoli: Array<{
-    codice: string;
-    descrizione: string;
-    qty: number;
-    ult_costo: number;
-    coeff_ricarico: number;
-  }>;
-  servizi: Array<{
-    nome: string;
-    categoria?: string;
-    ore: number;
-    tariffa_ora: number;
-    coeff_ricarico: number;
-  }>;
-}
+// ── Schema Zod: validazione body server-side (hardening pre-beta) ───────────
+// Limiti severi per evitare valori sporchi (negativi, infinity, NaN, stringhe troppo lunghe)
+const NUM_POS = z.number().finite().nonnegative();
+const COEFF = z.number().finite().gt(0).lte(2); // coeff > 0 e ≤ 2 (margine 0% al 100%)
 
-interface PostBody {
-  titolo?: string;
-  cliente_master_id?: string;
-  cliente_text?: string;
-  numero_preventivo?: string;
-  data_consegna?: string;
-  codice?: string;
-  note?: string;
-  blocchi: BloccoInput[];
-}
+const ArticoloSchema = z.object({
+  codice: z.string().trim().max(64),
+  descrizione: z.string().trim().max(500),
+  qty: NUM_POS.max(100000),
+  ult_costo: NUM_POS.max(10_000_000),
+  coeff_ricarico: COEFF,
+});
 
-function calcNettoArticolo(a: { ult_costo: number; qty: number; coeff_ricarico: number }) {
-  if (!a.coeff_ricarico || a.coeff_ricarico <= 0) return 0;
-  return (a.ult_costo * a.qty) / a.coeff_ricarico;
-}
+const ServizioSchema = z.object({
+  nome: z.string().trim().min(1).max(120),
+  categoria: z.string().trim().max(80).optional(),
+  ore: NUM_POS.max(100000),
+  tariffa_ora: NUM_POS.max(1000),
+  coeff_ricarico: COEFF,
+});
 
-function calcTotaleServizio(s: { tariffa_ora: number; ore: number; coeff_ricarico: number }) {
-  if (!s.coeff_ricarico || s.coeff_ricarico <= 0) return 0;
-  return (s.tariffa_ora * s.ore) / s.coeff_ricarico;
-}
+const BloccoSchema = z.object({
+  nome: z.string().trim().max(120).optional(),
+  tipo: z.string().trim().max(80).optional(),
+  note: z.string().trim().max(2000).optional(),
+  articoli: z.array(ArticoloSchema).default([]),
+  servizi: z.array(ServizioSchema).default([]),
+});
+
+const PostBodySchema = z.object({
+  titolo: z.string().trim().max(200).optional(),
+  cliente_master_id: z.string().uuid().optional(),
+  cliente_text: z.string().trim().max(200).optional(),
+  numero_preventivo: z.string().trim().max(64).optional(),
+  data_consegna: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  codice: z.string().trim().regex(/^[GSC]_\d{2}_[\w-]+$/).max(32).optional(),
+  note: z.string().trim().max(4000).optional(),
+  blocchi: z.array(BloccoSchema).min(1, "Almeno un blocco è richiesto"),
+}).refine(
+  (b) => Boolean(b.cliente_master_id) || Boolean(b.cliente_text && b.cliente_text.length > 0),
+  { message: "Cliente mancante (cliente_master_id o cliente_text)" }
+).refine(
+  (b) => b.blocchi.some((bl) => bl.articoli.length > 0 || bl.servizi.length > 0),
+  { message: "Almeno un blocco deve contenere articoli o servizi" }
+);
 
 export async function POST(request: NextRequest) {
   try {
@@ -210,196 +216,51 @@ export async function POST(request: NextRequest) {
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
     if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
 
-    const body = (await request.json().catch(() => null)) as PostBody | null;
-    if (!body || !Array.isArray(body.blocchi)) {
-      return NextResponse.json({ error: "Body invalido: blocchi mancanti" }, { status: 400 });
+    // ── 1) Validazione Zod del payload (limiti severi server-side) ──────
+    const rawBody = await request.json().catch(() => null);
+    const parsed = PostBodySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Payload invalido", dettagli: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) },
+        { status: 400 }
+      );
     }
-    if (body.blocchi.length === 0) {
-      return NextResponse.json({ error: "Almeno un blocco è richiesto" }, { status: 400 });
-    }
-    if (!body.cliente_master_id && !body.cliente_text?.trim()) {
-      return NextResponse.json({ error: "Cliente mancante" }, { status: 400 });
+    const body = parsed.data;
+
+    // ── 2) Filtro portfolio commerciale: il cliente_master_id deve essere visibile ──
+    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    if (agenteCommerciale && body.cliente_master_id) {
+      const idsVisibili = await getIdClientiVisibili(agenteCommerciale);
+      if (!idsVisibili.includes(body.cliente_master_id)) {
+        return NextResponse.json(
+          { error: "Cliente fuori dal tuo portfolio" },
+          { status: 403 }
+        );
+      }
     }
 
+    // ── 3) Chiama RPC atomico (transazione + ROLLBACK su errore) ────────
     const admin = createAdminClient();
-    const anno = new Date().getFullYear();
-    const annoSuffix = String(anno).slice(2);
-
-    // ── Codice cartella: manuale o auto-incremento G_YY_NNN ───────────────
-    let codice = body.codice?.trim();
-    if (!codice) {
-      const prefix = `G_${annoSuffix}_`;
-      const { data: existing } = await admin
-        .schema("preventivatore")
-        .from("documenti")
-        .select("codice")
-        .like("codice", `${prefix}%`)
-        .order("codice", { ascending: false })
-        .limit(1);
-      const maxN = existing && existing[0]
-        ? parseInt((existing[0].codice as string).slice(prefix.length), 10) || 0
-        : 0;
-      codice = `${prefix}${String(maxN + 1).padStart(3, "0")}`;
-    }
-
-    // ── Risolvi cliente da clienti_master se passato ─────────────────────
-    let ragioneSociale: string | null = body.cliente_text?.trim() ?? null;
-    let codiceArtAggregati: string[] = [];
-
-    if (body.cliente_master_id) {
-      const { data: cm } = await admin
-        .schema("preventivatore")
-        .from("clienti_master")
-        .select("ragione_sociale, destinazione")
-        .eq("id", body.cliente_master_id)
-        .maybeSingle();
-      if (cm) ragioneSociale = cm.ragione_sociale;
-    }
-
-    // ── Aggrega codici articolo ──────────────────────────────────────────
-    for (const b of body.blocchi) {
-      for (const a of b.articoli ?? []) {
-        if (a.codice && !codiceArtAggregati.includes(a.codice)) {
-          codiceArtAggregati.push(a.codice);
-        }
-      }
-    }
-
-    // ── Totali ───────────────────────────────────────────────────────────
-    let totaleMateriali = 0;
-    let totaleServizi = 0;
-    for (const b of body.blocchi) {
-      for (const a of b.articoli ?? []) totaleMateriali += calcNettoArticolo(a);
-      for (const s of b.servizi ?? []) totaleServizi += calcTotaleServizio(s);
-    }
-    const importoTotale = totaleMateriali + totaleServizi;
-
-    // ── INSERT documenti ─────────────────────────────────────────────────
-    const { data: doc, error: docErr } = await admin
+    // Inietta user_id nel payload (l'RPC lo leggerà da _user_id)
+    const payloadConUser = { ...body, _user_id: user.id };
+    const { data: result, error: rpcErr } = await admin
       .schema("preventivatore")
-      .from("documenti")
-      .insert({
-        codice,
-        tipo: "generato",
-        tipo_cartella: "G",
-        stato: "aperta",
-        cliente: ragioneSociale,
-        cliente_master_id: body.cliente_master_id ?? null,
-        anno,
-        tipo_prodotto: body.titolo?.trim() || null,
-        codici_articolo: codiceArtAggregati,
-        importo_preventivo: importoTotale,
-        importo_finale_raw: importoTotale,
-        importo_source: "builder",
-        versione_ingest: "builder_v1",
-        numero_preventivo: body.numero_preventivo?.trim() || null,
-        data_consegna_richiesta: body.data_consegna || null,
-        note: body.note?.trim() || null,
-        creato_da: user.id,
-      })
-      .select("id, codice")
-      .single();
+      .rpc("crea_documento_dal_builder", { p_payload: payloadConUser });
 
-    if (docErr || !doc) {
-      console.error("POST documenti insert error:", docErr);
-      return NextResponse.json({ error: "Errore creazione documento: " + (docErr?.message ?? "unknown") }, { status: 500 });
-    }
-    const documentoId = doc.id;
-
-    // ── INSERT blocchi + righe_distinta (materiale + manodopera) ─────────
-    const blocchiPayload = body.blocchi.map((b, idx) => {
-      const tot =
-        (b.articoli ?? []).reduce((s, a) => s + calcNettoArticolo(a), 0) +
-        (b.servizi ?? []).reduce((s, sv) => s + calcTotaleServizio(sv), 0);
-      return {
-        documento_id: documentoId,
-        codice_blocco: b.nome?.trim() || b.tipo?.trim() || `Blocco ${idx + 1}`,
-        sheet_name: "builder",
-        totale_raw: tot,
-        totale_ceil_2: Math.ceil(tot * 100) / 100,
-        incluso_offerta: true,
-      };
-    });
-    const { error: bErr } = await admin.schema("preventivatore").from("blocchi").insert(blocchiPayload);
-    if (bErr) console.error("POST blocchi insert error:", bErr);
-
-    const righe: Array<Record<string, unknown>> = [];
-    for (const b of body.blocchi) {
-      const codBlock = b.nome?.trim() || b.tipo?.trim() || null;
-      for (const a of b.articoli ?? []) {
-        righe.push({
-          documento_id: documentoId,
-          sheet_name: "builder",
-          codice_blocco: codBlock,
-          codice_articolo: a.codice,
-          descrizione: a.descrizione,
-          quantita: a.qty,
-          prezzo_unitario: a.ult_costo,
-          ricarico_pct: a.coeff_ricarico,
-          ricarico_coefficiente: a.coeff_ricarico,
-          totale_riga: calcNettoArticolo(a),
-          totale_riga_ceil_2: Math.ceil(calcNettoArticolo(a) * 100) / 100,
-          tipo_riga: "materiale",
-        });
-      }
-      for (const s of b.servizi ?? []) {
-        righe.push({
-          documento_id: documentoId,
-          sheet_name: "builder",
-          codice_blocco: codBlock,
-          codice_articolo: null,
-          descrizione: s.nome,
-          quantita: s.ore,
-          prezzo_unitario: s.tariffa_ora,
-          ricarico_pct: s.coeff_ricarico,
-          ricarico_coefficiente: s.coeff_ricarico,
-          totale_riga: calcTotaleServizio(s),
-          totale_riga_ceil_2: Math.ceil(calcTotaleServizio(s) * 100) / 100,
-          tipo_riga: "manodopera",
-        });
-      }
-    }
-    if (righe.length > 0) {
-      const { error: rErr } = await admin.schema("preventivatore").from("righe_distinta").insert(righe);
-      if (rErr) console.error("POST righe_distinta insert error:", rErr);
+    if (rpcErr || !result) {
+      console.error("crea_documento_dal_builder error:", rpcErr);
+      return NextResponse.json(
+        { error: "Errore creazione documento: " + (rpcErr?.message ?? "unknown") },
+        { status: 500 }
+      );
     }
 
-    // ── 1 chunk testuale riassuntivo (embedding generato fuori banda) ────
-    const riassunto = [
-      `Preventivo ${doc.codice}`,
-      ragioneSociale ? `Cliente: ${ragioneSociale}` : null,
-      body.titolo ? `Titolo: ${body.titolo}` : null,
-      body.numero_preventivo ? `N. offerta: ${body.numero_preventivo}` : null,
-      `Importo: ${importoTotale.toFixed(2)} EUR (materiali ${totaleMateriali.toFixed(2)}, manodopera ${totaleServizi.toFixed(2)})`,
-      `Blocchi: ${body.blocchi.length}`,
-      ...body.blocchi.map((b, i) => {
-        const codici = (b.articoli ?? []).map((a) => a.codice).filter(Boolean).join(", ");
-        return `[Blocco ${i + 1} ${b.tipo ?? ""} ${b.nome ?? ""}] articoli: ${codici || "—"}`;
-      }),
-      body.note ? `Note: ${body.note}` : null,
-    ].filter(Boolean).join("\n");
-
-    await admin.schema("preventivatore").from("chunks").insert({
-      documento_id: documentoId,
-      chunk_index: 0,
-      contenuto: riassunto,
-      metadata: {
-        tipo: "preventivo_generato",
-        builder_state: {
-          totali: {
-            materiali: totaleMateriali,
-            servizi: totaleServizi,
-            netto_totale: importoTotale,
-            n_blocchi: body.blocchi.length,
-          },
-          n_articoli: righe.filter((r) => r.tipo_riga === "materiale").length,
-        },
-      },
-    });
-
-    return NextResponse.json({ id: documentoId, codice: doc.codice });
+    // result è già {id, codice} dal RPC
+    const r = result as { id: string; codice: string };
+    return NextResponse.json({ id: r.id, codice: r.codice });
   } catch (error) {
     console.error("POST documenti error:", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
+
