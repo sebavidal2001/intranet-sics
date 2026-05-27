@@ -158,6 +158,121 @@ export const TOOL_ANALISI_SQL_DEF = {
   required: ["modalita"] as string[],
 };
 
+// ─── Tool per redazione preventivi (migration 043) ───────────────────────────
+
+export const TOOL_CERCA_ARTICOLO_ANAGRAFICA_DEF = {
+  name: "cerca_articolo_anagrafica",
+  description:
+    "Cerca articoli nel catalogo prodotti SICS (`preventivatore.prodotti`): codice, descrizione, ult_costo, categoria, gruppo, reparto. " +
+    "Usare quando l'utente chiede 'qual è il costo attuale del codice X', 'prodotti della categoria Y', 'mostra il listino', 'cerca articolo per descrizione'. " +
+    "Restituisce sia match esatti sul codice che match testuali sulla descrizione. " +
+    "Per la STORIA DEL PREZZO nel tempo (variazioni anno su anno) usa invece il tool storia_prezzi_articolo.",
+  parameters_obj: {
+    codice:      { type: "string", description: "Codice articolo (es. AFD.00.1.11191.0), match esatto + parziale" },
+    descrizione: { type: "string", description: "Testo libero da cercare nella descrizione (ilike)" },
+    categoria:   { type: "string", description: "Categoria/gruppo (es. nastro, scala, protezione)" },
+    solo_attivi: { type: "boolean", description: "Default true: esclude prodotti dismessi" },
+    limit:       { type: "number",  description: "Max risultati, default 30 max 100" },
+  },
+  required: [] as string[],
+};
+
+export const TOOL_LISTINO_SERVIZI_DEF = {
+  name: "listino_servizi",
+  description:
+    "Restituisce il listino corrente dei servizi/lavorazioni configurati in `preventivatore.servizi_manodopera`: nome, categoria, tariffa_ora, unità. " +
+    "Usare per: 'qual è la tariffa del MONTAGGIO?', 'quali lavorazioni abbiamo a listino?', 'costo orario LAVORAZIONE'. " +
+    "Restituisce solo i servizi con is_attivo=true.",
+  parameters_obj: {
+    categoria: { type: "string", description: "Filtro categoria opzionale" },
+  },
+  required: [] as string[],
+};
+
+export const TOOL_STORIA_PREZZI_ARTICOLO_DEF = {
+  name: "storia_prezzi_articolo",
+  description:
+    "Andamento storico del prezzo di un articolo specifico: ult_costo corrente in anagrafica + tutte le occorrenze nelle distinte storiche con prezzo_unitario, quantità, cliente, ricarico applicato. " +
+    "Usare per: 'come è cambiato il costo del codice X', 'quale prezzo abbiamo applicato negli ultimi anni a Y', 'storia prezzi AFD.00.1.10036.0'. " +
+    "Default ultimi 5 anni. Restituisce max 100 righe ordinate dal più recente.",
+  parameters_obj: {
+    codice: { type: "string", description: "Codice articolo (es. AFD.00.1.11191.0)" },
+    anni:   { type: "number", description: "Quanti anni indietro guardare, default 5" },
+  },
+  required: ["codice"] as string[],
+};
+
+export const TOOL_ANALISI_MARGINI_DEF = {
+  name: "analisi_margini",
+  description:
+    "Margini medi tra importo preventivato e importo ordinato (quando entrambi presenti): scostamento_pct positivo = vendita più alta del preventivo, negativo = sconto applicato dal cliente. " +
+    "Include anche il ricarico_medio_distinta delle righe materiali. " +
+    "Usare per: 'qual è il margine medio per CURTI?', 'su quali categorie abbiamo i margini migliori?', 'sconti tipici applicati'. " +
+    "Solo i documenti che hanno entrambi gli importi entrano nel calcolo dello scostamento.",
+  parameters_obj: {
+    cliente:   { type: "string", description: "Filtro cliente parziale" },
+    categoria: { type: "string", description: "Filtro categoria parziale" },
+    anno:      { type: "number", description: "Filtro anno" },
+    limit:     { type: "number", description: "Max gruppi cliente×categoria restituiti, default 50" },
+  },
+  required: [] as string[],
+};
+
+export const TOOL_HIT_RATE_DEF = {
+  name: "hit_rate",
+  description:
+    "Hit-rate commerciale: per cliente×categoria, conta preventivi totali, ordinati, falliti, pending; calcola hit_rate_pct = ordinati / (ordinati+falliti) * 100. " +
+    "Considera sia gli stati legacy ('ordinato'/'rifiutato') sia i workflow nuovo ('ordinata'/'fallita'). " +
+    "Filtro temporale su `data_offerta` parsata. Usare per: 'qual è il nostro tasso di conversione su ALPHAMAC?', 'su quali categorie ordinano di più i clienti?', 'hit-rate ultimi 12 mesi'.",
+  parameters_obj: {
+    cliente:   { type: "string", description: "Filtro cliente parziale" },
+    categoria: { type: "string", description: "Filtro categoria parziale" },
+    mesi:      { type: "number", description: "Finestra temporale in mesi (default 24)" },
+    limit:     { type: "number", description: "Max gruppi (default 30)" },
+  },
+  required: [] as string[],
+};
+
+export const TOOL_INFO_CLIENTE_DEF = {
+  name: "info_cliente",
+  description:
+    "Scheda completa di un cliente: anagrafica master dal Cruscotto (codice, destinazioni/sedi, agente_codice/agente_nome) + ultimi N preventivi + stats aggregate (totale preventivi, n_ordinati, n_falliti, hit_rate_pct, valore_totale, importo_medio). " +
+    "Usare per: 'parlami del cliente X', 'chi è il commerciale di Y?', 'quanti preventivi abbiamo per ALPHAMAC?', 'ultime commesse di CURTI'. " +
+    "Match parziale sulla ragione sociale (ilike).",
+  parameters_obj: {
+    ragione:           { type: "string", description: "Nome cliente (anche parziale, es. IMA, ALPHA)" },
+    limit_preventivi:  { type: "number", description: "Quanti preventivi recenti includere (default 8)" },
+  },
+  required: ["ragione"] as string[],
+};
+
+export const TOOL_ARTICOLI_ASSOCIATI_DEF = {
+  name: "articoli_associati",
+  description:
+    "Market basket: dato un codice articolo, restituisce gli altri codici che appaiono SPESSO nello stesso preventivo (stesso documento_id), ordinati per frequenza. " +
+    "Usare per suggerimenti distinta: 'cosa metto solitamente insieme al codice X?', 'articoli che vanno con AFD.00.1.10036.0'. " +
+    "Restituisce codice, descrizione tipica, frequenza assoluta e percentuale di associazione (frequenza / documenti che contengono il codice).",
+  parameters_obj: {
+    codice:    { type: "string", description: "Codice articolo target" },
+    min_freq:  { type: "number", description: "Frequenza minima (default 2)" },
+    limit:     { type: "number", description: "Max suggerimenti (default 20)" },
+  },
+  required: ["codice"] as string[],
+};
+
+export const TOOL_TREND_MENSILE_DEF = {
+  name: "trend_mensile",
+  description:
+    "Serie mensile dei preventivi degli ultimi N mesi: per ogni mese conta preventivi, valore_totale, ordinati. " +
+    "Espone direttamente la RPC dashboard_serie_mensile_categoria. " +
+    "Usare per: 'qual è il trend mensile?', 'in quale mese facciamo più preventivi?', 'serie storica 2025 per categoria nastri'.",
+  parameters_obj: {
+    months:    { type: "number", description: "Quanti mesi a ritroso (default 12, max 36)" },
+    categoria: { type: "string", description: "Filtro categoria opzionale" },
+  },
+  required: [] as string[],
+};
+
 // ─── Fallback constants (used if the row is missing in ai_config) ─────────────
 
 export const SICS_KNOWLEDGE_FALLBACK =

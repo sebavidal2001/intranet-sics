@@ -10,6 +10,14 @@ import {
   TOOL_DETTAGLIO_DEF,
   TOOL_ANALISI_SQL_DEF,
   TOOL_ANOMALIE_DEF,
+  TOOL_CERCA_ARTICOLO_ANAGRAFICA_DEF,
+  TOOL_LISTINO_SERVIZI_DEF,
+  TOOL_STORIA_PREZZI_ARTICOLO_DEF,
+  TOOL_ANALISI_MARGINI_DEF,
+  TOOL_HIT_RATE_DEF,
+  TOOL_INFO_CLIENTE_DEF,
+  TOOL_ARTICOLI_ASSOCIATI_DEF,
+  TOOL_TREND_MENSILE_DEF,
 } from "./tool-definitions";
 import type { ChatMessage, ToolName, ChatHandlerResult } from "./types";
 
@@ -118,6 +126,25 @@ export async function handleGemini(
             required: TOOL_ANOMALIE_DEF.required,
           },
         },
+        // ── Nuovi tool redazione preventivi (migration 043) ──────────────────
+        ...(([
+          TOOL_CERCA_ARTICOLO_ANAGRAFICA_DEF,
+          TOOL_LISTINO_SERVIZI_DEF,
+          TOOL_STORIA_PREZZI_ARTICOLO_DEF,
+          TOOL_ANALISI_MARGINI_DEF,
+          TOOL_HIT_RATE_DEF,
+          TOOL_INFO_CLIENTE_DEF,
+          TOOL_ARTICOLI_ASSOCIATI_DEF,
+          TOOL_TREND_MENSILE_DEF,
+        ] as const).map((def) => ({
+          name: def.name,
+          description: def.description,
+          parameters: {
+            type: SchemaType.OBJECT,
+            properties: toGeminiProps(def.parameters_obj),
+            required: def.required,
+          },
+        }))),
       ],
     },
   ];

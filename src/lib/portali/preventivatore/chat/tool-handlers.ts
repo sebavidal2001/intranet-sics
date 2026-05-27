@@ -745,6 +745,144 @@ export async function toolCercaAnomalieImporti(args: {
   }));
 }
 
+// ─── Tool nuovi per redazione preventivi (migration 043) ──────────────────────
+
+async function toolCercaArticoloAnagrafica(args: {
+  codice?: string;
+  descrizione?: string;
+  categoria?: string;
+  solo_attivi?: boolean;
+  limit?: number;
+}) {
+  const admin = createAdminClient();
+  const limit = Math.min(Math.max(args.limit ?? 30, 1), 100);
+  let q = admin
+    .schema("preventivatore")
+    .from("prodotti")
+    .select("codice, descrizione, ult_costo, data_ult_costo, categoria, gruppo, cat_merc, reparto_desc, attivo")
+    .order("data_ult_costo", { ascending: false, nullsFirst: false })
+    .limit(limit);
+  if (args.solo_attivi !== false) q = q.eq("attivo", true);
+  if (args.codice) {
+    const cod = args.codice.trim();
+    const esc = cod.replace(/[%_,]/g, (c) => `\\${c}`);
+    q = q.or(`codice.eq.${cod},codice.ilike.%${esc}%`);
+  }
+  if (args.descrizione) q = q.ilike("descrizione", `%${args.descrizione.trim()}%`);
+  if (args.categoria) q = q.or(`categoria.ilike.%${args.categoria}%,gruppo.ilike.%${args.categoria}%,cat_merc.ilike.%${args.categoria}%`);
+  const { data, error } = await q;
+  if (error) throw new Error("cerca_articolo_anagrafica: " + error.message);
+  return data ?? [];
+}
+
+async function toolListinoServizi(args: { categoria?: string }) {
+  const admin = createAdminClient();
+  let q = admin
+    .schema("preventivatore")
+    .from("servizi_manodopera")
+    .select("nome, categoria, tariffa_ora, unita, ordine")
+    .eq("is_attivo", true)
+    .order("ordine", { ascending: true })
+    .order("nome", { ascending: true });
+  if (args.categoria) q = q.ilike("categoria", `%${args.categoria}%`);
+  const { data, error } = await q;
+  if (error) throw new Error("listino_servizi: " + error.message);
+  return data ?? [];
+}
+
+async function toolStoriaPrezziArticolo(args: { codice: string; anni?: number }) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .schema("preventivatore")
+    .rpc("storia_prezzi_articolo", {
+      p_codice: args.codice,
+      p_anni: args.anni ?? 5,
+    });
+  if (error) throw new Error("storia_prezzi_articolo: " + error.message);
+  return data ?? [];
+}
+
+async function toolAnalisiMargini(args: {
+  cliente?: string;
+  categoria?: string;
+  anno?: number;
+  limit?: number;
+}) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .schema("preventivatore")
+    .rpc("analisi_margini", {
+      p_cliente: args.cliente ?? null,
+      p_categoria: args.categoria ?? null,
+      p_anno: args.anno ?? null,
+      p_limit: args.limit ?? 50,
+    });
+  if (error) throw new Error("analisi_margini: " + error.message);
+  return data ?? [];
+}
+
+async function toolHitRate(args: {
+  cliente?: string;
+  categoria?: string;
+  mesi?: number;
+  limit?: number;
+}) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .schema("preventivatore")
+    .rpc("hit_rate", {
+      p_cliente: args.cliente ?? null,
+      p_categoria: args.categoria ?? null,
+      p_mesi: args.mesi ?? 24,
+      p_limit: args.limit ?? 30,
+    });
+  if (error) throw new Error("hit_rate: " + error.message);
+  return data ?? [];
+}
+
+async function toolInfoCliente(args: { ragione: string; limit_preventivi?: number }) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .schema("preventivatore")
+    .rpc("info_cliente", {
+      p_ragione: args.ragione,
+      p_limit_preventivi: args.limit_preventivi ?? 8,
+    });
+  if (error) throw new Error("info_cliente: " + error.message);
+  return data ?? {};
+}
+
+async function toolArticoliAssociati(args: { codice: string; min_freq?: number; limit?: number }) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .schema("preventivatore")
+    .rpc("articoli_associati", {
+      p_codice: args.codice,
+      p_min_freq: args.min_freq ?? 2,
+      p_limit: args.limit ?? 20,
+    });
+  if (error) throw new Error("articoli_associati: " + error.message);
+  return data ?? [];
+}
+
+async function toolTrendMensile(args: { months?: number; categoria?: string }) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .schema("preventivatore")
+    .rpc("dashboard_serie_mensile_categoria", {
+      months: Math.min(Math.max(args.months ?? 12, 1), 36),
+    });
+  if (error) throw new Error("trend_mensile: " + error.message);
+  // Filtro categoria post-hoc se richiesto (la RPC non lo accetta nativamente)
+  if (args.categoria && Array.isArray(data)) {
+    const cat = args.categoria.toLowerCase();
+    return (data as Array<Record<string, unknown>>).filter((r) =>
+      String(r.categoria ?? "").toLowerCase().includes(cat)
+    );
+  }
+  return data ?? [];
+}
+
 // ─── Tool dispatch ────────────────────────────────────────────────────────────
 
 export async function dispatchTool(name: string, args: Record<string, unknown>) {
@@ -757,5 +895,14 @@ export async function dispatchTool(name: string, args: Record<string, unknown>) 
   if (name === "dettaglio_preventivo")   return toolDettaglioPreventivo(args as Parameters<typeof toolDettaglioPreventivo>[0]);
   if (name === "analisi_preventivi_sql") return toolAnalisiPreventiviSql(args as Parameters<typeof toolAnalisiPreventiviSql>[0]);
   if (name === "cerca_anomalie_importi") return toolCercaAnomalieImporti(args as Parameters<typeof toolCercaAnomalieImporti>[0]);
+  // Nuovi tool redazione preventivi (migration 043)
+  if (name === "cerca_articolo_anagrafica") return toolCercaArticoloAnagrafica(args as Parameters<typeof toolCercaArticoloAnagrafica>[0]);
+  if (name === "listino_servizi")           return toolListinoServizi(args as Parameters<typeof toolListinoServizi>[0]);
+  if (name === "storia_prezzi_articolo")    return toolStoriaPrezziArticolo(args as Parameters<typeof toolStoriaPrezziArticolo>[0]);
+  if (name === "analisi_margini")           return toolAnalisiMargini(args as Parameters<typeof toolAnalisiMargini>[0]);
+  if (name === "hit_rate")                  return toolHitRate(args as Parameters<typeof toolHitRate>[0]);
+  if (name === "info_cliente")              return toolInfoCliente(args as Parameters<typeof toolInfoCliente>[0]);
+  if (name === "articoli_associati")        return toolArticoliAssociati(args as Parameters<typeof toolArticoliAssociati>[0]);
+  if (name === "trend_mensile")             return toolTrendMensile(args as Parameters<typeof toolTrendMensile>[0]);
   throw new Error(`Tool sconosciuto: ${name}`);
 }
