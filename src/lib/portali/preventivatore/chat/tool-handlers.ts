@@ -751,6 +751,7 @@ async function toolCercaArticoloAnagrafica(args: {
   codice?: string;
   descrizione?: string;
   categoria?: string;
+  fornitore?: string;
   solo_attivi?: boolean;
   limit?: number;
 }) {
@@ -759,7 +760,7 @@ async function toolCercaArticoloAnagrafica(args: {
   let q = admin
     .schema("preventivatore")
     .from("prodotti")
-    .select("codice, descrizione, ult_costo, data_ult_costo, categoria, gruppo, cat_merc, reparto_desc, attivo")
+    .select("codice, descrizione, ult_costo, data_ult_costo, categoria, gruppo, cat_merc, reparto_desc, fornitore, fornitore_codice, attivo")
     .order("data_ult_costo", { ascending: false, nullsFirst: false })
     .limit(limit);
   if (args.solo_attivi !== false) q = q.eq("attivo", true);
@@ -770,6 +771,10 @@ async function toolCercaArticoloAnagrafica(args: {
   }
   if (args.descrizione) q = q.ilike("descrizione", `%${args.descrizione.trim()}%`);
   if (args.categoria) q = q.or(`categoria.ilike.%${args.categoria}%,gruppo.ilike.%${args.categoria}%,cat_merc.ilike.%${args.categoria}%`);
+  if (args.fornitore) {
+    const f = args.fornitore.trim();
+    q = q.or(`fornitore.ilike.%${f}%,fornitore_codice.ilike.%${f}%`);
+  }
   const { data, error } = await q;
   if (error) throw new Error("cerca_articolo_anagrafica: " + error.message);
   return data ?? [];

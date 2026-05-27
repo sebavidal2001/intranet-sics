@@ -163,14 +163,17 @@ export const TOOL_ANALISI_SQL_DEF = {
 export const TOOL_CERCA_ARTICOLO_ANAGRAFICA_DEF = {
   name: "cerca_articolo_anagrafica",
   description:
-    "Cerca articoli nel catalogo prodotti SICS (`preventivatore.prodotti`): codice, descrizione, ult_costo, categoria, gruppo, reparto. " +
-    "Usare quando l'utente chiede 'qual è il costo attuale del codice X', 'prodotti della categoria Y', 'mostra il listino', 'cerca articolo per descrizione'. " +
-    "Restituisce sia match esatti sul codice che match testuali sulla descrizione. " +
-    "Per la STORIA DEL PREZZO nel tempo (variazioni anno su anno) usa invece il tool storia_prezzi_articolo.",
+    "Cerca articoli nel catalogo prodotti SICS (`preventivatore.prodotti`): codice, descrizione, ult_costo, categoria, gruppo, reparto, **fornitore**, fornitore_codice. " +
+    "Tutti i ~20.000 prodotti hanno fornitore popolato (471 fornitori distinti, es. 'WURTH netto', 'CBA olio compressori', 'AZ PNEUM. (PLURI) acq. 35%'). " +
+    "Usare per: 'qual è il costo attuale del codice X', 'prodotti della categoria Y', 'mostra il listino', 'cerca articolo per descrizione', " +
+    "'chi è il fornitore del codice X', 'tutti i prodotti del fornitore Z', 'cosa abbiamo da WURTH'. " +
+    "Match codice esatto + parziale, descrizione ilike (le descrizioni contengono dimensioni/materiali/norme/tensioni, es. 'TUBO POLIAMMIDE PA12 12x10-BLU 100mt cod.nomencl. 39173200-IT'). " +
+    "Per la STORIA DEL PREZZO nel tempo usa invece storia_prezzi_articolo.",
   parameters_obj: {
-    codice:      { type: "string", description: "Codice articolo (es. AFD.00.1.11191.0), match esatto + parziale" },
-    descrizione: { type: "string", description: "Testo libero da cercare nella descrizione (ilike)" },
-    categoria:   { type: "string", description: "Categoria/gruppo (es. nastro, scala, protezione)" },
+    codice:      { type: "string",  description: "Codice articolo (es. AFD.00.1.11191.0), match esatto + parziale" },
+    descrizione: { type: "string",  description: "Testo libero da cercare nella descrizione (ilike)" },
+    categoria:   { type: "string",  description: "Categoria/gruppo/cat_merc (es. nastro, scala, protezione, COMPONENTI)" },
+    fornitore:   { type: "string",  description: "Filtro per nome fornitore (ilike), es. 'WURTH', 'BONFIGLIOLI', 'AIRFLUID a disegno'" },
     solo_attivi: { type: "boolean", description: "Default true: esclude prodotti dismessi" },
     limit:       { type: "number",  description: "Max risultati, default 30 max 100" },
   },

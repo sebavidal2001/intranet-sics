@@ -95,7 +95,7 @@ function parseDate(v) {
 }
 
 function hashRiga(p) {
-  const s = [p.descrizione, p.uc, p.categoria, p.gruppo, p.cat_merc, p.reparto_codice, p.reparto_desc, p.ult_costo, p.data_ult_costo].join('|');
+  const s = [p.descrizione, p.uc, p.categoria, p.gruppo, p.cat_merc, p.reparto_codice, p.reparto_desc, p.fornitore_codice, p.fornitore, p.ult_costo, p.data_ult_costo].join('|');
   return createHash('md5').update(s).digest('hex');
 }
 
@@ -135,6 +135,8 @@ function parseAll(path) {
     gruppo:        colIdx(headers, ['Gruppo Articoli Descrizione', 'gruppo']),
     reparto_cod:   colIdx(headers, ['Reparto Codice', 'reparto_codice']),
     reparto_desc:  colIdx(headers, ['Reparto Descrizione', 'reparto_desc']),
+    forn_cod:      colIdx(headers, ['Cat Com Articolo Codice', 'fornitore_codice']),
+    forn_desc:     colIdx(headers, ['Cat Com Articolo Descrizione', 'fornitore']),
     ult_costo:     colIdx(headers, ['Ult Costo', 'ult_costo']),
     data_costo:    colIdx(headers, ['Data Ult Costo', 'data_ult_costo']),
     magazzino:     colIdx(headers, ['Magazzino', 'magazzino']),
@@ -164,6 +166,8 @@ function parseAll(path) {
       gruppo: H.gruppo >= 0 ? (String(r[H.gruppo] || '').trim() || null) : null,
       reparto_codice: H.reparto_cod >= 0 ? (String(r[H.reparto_cod] || '').trim() || null) : null,
       reparto_desc: H.reparto_desc >= 0 ? (String(r[H.reparto_desc] || '').trim() || null) : null,
+      fornitore_codice: H.forn_cod >= 0 ? (String(r[H.forn_cod] || '').trim() || null) : null,
+      fornitore:        H.forn_desc >= 0 ? (String(r[H.forn_desc] || '').trim() || null) : null,
       ult_costo: H.ult_costo >= 0 ? parseNumber(r[H.ult_costo]) : null,
       data_ult_costo: H.data_costo >= 0 ? parseDate(r[H.data_costo]) : null,
     };
@@ -235,24 +239,29 @@ async function main() {
     return;
   }
 
-  // 2) Skip se hash file uguale all'ultimo import OK
+  // 2) Skip se hash file uguale all'ultimo import OK (a meno di --force)
   log('\n[2/5] Check hash file…');
-  const { data: lastLog } = await supabase
-    .from('prodotti_import_log')
-    .select('id, file_md5, esito, iniziato_il')
-    .eq('esito', 'ok')
-    .order('iniziato_il', { ascending: false })
-    .limit(1);
-  if (lastLog?.[0]?.file_md5 === md5) {
-    log(`  hash uguale a import ${lastLog[0].iniziato_il} → skip`);
-    await supabase.from('prodotti_import_log').insert({
-      file_path: FILE, file_md5: md5, righe_lette,
-      esito: 'skip_hash_uguale', finito_il: new Date().toISOString(),
-      durata_ms: Date.now() - t0,
-    });
-    return;
+  const FORCE = process.argv.includes('--force');
+  if (!FORCE) {
+    const { data: lastLog } = await supabase
+      .from('prodotti_import_log')
+      .select('id, file_md5, esito, iniziato_il')
+      .eq('esito', 'ok')
+      .order('iniziato_il', { ascending: false })
+      .limit(1);
+    if (lastLog?.[0]?.file_md5 === md5) {
+      log(`  hash uguale a import ${lastLog[0].iniziato_il} → skip (usa --force per riapplicare)`);
+      await supabase.from('prodotti_import_log').insert({
+        file_path: FILE, file_md5: md5, righe_lette,
+        esito: 'skip_hash_uguale', finito_il: new Date().toISOString(),
+        durata_ms: Date.now() - t0,
+      });
+      return;
+    }
+    log('  hash diverso → procedo con import');
+  } else {
+    log('  --force: skip controllo hash');
   }
-  log('  hash diverso → procedo con import');
 
   // 3) Apri log import
   log('\n[3/5] Avvio log import…');
