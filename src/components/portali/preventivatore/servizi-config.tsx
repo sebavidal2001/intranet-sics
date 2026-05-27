@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Loader2, Plus, Trash2, Save, RefreshCw, Wrench, CheckCircle2, AlertCircle } from "lucide-react"
+import { Loader2, Plus, Trash2, Save, RefreshCw, Wrench, CheckCircle2, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -26,6 +26,7 @@ export function ServiziConfig() {
   const [servizi, setServizi] = useState<Servizio[]>([])
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [savingAll, setSavingAll] = useState(false)
   const [feedback, setFeedback] = useState<Feedback>(null)
   // mappa modifiche locali non ancora salvate
   const [draft, setDraft] = useState<Record<string, Partial<Servizio>>>({})
@@ -56,7 +57,14 @@ export function ServiziConfig() {
     return (d && campo in d ? (d[campo] as Servizio[K]) : s[campo])
   }
 
+  const righeModificate = Object.keys(draft).filter((id) => draft[id] && Object.keys(draft[id]).length > 0)
+  const hasUnsavedChanges = righeModificate.length > 0
   const haDraft = (id: string) => draft[id] && Object.keys(draft[id]).length > 0
+
+  function annullaModifiche() {
+    setDraft({})
+    setFeedback(null)
+  }
 
   async function salvaRiga(s: Servizio) {
     if (!haDraft(s.id)) return
@@ -80,6 +88,46 @@ export function ServiziConfig() {
     }
   }
 
+  async function salvaTutto() {
+    if (!hasUnsavedChanges) return
+    setSavingAll(true)
+    setFeedback(null)
+    try {
+      const aggiornati = await Promise.all(
+        righeModificate.map(async (id) => {
+          const res = await fetch(`/api/portali/preventivatore/servizi/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(draft[id]),
+          })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) {
+            throw new Error((data as { error?: string }).error ?? "Errore nel salvataggio")
+          }
+          return data as Servizio
+        })
+      )
+      const byId = new Map(aggiornati.map((s) => [s.id, s]))
+      setServizi((prev) =>
+        prev
+          .map((s) => byId.get(s.id) ?? s)
+          .sort((a, b) => a.ordine - b.ordine || a.nome.localeCompare(b.nome))
+      )
+      setDraft({})
+      setFeedback({
+        type: "success",
+        msg: `${aggiornati.length} ${aggiornati.length === 1 ? "modifica salvata" : "modifiche salvate"}.`,
+      })
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Errore nel salvataggio.",
+      })
+    } finally {
+      setSavingAll(false)
+    }
+  }
+
   async function toggleAttivo(s: Servizio) {
     const nuovo = !valore(s, "is_attivo")
     setSavingId(s.id)
@@ -92,6 +140,7 @@ export function ServiziConfig() {
       if (!res.ok) throw new Error()
       const aggiornato: Servizio = await res.json()
       setServizi((prev) => prev.map((x) => (x.id === s.id ? { ...aggiornato, ...draft[s.id] } : x)))
+      setFeedback({ type: "success", msg: `"${aggiornato.nome}" aggiornato.` })
     } catch {
       setFeedback({ type: "error", msg: "Errore nel cambio stato." })
     } finally {
@@ -149,17 +198,37 @@ export function ServiziConfig() {
           <Wrench className="w-4 h-4 text-text-muted" />
           <h2 className="text-sm font-semibold text-text">Servizi e Lavorazioni</h2>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchServizi} disabled={loading} className="gap-1.5 text-xs">
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          Ricarica
-        </Button>
+        <div className="flex items-center gap-2">
+          {hasUnsavedChanges && (
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+              {righeModificate.length} non salvate
+            </span>
+          )}
+          <Button variant="outline" size="sm" onClick={fetchServizi} disabled={loading || savingAll} className="gap-1.5 text-xs">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            Ricarica
+          </Button>
+        </div>
       </div>
 
       <div className="p-5">
-        <p className="text-xs text-text-muted mb-4">
-          Voci di manodopera disponibili nel builder preventivi. Le tariffe e i nomi sono
-          modificabili; le voci disattivate non compaiono nei nuovi blocchi.
-        </p>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-text-muted">
+            Voci di manodopera disponibili nel builder preventivi. Le modifiche a ordine, nomi e tariffe restano in bozza finche non le salvi.
+          </p>
+          {hasUnsavedChanges && (
+            <Button
+              size="sm"
+              onClick={salvaTutto}
+              disabled={savingAll}
+              style={{ backgroundColor: "#00a1be" }}
+              className="gap-1.5 text-xs text-white hover:opacity-90"
+            >
+              {savingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Salva modifiche
+            </Button>
+          )}
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-10 gap-2 text-text-muted">
@@ -243,7 +312,7 @@ export function ServiziConfig() {
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => salvaRiga(s)}
-                            disabled={!haDraft(s.id) || savingId === s.id}
+                            disabled={!haDraft(s.id) || savingId === s.id || savingAll}
                             title="Salva modifiche"
                             className="p-1.5 rounded text-text-muted hover:text-[#00a1be] disabled:opacity-30 disabled:cursor-not-allowed"
                           >
@@ -255,7 +324,7 @@ export function ServiziConfig() {
                           </button>
                           <button
                             onClick={() => elimina(s)}
-                            disabled={savingId === s.id}
+                            disabled={savingId === s.id || savingAll}
                             title="Elimina"
                             className="p-1.5 rounded text-text-muted hover:text-red-500 disabled:opacity-30"
                           >
@@ -288,15 +357,39 @@ export function ServiziConfig() {
         ) : (
           <span />
         )}
-        <Button
-          onClick={aggiungi}
-          disabled={savingId === "new"}
-          variant="outline"
-          className="gap-2 ml-auto"
-        >
-          {savingId === "new" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          Aggiungi lavorazione
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {hasUnsavedChanges && (
+            <>
+              <Button
+                onClick={annullaModifiche}
+                disabled={savingAll}
+                variant="outline"
+                className="gap-2"
+              >
+                <X className="w-4 h-4" />
+                Annulla modifiche
+              </Button>
+              <Button
+                onClick={salvaTutto}
+                disabled={savingAll}
+                style={{ backgroundColor: "#00a1be" }}
+                className="gap-2 text-white hover:opacity-90"
+              >
+                {savingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salva modifiche
+              </Button>
+            </>
+          )}
+          <Button
+            onClick={aggiungi}
+            disabled={savingId === "new" || savingAll}
+            variant="outline"
+            className="gap-2"
+          >
+            {savingId === "new" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            Aggiungi lavorazione
+          </Button>
+        </div>
       </div>
     </div>
   )

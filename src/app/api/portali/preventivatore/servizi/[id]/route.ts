@@ -5,6 +5,11 @@ import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 
 export const dynamic = "force-dynamic";
 
+function parseNonNegativeNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 /**
  * PATCH  — aggiorna un servizio/lavorazione (solo admin del portale)
  * DELETE — elimina un servizio/lavorazione (solo admin del portale)
@@ -36,9 +41,21 @@ export async function PATCH(
     const patch: Record<string, unknown> = {};
     if (body.nome !== undefined) patch.nome = String(body.nome).trim();
     if (body.categoria !== undefined) patch.categoria = String(body.categoria).trim() || "Manodopera";
-    if (body.tariffa_ora !== undefined) patch.tariffa_ora = Number(body.tariffa_ora) || 0;
+    if (body.tariffa_ora !== undefined) {
+      const tariffaOra = parseNonNegativeNumber(body.tariffa_ora);
+      if (tariffaOra === null) {
+        return NextResponse.json({ error: "Tariffa non valida" }, { status: 400 });
+      }
+      patch.tariffa_ora = tariffaOra;
+    }
     if (body.unita !== undefined) patch.unita = String(body.unita).trim() || "h";
-    if (body.ordine !== undefined) patch.ordine = Number(body.ordine) || 0;
+    if (body.ordine !== undefined) {
+      const ordine = parseNonNegativeNumber(body.ordine);
+      if (ordine === null) {
+        return NextResponse.json({ error: "Ordine non valido" }, { status: 400 });
+      }
+      patch.ordine = ordine;
+    }
     if (body.is_attivo !== undefined) patch.is_attivo = Boolean(body.is_attivo);
 
     if (Object.keys(patch).length === 0) {
