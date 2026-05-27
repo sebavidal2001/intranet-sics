@@ -153,7 +153,7 @@ export async function toolCercaSimili(args: {
   let docsQuery = adminClient
     .schema("preventivatore")
     .from("documenti")
-    .select("id, codice, cliente, stato, importo_preventivo")
+    .select("id, codice, cliente, stato, importo_preventivo, data_offerta, data_consegna_richiesta, data_consegna_confermata, data_consegna_effettiva, giorni_consegna_offerti, numero_offerta, numero_preventivo, tipo_cartella")
     .in("id", docIds);
   if (args.cliente) docsQuery = docsQuery.ilike("cliente", `%${args.cliente}%`);
 
@@ -525,7 +525,7 @@ export async function toolDettaglioPreventivo(args: { codice: string }): Promise
   const { data: docs, error: docErr } = await adminClient
     .schema("preventivatore")
     .from("documenti")
-    .select("id, codice, cliente, stato, categoria, importo_preventivo, importo_ordinato, data_offerta")
+    .select("id, codice, cliente, stato, categoria, importo_preventivo, importo_ordinato, importo_offerta, data_offerta, data_consegna_richiesta, data_consegna_confermata, data_consegna_effettiva, giorni_consegna_offerti, numero_offerta, numero_preventivo, tipo_cartella, tipo")
     .or(`codice.ilike.${withUnderscore},codice.ilike.${withSlash}`)
     .limit(1);
 

@@ -5,7 +5,8 @@ export const TOOL_LIST_PREVENTIVI_DEF = {
   description:
     "Elenca preventivi dal database con filtri e ordinamento. Usare per: 'tutti i preventivi', 'preventivi di [cliente]', 'preventivi ordinati/rifiutati', 'preventivi del 2024', 'top N per importo', 'il preventivo più costoso', 'ordina per valore', 'preventivi sopra/sotto X euro', 'quanti preventivi con importo > Y', ecc. " +
     "Supporta filtri di importo (importo_min/importo_max) per query soglia. " +
-    "Se l'utente chiede 'quanti preventivi sopra X €', usa importo_min=X e count_only=true.",
+    "Se l'utente chiede 'quanti preventivi sopra X €', usa importo_min=X e count_only=true. " +
+    "I record restituiti includono anche le date di consegna (data_consegna_richiesta/confermata/effettiva, giorni_consegna_offerti): se l'utente chiede 'tempi di consegna' e i campi sono NULL, dichiaralo esplicitamente come 'dato non popolato' invece di dire che il campo non esiste.",
   parameters_obj: {
     cliente:      { type: "string",  description: "Nome cliente, es. ALPHAMAC" },
     stato:        { type: "string",  description: "Stato: pending, ordinato o rifiutato" },
