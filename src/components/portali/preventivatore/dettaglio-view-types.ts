@@ -28,6 +28,9 @@ export interface PreventivoDocumento {
   tags: string[] | null;
   note: string | null;
   versione_ingest: string | null;
+  consegna_settimane_min: number | null;
+  consegna_settimane_max: number | null;
+  margine_trattativa_pct: number | string | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +80,7 @@ export interface PreventivoRigaRaw {
   ricarico_pct: number | string | null;
   ricarico_coefficiente?: number | string | null;
   tipo_riga?: string | null; // "materiale" | "manodopera" (preventivi generati)
+  scala_con_quantita?: boolean | null;
   totale_riga: number | string | null;
   codice_blocco: string | null;
 }
@@ -90,6 +94,12 @@ export interface PreventivoBloccoRaw {
   note: string | null;
   incluso_offerta: boolean | null;
   created_at: string;
+  quantita_pezzi?: number | null;
+  imballaggio_pct?: number | string | null;
+  tempi_accessori_pct?: number | string | null;
+  spese_generali_pct?: number | string | null;
+  margine_trattativa_pct?: number | string | null;
+  costo_complessivo?: number | string | null;
 }
 
 export interface PreventivoDettaglio {

@@ -127,37 +127,12 @@ const STATO_BADGE: Record<string, { label: string; className: string }> = {
 
 export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDettaglio }) {
   const { documento, chunks, righe_distinta, motivo_rifiuto_label } = dettaglio;
-  const blocchiTable = dettaglio.blocchi ?? [];
+  const blocchiTable = useMemo(() => dettaglio.blocchi ?? [], [dettaglio.blocchi]);
 
   // Preventivo generato dal builder: la distinta vive nelle tabelle blocchi +
   // righe_distinta (non nei chunk excel). Lo rendiamo con un percorso dedicato
   // che mostra costo "vergine", prezzo di vendita e margine.
   const isGenerato = documento.tipo === "generato" && blocchiTable.length > 0;
-
-  // Calcoli economici del progetto (solo per generati). Convenzione SICS:
-  //   costo_vergine_riga = quantità × prezzo_unitario   (prezzo_unitario = ult_costo o tariffa/h)
-  //   prezzo_vendita_riga = totale_riga  (già = costo / coeff_ricarico)
-  //   margine% = (prezzo − costo) / costo × 100   ← ricarico sul costo
-  const progetto = useMemo(() => {
-    if (!isGenerato) return null;
-    let costoMat = 0, costoMano = 0, prezzoMat = 0, prezzoMano = 0;
-    for (const r of righe_distinta) {
-      const qty = toNum(r.quantita) ?? 0;
-      const pu = toNum(r.prezzo_unitario) ?? 0;
-      const vendita = toNum(r.totale_riga) ?? qty * pu;
-      const costo = qty * pu;
-      if (r.tipo_riga === "manodopera") {
-        costoMano += costo; prezzoMano += vendita;
-      } else {
-        costoMat += costo; prezzoMat += vendita;
-      }
-    }
-    const costoTot = costoMat + costoMano;
-    const prezzoTot = prezzoMat + prezzoMano;
-    const margineEuro = prezzoTot - costoTot;
-    const marginePct = costoTot > 0 ? (margineEuro / costoTot) * 100 : null;
-    return { costoMat, costoMano, costoTot, prezzoMat, prezzoMano, prezzoTot, margineEuro, marginePct };
-  }, [isGenerato, righe_distinta]);
 
   // Righe raggruppate per codice_blocco (per i generati)
   const righePerBlocco = useMemo(() => {
@@ -170,6 +145,42 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
     }
     return m;
   }, [righe_distinta]);
+
+  // Calcoli economici COMPLESSIVI (× quantità pezzi per blocco). Convenzione SICS:
+  //   materiali ×Q sempre; manodopera ×Q solo se scala_con_quantita.
+  //   base_vendita = Σ totale_riga scalati; + imballaggio% + spese% ; × (1 + margine%).
+  //   margine% mostrato = (prezzo finale − costo) / costo × 100 (ricarico sul costo).
+  const margineDoc = toNum(documento.margine_trattativa_pct) ?? 0;
+  const progetto = useMemo(() => {
+    if (!isGenerato) return null;
+    let costoTot = 0, baseVendTot = 0, imballaggioTot = 0, tempiTot = 0, speseTot = 0, prezzoTot = 0;
+    for (const b of blocchiTable) {
+      const key = b.codice_blocco ?? b.sheet_name ?? "—";
+      const righe = righePerBlocco.get(key) ?? [];
+      const q = b.quantita_pezzi ?? 1;
+      const imbPct = toNum(b.imballaggio_pct) ?? 1;
+      const tempiPct = toNum(b.tempi_accessori_pct) ?? 2.8;
+      const spesePct = toNum(b.spese_generali_pct) ?? 24.2;
+      const margEff = toNum(b.margine_trattativa_pct) ?? margineDoc;
+      let baseVend = 0, costo = 0;
+      for (const r of righe) {
+        const qty = toNum(r.quantita) ?? 0;
+        const pu = toNum(r.prezzo_unitario) ?? 0;
+        const mult = r.tipo_riga === "manodopera" ? (r.scala_con_quantita === false ? 1 : q) : q;
+        baseVend += (toNum(r.totale_riga) ?? qty * pu) * mult;
+        costo += qty * pu * mult;
+      }
+      const imb = baseVend * (imbPct / 100);
+      const tempi = costo * (tempiPct / 100);
+      const spese = costo * (spesePct / 100);
+      const prezzoFin = (baseVend + imb + tempi + spese) * (1 + margEff / 100);
+      baseVendTot += baseVend; imballaggioTot += imb; tempiTot += tempi; speseTot += spese;
+      costoTot += costo; prezzoTot += prezzoFin;
+    }
+    const margineEuro = prezzoTot - costoTot;
+    const marginePct = costoTot > 0 ? (margineEuro / costoTot) * 100 : null;
+    return { costoTot, baseVendTot, imballaggioTot, tempiTot, speseTot, prezzoTot, margineEuro, marginePct };
+  }, [isGenerato, blocchiTable, righePerBlocco, margineDoc]);
 
   // Raggruppa righe distinta per sheet_name (fallback su codice_blocco se sheet vuoto)
   const righePerSheet = useMemo(() => {
@@ -364,6 +375,17 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
           {documento.codici_articolo && documento.codici_articolo.length > 0 && (
             <Stat label="Codici unici" value={String(documento.codici_articolo.length)} />
           )}
+          {(documento.consegna_settimane_min != null || documento.consegna_settimane_max != null) && (
+            <Stat
+              label="Consegna"
+              value={
+                documento.consegna_settimane_min != null && documento.consegna_settimane_max != null
+                  ? `${documento.consegna_settimane_min}–${documento.consegna_settimane_max} sett.`
+                  : `${documento.consegna_settimane_min ?? documento.consegna_settimane_max} sett.`
+              }
+            />
+          )}
+          {margineDoc > 0 && <Stat label="Margine tratt." value={`+${margineDoc}%`} />}
         </div>
 
         {/* Workflow actions (solo per preventivi 'generato' con stato workflow attivo) */}
@@ -539,57 +561,49 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 interface ProgettoTotali {
-  costoMat: number; costoMano: number; costoTot: number;
-  prezzoMat: number; prezzoMano: number; prezzoTot: number;
-  margineEuro: number; marginePct: number | null;
+  costoTot: number;
+  baseVendTot: number;
+  imballaggioTot: number;
+  tempiTot: number;
+  speseTot: number;
+  prezzoTot: number;
+  margineEuro: number;
+  marginePct: number | null;
 }
 
-// Riepilogo economico del progetto (preventivi generati): costo "vergine" vs
-// prezzo di vendita + card margine (ricarico sul costo).
+// Riepilogo economico complessivo del progetto (preventivi generati):
+// costo vergine, prezzo di vendita base, imballaggio, spese generali, prezzo finale,
+// + card margine (ricarico sul costo). Tutto già moltiplicato per le quantità.
 function RiepilogoProgetto({ p }: { p: ProgettoTotali }) {
-  const rows: { label: string; costo: number; prezzo: number; sub?: boolean }[] = [
-    { label: "Materiale", costo: p.costoMat, prezzo: p.prezzoMat, sub: true },
-    { label: "Manodopera", costo: p.costoMano, prezzo: p.prezzoMano, sub: true },
+  const rows: { label: string; value: number; strong?: boolean }[] = [
+    { label: "Prezzo di vendita (base)", value: p.baseVendTot },
+    { label: "Imballaggio", value: p.imballaggioTot },
+    { label: "Tempi accessori", value: p.tempiTot },
+    { label: "Spese generali", value: p.speseTot },
   ];
   return (
     <section className="space-y-3">
       <h2 className="text-sm font-semibold text-text uppercase tracking-wide flex items-center gap-2">
         <TrendingUp className="w-4 h-4" />
-        Riepilogo economico
+        Riepilogo economico complessivo
       </h2>
       <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-        {/* Tabella costo vs prezzo */}
         <div className="border border-border rounded-xl bg-bg overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-bg-page">
-              <tr className="text-[10px] uppercase tracking-wide text-text-muted">
-                <th className="px-4 py-2.5 text-left font-medium">Voce</th>
-                <th className="px-4 py-2.5 text-right font-medium">Costo (vergine)</th>
-                <th className="px-4 py-2.5 text-right font-medium">Prezzo (vendita)</th>
-                <th className="px-4 py-2.5 text-right font-medium">Ricarico</th>
-              </tr>
-            </thead>
             <tbody>
-              {rows.map((r) => {
-                const ric = r.costo > 0 ? ((r.prezzo - r.costo) / r.costo) * 100 : null;
-                return (
-                  <tr key={r.label} className="border-t border-border">
-                    <td className="px-4 py-2 text-text-muted">{r.label}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-text-muted">{fmtEuro(r.costo)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-text">{fmtEuro(r.prezzo)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-text-muted">
-                      {ric != null ? `+${ric.toFixed(0)}%` : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-              <tr className="border-t-2 border-border bg-bg-page/40 font-semibold">
-                <td className="px-4 py-2.5 text-text">Totale</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-text">{fmtEuro(p.costoTot)}</td>
+              <tr className="border-b border-border">
+                <td className="px-4 py-2 text-text-muted">Costo complessivo (vergine)</td>
+                <td className="px-4 py-2 text-right tabular-nums text-text-muted">{fmtEuro(p.costoTot)}</td>
+              </tr>
+              {rows.map((r) => (
+                <tr key={r.label} className="border-b border-border">
+                  <td className="px-4 py-2 text-text-muted">{r.label}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-text">{fmtEuro(r.value)}</td>
+                </tr>
+              ))}
+              <tr className="bg-bg-page/40 font-semibold">
+                <td className="px-4 py-2.5 text-text">Prezzo finale</td>
                 <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: "#00a1be" }}>{fmtEuro(p.prezzoTot)}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-text-muted">
-                  {p.marginePct != null ? `+${p.marginePct.toFixed(0)}%` : "—"}
-                </td>
               </tr>
             </tbody>
           </table>
@@ -612,7 +626,7 @@ function RiepilogoProgetto({ p }: { p: ProgettoTotali }) {
               </div>
             )}
             <div className="mt-2 text-[11px] text-text-muted leading-snug">
-              Differenza tra prezzo di vendita e costo vergine (materiale + manodopera).
+              Differenza tra prezzo finale (incl. imballaggio, spese e margine) e costo vergine.
             </div>
           </div>
         </div>
@@ -635,7 +649,9 @@ function BloccoBuilderCard({
   const materiali = righe.filter((r) => r.tipo_riga !== "manodopera");
   const manodopera = righe.filter((r) => r.tipo_riga === "manodopera");
   const titolo = blocco.codice_blocco || blocco.sheet_name || `Blocco ${indice + 1}`;
+  const q = blocco.quantita_pezzi ?? 1;
 
+  // Prezzo/costo per singola unità (somma righe, che sono memorizzate per 1 pezzo)
   const prezzoBlocco = righe.reduce((s, r) => {
     const qty = toNum(r.quantita) ?? 0;
     const pu = toNum(r.prezzo_unitario) ?? 0;
@@ -646,6 +662,8 @@ function BloccoBuilderCard({
     const pu = toNum(r.prezzo_unitario) ?? 0;
     return s + qty * pu;
   }, 0);
+  // Prezzo finale complessivo del blocco (incl. imballaggio/spese/margine), già salvato
+  const prezzoComplessivo = toNum(blocco.totale_ceil_2);
 
   return (
     <div className="border border-border rounded-xl bg-bg p-5 space-y-4">
@@ -654,16 +672,28 @@ function BloccoBuilderCard({
         <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-widest text-text-muted">Blocco {indice + 1}</div>
           <h3 className="text-base font-medium text-text">{titolo}</h3>
-          {blocco.incluso_offerta === false && (
-            <span className="text-[10px] text-yellow-700 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full mt-1 inline-block">
-              escluso dall&apos;offerta
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className="text-[11px] text-text-muted px-1.5 py-0.5 rounded-full bg-bg-page border border-border">
+              {q} {q === 1 ? "pezzo" : "pezzi"}
             </span>
-          )}
+            {blocco.incluso_offerta === false && (
+              <span className="text-[10px] text-yellow-700 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full">
+                escluso dall&apos;offerta
+              </span>
+            )}
+          </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[10px] uppercase tracking-wide text-text-muted">Prezzo blocco</div>
+          <div className="text-[10px] uppercase tracking-wide text-text-muted">
+            {q > 1 ? "Prezzo blocco (1 pz)" : "Prezzo blocco"}
+          </div>
           <div className="text-lg font-bold" style={{ color: "#00a1be" }}>{fmtEuro(prezzoBlocco)}</div>
           <div className="text-[10px] text-text-muted">costo {fmtEuro(costoBlocco)}</div>
+          {q > 1 && prezzoComplessivo != null && (
+            <div className="text-[11px] text-text mt-1">
+              × {q} → <span className="font-semibold" style={{ color: "#007a91" }}>{fmtEuro(prezzoComplessivo)}</span>
+            </div>
+          )}
         </div>
       </div>
 

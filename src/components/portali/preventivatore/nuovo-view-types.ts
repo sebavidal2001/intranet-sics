@@ -29,6 +29,8 @@ export interface Prodotto {
   categoria?: string | null
   n_magazzini?: number
   prezzo_stale?: boolean
+  /** Data dell'ultimo costo (ISO yyyy-mm-dd). Usata per la cella gialla >9 mesi. */
+  data_ult_costo?: string | null
 }
 
 export interface ServizioDB {
@@ -37,6 +39,8 @@ export interface ServizioDB {
   categoria: string
   tariffa_ora: number
   unita: string
+  /** Default catalogo: se true, la lavorazione scala con la quantità pezzi del blocco. */
+  scala_con_quantita?: boolean
 }
 
 export interface ArticoloBlocco {
@@ -57,6 +61,8 @@ export interface ArticoloBlocco {
    * Per queste righe codice e descrizione sono editabili direttamente in tabella.
    */
   manuale?: boolean
+  /** Data ultimo costo (ISO) dell'articolo da anagrafica; per la cella gialla >9 mesi. */
+  data_ult_costo?: string | null
 }
 
 /**
@@ -75,6 +81,11 @@ export interface ServizioBlocco {
   tariffa_ora: number
   ore: number
   coeff_ricarico: number
+  /**
+   * Se true la lavorazione scala con la quantità pezzi del blocco (es. Montaggio);
+   * se false è "una tantum" (es. Progettazione) e si conta una volta sola.
+   */
+  scala_con_quantita: boolean
 }
 
 export interface Blocco {
@@ -85,6 +96,10 @@ export interface Blocco {
   espanso: boolean
   articoli: ArticoloBlocco[]
   servizi: ServizioBlocco[]
+  /** Numero di pezzi da produrre per questo blocco (default 1). */
+  quantita_pezzi: number
+  /** Override % margine trattativa per il blocco (null = usa il margine globale). */
+  margine_trattativa_pct: number | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -128,6 +143,15 @@ export function fmtEur(n: number): string {
 /** Costante: coefficiente di ricarico di default (modificabile per riga). */
 export const COEFF_RICARICO_DEFAULT = 0.5
 
+/** Imballaggio: % di default sul prezzo di VENDITA del blocco. */
+export const IMBALLAGGIO_PCT_DEFAULT = 1
+/** Tempi accessori di produzione: % di default sul COSTO (vergine) del blocco. */
+export const TEMPI_ACCESSORI_PCT_DEFAULT = 2.8
+/** Spese generali aziendali: % di default sul COSTO (vergine) del blocco. */
+export const SPESE_GENERALI_PCT_DEFAULT = 24.2
+/** Soglia (mesi) oltre la quale la cella "Ult. Costo" diventa gialla. */
+export const MESI_PREZZO_VECCHIO = 9
+
 export function calcNettoArticolo(a: ArticoloBlocco): number {
   if (!a.coeff_ricarico || a.coeff_ricarico <= 0) return 0
   return (a.ult_costo * a.qty) / a.coeff_ricarico
@@ -142,6 +166,76 @@ export function calcTotaleBlocco(b: Blocco): number {
   const mat = b.articoli.reduce((sum, a) => sum + calcNettoArticolo(a), 0)
   const srv = b.servizi.reduce((sum, s) => sum + calcTotaleServizio(s), 0)
   return mat + srv
+}
+
+// ─── Costi "vergini" (senza ricarico) ────────────────────────────────────────
+export function calcCostoArticolo(a: ArticoloBlocco): number {
+  return a.ult_costo * a.qty
+}
+export function calcCostoServizio(s: ServizioBlocco): number {
+  return s.tariffa_ora * s.ore
+}
+
+/** Moltiplicatore di un servizio dato Q: Q se scala, altrimenti 1 (una tantum). */
+function multServizio(s: ServizioBlocco, q: number): number {
+  return s.scala_con_quantita ? q : 1
+}
+
+/**
+ * Prezzo di vendita del blocco (con ricarico) a quantità `q`.
+ * Materiali × q (scalano sempre); manodopera × q solo se scala_con_quantita.
+ * NON include imballaggio/spese/margine.
+ */
+export function calcBloccoVendita(b: Blocco, q = 1): number {
+  const mat = b.articoli.reduce((s, a) => s + calcNettoArticolo(a) * q, 0)
+  const srv = b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * multServizio(sv, q), 0)
+  return mat + srv
+}
+
+/** Costo vergine del blocco a quantità `q` (stessa logica di scala). */
+export function calcBloccoCosto(b: Blocco, q = 1): number {
+  const mat = b.articoli.reduce((s, a) => s + calcCostoArticolo(a) * q, 0)
+  const srv = b.servizi.reduce((s, sv) => s + calcCostoServizio(sv) * multServizio(sv, q), 0)
+  return mat + srv
+}
+
+/** Imballaggio: % sul prezzo di VENDITA. */
+export function calcImballaggio(baseVendita: number, pct = IMBALLAGGIO_PCT_DEFAULT): number {
+  return baseVendita * (pct / 100)
+}
+/** Tempi accessori: % sul COSTO vergine. */
+export function calcTempiAccessori(baseCosto: number, pct = TEMPI_ACCESSORI_PCT_DEFAULT): number {
+  return baseCosto * (pct / 100)
+}
+/** Spese generali: % sul COSTO vergine. */
+export function calcSpeseGenerali(baseCosto: number, pct = SPESE_GENERALI_PCT_DEFAULT): number {
+  return baseCosto * (pct / 100)
+}
+
+/** Margine trattativa effettivo del blocco: override blocco o globale. */
+export function margineEffettivo(b: Blocco, margineGlobale: number): number {
+  return b.margine_trattativa_pct ?? margineGlobale
+}
+
+/**
+ * Prezzo finale del blocco a quantità `q` (modello canonico SICS):
+ *   (vendita + imballaggio[su vendita] + tempi[su costo] + spese[su costo]) × (1 + margine%).
+ */
+export function calcBloccoPrezzoFinale(b: Blocco, q: number, margineGlobale: number): number {
+  const vend = calcBloccoVendita(b, q)
+  const costo = calcBloccoCosto(b, q)
+  const conAddon = vend + calcImballaggio(vend) + calcTempiAccessori(costo) + calcSpeseGenerali(costo)
+  return conAddon * (1 + margineEffettivo(b, margineGlobale) / 100)
+}
+
+/** True se la data ultimo costo è più vecchia di `MESI_PREZZO_VECCHIO` mesi rispetto a oggi. */
+export function prezzoVecchio(dataUltCosto: string | null | undefined): boolean {
+  if (!dataUltCosto) return false
+  const d = new Date(dataUltCosto)
+  if (isNaN(d.getTime())) return false
+  const soglia = new Date()
+  soglia.setMonth(soglia.getMonth() - MESI_PREZZO_VECCHIO)
+  return d.getTime() < soglia.getTime()
 }
 
 // ─── Builder state (per chat AI + scheda tecnica) ────────────────────────────
@@ -170,6 +264,7 @@ export interface BuilderStateLavorazione {
   tariffa_ora: number
   coeff_ricarico: number
   totale: number
+  scala_con_quantita: boolean
 }
 
 export interface BuilderStateBlocco {
@@ -177,6 +272,7 @@ export interface BuilderStateBlocco {
   tipo: string
   nome: string
   note: string
+  quantita_pezzi: number
   articoli: BuilderStateArticolo[]
   lavorazioni: BuilderStateLavorazione[]
   totale_materiali: number
@@ -234,6 +330,7 @@ export function buildBuilderState(input: {
       tipo: b.tipo,
       nome: b.nome,
       note: b.note,
+      quantita_pezzi: b.quantita_pezzi ?? 1,
       articoli: b.articoli.map((a) => ({
         codice: a.codice,
         descrizione: a.descrizione,
@@ -249,6 +346,7 @@ export function buildBuilderState(input: {
         tariffa_ora: s.tariffa_ora,
         coeff_ricarico: s.coeff_ricarico,
         totale: calcTotaleServizio(s),
+        scala_con_quantita: s.scala_con_quantita,
       })),
       totale_materiali: b.articoli.reduce((s, a) => s + calcNettoArticolo(a), 0),
       totale_servizi: b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv), 0),
@@ -279,10 +377,12 @@ export function creaBlocco(): Blocco {
     espanso: true,
     articoli: [],
     servizi: [],
+    quantita_pezzi: 1,
+    margine_trattativa_pct: null,
   }
 }
 
-/** Costruisce un ServizioBlocco da un servizio del catalogo DB. */
+/** Costruisce un ServizioBlocco da un servizio del catalogo DB (eredita il default scala). */
 export function servizioBloccoDaDB(s: ServizioDB): ServizioBlocco {
   return {
     _key: genKey(),
@@ -292,5 +392,6 @@ export function servizioBloccoDaDB(s: ServizioDB): ServizioBlocco {
     tariffa_ora: s.tariffa_ora,
     ore: 1,
     coeff_ricarico: COEFF_RICARICO_DEFAULT,
+    scala_con_quantita: s.scala_con_quantita ?? true,
   }
 }

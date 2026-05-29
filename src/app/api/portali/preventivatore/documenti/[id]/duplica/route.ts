@@ -31,6 +31,7 @@ type RigaRow = {
   ricarico_coefficiente: number | string | null;
   ricarico_pct: number | string | null;
   tipo_riga: string | null;
+  scala_con_quantita: boolean | null;
 };
 
 function num(v: number | string | null | undefined): number {
@@ -62,7 +63,7 @@ export async function GET(
     const { data: doc, error: docErr } = await sb
       .schema("preventivatore")
       .from("documenti")
-      .select("id, codice, cliente, cliente_master_id, tipo")
+      .select("id, codice, cliente, cliente_master_id, tipo, margine_trattativa_pct, consegna_settimane_min, consegna_settimane_max")
       .eq("id", id)
       .maybeSingle();
     if (docErr) throw docErr;
@@ -82,13 +83,13 @@ export async function GET(
       sb
         .schema("preventivatore")
         .from("blocchi")
-        .select("codice_blocco, sheet_name, note, created_at")
+        .select("codice_blocco, sheet_name, note, created_at, quantita_pezzi, margine_trattativa_pct")
         .eq("documento_id", id)
         .order("created_at", { ascending: true }),
       sb
         .schema("preventivatore")
         .from("righe_distinta")
-        .select("codice_blocco, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_coefficiente, ricarico_pct, tipo_riga")
+        .select("codice_blocco, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_coefficiente, ricarico_pct, tipo_riga, scala_con_quantita")
         .eq("documento_id", id)
         .order("id", { ascending: true }),
     ]);
@@ -98,6 +99,7 @@ export async function GET(
     const righe = (righeRes.data ?? []) as unknown as RigaRow[];
     const blocchiTable = (blocchiRes.data ?? []) as unknown as {
       codice_blocco: string | null; sheet_name: string | null; note: string | null;
+      quantita_pezzi: number | null; margine_trattativa_pct: number | null;
     }[];
 
     // 3) Re-fetch prezzi correnti
@@ -109,14 +111,16 @@ export async function GET(
       )
     );
     const prezziCorrenti = new Map<string, number>();
+    const dateCorrenti = new Map<string, string | null>();
     if (codiciMateriale.length > 0) {
       const { data: prodotti } = await sb
         .schema("preventivatore")
         .from("prodotti")
-        .select("codice, ult_costo")
+        .select("codice, ult_costo, data_ult_costo")
         .in("codice", codiciMateriale);
-      for (const p of (prodotti ?? []) as { codice: string; ult_costo: number | null }[]) {
+      for (const p of (prodotti ?? []) as { codice: string; ult_costo: number | null; data_ult_costo: string | null }[]) {
         if (p.ult_costo != null) prezziCorrenti.set(p.codice, Number(p.ult_costo));
+        dateCorrenti.set(p.codice, p.data_ult_costo);
       }
     }
 
@@ -143,9 +147,13 @@ export async function GET(
       for (const b of blocchiTable) ordineBlocchi.push(b.codice_blocco ?? b.sheet_name ?? "Blocco");
     }
     const noteBlocco = new Map<string, string>();
+    const quantitaBlocco = new Map<string, number>();
+    const margineBlocco = new Map<string, number | null>();
     for (const b of blocchiTable) {
       const k = b.codice_blocco ?? b.sheet_name ?? "Blocco";
       if (b.note) noteBlocco.set(k, b.note);
+      quantitaBlocco.set(k, b.quantita_pezzi ?? 1);
+      margineBlocco.set(k, b.margine_trattativa_pct ?? null);
     }
 
     const perBlocco = new Map<string, RigaRow[]>();
@@ -181,6 +189,7 @@ export async function GET(
               qty: num(r.quantita),
               ult_costo: ultCosto,
               coeff_ricarico: num(r.ricarico_coefficiente) || num(r.ricarico_pct) || 0.5,
+              data_ult_costo: r.codice_articolo ? (dateCorrenti.get(r.codice_articolo) ?? null) : null,
               ult_costo_originale: originale,
               prezzo_cambiato: cambiato,
               trovato_anagrafica: trovato,
@@ -201,6 +210,7 @@ export async function GET(
               ore: num(r.quantita),
               tariffa_ora: tariffa,
               coeff_ricarico: num(r.ricarico_coefficiente) || num(r.ricarico_pct) || 0.5,
+              scala_con_quantita: r.scala_con_quantita ?? true,
               tariffa_originale: originale,
               tariffa_cambiata: cambiato,
             };
@@ -210,6 +220,8 @@ export async function GET(
           nome: k === "Blocco" || k === "builder" ? "" : k,
           tipo: k && k !== "builder" ? k : "Altro",
           note: noteBlocco.get(k) ?? "",
+          quantita_pezzi: quantitaBlocco.get(k) ?? 1,
+          margine_trattativa_pct: margineBlocco.get(k) ?? null,
           articoli,
           servizi,
         };
@@ -247,9 +259,18 @@ export async function GET(
 
     const codiceOrig = (doc as { codice: string | null }).codice ?? "preventivo";
 
+    const docMeta = doc as {
+      margine_trattativa_pct: number | null;
+      consegna_settimane_min: number | null;
+      consegna_settimane_max: number | null;
+    };
+
     return NextResponse.json({
       titolo: `Copia di ${codiceOrig}`,
       cliente,
+      margine_trattativa_pct: docMeta.margine_trattativa_pct,
+      consegna_settimane_min: docMeta.consegna_settimane_min,
+      consegna_settimane_max: docMeta.consegna_settimane_max,
       blocchi,
       avvisi: {
         articoli_aggiornati: articoliAggiornati,

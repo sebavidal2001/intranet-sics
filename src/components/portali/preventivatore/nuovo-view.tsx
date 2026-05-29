@@ -13,6 +13,12 @@ import {
   calcNettoArticolo,
   calcTotaleServizio,
   calcTotaleBlocco,
+  calcBloccoVendita,
+  calcBloccoCosto,
+  calcBloccoPrezzoFinale,
+  calcImballaggio,
+  calcTempiAccessori,
+  calcSpeseGenerali,
   creaBlocco,
   buildBuilderState,
   genKey,
@@ -47,7 +53,9 @@ const SchedaTecnicaDialog = dynamic(
 export function NuovoView() {
   const [titolo, setTitolo] = useState("")
   const [cliente, setCliente] = useState<Cliente | null>(null)
-  const [dataConsegna, setDataConsegna] = useState("")
+  const [settimaneMin, setSettimaneMin] = useState("")
+  const [settimaneMax, setSettimaneMax] = useState("")
+  const [margineGlobale, setMargineGlobale] = useState(0)
   const [blocchi, setBlocchi] = useState<Blocco[]>([])
   const [serviziDB, setServiziDB] = useState<ServizioDB[]>([])
   const [loadingServizi, setLoadingServizi] = useState(true)
@@ -77,11 +85,15 @@ export function NuovoView() {
         titolo: titolo.trim() || undefined,
         cliente_master_id: cliente.id,
         cliente_text: cliente.ragione_sociale,
-        data_consegna: dataConsegna || undefined,
+        consegna_settimane_min: settimaneMin ? Number(settimaneMin) : undefined,
+        consegna_settimane_max: settimaneMax ? Number(settimaneMax) : undefined,
+        margine_trattativa_pct: margineGlobale || 0,
         blocchi: blocchi.map((b) => ({
           nome: b.nome || undefined,
           tipo: b.tipo,
           note: b.note || undefined,
+          quantita_pezzi: b.quantita_pezzi ?? 1,
+          margine_trattativa_pct: b.margine_trattativa_pct ?? undefined,
           articoli: b.articoli.map((a) => ({
             codice: a.codice,
             descrizione: a.descrizione,
@@ -95,6 +107,7 @@ export function NuovoView() {
             ore: s.ore,
             tariffa_ora: s.tariffa_ora,
             coeff_ricarico: s.coeff_ricarico,
+            scala_con_quantita: s.scala_con_quantita,
           })),
         })),
       }
@@ -138,16 +151,23 @@ export function NuovoView() {
         const d = data as {
           titolo?: string
           cliente?: Cliente | null
+          margine_trattativa_pct?: number | null
+          consegna_settimane_min?: number | null
+          consegna_settimane_max?: number | null
           blocchi?: Array<{
             nome?: string; tipo?: string; note?: string
-            articoli: Array<{ codice: string; descrizione: string; qty: number; ult_costo: number; coeff_ricarico: number }>
-            servizi: Array<{ nome: string; categoria: string; ore: number; tariffa_ora: number; coeff_ricarico: number }>
+            quantita_pezzi?: number; margine_trattativa_pct?: number | null
+            articoli: Array<{ codice: string; descrizione: string; qty: number; ult_costo: number; coeff_ricarico: number; data_ult_costo?: string | null }>
+            servizi: Array<{ nome: string; categoria: string; ore: number; tariffa_ora: number; coeff_ricarico: number; scala_con_quantita?: boolean }>
           }>
           avvisi?: { articoli_aggiornati: number; servizi_aggiornati: number; articoli_non_trovati: number }
         }
 
         if (d.titolo) setTitolo(d.titolo)
         if (d.cliente) setCliente(d.cliente)
+        if (d.margine_trattativa_pct != null) setMargineGlobale(d.margine_trattativa_pct)
+        if (d.consegna_settimane_min != null) setSettimaneMin(String(d.consegna_settimane_min))
+        if (d.consegna_settimane_max != null) setSettimaneMax(String(d.consegna_settimane_max))
 
         const nuoviBlocchi: Blocco[] = (d.blocchi ?? []).map((b, i) => ({
           _key: genKey(),
@@ -155,6 +175,8 @@ export function NuovoView() {
           nome: b.nome || "",
           note: b.note || "",
           espanso: i === 0,
+          quantita_pezzi: b.quantita_pezzi ?? 1,
+          margine_trattativa_pct: b.margine_trattativa_pct ?? null,
           articoli: b.articoli.map((a) => ({
             _key: genKey(),
             prodotto_id: "",
@@ -164,6 +186,7 @@ export function NuovoView() {
             qty: a.qty,
             coeff_ricarico: a.coeff_ricarico,
             manuale: !a.codice,
+            data_ult_costo: a.data_ult_costo ?? null,
           })),
           servizi: b.servizi.map((s) => ({
             _key: genKey(),
@@ -173,6 +196,7 @@ export function NuovoView() {
             tariffa_ora: s.tariffa_ora,
             ore: s.ore,
             coeff_ricarico: s.coeff_ricarico,
+            scala_con_quantita: s.scala_con_quantita ?? true,
           })),
         }))
         setBlocchi(nuoviBlocchi.length > 0 ? nuoviBlocchi : [creaBlocco()])
@@ -247,16 +271,23 @@ export function NuovoView() {
     })
   }
 
-  // Aggregated totals
+  // ── Totali COMPLESSIVI (× quantità pezzi per blocco) ──────────────────────
+  const qPezzi = (b: Blocco) => b.quantita_pezzi ?? 1
+  // Materiali e servizi a prezzo di vendita (con ricarico), complessivi
   const totaleArticoli = blocchi.reduce(
-    (sum, b) => sum + b.articoli.reduce((s, a) => s + calcNettoArticolo(a), 0),
+    (sum, b) => sum + b.articoli.reduce((s, a) => s + calcNettoArticolo(a) * qPezzi(b), 0),
     0
   )
   const totaleServizi = blocchi.reduce(
-    (sum, b) => sum + b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv), 0),
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * (sv.scala_con_quantita ? qPezzi(b) : 1), 0),
     0
   )
-  const totaleGlobale = totaleArticoli + totaleServizi
+  // Add-on complessivi: imballaggio sul prezzo di vendita; tempi accessori e spese sul costo
+  const imballaggioTotale = blocchi.reduce((sum, b) => sum + calcImballaggio(calcBloccoVendita(b, qPezzi(b))), 0)
+  const tempiAccessoriTotale = blocchi.reduce((sum, b) => sum + calcTempiAccessori(calcBloccoCosto(b, qPezzi(b))), 0)
+  const speseGeneraliTotale = blocchi.reduce((sum, b) => sum + calcSpeseGenerali(calcBloccoCosto(b, qPezzi(b))), 0)
+  // Prezzo finale complessivo (include imballaggio, spese e margine trattativa)
+  const totaleGlobale = blocchi.reduce((sum, b) => sum + calcBloccoPrezzoFinale(b, qPezzi(b), margineGlobale), 0)
 
   const nArticoliTotali = blocchi.reduce((n, b) => n + b.articoli.length, 0)
   const oreTotali = blocchi.reduce(
@@ -271,14 +302,13 @@ export function NuovoView() {
           .reduce((sum, a) => sum + a.coeff_ricarico, 0) / nArticoliTotali
       : 0
 
-  // Costi "vergini" (senza ricarico) per il riepilogo + margine progetto.
-  // Convenzione SICS: prezzo_vendita = costo / coeff → margine% = (prezzo − costo) / costo.
+  // Costi "vergini" (senza ricarico) complessivi → margine progetto sul costo.
   const costoVergineMateriale = blocchi.reduce(
-    (sum, b) => sum + b.articoli.reduce((s, a) => s + a.ult_costo * a.qty, 0),
+    (sum, b) => sum + b.articoli.reduce((s, a) => s + a.ult_costo * a.qty * qPezzi(b), 0),
     0
   )
   const costoVergineManodopera = blocchi.reduce(
-    (sum, b) => sum + b.servizi.reduce((s, sv) => s + sv.tariffa_ora * sv.ore, 0),
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + sv.tariffa_ora * sv.ore * (sv.scala_con_quantita ? qPezzi(b) : 1), 0),
     0
   )
   const costoVergineTotale = costoVergineMateriale + costoVergineManodopera
@@ -298,8 +328,8 @@ export function NuovoView() {
 
   // Snapshot del preventivo per la chat AI builder-aware e per la scheda tecnica
   const builderState = useMemo(
-    () => buildBuilderState({ titolo, cliente, dataConsegna, blocchi }),
-    [titolo, cliente, dataConsegna, blocchi]
+    () => buildBuilderState({ titolo, cliente, dataConsegna: "", blocchi }),
+    [titolo, cliente, blocchi]
   )
 
   return (
@@ -366,17 +396,47 @@ export function NuovoView() {
                 )}
               </div>
 
-              {/* Data consegna */}
-              <div>
-                <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
-                  Data consegna
-                </label>
-                <Input
-                  type="date"
-                  value={dataConsegna}
-                  onChange={(e) => setDataConsegna(e.target.value)}
-                  className="text-sm"
-                />
+              {/* Consegna stimata (range settimane) + margine trattativa */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
+                    Consegna stimata (settimane)
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={settimaneMin}
+                      onChange={(e) => setSettimaneMin(e.target.value)}
+                      placeholder="6"
+                      className="text-sm text-center"
+                    />
+                    <span className="text-text-muted">–</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={settimaneMax}
+                      onChange={(e) => setSettimaneMax(e.target.value)}
+                      placeholder="8"
+                      className="text-sm text-center"
+                    />
+                    <span className="text-xs text-text-muted shrink-0">sett.</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
+                    Margine trattativa (%)
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={margineGlobale}
+                    onChange={(e) => setMargineGlobale(Math.max(0, Number(e.target.value) || 0))}
+                    placeholder="0"
+                    className="text-sm"
+                  />
+                </div>
               </div>
             </div>
 
@@ -496,7 +556,7 @@ export function NuovoView() {
 
                 <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-3 lg:p-4">
                   {/* KPI cards */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 flex-1 max-w-4xl">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 flex-1 min-w-0">
                     {/* Materiali */}
                     <div className="group relative rounded-xl border border-slate-200/70 bg-white/70 backdrop-blur-sm px-3 py-2.5 transition-all hover:border-slate-300 hover:shadow-md">
                       <div className="flex items-center justify-between gap-2">
@@ -550,6 +610,12 @@ export function NuovoView() {
                       <div className="relative mt-1 text-xl font-bold tabular-nums bg-gradient-to-r from-[#007a91] to-[#00a1be] bg-clip-text text-transparent">
                         {fmtEur(totaleGlobale)}
                       </div>
+                      {(imballaggioTotale > 0 || tempiAccessoriTotale > 0 || speseGeneraliTotale > 0 || margineGlobale > 0) && (
+                        <div className="relative text-[10px] text-[#007a91]/70 tabular-nums leading-tight">
+                          incl. imb. {fmtEur(imballaggioTotale)} · tempi {fmtEur(tempiAccessoriTotale)} · spese {fmtEur(speseGeneraliTotale)}
+                          {margineGlobale > 0 && ` · marg. +${margineGlobale}%`}
+                        </div>
+                      )}
                     </div>
 
                     {/* Margine progetto */}
@@ -573,15 +639,16 @@ export function NuovoView() {
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 lg:pl-2 lg:border-l lg:border-[#00a1be]/15">
+                  {/* Actions — impilati in verticale per lasciare spazio alle card */}
+                  <div className="flex flex-col gap-2 shrink-0 lg:pl-3 lg:border-l lg:border-[#00a1be]/15 lg:w-44">
                     {saveError && (
-                      <span className="text-xs text-danger max-w-[200px] truncate" title={saveError}>{saveError}</span>
+                      <span className="text-xs text-danger truncate" title={saveError}>{saveError}</span>
                     )}
                     <Button
                       variant="outline"
+                      size="sm"
                       onClick={() => setSchedaOpen(true)}
-                      className="gap-1.5 bg-white/80 backdrop-blur-sm border-slate-200 hover:bg-white hover:border-slate-300 hover:shadow-sm transition-all"
+                      className="w-full gap-1.5 bg-white/80 backdrop-blur-sm border-slate-200 hover:bg-white hover:border-slate-300 hover:shadow-sm transition-all"
                       disabled={blocchi.length === 0}
                       title="Genera scheda tecnica AI con il preventivo corrente"
                     >
@@ -589,9 +656,10 @@ export function NuovoView() {
                       Scheda tecnica
                     </Button>
                     <Button
+                      size="sm"
                       onClick={handleSalvaPreventivo}
                       disabled={savingPreventivo || !cliente || blocchi.length === 0}
-                      className="text-white px-5 gap-1.5 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.99] transition-all bg-gradient-to-r from-[#007a91] to-[#00a1be] hover:from-[#006578] hover:to-[#0091ad] disabled:opacity-50 disabled:hover:scale-100 disabled:shadow-md"
+                      className="w-full text-white gap-1.5 shadow-md hover:shadow-lg active:scale-[0.99] transition-all bg-gradient-to-r from-[#007a91] to-[#00a1be] hover:from-[#006578] hover:to-[#0091ad] disabled:opacity-50 disabled:shadow-md"
                     >
                       {savingPreventivo ? (
                         <>

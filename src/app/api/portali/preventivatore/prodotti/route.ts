@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
       uc: string | null;
       categoria: string | null;
       ult_costo: number | null;
+      data_ult_costo: string | null;
       esistenza_totale: number | null;
       disponibilita_totale: number | null;
       n_magazzini: number;
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest) {
       codice: r.codice,
       descrizione: r.descrizione ?? "",
       ult_costo: r.ult_costo,
+      data_ult_costo: r.data_ult_costo,
       fornitore: r.categoria, // riusiamo lo slot "fornitore" del builder per mostrare la categoria
       unita_misura: r.uc ?? "PZ",
       giacenza: r.esistenza_totale,

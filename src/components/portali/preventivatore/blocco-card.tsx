@@ -8,9 +8,12 @@ import {
   genKey,
   calcNettoArticolo,
   calcTotaleServizio,
-  calcTotaleBlocco,
+  calcBloccoVendita,
+  calcBloccoCosto,
+  prezzoVecchio,
   servizioBloccoDaDB,
   COEFF_RICARICO_DEFAULT,
+  MESI_PREZZO_VECCHIO,
   TIPI_BLOCCO,
   COLORI_BLOCCO,
   type Blocco,
@@ -165,15 +168,19 @@ function SearchArticoli({
 function ServiziSection({
   servizi,
   serviziDisponibili,
+  quantita,
   onAggiungi,
   onRimuovi,
   onAggiorna,
+  onToggleScala,
 }: {
   servizi: ServizioBlocco[]
   serviziDisponibili: ServizioDB[]
+  quantita: number
   onAggiungi: (s: ServizioDB) => void
   onRimuovi: (key: string) => void
   onAggiorna: (key: string, campo: "ore" | "coeff_ricarico", valore: number) => void
+  onToggleScala: (key: string) => void
 }) {
   const [pickerAperto, setPickerAperto] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -220,6 +227,9 @@ function ServiziSection({
                 <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20" title="Coefficiente di ricarico SICS: prezzo = (ore × tariffa) / coeff">
                   Ricarico
                 </th>
+                <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20" title="×Q = scala con la quantità pezzi del blocco · 1× = una tantum">
+                  Tipo
+                </th>
                 <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
                   Totale
                 </th>
@@ -258,8 +268,28 @@ function ServiziSection({
                       title="Coefficiente di ricarico SICS (es. 0.5 = costo × 2, 0.65 = costo × 1.538)"
                     />
                   </td>
+                  <td className="px-2 py-1.5 border border-border text-center">
+                    <button
+                      onClick={() => onToggleScala(s._key)}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                        s.scala_con_quantita
+                          ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      }`}
+                      title={
+                        s.scala_con_quantita
+                          ? "Scala con la quantità: il totale viene moltiplicato per i pezzi del blocco. Clicca per renderla una tantum."
+                          : "Una tantum: conteggiata una volta sola. Clicca per farla scalare con la quantità."
+                      }
+                    >
+                      {s.scala_con_quantita ? "×Q" : "1×"}
+                    </button>
+                  </td>
                   <td className="px-2 py-1.5 border border-border text-right text-sm font-medium text-text">
                     {fmtEur(calcTotaleServizio(s))}
+                    {s.scala_con_quantita && quantita > 1 && (
+                      <span className="block text-[10px] text-emerald-600 tabular-nums">×{quantita} = {fmtEur(calcTotaleServizio(s) * quantita)}</span>
+                    )}
                   </td>
                   <td className="px-2 py-1.5 border border-border text-center">
                     <button
@@ -444,7 +474,12 @@ export function BloccoCard({
   onDelete: () => void
 }) {
   const colore = COLORI_BLOCCO[indice % COLORI_BLOCCO.length]
-  const totale = calcTotaleBlocco(blocco)
+  const [coeffBlocco, setCoeffBlocco] = useState(COEFF_RICARICO_DEFAULT)
+  const q = blocco.quantita_pezzi ?? 1
+  const venditaUnitaria = calcBloccoVendita(blocco, 1)   // prezzo vendita singola unità (no spese/margine)
+  const costoUnitario = calcBloccoCosto(blocco, 1)
+  const venditaCompl = calcBloccoVendita(blocco, q)
+  const costoCompl = calcBloccoCosto(blocco, q)
 
   function aggiornaArticolo(key: string, campo: keyof ArticoloBlocco, valore: number | string) {
     onChange({
@@ -468,8 +503,18 @@ export function BloccoCard({
       ult_costo: p.ult_costo ?? 0,
       qty: 1,
       coeff_ricarico: COEFF_RICARICO_DEFAULT,
+      data_ult_costo: p.data_ult_costo ?? null,
     }
     onChange({ ...blocco, articoli: [...blocco.articoli, articolo] })
+  }
+
+  /** Applica lo stesso coefficiente di ricarico a tutti i materiali del blocco. */
+  function applicaCoeffATutti(coeff: number) {
+    if (!coeff || coeff <= 0) return
+    onChange({
+      ...blocco,
+      articoli: blocco.articoli.map((a) => ({ ...a, coeff_ricarico: coeff })),
+    })
   }
 
   /** Aggiunge una voce libera non presente in anagrafica (codice/descrizione editabili). */
@@ -504,6 +549,15 @@ export function BloccoCard({
     })
   }
 
+  function toggleScalaServizio(key: string) {
+    onChange({
+      ...blocco,
+      servizi: blocco.servizi.map((s) =>
+        s._key === key ? { ...s, scala_con_quantita: !s.scala_con_quantita } : s
+      ),
+    })
+  }
+
   return (
     <div className="border border-border rounded-xl bg-bg overflow-hidden">
       {/* Header */}
@@ -531,9 +585,29 @@ export function BloccoCard({
           className="flex-1 h-7 text-sm border-0 bg-transparent px-1 focus:ring-0 focus:border-b focus:border-[#00a1be] rounded-none"
         />
 
-        <span className="text-sm font-semibold text-text shrink-0">
-          {fmtEur(totale)}
-        </span>
+        {/* Quantità pezzi del blocco */}
+        <div className="flex items-center gap-1 shrink-0" title="Numero di pezzi da produrre per questo blocco">
+          <span className="text-[10px] uppercase tracking-wide text-text-muted">Pz</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={q}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => onChange({ ...blocco, quantita_pezzi: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
+            className="w-14 text-center text-sm rounded-md border border-border bg-bg px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40 tabular-nums"
+          />
+        </div>
+
+        <div className="shrink-0 text-right leading-tight">
+          <div className="text-sm font-semibold text-text tabular-nums" title="Prezzo di vendita per singola unità (escl. imballaggio/spese/margine)">
+            {fmtEur(venditaUnitaria)}
+            {q > 1 && <span className="text-[10px] text-text-muted ml-1">/pz</span>}
+          </div>
+          <div className="text-[10px] text-text-muted tabular-nums" title="Costo del blocco (vergine, senza ricarico)">
+            costo {fmtEur(q > 1 ? costoCompl : costoUnitario)}
+          </div>
+        </div>
 
         <button
           onClick={() => onChange({ ...blocco, espanso: !blocco.espanso })}
@@ -577,9 +651,32 @@ export function BloccoCard({
               <span className="text-xs text-text-muted">
                 ({blocco.articoli.length})
               </span>
+
+              {/* Coeff. ricarico uniforme per il blocco */}
+              {blocco.articoli.length > 0 && (
+                <div className="ml-auto flex items-center gap-1.5" title="Imposta lo stesso coefficiente di ricarico a tutti i materiali del blocco (poi modificabili singolarmente)">
+                  <span className="text-[10px] uppercase tracking-wide text-text-muted">Coeff. blocco</span>
+                  <input
+                    type="number"
+                    min={0.01}
+                    max={1}
+                    step={0.01}
+                    value={coeffBlocco}
+                    onChange={(e) => setCoeffBlocco(Math.max(0.01, Number(e.target.value)))}
+                    className="w-14 text-center text-xs rounded border border-border bg-bg px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 tabular-nums"
+                  />
+                  <button
+                    onClick={() => applicaCoeffATutti(coeffBlocco)}
+                    className="text-[11px] px-1.5 py-0.5 rounded bg-[#00a1be]/10 text-[#007a91] hover:bg-[#00a1be]/20 transition-colors"
+                  >
+                    applica a tutti
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={() => aggiungiArticoloManuale("")}
-                className="ml-auto text-xs flex items-center gap-1 text-[#00a1be] hover:underline"
+                className={`text-xs flex items-center gap-1 text-[#00a1be] hover:underline ${blocco.articoli.length > 0 ? "" : "ml-auto"}`}
                 title="Aggiungi una voce non presente nel catalogo articoli"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
@@ -653,7 +750,16 @@ export function BloccoCard({
                             className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
                           />
                         </td>
-                        <td className="px-2 py-1.5 border border-border">
+                        <td
+                          className={`px-2 py-1.5 border border-border ${prezzoVecchio(a.data_ult_costo) ? "bg-amber-100" : ""}`}
+                          title={
+                            prezzoVecchio(a.data_ult_costo)
+                              ? `Ultimo costo aggiornato il ${a.data_ult_costo} (oltre ${MESI_PREZZO_VECCHIO} mesi fa): verificare il prezzo`
+                              : a.data_ult_costo
+                                ? `Ultimo costo: ${a.data_ult_costo}`
+                                : undefined
+                          }
+                        >
                           <input
                             type="number"
                             min={0}
@@ -662,7 +768,7 @@ export function BloccoCard({
                             onChange={(e) =>
                               aggiornaArticolo(a._key, "ult_costo", Math.max(0, Number(e.target.value)))
                             }
-                            className="w-full text-right text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                            className={`w-full text-right text-sm border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1 ${prezzoVecchio(a.data_ult_costo) ? "bg-amber-100" : "bg-transparent"}`}
                           />
                         </td>
                         <td className="px-2 py-1.5 border border-border">
@@ -708,10 +814,33 @@ export function BloccoCard({
           <ServiziSection
             servizi={blocco.servizi}
             serviziDisponibili={serviziDB}
+            quantita={q}
             onAggiungi={aggiungiServizio}
             onRimuovi={rimuoviServizio}
             onAggiorna={aggiornaServizio}
+            onToggleScala={toggleScalaServizio}
           />
+
+          {/* Recap economico del blocco: prezzo vendita + costo (unità e complessivo) */}
+          <div className="rounded-lg border border-border bg-bg-page/60 px-4 py-3">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+              <div className="text-text-muted">Prezzo vendita (1 pz)</div>
+              <div className="text-right tabular-nums text-text">{fmtEur(venditaUnitaria)}</div>
+              <div className="text-text-muted">Costo (1 pz)</div>
+              <div className="text-right tabular-nums text-text-muted">{fmtEur(costoUnitario)}</div>
+              {q > 1 && (
+                <>
+                  <div className="text-text border-t border-border pt-1.5 font-medium">Prezzo vendita × {q}</div>
+                  <div className="text-right tabular-nums text-text border-t border-border pt-1.5 font-medium" style={{ color: "#007a91" }}>{fmtEur(venditaCompl)}</div>
+                  <div className="text-text-muted">Costo × {q}</div>
+                  <div className="text-right tabular-nums text-text-muted">{fmtEur(costoCompl)}</div>
+                </>
+              )}
+            </div>
+            <p className="mt-2 text-[10px] text-text-muted italic">
+              Imballaggio, spese generali e margine trattativa sono applicati nel riepilogo finale.
+            </p>
+          </div>
         </div>
       )}
     </div>

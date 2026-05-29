@@ -47,7 +47,7 @@ export default async function DettaglioPreventivoPage({
       .schema("preventivatore")
       .from("documenti")
       .select(
-        "id, codice, cliente, cliente_master_id, tipo, categoria, tipo_prodotto, anno, stato, motivo_rifiuto_id, stato_note, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, importo_finale_raw, importo_source, codici_articolo, tags, note, versione_ingest, created_at, updated_at"
+        "id, codice, cliente, cliente_master_id, tipo, categoria, tipo_prodotto, anno, stato, motivo_rifiuto_id, stato_note, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, importo_finale_raw, importo_source, codici_articolo, tags, note, versione_ingest, consegna_settimane_min, consegna_settimane_max, margine_trattativa_pct, created_at, updated_at"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -67,7 +67,7 @@ export default async function DettaglioPreventivoPage({
     sb
       .schema("preventivatore")
       .from("blocchi")
-      .select("id, codice_blocco, sheet_name, totale_ceil_2, note, incluso_offerta, created_at")
+      .select("id, codice_blocco, sheet_name, totale_ceil_2, note, incluso_offerta, created_at, quantita_pezzi, imballaggio_pct, tempi_accessori_pct, spese_generali_pct, margine_trattativa_pct, costo_complessivo")
       .eq("documento_id", id)
       .order("created_at", { ascending: true }),
   ]);

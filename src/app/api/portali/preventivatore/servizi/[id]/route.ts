@@ -57,6 +57,7 @@ export async function PATCH(
       patch.ordine = ordine;
     }
     if (body.is_attivo !== undefined) patch.is_attivo = Boolean(body.is_attivo);
+    if (body.scala_con_quantita !== undefined) patch.scala_con_quantita = Boolean(body.scala_con_quantita);
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "Nessun campo da aggiornare" }, { status: 400 });

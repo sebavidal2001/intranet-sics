@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     let query = adminClient
       .schema("preventivatore")
       .from("servizi_manodopera")
-      .select("id, nome, categoria, tariffa_ora, unita, ordine, is_attivo")
+      .select("id, nome, categoria, tariffa_ora, unita, ordine, is_attivo, scala_con_quantita")
       .order("ordine", { ascending: true });
 
     if (!includiInattivi) query = query.eq("is_attivo", true);
@@ -85,8 +85,9 @@ export async function POST(request: NextRequest) {
         unita: String(body?.unita ?? "h").trim() || "h",
         ordine,
         is_attivo: body?.is_attivo !== false,
+        scala_con_quantita: body?.scala_con_quantita !== false,
       })
-      .select("id, nome, categoria, tariffa_ora, unita, ordine, is_attivo")
+      .select("id, nome, categoria, tariffa_ora, unita, ordine, is_attivo, scala_con_quantita")
       .single();
 
     if (error) {
