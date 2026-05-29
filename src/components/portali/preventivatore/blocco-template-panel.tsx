@@ -45,8 +45,9 @@ export function BloccoTemplatePanel({
 
   function applica() {
     if (!tpl) return
+    // Includiamo TUTTE le righe del template (anche quelle a quantità 0 / manuali):
+    // l'operatore completerà le quantità nelle righe manuali direttamente nel blocco.
     const articoli: ArticoloBlocco[] = calcolaArticoli(tpl, valori)
-      .filter((a) => a.qty !== 0 || a.manuale)
       .map((a) => ({
         _key: genKey(), prodotto_id: "", codice: a.codice, descrizione: a.descrizione,
         ult_costo: a.ult_costo, qty: a.qty, coeff_ricarico: a.coeff_ricarico,
