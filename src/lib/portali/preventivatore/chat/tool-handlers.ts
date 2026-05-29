@@ -816,13 +816,14 @@ async function toolListinoServizi(args: { categoria?: string }) {
   return data ?? [];
 }
 
-async function toolStoriaPrezziArticolo(args: { codice: string; anni?: number }) {
+async function toolStoriaPrezziArticolo(args: { codice: string; anni?: number }, agenteCodice: string | null = null) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .schema("preventivatore")
     .rpc("storia_prezzi_articolo", {
       p_codice: args.codice,
       p_anni: args.anni ?? 5,
+      p_agente_codice: agenteCodice,
     });
   if (error) throw new Error("storia_prezzi_articolo: " + error.message);
   return data ?? [];
@@ -833,7 +834,7 @@ async function toolAnalisiMargini(args: {
   categoria?: string;
   anno?: number;
   limit?: number;
-}) {
+}, agenteCodice: string | null = null) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .schema("preventivatore")
@@ -842,6 +843,7 @@ async function toolAnalisiMargini(args: {
       p_categoria: args.categoria ?? null,
       p_anno: args.anno ?? null,
       p_limit: args.limit ?? 50,
+      p_agente_codice: agenteCodice,
     });
   if (error) throw new Error("analisi_margini: " + error.message);
   return data ?? [];
@@ -852,7 +854,7 @@ async function toolHitRate(args: {
   categoria?: string;
   mesi?: number;
   limit?: number;
-}) {
+}, agenteCodice: string | null = null) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .schema("preventivatore")
@@ -861,24 +863,26 @@ async function toolHitRate(args: {
       p_categoria: args.categoria ?? null,
       p_mesi: args.mesi ?? 24,
       p_limit: args.limit ?? 30,
+      p_agente_codice: agenteCodice,
     });
   if (error) throw new Error("hit_rate: " + error.message);
   return data ?? [];
 }
 
-async function toolInfoCliente(args: { ragione: string; limit_preventivi?: number }) {
+async function toolInfoCliente(args: { ragione: string; limit_preventivi?: number }, agenteCodice: string | null = null) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .schema("preventivatore")
     .rpc("info_cliente", {
       p_ragione: args.ragione,
       p_limit_preventivi: args.limit_preventivi ?? 8,
+      p_agente_codice: agenteCodice,
     });
   if (error) throw new Error("info_cliente: " + error.message);
   return data ?? {};
 }
 
-async function toolArticoliAssociati(args: { codice: string; min_freq?: number; limit?: number }) {
+async function toolArticoliAssociati(args: { codice: string; min_freq?: number; limit?: number }, agenteCodice: string | null = null) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .schema("preventivatore")
@@ -886,6 +890,7 @@ async function toolArticoliAssociati(args: { codice: string; min_freq?: number; 
       p_codice: args.codice,
       p_min_freq: args.min_freq ?? 2,
       p_limit: args.limit ?? 20,
+      p_agente_codice: agenteCodice,
     });
   if (error) throw new Error("articoli_associati: " + error.message);
   return data ?? [];
@@ -924,6 +929,7 @@ export interface ChatToolScope {
 export async function dispatchTool(name: string, args: Record<string, unknown>, scope?: ChatToolScope) {
   const ids = scope?.clienteIds ?? null;
   const agente = scope?.agenteCodice ?? null;
+  const restricted = ids !== null;
   if (name === "list_preventivi")        return toolListPreventivi(args as Parameters<typeof toolListPreventivi>[0], ids);
   if (name === "cerca_simili")           return toolCercaSimili(args as Parameters<typeof toolCercaSimili>[0], ids);
   if (name === "cerca_articolo")         return toolCercaArticolo(args as Parameters<typeof toolCercaArticolo>[0]);
@@ -931,16 +937,24 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
   if (name === "top_articoli")           return toolTopArticoli(args as Parameters<typeof toolTopArticoli>[0], ids);
   if (name === "query_righe_distinta")   return toolQueryRigheDistinta(args as Parameters<typeof toolQueryRigheDistinta>[0], ids);
   if (name === "dettaglio_preventivo")   return toolDettaglioPreventivo(args as Parameters<typeof toolDettaglioPreventivo>[0], ids);
-  if (name === "analisi_preventivi_sql") return toolAnalisiPreventiviSql(args as Parameters<typeof toolAnalisiPreventiviSql>[0]);
-  if (name === "cerca_anomalie_importi") return toolCercaAnomalieImporti(args as Parameters<typeof toolCercaAnomalieImporti>[0]);
+  if (name === "analisi_preventivi_sql") {
+    // Le RPC ai_statistiche_* non sono scoped per agente: per i commerciali ristretti
+    // restituiamo un messaggio invece di esporre aggregati globali.
+    if (restricted) return { error: "Analisi aggregata non disponibile per il profilo commerciale ristretto. Usa lista/dettaglio sui tuoi preventivi." };
+    return toolAnalisiPreventiviSql(args as Parameters<typeof toolAnalisiPreventiviSql>[0]);
+  }
+  if (name === "cerca_anomalie_importi") {
+    if (restricted) return { error: "Analisi anomalie non disponibile per il profilo commerciale ristretto." };
+    return toolCercaAnomalieImporti(args as Parameters<typeof toolCercaAnomalieImporti>[0]);
+  }
   // Nuovi tool redazione preventivi (migration 043)
   if (name === "cerca_articolo_anagrafica") return toolCercaArticoloAnagrafica(args as Parameters<typeof toolCercaArticoloAnagrafica>[0]);
   if (name === "listino_servizi")           return toolListinoServizi(args as Parameters<typeof toolListinoServizi>[0]);
-  if (name === "storia_prezzi_articolo")    return toolStoriaPrezziArticolo(args as Parameters<typeof toolStoriaPrezziArticolo>[0]);
-  if (name === "analisi_margini")           return toolAnalisiMargini(args as Parameters<typeof toolAnalisiMargini>[0]);
-  if (name === "hit_rate")                  return toolHitRate(args as Parameters<typeof toolHitRate>[0]);
-  if (name === "info_cliente")              return toolInfoCliente(args as Parameters<typeof toolInfoCliente>[0]);
-  if (name === "articoli_associati")        return toolArticoliAssociati(args as Parameters<typeof toolArticoliAssociati>[0]);
+  if (name === "storia_prezzi_articolo")    return toolStoriaPrezziArticolo(args as Parameters<typeof toolStoriaPrezziArticolo>[0], agente);
+  if (name === "analisi_margini")           return toolAnalisiMargini(args as Parameters<typeof toolAnalisiMargini>[0], agente);
+  if (name === "hit_rate")                  return toolHitRate(args as Parameters<typeof toolHitRate>[0], agente);
+  if (name === "info_cliente")              return toolInfoCliente(args as Parameters<typeof toolInfoCliente>[0], agente);
+  if (name === "articoli_associati")        return toolArticoliAssociati(args as Parameters<typeof toolArticoliAssociati>[0], agente);
   if (name === "trend_mensile")             return toolTrendMensile(args as Parameters<typeof toolTrendMensile>[0], agente);
   throw new Error(`Tool sconosciuto: ${name}`);
 }
