@@ -318,11 +318,19 @@ export function ImpostazioniView() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-2xl font-tenorite text-text">Impostazioni</h1>
-        <p className="text-sm text-text-muted mt-1">
-          Configura i parametri del motore AI del Preventivatore.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-tenorite text-text">Impostazioni</h1>
+          <p className="text-sm text-text-muted mt-1">
+            Configura i parametri del motore AI del Preventivatore.
+          </p>
+        </div>
+        <a
+          href="/preventivatore/impostazioni/template"
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[#00a1be]/30 bg-[#00a1be]/5 px-3 py-2 text-sm text-[#007a91] hover:bg-[#00a1be]/10 transition-colors"
+        >
+          Template prodotti →
+        </a>
       </div>
 
       {/* Config section */}

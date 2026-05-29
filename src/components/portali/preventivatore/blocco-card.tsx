@@ -22,6 +22,7 @@ import {
   type ServizioDB,
   type Prodotto,
 } from "@/components/portali/preventivatore/nuovo-view-types"
+import { BloccoTemplatePanel, type TemplateListItem } from "@/components/portali/preventivatore/blocco-template-panel"
 
 // ─── SearchArticoli ───────────────────────────────────────────────────────────
 
@@ -464,12 +465,14 @@ export function BloccoCard({
   blocco,
   indice,
   serviziDB,
+  templates = [],
   onChange,
   onDelete,
 }: {
   blocco: Blocco
   indice: number
   serviziDB: ServizioDB[]
+  templates?: TemplateListItem[]
   onChange: (b: Blocco) => void
   onDelete: () => void
 }) {
@@ -628,6 +631,14 @@ export function BloccoCard({
 
       {blocco.espanso && (
         <div className="p-4 space-y-5">
+          {/* Genera da template */}
+          <BloccoTemplatePanel
+            templates={templates}
+            onApplica={(articoli, servizi, nome) =>
+              onChange({ ...blocco, articoli, servizi, nome: blocco.nome || nome })
+            }
+          />
+
           {/* Note tecniche */}
           <div>
             <label className="text-xs font-medium text-text-muted uppercase tracking-wide">

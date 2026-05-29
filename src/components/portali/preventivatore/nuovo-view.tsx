@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AutocompleteCliente } from "@/components/portali/preventivatore/autocomplete-cliente"
 import { BloccoCard } from "@/components/portali/preventivatore/blocco-card"
+import type { TemplateListItem } from "@/components/portali/preventivatore/blocco-template-panel"
 import {
   fmtEur,
   calcNettoArticolo,
@@ -59,6 +60,7 @@ export function NuovoView() {
   const [blocchi, setBlocchi] = useState<Blocco[]>([])
   const [serviziDB, setServiziDB] = useState<ServizioDB[]>([])
   const [loadingServizi, setLoadingServizi] = useState(true)
+  const [templates, setTemplates] = useState<TemplateListItem[]>([])
   const [schedaOpen, setSchedaOpen] = useState(false)
   const [savingPreventivo, setSavingPreventivo] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -240,6 +242,14 @@ export function NuovoView() {
       }
     }
     caricaServizi()
+  }, [])
+
+  // Carica i template prodotti attivi (per la generazione distinta nei blocchi)
+  useEffect(() => {
+    fetch("/api/portali/preventivatore/template")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setTemplates(Array.isArray(d) ? d : []))
+      .catch(() => {})
   }, [])
 
   function aggiungiBlocco() {
@@ -531,6 +541,7 @@ export function NuovoView() {
                   blocco={b}
                   indice={i}
                   serviziDB={serviziDB}
+                  templates={templates}
                   onChange={(updated) => aggiornaBlocco(b._key, updated)}
                   onDelete={() => eliminaBlocco(b._key)}
                 />
