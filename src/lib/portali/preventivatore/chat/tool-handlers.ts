@@ -13,6 +13,14 @@ import type {
   ToolName,
 } from "./types";
 
+// Scope commerciale: normalizza i cliente_master_id visibili (lista vuota → UUID
+// impossibile, così il commerciale ristretto senza clienti vede 0 record).
+const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+function scopeIds(ids: string[] | null | undefined): string[] | null {
+  if (!Array.isArray(ids)) return null;
+  return ids.length > 0 ? ids : [ZERO_UUID];
+}
+
 // ─── Tool: list_preventivi ────────────────────────────────────────────────────
 
 export async function toolListPreventivi(args: {
@@ -26,8 +34,9 @@ export async function toolListPreventivi(args: {
   order_dir?: string;
   limit?: number;
   count_only?: boolean;
-}): Promise<DocumentoRow[] | { count: number; filters: Record<string, unknown> }> {
+}, clienteIds: string[] | null = null): Promise<DocumentoRow[] | { count: number; filters: Record<string, unknown> }> {
   const adminClient = createAdminClient();
+  const scope = scopeIds(clienteIds);
 
   // Quando si vuole solo il conteggio (es. "quanti preventivi sopra X €"),
   // facciamo una query separata di count per evitare di restituire l'array.
@@ -36,6 +45,7 @@ export async function toolListPreventivi(args: {
       .schema("preventivatore")
       .from("documenti")
       .select("*", { count: "exact", head: true });
+    if (scope) countQ = countQ.in("cliente_master_id", scope);
     if (args.cliente) countQ = countQ.ilike("cliente", `%${args.cliente}%`);
     if (args.stato && ["pending", "ordinato", "rifiutato"].includes(args.stato))
       countQ = countQ.eq("stato", args.stato);
@@ -68,6 +78,7 @@ export async function toolListPreventivi(args: {
       "codice, cliente, stato, categoria, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, anno, tipo_prodotto"
     );
 
+  if (scope) q = q.in("cliente_master_id", scope);
   if (args.cliente) q = q.ilike("cliente", `%${args.cliente}%`);
   if (args.stato && ["pending", "ordinato", "rifiutato"].includes(args.stato))
     q = q.eq("stato", args.stato);
@@ -110,7 +121,7 @@ export async function toolCercaSimili(args: {
   query: string;
   cliente?: string;
   limite?: number;
-}): Promise<
+}, clienteIds: string[] | null = null): Promise<
   Array<{
     documento_id: string;
     codice: string | null;
@@ -124,6 +135,7 @@ export async function toolCercaSimili(args: {
 > {
   const limite = args.limite ?? 8;
   const adminClient = createAdminClient();
+  const scope = scopeIds(clienteIds);
 
   // Parametri configurabili (con fallback prudenti)
   const cfg = await loadAiConfig();
@@ -155,6 +167,7 @@ export async function toolCercaSimili(args: {
     .from("documenti")
     .select("id, codice, cliente, stato, importo_preventivo, data_offerta, data_consegna_richiesta, data_consegna_confermata, data_consegna_effettiva, giorni_consegna_offerti, numero_offerta, numero_preventivo, tipo_cartella")
     .in("id", docIds);
+  if (scope) docsQuery = docsQuery.in("cliente_master_id", scope);
   if (args.cliente) docsQuery = docsQuery.ilike("cliente", `%${args.cliente}%`);
 
   const { data: documenti, error: docError } = await docsQuery;
@@ -253,11 +266,13 @@ export async function toolQueryRigheDistinta(args: {
   filtro_cliente?: string;
   filtro_stato?: string;
   limit?: number;
-}): Promise<RigaDistintaRow[]> {
+}, clienteIds: string[] | null = null): Promise<RigaDistintaRow[]> {
   const adminClient = createAdminClient();
   const limit = Math.min(args.limit ?? 10, 50);
+  const scope = scopeIds(clienteIds);
 
   let docQ = adminClient.schema("preventivatore").from("documenti").select("id, codice, cliente");
+  if (scope) docQ = docQ.in("cliente_master_id", scope);
   if (args.categoria)       docQ = docQ.eq("categoria", args.categoria);
   if (args.filtro_cliente)  docQ = docQ.ilike("cliente", `%${args.filtro_cliente}%`);
   if (args.filtro_stato && ["pending","ordinato","rifiutato"].includes(args.filtro_stato))
@@ -348,14 +363,16 @@ export async function toolTopArticoli(args: {
   top_n?: number;
   filtro_cliente?: string;
   filtro_stato?: string;
-}): Promise<TopArticoloRow[]> {
+}, clienteIds: string[] | null = null): Promise<TopArticoloRow[]> {
   const adminClient = createAdminClient();
   const topN = Math.min(args.top_n ?? 10, 30);
+  const scope = scopeIds(clienteIds);
 
   let docQ = adminClient
     .schema("preventivatore")
     .from("documenti")
     .select("id");
+  if (scope) docQ = docQ.in("cliente_master_id", scope);
   if (args.categoria) docQ = docQ.eq("categoria", args.categoria);
   if (args.filtro_cliente) docQ = docQ.ilike("cliente", `%${args.filtro_cliente}%`);
   if (args.filtro_stato && ["pending", "ordinato", "rifiutato"].includes(args.filtro_stato))
@@ -429,14 +446,16 @@ export async function toolAggregatPreventivi(args: {
   filtro_importo_min?: number;
   filtro_importo_max?: number;
   limit?: number;
-}): Promise<AggRow[]> {
+}, clienteIds: string[] | null = null): Promise<AggRow[]> {
   const adminClient = createAdminClient();
+  const scope = scopeIds(clienteIds);
 
   let q = adminClient
     .schema("preventivatore")
     .from("documenti")
     .select("stato, cliente, categoria, importo_preventivo, importo_ordinato, data_offerta, codice, anno, numero_offerta");
 
+  if (scope) q = q.in("cliente_master_id", scope);
   if (args.filtro_stato && ["pending", "ordinato", "rifiutato"].includes(args.filtro_stato))
     q = q.eq("stato", args.filtro_stato);
   if (args.filtro_cliente)
@@ -515,19 +534,21 @@ export async function toolAggregatPreventivi(args: {
 
 // ─── Tool: dettaglio_preventivo ───────────────────────────────────────────────
 
-export async function toolDettaglioPreventivo(args: { codice: string }): Promise<DettaglioRow | null> {
+export async function toolDettaglioPreventivo(args: { codice: string }, clienteIds: string[] | null = null): Promise<DettaglioRow | null> {
   const adminClient = createAdminClient();
+  const scope = scopeIds(clienteIds);
 
   const raw = args.codice.trim().toUpperCase();
   const withUnderscore = raw.replace(/\//g, "_");
   const withSlash = raw.replace(/_/g, "/");
 
-  const { data: docs, error: docErr } = await adminClient
+  let docQuery = adminClient
     .schema("preventivatore")
     .from("documenti")
     .select("id, codice, cliente, stato, categoria, importo_preventivo, importo_ordinato, importo_offerta, data_offerta, data_consegna_richiesta, data_consegna_confermata, data_consegna_effettiva, giorni_consegna_offerti, numero_offerta, numero_preventivo, tipo_cartella, tipo")
-    .or(`codice.ilike.${withUnderscore},codice.ilike.${withSlash}`)
-    .limit(1);
+    .or(`codice.ilike.${withUnderscore},codice.ilike.${withSlash}`);
+  if (scope) docQuery = docQuery.in("cliente_master_id", scope);
+  const { data: docs, error: docErr } = await docQuery.limit(1);
 
   if (docErr) { console.error("dettaglio_preventivo doc error:", docErr); return null; }
   if (!docs || docs.length === 0) return null;
@@ -870,12 +891,13 @@ async function toolArticoliAssociati(args: { codice: string; min_freq?: number; 
   return data ?? [];
 }
 
-async function toolTrendMensile(args: { months?: number; categoria?: string }) {
+async function toolTrendMensile(args: { months?: number; categoria?: string }, agenteCodice: string | null = null) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .schema("preventivatore")
     .rpc("dashboard_serie_mensile_categoria", {
       months: Math.min(Math.max(args.months ?? 12, 1), 36),
+      p_agente_codice: agenteCodice,
     });
   if (error) throw new Error("trend_mensile: " + error.message);
   // Filtro categoria post-hoc se richiesto (la RPC non lo accetta nativamente)
@@ -890,14 +912,25 @@ async function toolTrendMensile(args: { months?: number; categoria?: string }) {
 
 // ─── Tool dispatch ────────────────────────────────────────────────────────────
 
-export async function dispatchTool(name: string, args: Record<string, unknown>) {
-  if (name === "list_preventivi")        return toolListPreventivi(args as Parameters<typeof toolListPreventivi>[0]);
-  if (name === "cerca_simili")           return toolCercaSimili(args as Parameters<typeof toolCercaSimili>[0]);
+/**
+ * Scope commerciale per la chat AI: se `clienteIds` è un array, i tool che leggono
+ * dati preventivo lo applicano (vedi `cliente_master_id`). NULL = nessun filtro.
+ */
+export interface ChatToolScope {
+  clienteIds: string[] | null;
+  agenteCodice: string | null;
+}
+
+export async function dispatchTool(name: string, args: Record<string, unknown>, scope?: ChatToolScope) {
+  const ids = scope?.clienteIds ?? null;
+  const agente = scope?.agenteCodice ?? null;
+  if (name === "list_preventivi")        return toolListPreventivi(args as Parameters<typeof toolListPreventivi>[0], ids);
+  if (name === "cerca_simili")           return toolCercaSimili(args as Parameters<typeof toolCercaSimili>[0], ids);
   if (name === "cerca_articolo")         return toolCercaArticolo(args as Parameters<typeof toolCercaArticolo>[0]);
-  if (name === "aggrega_preventivi")     return toolAggregatPreventivi(args as Parameters<typeof toolAggregatPreventivi>[0]);
-  if (name === "top_articoli")           return toolTopArticoli(args as Parameters<typeof toolTopArticoli>[0]);
-  if (name === "query_righe_distinta")   return toolQueryRigheDistinta(args as Parameters<typeof toolQueryRigheDistinta>[0]);
-  if (name === "dettaglio_preventivo")   return toolDettaglioPreventivo(args as Parameters<typeof toolDettaglioPreventivo>[0]);
+  if (name === "aggrega_preventivi")     return toolAggregatPreventivi(args as Parameters<typeof toolAggregatPreventivi>[0], ids);
+  if (name === "top_articoli")           return toolTopArticoli(args as Parameters<typeof toolTopArticoli>[0], ids);
+  if (name === "query_righe_distinta")   return toolQueryRigheDistinta(args as Parameters<typeof toolQueryRigheDistinta>[0], ids);
+  if (name === "dettaglio_preventivo")   return toolDettaglioPreventivo(args as Parameters<typeof toolDettaglioPreventivo>[0], ids);
   if (name === "analisi_preventivi_sql") return toolAnalisiPreventiviSql(args as Parameters<typeof toolAnalisiPreventiviSql>[0]);
   if (name === "cerca_anomalie_importi") return toolCercaAnomalieImporti(args as Parameters<typeof toolCercaAnomalieImporti>[0]);
   // Nuovi tool redazione preventivi (migration 043)
@@ -908,6 +941,6 @@ export async function dispatchTool(name: string, args: Record<string, unknown>) 
   if (name === "hit_rate")                  return toolHitRate(args as Parameters<typeof toolHitRate>[0]);
   if (name === "info_cliente")              return toolInfoCliente(args as Parameters<typeof toolInfoCliente>[0]);
   if (name === "articoli_associati")        return toolArticoliAssociati(args as Parameters<typeof toolArticoliAssociati>[0]);
-  if (name === "trend_mensile")             return toolTrendMensile(args as Parameters<typeof toolTrendMensile>[0]);
+  if (name === "trend_mensile")             return toolTrendMensile(args as Parameters<typeof toolTrendMensile>[0], agente);
   throw new Error(`Tool sconosciuto: ${name}`);
 }

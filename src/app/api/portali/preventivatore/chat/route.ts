@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { getPreventivatoreScope } from "@/lib/portali/preventivatore/ruoli";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
 import { handleGemini } from "@/lib/portali/preventivatore/chat/gemini-handler";
 import { handleOpenRouter } from "@/lib/portali/preventivatore/chat/openrouter-handler";
@@ -211,20 +212,27 @@ export async function POST(request: NextRequest) {
           "\n" + formatBuilderStateForPrompt(builder_state)
         : "");
 
+    // Scope commerciale: i tool AI che leggono dati preventivo lo rispettano.
+    const scopeCommerciale = await getPreventivatoreScope(user.id, livello);
+    const toolScope = {
+      clienteIds: scopeCommerciale.restricted ? scopeCommerciale.clienteIds : null,
+      agenteCodice: scopeCommerciale.restricted ? scopeCommerciale.agenteCodice : null,
+    };
+
     // Esegui l'handler AI con fallback automatico OpenRouter → Gemini
     let result: ChatHandlerResult;
     if (process.env.OPENROUTER_API_KEY) {
       try {
-        result = await handleOpenRouter(messages, systemInstruction, temperature, top_p, openrouterModel);
+        result = await handleOpenRouter(messages, systemInstruction, temperature, top_p, openrouterModel, toolScope);
       } catch (openrouterErr) {
         console.warn("OpenRouter fallito, fallback su Gemini:", openrouterErr instanceof Error ? openrouterErr.message : openrouterErr);
         if (!process.env.GEMINI_API_KEY) {
           throw new Error("Nessun provider AI disponibile");
         }
-        result = await handleGemini(messages, systemInstruction);
+        result = await handleGemini(messages, systemInstruction, toolScope);
       }
     } else {
-      result = await handleGemini(messages, systemInstruction);
+      result = await handleGemini(messages, systemInstruction, toolScope);
     }
 
     // Salva i messaggi se c'è una sessione attiva (fire-and-forget)

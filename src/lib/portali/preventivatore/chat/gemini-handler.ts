@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI, SchemaType, type Tool, type Schema } from "@google/generative-ai";
-import { dispatchTool } from "./tool-handlers";
+import { dispatchTool, type ChatToolScope } from "./tool-handlers";
 import {
   TOOL_LIST_PREVENTIVI_DEF,
   TOOL_CERCA_SIMILI_DEF,
@@ -38,7 +38,8 @@ function toGeminiProps(
 
 export async function handleGemini(
   messages: ChatMessage[],
-  systemInstruction: string
+  systemInstruction: string,
+  scope?: ChatToolScope
 ): Promise<ChatHandlerResult> {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -188,7 +189,7 @@ export async function handleGemini(
     let risultatiTool: unknown[] | null = null;
 
     try {
-      const res = await dispatchTool(toolName, args);
+      const res = await dispatchTool(toolName, args, scope);
       toolResult = res;
       risultatiTool = res as unknown[];
     } catch (err) {

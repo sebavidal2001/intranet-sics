@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { getPreventivatoreScope } from "@/lib/portali/preventivatore/ruoli";
 import { computeBiDashboardData } from "@/lib/portali/preventivatore/bi/query-engine";
 import type { BiDashboardConfig } from "@/lib/portali/preventivatore/bi/types";
 
@@ -21,7 +22,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Config BI non valida" }, { status: 400 });
     }
 
-    const { results, meta } = await computeBiDashboardData(createAdminClient(), body.config);
+    // Scope commerciale: i widget BI riflettono solo i clienti visibili.
+    const scope = await getPreventivatoreScope(user.id, livello);
+    const { results, meta } = await computeBiDashboardData(
+      createAdminClient(),
+      body.config,
+      scope.restricted ? scope.clienteIds : null,
+    );
     return NextResponse.json({ results, meta });
   } catch (error) {
     console.error("BI data POST error:", error);

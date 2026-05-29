@@ -1,4 +1,4 @@
-import { dispatchTool } from "./tool-handlers";
+import { dispatchTool, type ChatToolScope } from "./tool-handlers";
 import {
   TOOL_LIST_PREVENTIVI_DEF,
   TOOL_CERCA_SIMILI_DEF,
@@ -129,7 +129,8 @@ export async function handleOpenRouter(
   systemInstruction: string,
   temperature: number = 0.2,
   top_p: number = 0.9,
-  configuredModel?: string
+  configuredModel?: string,
+  scope?: ChatToolScope
 ): Promise<ChatHandlerResult> {
   const apiKey = process.env.OPENROUTER_API_KEY!;
   const model = configuredModel?.trim() || process.env.OPENROUTER_MODEL || "anthropic/claude-haiku-4-5";
@@ -226,7 +227,7 @@ export async function handleOpenRouter(
     let risultatiTool: unknown[] | null = null;
 
     try {
-      const res = await dispatchTool(toolName, toolArgs);
+      const res = await dispatchTool(toolName, toolArgs, scope);
       toolResult = res;
       risultatiTool = res as unknown[];
     } catch (err) {

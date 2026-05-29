@@ -79,18 +79,17 @@ export async function GET() {
     const admin = createAdminClient();
     const sb = admin.schema("preventivatore");
 
-    // Filtro commerciale ristretto: passa p_agente_codice a dashboard_top_clienti
-    // (le altre RPC kpi/serie/articoli restano aggregate globali — i commerciali
-    // ne vedono solo il top_clienti scoped; refactor futuro per scoping completo).
+    // Filtro commerciale ristretto: tutte le RPC dashboard accettano p_agente_codice
+    // (migration 053). NULL = aggregati globali (admin/back_office/preventivatore).
     const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
 
     const [kpiRes, topClientiRes, serieRes, serieCategorieRes, topArticoliRes, attivitaRes, usageRes] = await Promise.all([
-      sb.rpc("dashboard_kpi", { window_months: 12 }),
+      sb.rpc("dashboard_kpi", { window_months: 12, p_agente_codice: agenteCommerciale }),
       sb.rpc("dashboard_top_clienti", { limit_n: 5, window_months: 12, p_agente_codice: agenteCommerciale }),
-      sb.rpc("dashboard_serie_mensile", { months: 12 }),
-      sb.rpc("dashboard_serie_mensile_categoria", { months: 12 }),
-      sb.rpc("dashboard_top_articoli", { limit_n: 5 }),
-      sb.rpc("dashboard_attivita_recente", { limit_n: 6 }),
+      sb.rpc("dashboard_serie_mensile", { months: 12, p_agente_codice: agenteCommerciale }),
+      sb.rpc("dashboard_serie_mensile_categoria", { months: 12, p_agente_codice: agenteCommerciale }),
+      sb.rpc("dashboard_top_articoli", { limit_n: 5, p_agente_codice: agenteCommerciale }),
+      sb.rpc("dashboard_attivita_recente", { limit_n: 6, p_agente_codice: agenteCommerciale }),
       sb.from("ai_usage_events")
         .select("cost_amount")
         .eq("user_id", user.id)

@@ -204,13 +204,25 @@ export interface LoadedDataset {
   limit: number;
 }
 
-export async function loadBiRows(admin: SupabaseClient, dataset: "documenti" | "righe_distinta"): Promise<LoadedDataset> {
+export async function loadBiRows(
+  admin: SupabaseClient,
+  dataset: "documenti" | "righe_distinta",
+  clienteIds?: string[] | null,
+): Promise<LoadedDataset> {
+  // Scope commerciale: se clienteIds è un array, limita ai cliente_master_id visibili
+  // (lista vuota → nessun record, via UUID impossibile).
+  const scopeIds = Array.isArray(clienteIds)
+    ? (clienteIds.length > 0 ? clienteIds : ["00000000-0000-0000-0000-000000000000"])
+    : null;
+
   if (dataset === "documenti") {
-    const { data, count, error } = await admin
+    let q = admin
       .schema("preventivatore")
       .from("documenti")
       .select(DOC_FIELDS.join(","), { count: "exact" })
       .limit(DOC_LIMIT);
+    if (scopeIds) q = q.in("cliente_master_id", scopeIds);
+    const { data, count, error } = await q;
     if (error) throw error;
     const rows = (data ?? []) as unknown as RawRow[];
     return {
@@ -221,11 +233,13 @@ export async function loadBiRows(admin: SupabaseClient, dataset: "documenti" | "
     };
   }
 
-  const { data, count, error } = await admin
+  let rq = admin
     .schema("preventivatore")
     .from("righe_distinta")
     .select(`${RIGA_FIELDS.join(",")}, documenti!inner(${DOC_FIELDS.join(",")})`, { count: "exact" })
     .limit(RIGA_LIMIT);
+  if (scopeIds) rq = rq.in("documenti.cliente_master_id", scopeIds);
+  const { data, count, error } = await rq;
   if (error) throw error;
 
   const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => {
@@ -251,7 +265,7 @@ export interface ComputeBiResult {
   };
 }
 
-export async function computeBiDashboardData(admin: SupabaseClient, config: BiDashboardConfig): Promise<ComputeBiResult> {
+export async function computeBiDashboardData(admin: SupabaseClient, config: BiDashboardConfig, clienteIds?: string[] | null): Promise<ComputeBiResult> {
   const byDataset = new Map<string, LoadedDataset>();
   const results: BiWidgetResult[] = [];
   const rejected: Array<{ widget_id: string; reason: string }> = [];
@@ -266,7 +280,7 @@ export async function computeBiDashboardData(admin: SupabaseClient, config: BiDa
     }
 
     if (!byDataset.has(widget.dataset)) {
-      byDataset.set(widget.dataset, await loadBiRows(admin, widget.dataset));
+      byDataset.set(widget.dataset, await loadBiRows(admin, widget.dataset, clienteIds));
     }
     const ds = byDataset.get(widget.dataset)!;
     results.push(computeWidget(ds.rows, widget, config.filters ?? []));

@@ -100,5 +100,31 @@ export async function getIdClientiVisibili(agenteCodice: string): Promise<string
   return (data ?? []).map((r) => r.id as string);
 }
 
+/**
+ * Scope commerciale unificato del Preventivatore. Da usare in TUTTE le viste che
+ * leggono dati preventivi (lista, dettaglio, stats, dashboard, BI, tool AI) per
+ * applicare in modo coerente il filtro "vedo solo i miei clienti".
+ *
+ * - `restricted = false` → l'utente vede tutto (admin/back_office/preventivatore o
+ *   commerciale senza codice). `clienteIds` ignorato.
+ * - `restricted = true`  → commerciale ristretto: `clienteIds` = cliente_master_id
+ *   visibili (clienti del suo agente + AIRFLUID). Può essere vuoto (= vede 0 record).
+ */
+export interface PreventivatoreScope {
+  restricted: boolean;
+  agenteCodice: string | null;
+  clienteIds: string[];
+}
+
+export async function getPreventivatoreScope(
+  userId: string,
+  livello: "viewer" | "exporter" | "admin" | "superadmin" | null
+): Promise<PreventivatoreScope> {
+  const agente = await getFiltroCommerciale(userId, livello);
+  if (!agente) return { restricted: false, agenteCodice: null, clienteIds: [] };
+  const clienteIds = await getIdClientiVisibili(agente);
+  return { restricted: true, agenteCodice: agente, clienteIds };
+}
+
 // Re-export tipo SupabaseClient per consumatori che non vogliono importare il pacchetto
 export type { SupabaseClient };

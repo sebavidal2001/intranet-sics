@@ -34,10 +34,20 @@ export async function GET(request: NextRequest) {
     const adminClient = createAdminClient();
 
     if (statsMode) {
-      const { data: docs, error: docsError } = await adminClient
+      // Scope commerciale: le statistiche devono riflettere solo i documenti visibili.
+      const agenteStats = await getFiltroCommerciale(user.id, livello);
+      let docsQuery = adminClient
         .schema("preventivatore")
         .from("documenti")
         .select("stato");
+      if (agenteStats) {
+        const idsClienti = await getIdClientiVisibili(agenteStats);
+        docsQuery = docsQuery.in(
+          "cliente_master_id",
+          idsClienti.length > 0 ? idsClienti : ["00000000-0000-0000-0000-000000000000"]
+        );
+      }
+      const { data: docs, error: docsError } = await docsQuery;
 
       const { count: chunksCount } = await adminClient
         .schema("preventivatore")
