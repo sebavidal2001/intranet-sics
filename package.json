@@ -10,6 +10,7 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "ensure:fonts": "node scripts/ensure-tenorite-fonts.mjs",
+    "check:root": "node scripts/check-root-junk.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

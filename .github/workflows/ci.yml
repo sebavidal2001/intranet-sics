@@ -30,6 +30,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Check root junk files
+        run: npm run check:root
+
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
@@ -86,16 +89,13 @@ jobs:
     defaults:
       run:
         working-directory: .
-    # The build step requires live Supabase credentials to succeed at runtime.
-    # Since this repository is not connected to a deployment environment with
-    # real secrets, continue-on-error is set to true so the pipeline remains
-    # green for lint/type-check/test while the build step acts as an informational
-    # check. Configure the repository secrets to make this step required.
-    continue-on-error: true
+    # Build BLOCCANTE. Le route del preventivatore/valutazioni sono force-dynamic,
+    # quindi il build non chiama Supabase a build-time → bastano env placeholder.
+    # Se i secret reali del repo sono configurati vengono usati, altrimenti fallback dummy.
     env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-role-key' }}
     steps:
       - uses: actions/checkout@v4
 
