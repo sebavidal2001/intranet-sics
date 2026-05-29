@@ -75,14 +75,28 @@ export interface PreventivoRigaRaw {
   quantita: number | string | null;
   prezzo_unitario: number | string | null;
   ricarico_pct: number | string | null;
+  ricarico_coefficiente?: number | string | null;
+  tipo_riga?: string | null; // "materiale" | "manodopera" (preventivi generati)
   totale_riga: number | string | null;
   codice_blocco: string | null;
+}
+
+// Blocco salvato dal builder (preventivi tipo='generato').
+export interface PreventivoBloccoRaw {
+  id: string;
+  codice_blocco: string | null;
+  sheet_name: string | null;
+  totale_ceil_2: number | string | null;
+  note: string | null;
+  incluso_offerta: boolean | null;
+  created_at: string;
 }
 
 export interface PreventivoDettaglio {
   documento: PreventivoDocumento;
   chunks: PreventivoChunkRaw[];
   righe_distinta: PreventivoRigaRaw[];
+  blocchi?: PreventivoBloccoRaw[];
   motivo_rifiuto_label: string | null;
 }
 

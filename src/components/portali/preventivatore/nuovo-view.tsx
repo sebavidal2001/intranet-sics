@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
-import { PlusCircle, Loader2, Wand2, Package, Hammer, Sparkles } from "lucide-react"
+import { PlusCircle, Loader2, Wand2, Package, Hammer, Sparkles, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AutocompleteCliente } from "@/components/portali/preventivatore/autocomplete-cliente"
@@ -15,6 +15,7 @@ import {
   calcTotaleBlocco,
   creaBlocco,
   buildBuilderState,
+  genKey,
   COLORI_BLOCCO,
   type Cliente,
   type ServizioDB,
@@ -53,7 +54,11 @@ export function NuovoView() {
   const [schedaOpen, setSchedaOpen] = useState(false)
   const [savingPreventivo, setSavingPreventivo] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [baseLoading, setBaseLoading] = useState(false)
+  const [baseAvviso, setBaseAvviso] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const baseId = searchParams.get("base")
 
   async function handleSalvaPreventivo() {
     if (savingPreventivo) return
@@ -115,10 +120,85 @@ export function NuovoView() {
     }
   }
 
-  // Blocco iniziale (i servizi non vengono precaricati nei blocchi)
+  // Blocco iniziale, oppure prefill da un preventivo esistente (?base=<id>).
   useEffect(() => {
-    setBlocchi([creaBlocco()])
-  }, [])
+    if (!baseId) {
+      setBlocchi([creaBlocco()])
+      return
+    }
+    let annullato = false
+    setBaseLoading(true)
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/portali/preventivatore/documenti/${baseId}/duplica`)
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? "Errore caricamento base")
+        if (annullato) return
+
+        const d = data as {
+          titolo?: string
+          cliente?: Cliente | null
+          blocchi?: Array<{
+            nome?: string; tipo?: string; note?: string
+            articoli: Array<{ codice: string; descrizione: string; qty: number; ult_costo: number; coeff_ricarico: number }>
+            servizi: Array<{ nome: string; categoria: string; ore: number; tariffa_ora: number; coeff_ricarico: number }>
+          }>
+          avvisi?: { articoli_aggiornati: number; servizi_aggiornati: number; articoli_non_trovati: number }
+        }
+
+        if (d.titolo) setTitolo(d.titolo)
+        if (d.cliente) setCliente(d.cliente)
+
+        const nuoviBlocchi: Blocco[] = (d.blocchi ?? []).map((b, i) => ({
+          _key: genKey(),
+          tipo: b.tipo || "Altro",
+          nome: b.nome || "",
+          note: b.note || "",
+          espanso: i === 0,
+          articoli: b.articoli.map((a) => ({
+            _key: genKey(),
+            prodotto_id: "",
+            codice: a.codice,
+            descrizione: a.descrizione,
+            ult_costo: a.ult_costo,
+            qty: a.qty,
+            coeff_ricarico: a.coeff_ricarico,
+            manuale: !a.codice,
+          })),
+          servizi: b.servizi.map((s) => ({
+            _key: genKey(),
+            servizio_id: "",
+            nome: s.nome,
+            categoria: s.categoria,
+            tariffa_ora: s.tariffa_ora,
+            ore: s.ore,
+            coeff_ricarico: s.coeff_ricarico,
+          })),
+        }))
+        setBlocchi(nuoviBlocchi.length > 0 ? nuoviBlocchi : [creaBlocco()])
+
+        const av = d.avvisi
+        if (av && (av.articoli_aggiornati > 0 || av.servizi_aggiornati > 0 || av.articoli_non_trovati > 0)) {
+          const parti: string[] = []
+          if (av.articoli_aggiornati > 0) parti.push(`${av.articoli_aggiornati} prezzi articolo aggiornati`)
+          if (av.servizi_aggiornati > 0) parti.push(`${av.servizi_aggiornati} tariffe manodopera aggiornate`)
+          if (av.articoli_non_trovati > 0) parti.push(`${av.articoli_non_trovati} codici non più in anagrafica (mantenuto il costo originale)`)
+          setBaseAvviso(`Preventivo duplicato. ${parti.join(" · ")}.`)
+        } else {
+          setBaseAvviso("Preventivo duplicato. Nessun prezzo è cambiato rispetto all'originale.")
+        }
+      } catch (err) {
+        if (!annullato) {
+          setBaseAvviso(null)
+          setSaveError(err instanceof Error ? err.message : "Errore caricamento base")
+          setBlocchi([creaBlocco()])
+        }
+      } finally {
+        if (!annullato) setBaseLoading(false)
+      }
+    })()
+    return () => { annullato = true }
+  }, [baseId])
 
   // Carica il catalogo servizi (per il picker delle lavorazioni nei blocchi)
   useEffect(() => {
@@ -191,6 +271,21 @@ export function NuovoView() {
           .reduce((sum, a) => sum + a.coeff_ricarico, 0) / nArticoliTotali
       : 0
 
+  // Costi "vergini" (senza ricarico) per il riepilogo + margine progetto.
+  // Convenzione SICS: prezzo_vendita = costo / coeff → margine% = (prezzo − costo) / costo.
+  const costoVergineMateriale = blocchi.reduce(
+    (sum, b) => sum + b.articoli.reduce((s, a) => s + a.ult_costo * a.qty, 0),
+    0
+  )
+  const costoVergineManodopera = blocchi.reduce(
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + sv.tariffa_ora * sv.ore, 0),
+    0
+  )
+  const costoVergineTotale = costoVergineMateriale + costoVergineManodopera
+  const margineEuro = totaleGlobale - costoVergineTotale
+  const marginePct =
+    costoVergineTotale > 0 ? (margineEuro / costoVergineTotale) * 100 : null
+
   // Indicatore di completezza per la vista d'insieme
   const coseDaCompletare: string[] = []
   if (!cliente) coseDaCompletare.push("cliente")
@@ -210,11 +305,31 @@ export function NuovoView() {
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-tenorite text-text">Nuovo Preventivo</h1>
+        <h1 className="text-2xl font-tenorite text-text">
+          {baseId ? "Nuovo Preventivo (da base)" : "Nuovo Preventivo"}
+        </h1>
         <p className="text-sm text-text-muted mt-1">
           Costruisci il preventivo per blocchi, aggiungi articoli e lavorazioni.
         </p>
       </div>
+
+      {baseLoading && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#00a1be]/30 bg-[#00a1be]/5 px-4 py-3 text-sm text-[#007a91]">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Carico il preventivo di base e aggiorno i prezzi correnti…
+        </div>
+      )}
+      {baseAvviso && !baseLoading && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <Sparkles className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            {baseAvviso}{" "}
+            <button onClick={() => setBaseAvviso(null)} className="underline underline-offset-2 hover:text-emerald-900">
+              ok
+            </button>
+          </span>
+        </div>
+      )}
 
       <div className="flex gap-6 items-start">
         {/* ── Main content ── */}
@@ -381,7 +496,7 @@ export function NuovoView() {
 
                 <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-3 lg:p-4">
                   {/* KPI cards */}
-                  <div className="grid grid-cols-3 gap-2 flex-1 max-w-3xl">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 flex-1 max-w-4xl">
                     {/* Materiali */}
                     <div className="group relative rounded-xl border border-slate-200/70 bg-white/70 backdrop-blur-sm px-3 py-2.5 transition-all hover:border-slate-300 hover:shadow-md">
                       <div className="flex items-center justify-between gap-2">
@@ -396,6 +511,9 @@ export function NuovoView() {
                         )}
                       </div>
                       <div className="mt-1 text-lg font-bold text-slate-800 tabular-nums">{fmtEur(totaleArticoli)}</div>
+                      {costoVergineMateriale > 0 && (
+                        <div className="text-[10px] text-slate-400 tabular-nums">costo {fmtEur(costoVergineMateriale)}</div>
+                      )}
                     </div>
 
                     {/* Servizi */}
@@ -412,6 +530,9 @@ export function NuovoView() {
                         )}
                       </div>
                       <div className="mt-1 text-lg font-bold text-amber-900 tabular-nums">{fmtEur(totaleServizi)}</div>
+                      {costoVergineManodopera > 0 && (
+                        <div className="text-[10px] text-amber-600/60 tabular-nums">costo {fmtEur(costoVergineManodopera)}</div>
+                      )}
                     </div>
 
                     {/* Totale — accent */}
@@ -429,6 +550,26 @@ export function NuovoView() {
                       <div className="relative mt-1 text-xl font-bold tabular-nums bg-gradient-to-r from-[#007a91] to-[#00a1be] bg-clip-text text-transparent">
                         {fmtEur(totaleGlobale)}
                       </div>
+                    </div>
+
+                    {/* Margine progetto */}
+                    <div className="group relative rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-white backdrop-blur-sm px-3 py-2.5 transition-all hover:border-emerald-300 hover:shadow-md overflow-hidden">
+                      <div aria-hidden className="absolute -right-4 -top-4 w-16 h-16 rounded-full bg-emerald-300/15 blur-xl" />
+                      <div className="relative flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                            <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
+                          </div>
+                          <span className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">Margine</span>
+                        </div>
+                        {marginePct != null && (
+                          <span className="text-[10px] text-emerald-600/70 tabular-nums shrink-0">+{marginePct.toFixed(0)}%</span>
+                        )}
+                      </div>
+                      <div className="relative mt-1 text-lg font-bold text-emerald-700 tabular-nums">{fmtEur(margineEuro)}</div>
+                      {costoVergineTotale > 0 && (
+                        <div className="text-[10px] text-emerald-600/60 tabular-nums">su costo {fmtEur(costoVergineTotale)}</div>
+                      )}
                     </div>
                   </div>
 

@@ -176,13 +176,19 @@ export function ImpostazioniView() {
       return (
         <ModelSelector
           key={chiave}
+          fieldId={chiave}
+          label={LABEL_MAP[chiave] ?? chiave}
           value={valore}
           models={models}
           loading={loadingModels}
           error={modelsError}
           onChange={(nextValue) => handleChange(chiave, nextValue)}
           onRefresh={fetchModels}
-          description={descrizione ?? (LABEL_MAP[chiave] ?? chiave)}
+          description={
+            chiave === "modello_scheda_tecnica"
+              ? "Modello OpenRouter per la generazione della scheda tecnica. Se vuoto, usa lo stesso modello della chat."
+              : descrizione ?? "Modello usato da OpenRouter per la chat del preventivatore."
+          }
         />
       )
     }
@@ -444,6 +450,8 @@ function formatContext(value: number | null) {
 }
 
 function ModelSelector({
+  fieldId,
+  label,
   value,
   models,
   loading,
@@ -452,6 +460,8 @@ function ModelSelector({
   onChange,
   onRefresh,
 }: {
+  fieldId: string
+  label: string
   value: string
   models: OpenRouterModel[]
   loading: boolean
@@ -479,14 +489,14 @@ function ModelSelector({
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <Label htmlFor="modello_generazione">
-            {LABEL_MAP.modello_generazione}
+          <Label htmlFor={fieldId}>
+            {label}
           </Label>
           <p className="text-xs text-text-muted mt-0.5">
             {description ?? "Modello usato da OpenRouter per la chat del preventivatore."}
           </p>
           <p className="text-xs text-text-muted mt-1">
-            Se OpenRouter non e disponibile, la chat usa Gemini come fallback.
+            Se OpenRouter non e disponibile, usa Gemini come fallback.
           </p>
         </div>
         <Button
@@ -510,7 +520,7 @@ function ModelSelector({
       />
 
       <select
-        id="modello_generazione"
+        id={fieldId}
         value={selectedModel ? selectedModel.id : ""}
         onChange={(event) => {
           if (event.target.value) onChange(`${OPENROUTER_PREFIX}${event.target.value}`)
@@ -564,11 +574,11 @@ function ModelSelector({
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor="modello_generazione_manual" className="text-xs text-text-muted">
+        <Label htmlFor={`${fieldId}_manual`} className="text-xs text-text-muted">
           ID modello salvato
         </Label>
         <Input
-          id="modello_generazione_manual"
+          id={`${fieldId}_manual`}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder="openrouter:anthropic/claude-haiku-4-5"

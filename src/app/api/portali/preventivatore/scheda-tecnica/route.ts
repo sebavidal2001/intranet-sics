@@ -115,7 +115,7 @@ async function recuperaEsempiStorici(
       return byClient.map((c) => ({
         codice: (c.documenti as unknown as { codice: string }).codice,
         cliente: (c.documenti as unknown as { cliente: string | null }).cliente,
-        contenuto: c.contenuto?.slice(0, 1500) ?? "",
+        contenuto: c.contenuto?.slice(0, 6000) ?? "",
       }));
     }
   }
@@ -133,7 +133,7 @@ async function recuperaEsempiStorici(
       return byCat.map((c) => ({
         codice: (c.documenti as unknown as { codice: string }).codice,
         cliente: (c.documenti as unknown as { cliente: string | null }).cliente,
-        contenuto: c.contenuto?.slice(0, 1500) ?? "",
+        contenuto: c.contenuto?.slice(0, 6000) ?? "",
       }));
     }
   }
@@ -200,10 +200,13 @@ export async function POST(request: NextRequest) {
     const isVuoto = articoliCount === 0 && body.builder_state.blocchi.length <= 1;
 
     // Triggers per Fase 1 "ask questions":
-    //  - preventivo molto scarno (< 3 articoli, nessuna nota)
-    //  - utente non ha ancora risposto e non forza
-    const noteRicche = body.builder_state.blocchi.some((b) => b.note && b.note.length > 20);
-    const dovrebbeChiedere = !haRisposte && !body.forza_generazione && (isVuoto || (articoliCount < 3 && !noteRicche));
+    // Il builder contiene solo materiali/lavorazioni grezzi: da soli NON bastano
+    // per una scheda di fornitura esaustiva (mancano prodotti finiti, sviluppo
+    // geometrico, materiali/finiture, formati, scope). Quindi di DEFAULT chiediamo
+    // sempre chiarimenti, a meno che l'utente abbia già risposto o forzi la
+    // generazione. (`isVuoto`/`articoliCount` restano informativi nel prompt.)
+    void isVuoto;
+    const dovrebbeChiedere = !haRisposte && !body.forza_generazione;
 
     // Recupera esempi storici (per arricchire entrambe le fasi)
     const esempi = await recuperaEsempiStorici(body.builder_state, maxEsempi);
@@ -253,8 +256,8 @@ export async function POST(request: NextRequest) {
 
     // ─── Fase 2: generazione scheda definitiva ───────────────────────────────
     const userPromptScheda = [
-      "Genera la SCHEDA TECNICA per il seguente preventivo, seguendo lo stile delle schede storiche fornite.",
-      "Usa markdown ben strutturato (heading #/##, **grassetto**, tabelle | colonne | quando opportuno).",
+      "Genera la SCHEDA DI FORNITURA per il seguente preventivo, seguendo fedelmente lo stile delle schede storiche fornite (struttura per prodotto/posizione con 'Sviluppo:' e 'Comprendente:', chiusura 'Compreso/Escluso nella fornitura').",
+      "Rispetta le regole inviolabili del system prompt: niente prezzi, niente codici interni SICS, niente tabelle.",
       "",
       formatBuilderStateForPrompt(body.builder_state),
       "",
@@ -273,7 +276,7 @@ export async function POST(request: NextRequest) {
       systemPrompt: systemSchedaTecnica,
       userPrompt: userPromptScheda,
       temperature,
-      maxTokens: 4096,
+      maxTokens: 8192,
     });
 
     // Salva l'audit

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { NuovoView } from "@/components/portali/preventivatore/nuovo-view";
 
 export const metadata = {
@@ -5,5 +6,9 @@ export const metadata = {
 };
 
 export default function NuovoPage() {
-  return <NuovoView />;
+  return (
+    <Suspense fallback={null}>
+      <NuovoView />
+    </Suspense>
+  );
 }

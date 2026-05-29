@@ -11,6 +11,7 @@ import type {
   PreventivoDettaglio,
   PreventivoChunkRaw,
   PreventivoRigaRaw,
+  PreventivoBloccoRaw,
 } from "@/components/portali/preventivatore/dettaglio-view-types";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export default async function DettaglioPreventivoPage({
 
   const sb = createAdminClient();
 
-  const [docRes, chunksRes, righeRes] = await Promise.all([
+  const [docRes, chunksRes, righeRes, blocchiRes] = await Promise.all([
     sb
       .schema("preventivatore")
       .from("documenti")
@@ -59,16 +60,23 @@ export default async function DettaglioPreventivoPage({
     sb
       .schema("preventivatore")
       .from("righe_distinta")
-      .select("id, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_pct, totale_riga, codice_blocco")
+      .select("id, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_pct, ricarico_coefficiente, tipo_riga, totale_riga, codice_blocco")
       .eq("documento_id", id)
       .order("sheet_name", { ascending: true, nullsFirst: false })
       .order("id", { ascending: true }),
+    sb
+      .schema("preventivatore")
+      .from("blocchi")
+      .select("id, codice_blocco, sheet_name, totale_ceil_2, note, incluso_offerta, created_at")
+      .eq("documento_id", id)
+      .order("created_at", { ascending: true }),
   ]);
 
   if (docRes.error) throw docRes.error;
   if (!docRes.data) notFound();
   if (chunksRes.error) throw chunksRes.error;
   if (righeRes.error) throw righeRes.error;
+  if (blocchiRes.error) throw blocchiRes.error;
 
   // Enforce filtro commerciale ristretto sulla scheda dettaglio
   if (agenteCommerciale) {
@@ -96,6 +104,7 @@ export default async function DettaglioPreventivoPage({
     documento: docRes.data as PreventivoDettaglio["documento"],
     chunks: (chunksRes.data ?? []) as unknown as PreventivoChunkRaw[],
     righe_distinta: (righeRes.data ?? []) as unknown as PreventivoRigaRaw[],
+    blocchi: (blocchiRes.data ?? []) as unknown as PreventivoBloccoRaw[],
     motivo_rifiuto_label: motivoRifiutoLabel,
   };
 

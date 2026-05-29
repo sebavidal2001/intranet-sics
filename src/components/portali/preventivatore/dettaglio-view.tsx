@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileText, Package, Hammer, StickyNote, Tag, Sparkles, ExternalLink, Wand2, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft, FileText, Package, Hammer, StickyNote, Tag, Sparkles, ExternalLink, Wand2, Loader2, Pencil, TrendingUp, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DocumentoWordDialog } from "./documento-word-dialog";
 import { MarkdownLight } from "./markdown-light";
@@ -14,6 +14,7 @@ import {
   type PreventivoDettaglio,
   type PreventivoChunkRaw,
   type PreventivoRigaRaw,
+  type PreventivoBloccoRaw,
   type TotaleValore,
   type LavorazioneVoce,
 } from "./dettaglio-view-types";
@@ -126,6 +127,49 @@ const STATO_BADGE: Record<string, { label: string; className: string }> = {
 
 export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDettaglio }) {
   const { documento, chunks, righe_distinta, motivo_rifiuto_label } = dettaglio;
+  const blocchiTable = dettaglio.blocchi ?? [];
+
+  // Preventivo generato dal builder: la distinta vive nelle tabelle blocchi +
+  // righe_distinta (non nei chunk excel). Lo rendiamo con un percorso dedicato
+  // che mostra costo "vergine", prezzo di vendita e margine.
+  const isGenerato = documento.tipo === "generato" && blocchiTable.length > 0;
+
+  // Calcoli economici del progetto (solo per generati). Convenzione SICS:
+  //   costo_vergine_riga = quantità × prezzo_unitario   (prezzo_unitario = ult_costo o tariffa/h)
+  //   prezzo_vendita_riga = totale_riga  (già = costo / coeff_ricarico)
+  //   margine% = (prezzo − costo) / costo × 100   ← ricarico sul costo
+  const progetto = useMemo(() => {
+    if (!isGenerato) return null;
+    let costoMat = 0, costoMano = 0, prezzoMat = 0, prezzoMano = 0;
+    for (const r of righe_distinta) {
+      const qty = toNum(r.quantita) ?? 0;
+      const pu = toNum(r.prezzo_unitario) ?? 0;
+      const vendita = toNum(r.totale_riga) ?? qty * pu;
+      const costo = qty * pu;
+      if (r.tipo_riga === "manodopera") {
+        costoMano += costo; prezzoMano += vendita;
+      } else {
+        costoMat += costo; prezzoMat += vendita;
+      }
+    }
+    const costoTot = costoMat + costoMano;
+    const prezzoTot = prezzoMat + prezzoMano;
+    const margineEuro = prezzoTot - costoTot;
+    const marginePct = costoTot > 0 ? (margineEuro / costoTot) * 100 : null;
+    return { costoMat, costoMano, costoTot, prezzoMat, prezzoMano, prezzoTot, margineEuro, marginePct };
+  }, [isGenerato, righe_distinta]);
+
+  // Righe raggruppate per codice_blocco (per i generati)
+  const righePerBlocco = useMemo(() => {
+    const m = new Map<string, PreventivoRigaRaw[]>();
+    for (const r of righe_distinta) {
+      const key = r.codice_blocco ?? r.sheet_name ?? "—";
+      const arr = m.get(key) ?? [];
+      arr.push(r);
+      m.set(key, arr);
+    }
+    return m;
+  }, [righe_distinta]);
 
   // Raggruppa righe distinta per sheet_name (fallback su codice_blocco se sheet vuoto)
   const righePerSheet = useMemo(() => {
@@ -153,11 +197,18 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
   const stato = STATO_BADGE[documento.stato] ?? STATO_BADGE.pending;
 
   // Statistiche aggregate per header
-  const nArticoli = righe_distinta.length;
-  const nOreTot = blocchiExcel.reduce((tot, c) => {
-    const lav = c.metadata?.lavorazioni ?? [];
-    return tot + lav.reduce((s, l) => s + (toNum(l.ore) ?? 0), 0);
-  }, 0);
+  const nArticoli = isGenerato
+    ? righe_distinta.filter((r) => r.tipo_riga !== "manodopera").length
+    : righe_distinta.length;
+  const nBlocchi = isGenerato ? blocchiTable.length : blocchiExcel.length;
+  const nOreTot = isGenerato
+    ? righe_distinta
+        .filter((r) => r.tipo_riga === "manodopera")
+        .reduce((tot, r) => tot + (toNum(r.quantita) ?? 0), 0)
+    : blocchiExcel.reduce((tot, c) => {
+        const lav = c.metadata?.lavorazioni ?? [];
+        return tot + lav.reduce((s, l) => s + (toNum(l.ore) ?? 0), 0);
+      }, 0);
 
   // Stato per dialog "Apri documento" e per riassunto AI
   const [docOpen, setDocOpen] = useState<string | null>(null); // id chunk aperto
@@ -205,10 +256,22 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
         <span className="text-text-muted text-sm">/</span>
         <span className="text-sm font-mono text-text">{documento.codice ?? documento.id.slice(0, 8)}</span>
         <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="ml-auto gap-1.5 text-emerald-700 border-emerald-300/60 hover:bg-emerald-50"
+          title="Crea un nuovo preventivo usando questo come base (prezzi aggiornati ai valori correnti)"
+        >
+          <Link href={`/preventivatore/nuovo?base=${documento.id}`}>
+            <Copy className="w-3.5 h-3.5" />
+            Crea preventivo da questa base
+          </Link>
+        </Button>
+        <Button
           onClick={() => setCorreggiOpen(true)}
           variant="outline"
           size="sm"
-          className="ml-auto gap-1.5 text-[#007a91] border-[#00a1be]/30 hover:bg-[#00a1be]/5"
+          className="gap-1.5 text-[#007a91] border-[#00a1be]/30 hover:bg-[#00a1be]/5"
           title="Correggi totali (richiede livello admin/exporter)"
         >
           <Pencil className="w-3.5 h-3.5" />
@@ -295,7 +358,7 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
 
         {/* Stats row */}
         <div className="flex gap-6 pt-3 border-t border-border flex-wrap">
-          <Stat label="Blocchi" value={String(blocchiExcel.length)} />
+          <Stat label="Blocchi" value={String(nBlocchi)} />
           <Stat label="Articoli" value={String(nArticoli)} />
           <Stat label="Ore tot." value={fmtNum(nOreTot, 1)} />
           {documento.codici_articolo && documento.codici_articolo.length > 0 && (
@@ -417,6 +480,24 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
         );
       })()}
 
+      {/* ── Preventivo generato dal builder: riepilogo + distinta ── */}
+      {isGenerato && progetto && (
+        <>
+          <RiepilogoProgetto p={progetto} />
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-text uppercase tracking-wide flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              Blocchi progetto ({blocchiTable.length})
+            </h2>
+            {blocchiTable.map((b, idx) => {
+              const key = b.codice_blocco ?? b.sheet_name ?? "—";
+              const righe = righePerBlocco.get(key) ?? [];
+              return <BloccoBuilderCard key={b.id} blocco={b} indice={idx} righe={righe} />;
+            })}
+          </section>
+        </>
+      )}
+
       {/* ── Excel: blocchi del preventivo ── */}
       {blocchiExcel.length > 0 && (
         <section className="space-y-3">
@@ -456,6 +537,235 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface ProgettoTotali {
+  costoMat: number; costoMano: number; costoTot: number;
+  prezzoMat: number; prezzoMano: number; prezzoTot: number;
+  margineEuro: number; marginePct: number | null;
+}
+
+// Riepilogo economico del progetto (preventivi generati): costo "vergine" vs
+// prezzo di vendita + card margine (ricarico sul costo).
+function RiepilogoProgetto({ p }: { p: ProgettoTotali }) {
+  const rows: { label: string; costo: number; prezzo: number; sub?: boolean }[] = [
+    { label: "Materiale", costo: p.costoMat, prezzo: p.prezzoMat, sub: true },
+    { label: "Manodopera", costo: p.costoMano, prezzo: p.prezzoMano, sub: true },
+  ];
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold text-text uppercase tracking-wide flex items-center gap-2">
+        <TrendingUp className="w-4 h-4" />
+        Riepilogo economico
+      </h2>
+      <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+        {/* Tabella costo vs prezzo */}
+        <div className="border border-border rounded-xl bg-bg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-bg-page">
+              <tr className="text-[10px] uppercase tracking-wide text-text-muted">
+                <th className="px-4 py-2.5 text-left font-medium">Voce</th>
+                <th className="px-4 py-2.5 text-right font-medium">Costo (vergine)</th>
+                <th className="px-4 py-2.5 text-right font-medium">Prezzo (vendita)</th>
+                <th className="px-4 py-2.5 text-right font-medium">Ricarico</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const ric = r.costo > 0 ? ((r.prezzo - r.costo) / r.costo) * 100 : null;
+                return (
+                  <tr key={r.label} className="border-t border-border">
+                    <td className="px-4 py-2 text-text-muted">{r.label}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-text-muted">{fmtEuro(r.costo)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-text">{fmtEuro(r.prezzo)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-text-muted">
+                      {ric != null ? `+${ric.toFixed(0)}%` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="border-t-2 border-border bg-bg-page/40 font-semibold">
+                <td className="px-4 py-2.5 text-text">Totale</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-text">{fmtEuro(p.costoTot)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: "#00a1be" }}>{fmtEuro(p.prezzoTot)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-text-muted">
+                  {p.marginePct != null ? `+${p.marginePct.toFixed(0)}%` : "—"}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Card margine progetto */}
+        <div className="relative overflow-hidden rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-bg p-5 flex flex-col justify-center min-w-[200px]">
+          <div aria-hidden className="pointer-events-none absolute -top-8 -right-8 w-32 h-32 rounded-full bg-emerald-300/20 blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">
+              <TrendingUp className="w-3.5 h-3.5" />
+              Margine progetto
+            </div>
+            <div className="mt-1 text-3xl font-bold tabular-nums text-emerald-700">
+              {fmtEuro(p.margineEuro)}
+            </div>
+            {p.marginePct != null && (
+              <div className="mt-1 text-sm text-emerald-600/90 tabular-nums">
+                +{p.marginePct.toFixed(1)}% sul costo
+              </div>
+            )}
+            <div className="mt-2 text-[11px] text-text-muted leading-snug">
+              Differenza tra prezzo di vendita e costo vergine (materiale + manodopera).
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Card di un blocco per preventivi generati: materiali + manodopera con costo
+// e prezzo di vendita, lette da righe_distinta (tipo_riga).
+function BloccoBuilderCard({
+  blocco,
+  indice,
+  righe,
+}: {
+  blocco: PreventivoBloccoRaw;
+  indice: number;
+  righe: PreventivoRigaRaw[];
+}) {
+  const materiali = righe.filter((r) => r.tipo_riga !== "manodopera");
+  const manodopera = righe.filter((r) => r.tipo_riga === "manodopera");
+  const titolo = blocco.codice_blocco || blocco.sheet_name || `Blocco ${indice + 1}`;
+
+  const prezzoBlocco = righe.reduce((s, r) => {
+    const qty = toNum(r.quantita) ?? 0;
+    const pu = toNum(r.prezzo_unitario) ?? 0;
+    return s + (toNum(r.totale_riga) ?? qty * pu);
+  }, 0);
+  const costoBlocco = righe.reduce((s, r) => {
+    const qty = toNum(r.quantita) ?? 0;
+    const pu = toNum(r.prezzo_unitario) ?? 0;
+    return s + qty * pu;
+  }, 0);
+
+  return (
+    <div className="border border-border rounded-xl bg-bg p-5 space-y-4">
+      {/* Header blocco */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-widest text-text-muted">Blocco {indice + 1}</div>
+          <h3 className="text-base font-medium text-text">{titolo}</h3>
+          {blocco.incluso_offerta === false && (
+            <span className="text-[10px] text-yellow-700 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full mt-1 inline-block">
+              escluso dall&apos;offerta
+            </span>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-[10px] uppercase tracking-wide text-text-muted">Prezzo blocco</div>
+          <div className="text-lg font-bold" style={{ color: "#00a1be" }}>{fmtEuro(prezzoBlocco)}</div>
+          <div className="text-[10px] text-text-muted">costo {fmtEuro(costoBlocco)}</div>
+        </div>
+      </div>
+
+      {/* Materiali */}
+      {materiali.length > 0 && (
+        <RigheTable
+          titolo="Distinta materiali"
+          icon={<Package className="w-3.5 h-3.5 text-text-muted" />}
+          colCodice
+          colQtaLabel="Qtà"
+          colCostoLabel="Costo unit."
+          righe={materiali}
+        />
+      )}
+
+      {/* Manodopera */}
+      {manodopera.length > 0 && (
+        <RigheTable
+          titolo="Lavorazioni e manodopera"
+          icon={<Hammer className="w-3.5 h-3.5 text-text-muted" />}
+          colCodice={false}
+          colQtaLabel="Ore"
+          colCostoLabel="Tariffa €/h"
+          righe={manodopera}
+        />
+      )}
+
+      {blocco.note && (
+        <p className="text-[11px] text-text-muted italic">{blocco.note}</p>
+      )}
+    </div>
+  );
+}
+
+// Tabella righe riusabile (materiali o manodopera) per i preventivi generati.
+function RigheTable({
+  titolo,
+  icon,
+  colCodice,
+  colQtaLabel,
+  colCostoLabel,
+  righe,
+}: {
+  titolo: string;
+  icon: ReactNode;
+  colCodice: boolean;
+  colQtaLabel: string;
+  colCostoLabel: string;
+  righe: PreventivoRigaRaw[];
+}) {
+  const somma = righe.reduce((s, r) => {
+    const qty = toNum(r.quantita) ?? 0;
+    const pu = toNum(r.prezzo_unitario) ?? 0;
+    return s + (toNum(r.totale_riga) ?? qty * pu);
+  }, 0);
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        {icon}
+        <span className="text-xs font-semibold text-text uppercase tracking-wide">{titolo}</span>
+        <span className="text-xs text-text-muted">({righe.length} voci)</span>
+        <span className="ml-auto text-xs font-medium text-text">{fmtEuro(somma)}</span>
+      </div>
+      <div className="border border-border rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-bg-page">
+            <tr className="text-left text-[10px] uppercase tracking-wide text-text-muted">
+              {colCodice && <th className="px-3 py-2 font-medium">Codice</th>}
+              <th className="px-3 py-2 font-medium">Descrizione</th>
+              <th className="px-3 py-2 font-medium text-right">{colQtaLabel}</th>
+              <th className="px-3 py-2 font-medium text-right">{colCostoLabel}</th>
+              <th className="px-3 py-2 font-medium text-right">Coeff.</th>
+              <th className="px-3 py-2 font-medium text-right">Prezzo vendita</th>
+            </tr>
+          </thead>
+          <tbody>
+            {righe.map((r) => {
+              const qty = toNum(r.quantita) ?? 0;
+              const pu = toNum(r.prezzo_unitario) ?? 0;
+              const coeff = toNum(r.ricarico_coefficiente) ?? toNum(r.ricarico_pct);
+              const vendita = toNum(r.totale_riga) ?? qty * pu;
+              return (
+                <tr key={r.id} className="border-t border-border hover:bg-bg-page/50">
+                  {colCodice && (
+                    <td className="px-3 py-1.5 font-mono text-xs text-[#00a1be]">{r.codice_articolo ?? "—"}</td>
+                  )}
+                  <td className="px-3 py-1.5 text-text">{r.descrizione}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{fmtNum(r.quantita, 3)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{fmtEuro(r.prezzo_unitario)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-text-muted">
+                    {coeff != null ? coeff.toFixed(2) : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums font-medium">{fmtEuro(vendita)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
