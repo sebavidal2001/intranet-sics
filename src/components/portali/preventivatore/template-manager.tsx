@@ -18,6 +18,9 @@ function emptyDraft(): TemplateProdotto {
     consegna_settimane_min: null, consegna_settimane_max: null,
     imballaggio_pct: 1, tempi_accessori_pct: 2.8, spese_generali_pct: 24.2,
     margine_default_pct: 5, ricarico_materiale_default: 0.5, ricarico_manodopera_default: 0.7,
+    usa_catena_guida: false, costo_catena_m: 0, costo_guida_m: 0,
+    catena_codice: "FSPC-5/1", catena_descrizione: "CATENA", catena_ricarico: 0.65,
+    guida_codice: "FASR-25U/1", guida_descrizione: "GUIDA", guida_ricarico: 0.65,
     parametri: [], righe_materiale: [], righe_manodopera: [],
   }
 }
@@ -185,6 +188,25 @@ export function TemplateManager() {
                   <NumF label="Sett. min" v={draft.consegna_settimane_min ?? 0} on={(v) => patch({ consegna_settimane_min: v })} />
                   <NumF label="Sett. max" v={draft.consegna_settimane_max ?? 0} on={(v) => patch({ consegna_settimane_max: v })} />
                 </div>
+
+                {/* Catena / Guida (Nastro) */}
+                <div className="border-t border-border pt-3">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-text">
+                    <input type="checkbox" checked={draft.usa_catena_guida ?? false} onChange={(e) => patch({ usa_catena_guida: e.target.checked })} />
+                    Componenti con catena/guida (Nastro Flexmove)
+                  </label>
+                  {draft.usa_catena_guida && (
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs mt-2">
+                      <NumF label="Costo catena €/m" v={draft.costo_catena_m ?? 0} on={(v) => patch({ costo_catena_m: v })} />
+                      <NumF label="Costo guida €/m" v={draft.costo_guida_m ?? 0} on={(v) => patch({ costo_guida_m: v })} />
+                      <label className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wide text-text-muted">Cod. catena</span>
+                        <input value={draft.catena_codice ?? ""} onChange={(e) => patch({ catena_codice: e.target.value })} className="bg-bg border border-border rounded px-1.5 py-1 text-sm font-mono" /></label>
+                      <label className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wide text-text-muted">Cod. guida</span>
+                        <input value={draft.guida_codice ?? ""} onChange={(e) => patch({ guida_codice: e.target.value })} className="bg-bg border border-border rounded px-1.5 py-1 text-sm font-mono" /></label>
+                      <p className="col-span-full text-[10px] text-text-muted">I costi €/m e i costi componente (codici da listino) sono placeholder finché il listino non sarà importato. Catena/guida appaiono come 2 righe aggregate nel preventivo.</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Parametri */}
@@ -215,7 +237,7 @@ export function TemplateManager() {
               <Sezione titolo="Righe materiale (distinta)" onAdd={() => patch({ righe_materiale: [...draft.righe_materiale, { descrizione: "", ricarico_default: draft.ricarico_materiale_default, qta_manuale: 0 }] })}>
                 <table className="w-full text-xs">
                   <thead><tr className="text-left text-text-muted">
-                    <th className="py-1 pr-2">Slug</th><th className="pr-2">Descrizione</th><th className="pr-2">Codice</th><th className="pr-2" title="Costo corrente da anagrafica (live)">Costo attuale</th><th className="pr-2">Costo man.</th><th className="pr-2">Ricarico</th><th className="pr-2">Formula q.tà</th><th /></tr></thead>
+                    <th className="py-1 pr-2">Slug</th><th className="pr-2">Descrizione</th><th className="pr-2">Codice</th><th className="pr-2" title="Costo corrente da anagrafica (live)">Costo attuale</th><th className="pr-2">Costo man.</th><th className="pr-2">Ricarico</th>{draft.usa_catena_guida && (<><th className="pr-2" title="Metri catena per pezzo">m cat.</th><th className="pr-2" title="Metri guida per pezzo">m guida</th></>)}<th className="pr-2">Formula q.tà</th><th /></tr></thead>
                   <tbody>
                     {draft.righe_materiale.map((r, i) => {
                       const f = r.qta_formula ? validateFormula(r.qta_formula, slugAmmessi) : { ok: true }
@@ -227,6 +249,12 @@ export function TemplateManager() {
                           <td className="pr-2 text-right tabular-nums whitespace-nowrap">{r.codice_articolo ? (r.costo_corrente != null ? fmtEur(r.costo_corrente) : <span className="text-amber-600" title="Codice non trovato in anagrafica">n/d</span>) : <span className="text-text-muted">—</span>}</td>
                           <td className="pr-2"><input type="number" value={r.costo_manuale ?? 0} onChange={(e) => updArr("righe_materiale", i, { costo_manuale: Number(e.target.value) })} className="w-16 bg-transparent border border-border rounded px-1 text-right" title="Usato come fallback se il codice non è in anagrafica" /></td>
                           <td className="pr-2"><input type="number" step={0.01} value={r.ricarico_default} onChange={(e) => updArr("righe_materiale", i, { ricarico_default: Number(e.target.value) })} className="w-14 bg-transparent border border-border rounded px-1 text-right" /></td>
+                          {draft.usa_catena_guida && (
+                            <>
+                              <td className="pr-2"><input type="number" step={0.01} value={r.metri_catena ?? 0} onChange={(e) => updArr("righe_materiale", i, { metri_catena: Number(e.target.value) })} className="w-14 bg-transparent border border-border rounded px-1 text-right" /></td>
+                              <td className="pr-2"><input type="number" step={0.01} value={r.metri_guida ?? 0} onChange={(e) => updArr("righe_materiale", i, { metri_guida: Number(e.target.value) })} className="w-14 bg-transparent border border-border rounded px-1 text-right" /></td>
+                            </>
+                          )}
                           <td className="pr-2">
                             <input value={r.qta_formula ?? ""} onChange={(e) => updArr("righe_materiale", i, { qta_formula: e.target.value })} placeholder={`man. ${r.qta_manuale ?? 0}`}
                               className={`w-44 font-mono bg-transparent border rounded px-1 ${f.ok ? "border-border" : "border-red-400"}`} title={f.ok ? "" : ("error" in f ? f.error : "")} />
@@ -359,6 +387,9 @@ function normalize(d: Record<string, unknown>): TemplateProdotto {
     imballaggio_pct: n(d.imballaggio_pct, 1), tempi_accessori_pct: n(d.tempi_accessori_pct, 2.8),
     spese_generali_pct: n(d.spese_generali_pct, 24.2), margine_default_pct: n(d.margine_default_pct, 5),
     ricarico_materiale_default: n(d.ricarico_materiale_default, 0.5), ricarico_manodopera_default: n(d.ricarico_manodopera_default, 0.7),
+    usa_catena_guida: Boolean(d.usa_catena_guida), costo_catena_m: n(d.costo_catena_m, 0), costo_guida_m: n(d.costo_guida_m, 0),
+    catena_codice: (d.catena_codice as string) ?? "", catena_descrizione: (d.catena_descrizione as string) ?? "CATENA", catena_ricarico: n(d.catena_ricarico, 0.65),
+    guida_codice: (d.guida_codice as string) ?? "", guida_descrizione: (d.guida_descrizione as string) ?? "GUIDA", guida_ricarico: n(d.guida_ricarico, 0.65),
     parametri: ((d.parametri as Array<Record<string, unknown>>) ?? []).map((p) => ({
       slug: (p.slug as string) ?? "", label: (p.label as string) ?? "", tipo: (p.tipo as "number"|"select"|"bool") ?? "number",
       unita: (p.unita as string) ?? "", valore_default: (p.valore_default as string) ?? "", opzioni: (p.opzioni as string[]) ?? null,
@@ -367,6 +398,7 @@ function normalize(d: Record<string, unknown>): TemplateProdotto {
       slug: (r.slug as string) ?? "", descrizione: (r.descrizione as string) ?? "", codice_articolo: (r.codice_articolo as string) ?? "",
       costo_manuale: r.costo_manuale as number | null, usa_listino: Boolean(r.usa_listino), ricarico_default: n(r.ricarico_default, 0.5),
       qta_formula: (r.qta_formula as string) ?? "", qta_manuale: n(r.qta_manuale, 0), gruppo: (r.gruppo as string) ?? "",
+      metri_catena: n(r.metri_catena, 0), metri_guida: n(r.metri_guida, 0),
       costo_corrente: r.costo_corrente as number | null, data_ult_costo: r.data_ult_costo as string | null,
     })),
     righe_manodopera: ((d.righe_manodopera as Array<Record<string, unknown>>) ?? []).map((r) => ({

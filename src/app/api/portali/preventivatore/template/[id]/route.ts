@@ -77,6 +77,7 @@ type RigaMatIn = {
   slug?: string | null; descrizione: string; codice_articolo?: string | null;
   costo_manuale?: number | null; usa_listino?: boolean; ricarico_default?: number;
   qta_formula?: string | null; qta_manuale?: number; gruppo?: string | null;
+  metri_catena?: number; metri_guida?: number;
 };
 type RigaManIn = {
   label: string; tariffa_default?: number; unita_tempo?: string;
@@ -101,7 +102,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const k of ["nome","descrizione","attivo","ordine","consegna_settimane_min","consegna_settimane_max",
       "imballaggio_pct","tempi_accessori_pct","spese_generali_pct","margine_default_pct",
-      "ricarico_materiale_default","ricarico_manodopera_default"]) {
+      "ricarico_materiale_default","ricarico_manodopera_default",
+      "usa_catena_guida","costo_catena_m","costo_guida_m",
+      "catena_codice","catena_descrizione","catena_ricarico",
+      "guida_codice","guida_descrizione","guida_ricarico"]) {
       if (body[k] !== undefined) patch[k] = body[k];
     }
     const { error: upErr } = await admin.schema("preventivatore").from("template").update(patch).eq("id", id);
@@ -126,7 +130,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         template_id: id, slug: r.slug || null, descrizione: String(r.descrizione ?? "").trim(),
         codice_articolo: r.codice_articolo || null, costo_manuale: r.costo_manuale ?? null,
         usa_listino: Boolean(r.usa_listino), ricarico_default: r.ricarico_default ?? 0.5,
-        qta_formula: r.qta_formula || null, qta_manuale: r.qta_manuale ?? 0, gruppo: r.gruppo || null, ordine: i,
+        qta_formula: r.qta_formula || null, qta_manuale: r.qta_manuale ?? 0, gruppo: r.gruppo || null,
+        metri_catena: r.metri_catena ?? 0, metri_guida: r.metri_guida ?? 0, ordine: i,
       })).filter((r) => r.descrizione);
       if (rows.length) {
         const { error } = await admin.schema("preventivatore").from("template_righe_materiale").insert(rows);

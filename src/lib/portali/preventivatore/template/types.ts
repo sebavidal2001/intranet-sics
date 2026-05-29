@@ -28,6 +28,8 @@ export interface TemplateRigaMateriale {
   qta_manuale?: number;
   gruppo?: string | null;
   ordine?: number;
+  metri_catena?: number;   // metri catena per pezzo (Nastro)
+  metri_guida?: number;    // metri guida per pezzo (Nastro)
   // risolto lato server (non in tabella):
   costo_corrente?: number | null;
   data_ult_costo?: string | null;
@@ -60,6 +62,16 @@ export interface TemplateProdotto {
   margine_default_pct: number;
   ricarico_materiale_default: number;
   ricarico_manodopera_default: number;
+  // Catena/Guida (Nastro Flexmove)
+  usa_catena_guida?: boolean;
+  costo_catena_m?: number;
+  costo_guida_m?: number;
+  catena_codice?: string | null;
+  catena_descrizione?: string | null;
+  catena_ricarico?: number;
+  guida_codice?: string | null;
+  guida_descrizione?: string | null;
+  guida_ricarico?: number;
   parametri: TemplateParametro[];
   righe_materiale: TemplateRigaMateriale[];
   righe_manodopera: TemplateRigaManodopera[];
@@ -114,7 +126,7 @@ export function calcolaArticoli(
     })),
     scope
   );
-  return template.righe_materiale.map((r, idx) => {
+  const articoli = template.righe_materiale.map((r, idx) => {
     const qty = qtaMap.get(String(idx)) ?? r.qta_manuale ?? 0;
     // Costo: listino (placeholder) > corrente anagrafica > manuale
     const costo = r.usa_listino
@@ -132,6 +144,38 @@ export function calcolaArticoli(
       qta_formula: r.qta_formula ?? null,
     };
   });
+
+  // Catena/Guida (Nastro): 2 righe aggregate, scorporate e visibili. La quantità è
+  // Σ(metri × q.tà componente) espressa come FORMULA sugli slug dei componenti, così
+  // resta LIVE quando nel builder cambiano le quantità dei componenti.
+  if (template.usa_catena_guida) {
+    const termini = (campo: "metri_catena" | "metri_guida") =>
+      template.righe_materiale
+        .filter((r) => r.slug && (r[campo] ?? 0) > 0)
+        .map((r) => `${r.slug}*${r[campo]}`);
+    const valNow = (campo: "metri_catena" | "metri_guida") =>
+      template.righe_materiale.reduce((s, r, idx) => s + (qtaMap.get(String(idx)) ?? 0) * (r[campo] ?? 0), 0);
+
+    const cTerm = termini("metri_catena");
+    if (cTerm.length > 0) {
+      articoli.push({
+        codice: template.catena_codice ?? "", descrizione: template.catena_descrizione ?? "CATENA",
+        qty: valNow("metri_catena"), ult_costo: template.costo_catena_m ?? 0,
+        coeff_ricarico: template.catena_ricarico ?? template.ricarico_materiale_default,
+        data_ult_costo: null, manuale: false, slug: "__catena", qta_formula: cTerm.join(" + "),
+      });
+    }
+    const gTerm = termini("metri_guida");
+    if (gTerm.length > 0) {
+      articoli.push({
+        codice: template.guida_codice ?? "", descrizione: template.guida_descrizione ?? "GUIDA",
+        qty: valNow("metri_guida"), ult_costo: template.costo_guida_m ?? 0,
+        coeff_ricarico: template.guida_ricarico ?? template.ricarico_materiale_default,
+        data_ult_costo: null, manuale: false, slug: "__guida", qta_formula: gTerm.join(" + "),
+      });
+    }
+  }
+  return articoli;
 }
 
 /** Calcola le righe manodopera (tempo via formula o default; min→ore). */
