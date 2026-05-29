@@ -727,28 +727,22 @@ export function BloccoCard({
                     {blocco.articoli.map((a) => (
                       <tr key={a._key} className="hover:bg-bg-page/50">
                         <td className="px-2 py-1.5 border border-border">
-                          {a.manuale ? (
-                            <input
-                              value={a.codice}
-                              onChange={(e) => aggiornaArticolo(a._key, "codice", e.target.value)}
-                              placeholder="Codice"
-                              className="w-full font-mono text-xs text-[#00a1be] bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
-                            />
-                          ) : (
-                            <span className="font-mono text-xs text-[#00a1be]">{a.codice}</span>
-                          )}
+                          <input
+                            value={a.codice}
+                            onChange={(e) => aggiornaArticolo(a._key, "codice", e.target.value)}
+                            placeholder="Codice"
+                            className="w-full font-mono text-xs text-[#00a1be] bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                            title="Codice articolo (modificabile)"
+                          />
                         </td>
                         <td className="px-2 py-1.5 border border-border text-xs text-text">
-                          {a.manuale ? (
-                            <input
-                              value={a.descrizione}
-                              onChange={(e) => aggiornaArticolo(a._key, "descrizione", e.target.value)}
-                              placeholder="Descrizione voce manuale"
-                              className="w-full text-xs text-text bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
-                            />
-                          ) : (
-                            a.descrizione
-                          )}
+                          <input
+                            value={a.descrizione}
+                            onChange={(e) => aggiornaArticolo(a._key, "descrizione", e.target.value)}
+                            placeholder="Descrizione"
+                            className="w-full text-xs text-text bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
+                            title="Descrizione (modificabile)"
+                          />
                         </td>
                         <td className="px-2 py-1.5 border border-border">
                           <input

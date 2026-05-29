@@ -215,7 +215,7 @@ export function TemplateManager() {
               <Sezione titolo="Righe materiale (distinta)" onAdd={() => patch({ righe_materiale: [...draft.righe_materiale, { descrizione: "", ricarico_default: draft.ricarico_materiale_default, qta_manuale: 0 }] })}>
                 <table className="w-full text-xs">
                   <thead><tr className="text-left text-text-muted">
-                    <th className="py-1 pr-2">Slug</th><th className="pr-2">Descrizione</th><th className="pr-2">Codice</th><th className="pr-2">Costo man.</th><th className="pr-2">Ricarico</th><th className="pr-2">Formula q.tà</th><th /></tr></thead>
+                    <th className="py-1 pr-2">Slug</th><th className="pr-2">Descrizione</th><th className="pr-2">Codice</th><th className="pr-2" title="Costo corrente da anagrafica (live)">Costo attuale</th><th className="pr-2">Costo man.</th><th className="pr-2">Ricarico</th><th className="pr-2">Formula q.tà</th><th /></tr></thead>
                   <tbody>
                     {draft.righe_materiale.map((r, i) => {
                       const f = r.qta_formula ? validateFormula(r.qta_formula, slugAmmessi) : { ok: true }
@@ -223,8 +223,9 @@ export function TemplateManager() {
                         <tr key={i} className="border-t border-border">
                           <td className="py-1 pr-2"><input value={r.slug ?? ""} onChange={(e) => updArr("righe_materiale", i, { slug: e.target.value })} className="w-16 font-mono bg-transparent border border-border rounded px-1" /></td>
                           <td className="pr-2"><input value={r.descrizione} onChange={(e) => updArr("righe_materiale", i, { descrizione: e.target.value })} className="w-full bg-transparent border border-border rounded px-1" /></td>
-                          <td className="pr-2"><input value={r.codice_articolo ?? ""} onChange={(e) => updArr("righe_materiale", i, { codice_articolo: e.target.value })} className="w-24 font-mono bg-transparent border border-border rounded px-1" /></td>
-                          <td className="pr-2"><input type="number" value={r.costo_manuale ?? 0} onChange={(e) => updArr("righe_materiale", i, { costo_manuale: Number(e.target.value) })} className="w-16 bg-transparent border border-border rounded px-1 text-right" /></td>
+                          <td className="pr-2"><input value={r.codice_articolo ?? ""} onChange={(e) => updArr("righe_materiale", i, { codice_articolo: e.target.value })} onBlur={(e) => lookupCosto(i, e.target.value)} className="w-24 font-mono bg-transparent border border-border rounded px-1" /></td>
+                          <td className="pr-2 text-right tabular-nums whitespace-nowrap">{r.codice_articolo ? (r.costo_corrente != null ? fmtEur(r.costo_corrente) : <span className="text-amber-600" title="Codice non trovato in anagrafica">n/d</span>) : <span className="text-text-muted">—</span>}</td>
+                          <td className="pr-2"><input type="number" value={r.costo_manuale ?? 0} onChange={(e) => updArr("righe_materiale", i, { costo_manuale: Number(e.target.value) })} className="w-16 bg-transparent border border-border rounded px-1 text-right" title="Usato come fallback se il codice non è in anagrafica" /></td>
                           <td className="pr-2"><input type="number" step={0.01} value={r.ricarico_default} onChange={(e) => updArr("righe_materiale", i, { ricarico_default: Number(e.target.value) })} className="w-14 bg-transparent border border-border rounded px-1 text-right" /></td>
                           <td className="pr-2">
                             <input value={r.qta_formula ?? ""} onChange={(e) => updArr("righe_materiale", i, { qta_formula: e.target.value })} placeholder={`man. ${r.qta_manuale ?? 0}`}
@@ -303,6 +304,19 @@ export function TemplateManager() {
   }
   function delArr(key: "parametri" | "righe_materiale" | "righe_manodopera", idx: number) {
     setDraft((d) => (d ? { ...d, [key]: d[key].filter((_, i) => i !== idx) } : d))
+  }
+  // Lookup costo "live" dall'anagrafica al cambio codice (svuota se codice tolto)
+  async function lookupCosto(idx: number, codice: string) {
+    const c = codice.trim()
+    if (!c) { updArr("righe_materiale", idx, { costo_corrente: null, data_ult_costo: null }); return }
+    try {
+      const res = await fetch(`/api/portali/preventivatore/prodotti/costo?codice=${encodeURIComponent(c)}`)
+      const d = await res.json()
+      updArr("righe_materiale", idx, {
+        costo_corrente: d?.trovato ? (d.ult_costo ?? null) : null,
+        data_ult_costo: d?.trovato ? (d.data_ult_costo ?? null) : null,
+      })
+    } catch { /* ignora */ }
   }
 }
 
