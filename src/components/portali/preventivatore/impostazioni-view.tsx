@@ -60,8 +60,30 @@ const LABEL_MAP: Record<string, string> = {
   modello_embedding:     "Modello embedding",
   modello_generazione:   "Modello generazione chat",
   modello_scheda_tecnica: "Modello generazione scheda tecnica",
+  modello_template: "Modello generazione template prodotti",
   ai_cost_counter_enabled: "Contatore spesa AI",
 }
+
+// Raggruppamento dei campi in sezioni tematiche (più leggibile di una lista piatta).
+const SEZIONI: { titolo: string; descrizione?: string; chiavi: string[] }[] = [
+  { titolo: "Generale", chiavi: ["company_knowledge", "ai_cost_counter_enabled"] },
+  {
+    titolo: "Modelli AI",
+    descrizione: "Quale modello OpenRouter usa ciascuna funzione. Lascia vuoto un campo per ereditare il modello di default.",
+    chiavi: ["modello_generazione", "modello_embedding", "modello_scheda_tecnica", "modello_template"],
+  },
+  {
+    titolo: "Chat — modalità Preciso / Creativo",
+    chiavi: ["system_prompt_preciso", "temperatura_precisa", "system_prompt_creativo", "temperatura_creativa", "soglia_similarity", "max_chunks_per_query"],
+  },
+  { titolo: "Chat builder (configuratore)", chiavi: ["system_prompt_builder"] },
+  { titolo: "Ricerca simili (cerca_simili)", chiavi: ["soglia_similarity_simili", "match_count_simili"] },
+  {
+    titolo: "Scheda tecnica",
+    descrizione: "Generazione descrizione tecnica e domande di completamento (il modello si imposta in «Modelli AI»).",
+    chiavi: ["system_prompt_scheda_tecnica", "system_prompt_domande_scheda", "temperatura_scheda_tecnica", "soglia_similarity_scheda", "max_esempi_scheda"],
+  },
+]
 const CHIAVI_SLIDER: Record<string, { min: number; max: number; step: number }> = {
   soglia_similarity: { min: 0, max: 1, step: 0.05 },
   soglia_similarity_scheda: { min: 0, max: 1, step: 0.05 },
@@ -71,7 +93,7 @@ const CHIAVI_SLIDER: Record<string, { min: number; max: number; step: number }> 
 }
 const CHIAVI_NUMBER = ["max_chunks_per_query", "max_esempi_scheda"]
 const CHIAVI_BOOLEAN = ["ai_cost_counter_enabled"]
-const CHIAVI_MODEL_SELECTOR = ["modello_generazione", "modello_scheda_tecnica"]
+const CHIAVI_MODEL_SELECTOR = ["modello_generazione", "modello_scheda_tecnica", "modello_template"]
 const OPENROUTER_PREFIX = "openrouter:"
 
 function configToMap(configs: AIConfig[]): Record<string, string> {
@@ -187,7 +209,9 @@ export function ImpostazioniView() {
           description={
             chiave === "modello_scheda_tecnica"
               ? "Modello OpenRouter per la generazione della scheda tecnica. Se vuoto, usa lo stesso modello della chat."
-              : descrizione ?? "Modello usato da OpenRouter per la chat del preventivatore."
+              : chiave === "modello_template"
+                ? "Modello OpenRouter per l'assistente di generazione template. Se vuoto eredita: scheda tecnica → chat. Consigliato un modello capace (es. Sonnet) perché ragiona sulle formule."
+                : descrizione ?? "Modello usato da OpenRouter per la chat del preventivatore."
           }
         />
       )
@@ -356,10 +380,31 @@ export function ImpostazioniView() {
               <span className="text-sm">Caricamento configurazione...</span>
             </div>
           ) : (
-            <div className="space-y-6">
-              {configs.map((c) =>
-                renderField(c.chiave, values[c.chiave] ?? c.valore, c.descrizione)
-              )}
+            <div className="space-y-7">
+              {(() => {
+                const byKey = new Map(configs.map((c) => [c.chiave, c]))
+                const coperte = new Set(SEZIONI.flatMap((s) => s.chiavi))
+                const altre = configs.filter((c) => !coperte.has(c.chiave)).map((c) => c.chiave)
+                const sezioni = altre.length > 0 ? [...SEZIONI, { titolo: "Altro", chiavi: altre }] : SEZIONI
+                return sezioni.map((sez) => {
+                  const presenti = sez.chiavi.filter((k) => byKey.has(k))
+                  if (presenti.length === 0) return null
+                  return (
+                    <section key={sez.titolo} className="space-y-4">
+                      <div className="border-b border-border pb-1.5">
+                        <h3 className="text-sm font-semibold text-text">{sez.titolo}</h3>
+                        {"descrizione" in sez && sez.descrizione && (
+                          <p className="text-xs text-text-muted mt-0.5">{sez.descrizione}</p>
+                        )}
+                      </div>
+                      {presenti.map((k) => {
+                        const c = byKey.get(k)!
+                        return renderField(c.chiave, values[c.chiave] ?? c.valore, c.descrizione)
+                      })}
+                    </section>
+                  )
+                })
+              })()}
 
               {configs.length === 0 && (
                 <p className="text-sm text-text-muted text-center py-6">

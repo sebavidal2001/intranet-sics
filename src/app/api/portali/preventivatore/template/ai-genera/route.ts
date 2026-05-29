@@ -56,7 +56,8 @@ export async function POST(request: NextRequest) {
     if (!apiKey) return NextResponse.json({ error: "OPENROUTER_API_KEY non configurata" }, { status: 500 });
 
     const cfg = await loadAiConfig();
-    const modelRaw = (cfg.modello_scheda_tecnica?.trim() || cfg.modello_generazione?.trim() || "openrouter:anthropic/claude-sonnet-4.5");
+    // Priorità: modello dedicato template → scheda tecnica → chat → fallback.
+    const modelRaw = (cfg.modello_template?.trim() || cfg.modello_scheda_tecnica?.trim() || cfg.modello_generazione?.trim() || "openrouter:anthropic/claude-sonnet-4.5");
     const model = modelRaw.startsWith("openrouter:") ? modelRaw.slice("openrouter:".length) : modelRaw;
 
     const userPrompt = [

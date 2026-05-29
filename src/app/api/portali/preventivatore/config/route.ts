@@ -23,6 +23,7 @@ const ALLOWED_CONFIG_KEYS = new Set([
   "modello_embedding",
   "modello_generazione",
   "modello_scheda_tecnica",
+  "modello_template",
   "ai_cost_counter_enabled",
 ]);
 
