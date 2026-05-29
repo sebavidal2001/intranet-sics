@@ -28,6 +28,7 @@ export function BloccoTemplatePanel({
       slug: string
       parametri: Record<string, string | number | boolean>
       parametri_def: { slug: string; label: string; tipo: string; unita?: string | null; opzioni?: string[] | null }[]
+      usa_catena_guida: boolean
     },
   ) => void
 }) {
@@ -59,9 +60,10 @@ export function BloccoTemplatePanel({
     const articoli: ArticoloBlocco[] = calcolaArticoli(tpl, valori)
       .map((a) => ({
         _key: genKey(), prodotto_id: "", codice: a.codice, descrizione: a.descrizione,
-        ult_costo: a.ult_costo, qty: a.qty, coeff_ricarico: a.coeff_ricarico,
+        ult_costo: a.ult_costo, ult_costo_componente: a.ult_costo, qty: a.qty, coeff_ricarico: a.coeff_ricarico,
         manuale: a.manuale, data_ult_costo: a.data_ult_costo,
         slug: a.slug, qta_formula: a.qta_formula, qta_override: false,
+        metri_catena: a.metri_catena, metri_guida: a.metri_guida,
       }))
     const servizi: ServizioBlocco[] = calcolaServizi(tpl, valori).map((s) => ({
       _key: genKey(), servizio_id: "", nome: s.nome, categoria: s.categoria,
@@ -72,6 +74,7 @@ export function BloccoTemplatePanel({
       slug: tpl.slug,
       parametri: { ...valori },
       parametri_def: tpl.parametri.map((p) => ({ slug: p.slug, label: p.label, tipo: p.tipo, unita: p.unita, opzioni: p.opzioni })),
+      usa_catena_guida: !!tpl.usa_catena_guida,
     })
   }
 

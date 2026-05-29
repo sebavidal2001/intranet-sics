@@ -34,8 +34,8 @@ BEGIN
     'Trasportatore Flexmove serie FM (componenti con catena e guida da listino)', 5,
     6, 8, 0.65, 0.7,
     true, 0, 0,
-    'FSPC-5/1', 'CATENA', 0.65,
-    'FASR-25U/1', 'GUIDA', 0.65)
+    NULL, 'CATENA', 0.65,
+    NULL, 'GUIDA', 0.65)   -- codici catena/guida vuoti: si cercano nel builder (articoli da listino)
   RETURNING id INTO v_tpl;
 
   -- Componenti Flexmove: costo da LISTINO (usa_listino, placeholder 0) + metri catena/guida per pezzo

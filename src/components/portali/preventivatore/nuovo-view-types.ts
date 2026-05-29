@@ -70,6 +70,20 @@ export interface ArticoloBlocco {
   qta_formula?: string | null
   /** true se l'utente ha modificato manualmente la quantità → la formula non la sovrascrive più. */
   qta_override?: boolean
+  // ─── Nastro: catena/guida per componente ───
+  /** Costo base del componente (senza catena/guida). `ult_costo` = base + catena + guida. */
+  ult_costo_componente?: number
+  /** Metri di catena per pezzo (moltiplicatore, es. trave = 2). */
+  metri_catena?: number
+  /** Metri di guida per pezzo (moltiplicatore, es. trave = 4). */
+  metri_guida?: number
+}
+
+/** Articolo catena/guida selezionato dall'anagrafica per il blocco Nastro. */
+export interface ArticoloRef {
+  codice: string
+  descrizione: string
+  costo: number
 }
 
 /**
@@ -113,6 +127,13 @@ export interface Blocco {
   parametri?: Record<string, string | number | boolean>
   /** Definizioni dei parametri (per renderli editabili nel blocco). */
   parametri_def?: { slug: string; label: string; tipo: string; unita?: string | null; opzioni?: string[] | null }[]
+  // ─── Nastro: catena/guida ───
+  /** Il blocco usa componenti con catena/guida (template Nastro). */
+  usa_catena_guida?: boolean
+  /** Articolo catena selezionato (prezzo = €/m). Vuoto finché l'utente non lo cerca. */
+  catena_articolo?: ArticoloRef | null
+  /** Articolo guida selezionato (prezzo = €/m). */
+  guida_articolo?: ArticoloRef | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -269,6 +290,31 @@ export function ricalcolaArticoliFormule(
     return a
   })
   return cambiato ? out : articoli
+}
+
+/**
+ * Ricalcola `ult_costo` effettivo dei componenti includendo catena+guida (modello Excel):
+ *   ult_costo = costo_base_componente + metri_catena × €/m_catena + metri_guida × €/m_guida.
+ * Il costo €/m viene dall'articolo catena/guida selezionato nel blocco (prezzo da listino).
+ */
+export function ricalcolaCatenaGuida(b: Blocco): ArticoloBlocco[] {
+  if (!b.usa_catena_guida) return b.articoli
+  const cCat = b.catena_articolo?.costo ?? 0
+  const cGui = b.guida_articolo?.costo ?? 0
+  let changed = false
+  const out = b.articoli.map((a) => {
+    const mc = a.metri_catena ?? 0
+    const mg = a.metri_guida ?? 0
+    if (mc === 0 && mg === 0) return a
+    const base = a.ult_costo_componente ?? a.ult_costo
+    const eff = base + mc * cCat + mg * cGui
+    if (eff !== a.ult_costo || a.ult_costo_componente == null) {
+      changed = true
+      return { ...a, ult_costo_componente: base, ult_costo: eff }
+    }
+    return a
+  })
+  return changed ? out : b.articoli
 }
 
 /** True se la data ultimo costo è più vecchia di `MESI_PREZZO_VECCHIO` mesi rispetto a oggi. */

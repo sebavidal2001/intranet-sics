@@ -101,6 +101,8 @@ export interface ArticoloCalcolato {
   manuale: boolean;
   slug: string | null;
   qta_formula: string | null;
+  metri_catena: number;
+  metri_guida: number;
 }
 
 export interface ServizioCalcolato {
@@ -142,39 +144,13 @@ export function calcolaArticoli(
       manuale: !r.codice_articolo,
       slug: r.slug ?? null,
       qta_formula: r.qta_formula ?? null,
+      metri_catena: r.metri_catena ?? 0,
+      metri_guida: r.metri_guida ?? 0,
     };
   });
-
-  // Catena/Guida (Nastro): 2 righe aggregate, scorporate e visibili. La quantità è
-  // Σ(metri × q.tà componente) espressa come FORMULA sugli slug dei componenti, così
-  // resta LIVE quando nel builder cambiano le quantità dei componenti.
-  if (template.usa_catena_guida) {
-    const termini = (campo: "metri_catena" | "metri_guida") =>
-      template.righe_materiale
-        .filter((r) => r.slug && (r[campo] ?? 0) > 0)
-        .map((r) => `${r.slug}*${r[campo]}`);
-    const valNow = (campo: "metri_catena" | "metri_guida") =>
-      template.righe_materiale.reduce((s, r, idx) => s + (qtaMap.get(String(idx)) ?? 0) * (r[campo] ?? 0), 0);
-
-    const cTerm = termini("metri_catena");
-    if (cTerm.length > 0) {
-      articoli.push({
-        codice: template.catena_codice ?? "", descrizione: template.catena_descrizione ?? "CATENA",
-        qty: valNow("metri_catena"), ult_costo: template.costo_catena_m ?? 0,
-        coeff_ricarico: template.catena_ricarico ?? template.ricarico_materiale_default,
-        data_ult_costo: null, manuale: false, slug: "__catena", qta_formula: cTerm.join(" + "),
-      });
-    }
-    const gTerm = termini("metri_guida");
-    if (gTerm.length > 0) {
-      articoli.push({
-        codice: template.guida_codice ?? "", descrizione: template.guida_descrizione ?? "GUIDA",
-        qty: valNow("metri_guida"), ult_costo: template.costo_guida_m ?? 0,
-        coeff_ricarico: template.guida_ricarico ?? template.ricarico_materiale_default,
-        data_ult_costo: null, manuale: false, slug: "__guida", qta_formula: gTerm.join(" + "),
-      });
-    }
-  }
+  // Catena/guida (Nastro): i moltiplicatori restano sul componente; il costo
+  // effettivo (base + catena + guida) viene calcolato nel builder in base agli
+  // articoli catena/guida selezionati (vedi ricalcolaCatenaGuida).
   return articoli;
 }
 

@@ -12,6 +12,7 @@ import {
   calcBloccoCosto,
   prezzoVecchio,
   ricalcolaArticoliFormule,
+  ricalcolaCatenaGuida,
   servizioBloccoDaDB,
   COEFF_RICARICO_DEFAULT,
   MESI_PREZZO_VECCHIO,
@@ -493,9 +494,22 @@ export function BloccoCard({
       if (campo === "qty" && a.qta_formula) next.qta_override = true
       return next
     })
-    // Se cambia una quantità, ricalcola le righe-formula dipendenti (es. tubo = fiancate*2)
-    const finali = campo === "qty" ? ricalcolaArticoliFormule(blocco.parametri, articoli) : articoli
-    onChange({ ...blocco, articoli: finali })
+    let b2: Blocco = { ...blocco, articoli }
+    // Quantità → ricalcola formule dipendenti (es. tubo = fiancate*2)
+    if (campo === "qty") b2 = { ...b2, articoli: ricalcolaArticoliFormule(b2.parametri, b2.articoli) }
+    // Costo base o metri catena/guida → ricalcola il costo effettivo (Nastro)
+    if (blocco.usa_catena_guida && (campo === "ult_costo_componente" || campo === "metri_catena" || campo === "metri_guida")) {
+      b2 = { ...b2, articoli: ricalcolaCatenaGuida(b2) }
+    }
+    onChange(b2)
+  }
+
+  function selezionaArticoloCG(tipo: "catena" | "guida", p: Prodotto) {
+    const ref = { codice: p.codice, descrizione: p.descrizione, costo: p.ult_costo ?? 0 }
+    const b2: Blocco = tipo === "catena"
+      ? { ...blocco, catena_articolo: ref }
+      : { ...blocco, guida_articolo: ref }
+    onChange({ ...b2, articoli: ricalcolaCatenaGuida(b2) })
   }
 
   function aggiornaParametro(slug: string, valore: string) {
@@ -644,18 +658,36 @@ export function BloccoCard({
           {/* Genera da template */}
           <BloccoTemplatePanel
             templates={templates}
-            onApplica={(articoli, servizi, nome, meta) =>
-              onChange({
-                ...blocco,
-                articoli: ricalcolaArticoliFormule(meta.parametri, articoli),
-                servizi,
-                nome: blocco.nome || nome,
-                template_slug: meta.slug,
-                parametri: meta.parametri,
-                parametri_def: meta.parametri_def,
-              })
-            }
+            onApplica={(articoli, servizi, nome, meta) => {
+              let b2: Blocco = {
+                ...blocco, articoli, servizi, nome: blocco.nome || nome,
+                template_slug: meta.slug, parametri: meta.parametri, parametri_def: meta.parametri_def,
+                usa_catena_guida: meta.usa_catena_guida,
+                catena_articolo: blocco.catena_articolo ?? null, guida_articolo: blocco.guida_articolo ?? null,
+              }
+              b2 = { ...b2, articoli: ricalcolaArticoliFormule(meta.parametri, b2.articoli) }
+              if (meta.usa_catena_guida) b2 = { ...b2, articoli: ricalcolaCatenaGuida(b2) }
+              onChange(b2)
+            }}
           />
+
+          {/* Catena/Guida (Nastro): selezione articoli dall'anagrafica (prezzo = €/m da listino) */}
+          {blocco.usa_catena_guida && (
+            <div className="rounded-lg border border-[#00a1be]/20 bg-bg-page/40 p-3 grid gap-3 md:grid-cols-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-text-muted mb-1">
+                  Catena {blocco.catena_articolo ? `· ${blocco.catena_articolo.codice} (${fmtEur(blocco.catena_articolo.costo)}/m)` : "— da cercare"}
+                </div>
+                <SearchArticoli onAggiungi={(p) => selezionaArticoloCG("catena", p)} onAggiungiManuale={() => {}} />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-text-muted mb-1">
+                  Guida {blocco.guida_articolo ? `· ${blocco.guida_articolo.codice} (${fmtEur(blocco.guida_articolo.costo)}/m)` : "— da cercare"}
+                </div>
+                <SearchArticoli onAggiungi={(p) => selezionaArticoloCG("guida", p)} onAggiungiManuale={() => {}} />
+              </div>
+            </div>
+          )}
 
           {/* Parametri del template (live: al variare ricalcolano le quantità da formula) */}
           {blocco.parametri_def && blocco.parametri_def.length > 0 && (
@@ -765,6 +797,12 @@ export function BloccoCard({
                       <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
                         Coeff. ricarico
                       </th>
+                      {blocco.usa_catena_guida && (
+                        <>
+                          <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-16" title="Metri catena per pezzo">m.cat</th>
+                          <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-16" title="Metri guida per pezzo">m.guida</th>
+                        </>
+                      )}
                       <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
                         Netto
                       </th>
@@ -817,11 +855,12 @@ export function BloccoCard({
                             type="number"
                             min={0}
                             step={0.01}
-                            value={a.ult_costo}
+                            value={blocco.usa_catena_guida ? (a.ult_costo_componente ?? a.ult_costo) : a.ult_costo}
                             onChange={(e) =>
-                              aggiornaArticolo(a._key, "ult_costo", Math.max(0, Number(e.target.value)))
+                              aggiornaArticolo(a._key, blocco.usa_catena_guida ? "ult_costo_componente" : "ult_costo", Math.max(0, Number(e.target.value)))
                             }
                             className={`w-full text-right text-sm border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1 ${prezzoVecchio(a.data_ult_costo) ? "bg-amber-100" : "bg-transparent"}`}
+                            title={blocco.usa_catena_guida ? "Costo base del componente (catena/guida aggiunti nel Netto)" : undefined}
                           />
                         </td>
                         <td className="px-2 py-1.5 border border-border">
@@ -838,6 +877,20 @@ export function BloccoCard({
                             title="Convenzione SICS: prezzo = ult_costo / coeff_ricarico (es. 0.5 = ricarico 100%)"
                           />
                         </td>
+                        {blocco.usa_catena_guida && (
+                          <>
+                            <td className="px-2 py-1.5 border border-border">
+                              <input type="number" min={0} step={0.01} value={a.metri_catena ?? 0}
+                                onChange={(e) => aggiornaArticolo(a._key, "metri_catena", Math.max(0, Number(e.target.value)))}
+                                className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1" />
+                            </td>
+                            <td className="px-2 py-1.5 border border-border">
+                              <input type="number" min={0} step={0.01} value={a.metri_guida ?? 0}
+                                onChange={(e) => aggiornaArticolo(a._key, "metri_guida", Math.max(0, Number(e.target.value)))}
+                                className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1" />
+                            </td>
+                          </>
+                        )}
                         <td className="px-2 py-1.5 border border-border text-right text-sm font-medium text-text">
                           {fmtEur(calcNettoArticolo(a))}
                         </td>

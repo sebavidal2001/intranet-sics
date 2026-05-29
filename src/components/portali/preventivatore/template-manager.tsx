@@ -196,15 +196,9 @@ export function TemplateManager() {
                     Componenti con catena/guida (Nastro Flexmove)
                   </label>
                   {draft.usa_catena_guida && (
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs mt-2">
-                      <NumF label="Costo catena €/m" v={draft.costo_catena_m ?? 0} on={(v) => patch({ costo_catena_m: v })} />
-                      <NumF label="Costo guida €/m" v={draft.costo_guida_m ?? 0} on={(v) => patch({ costo_guida_m: v })} />
-                      <label className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wide text-text-muted">Cod. catena</span>
-                        <input value={draft.catena_codice ?? ""} onChange={(e) => patch({ catena_codice: e.target.value })} className="bg-bg border border-border rounded px-1.5 py-1 text-sm font-mono" /></label>
-                      <label className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wide text-text-muted">Cod. guida</span>
-                        <input value={draft.guida_codice ?? ""} onChange={(e) => patch({ guida_codice: e.target.value })} className="bg-bg border border-border rounded px-1.5 py-1 text-sm font-mono" /></label>
-                      <p className="col-span-full text-[10px] text-text-muted">I costi €/m e i costi componente (codici da listino) sono placeholder finché il listino non sarà importato. Catena/guida appaiono come 2 righe aggregate nel preventivo.</p>
-                    </div>
+                    <p className="text-[10px] text-text-muted mt-1">
+                      Ogni componente porta i metri di <b>catena</b> e <b>guida</b> per pezzo (colonne m.cat / m.guida sotto). Gli articoli catena e guida (e i loro €/m da listino) si scelgono <b>nel builder</b>, preventivo per preventivo. Il costo di ogni componente include catena+guida.
+                    </p>
                   )}
                 </div>
               </div>
