@@ -1,4 +1,5 @@
 // ─── Shared types and helpers for the Nuovo Preventivo view ──────────────────
+import { risolviQuantita } from "@/lib/portali/preventivatore/template/formula"
 
 export interface Cliente {
   id: string
@@ -63,6 +64,12 @@ export interface ArticoloBlocco {
   manuale?: boolean
   /** Data ultimo costo (ISO) dell'articolo da anagrafica; per la cella gialla >9 mesi. */
   data_ult_costo?: string | null
+  /** Slug della riga (da template) — referenziabile nelle formule di altre righe. */
+  slug?: string | null
+  /** Formula quantità ereditata dal template (es. "fiancate*2"). */
+  qta_formula?: string | null
+  /** true se l'utente ha modificato manualmente la quantità → la formula non la sovrascrive più. */
+  qta_override?: boolean
 }
 
 /**
@@ -100,6 +107,12 @@ export interface Blocco {
   quantita_pezzi: number
   /** Override % margine trattativa per il blocco (null = usa il margine globale). */
   margine_trattativa_pct: number | null
+  /** Slug del template da cui è stato generato il blocco (se applicato). */
+  template_slug?: string | null
+  /** Valori dei parametri del template (per il ricalcolo live delle formule). */
+  parametri?: Record<string, string | number | boolean>
+  /** Definizioni dei parametri (per renderli editabili nel blocco). */
+  parametri_def?: { slug: string; label: string; tipo: string; unita?: string | null; opzioni?: string[] | null }[]
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -226,6 +239,36 @@ export function calcBloccoPrezzoFinale(b: Blocco, q: number, margineGlobale: num
   const costo = calcBloccoCosto(b, q)
   const conAddon = vend + calcImballaggio(vend) + calcTempiAccessori(costo) + calcSpeseGenerali(costo)
   return conAddon * (1 + margineEffettivo(b, margineGlobale) / 100)
+}
+
+/**
+ * Ricalcola le quantità delle righe articolo con formula (da template), usando
+ * come variabili i parametri del blocco + le quantità delle righe (per slug).
+ * Le righe con `qta_override = true` o senza formula restano invariate (le manuali
+ * fanno da input alle formule). Permette la modifica manuale (override) ma mantiene
+ * vivo il legame come nell'Excel.
+ */
+export function ricalcolaArticoliFormule(
+  parametri: Record<string, string | number | boolean> | undefined,
+  articoli: ArticoloBlocco[]
+): ArticoloBlocco[] {
+  const attive = articoli.some((a) => a.qta_formula && !a.qta_override)
+  if (!attive) return articoli
+  const righe = articoli.map((a) => ({
+    slug: a.slug ?? null,
+    qta_formula: a.qta_formula && !a.qta_override ? a.qta_formula : null,
+    qta_manuale: a.qty,
+  }))
+  const map = risolviQuantita(righe, { ...(parametri ?? {}) })
+  let cambiato = false
+  const out = articoli.map((a, i) => {
+    if (a.qta_formula && !a.qta_override) {
+      const v = map.get(String(i))
+      if (v != null && v !== a.qty) { cambiato = true; return { ...a, qty: v } }
+    }
+    return a
+  })
+  return cambiato ? out : articoli
 }
 
 /** True se la data ultimo costo è più vecchia di `MESI_PREZZO_VECCHIO` mesi rispetto a oggi. */

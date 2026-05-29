@@ -20,7 +20,16 @@ export function BloccoTemplatePanel({
   onApplica,
 }: {
   templates: TemplateListItem[]
-  onApplica: (articoli: ArticoloBlocco[], servizi: ServizioBlocco[], nome: string) => void
+  onApplica: (
+    articoli: ArticoloBlocco[],
+    servizi: ServizioBlocco[],
+    nome: string,
+    meta: {
+      slug: string
+      parametri: Record<string, string | number | boolean>
+      parametri_def: { slug: string; label: string; tipo: string; unita?: string | null; opzioni?: string[] | null }[]
+    },
+  ) => void
 }) {
   const [tplId, setTplId] = useState("")
   const [tpl, setTpl] = useState<TemplateProdotto | null>(null)
@@ -52,13 +61,18 @@ export function BloccoTemplatePanel({
         _key: genKey(), prodotto_id: "", codice: a.codice, descrizione: a.descrizione,
         ult_costo: a.ult_costo, qty: a.qty, coeff_ricarico: a.coeff_ricarico,
         manuale: a.manuale, data_ult_costo: a.data_ult_costo,
+        slug: a.slug, qta_formula: a.qta_formula, qta_override: false,
       }))
     const servizi: ServizioBlocco[] = calcolaServizi(tpl, valori).map((s) => ({
       _key: genKey(), servizio_id: "", nome: s.nome, categoria: s.categoria,
       tariffa_ora: s.tariffa_ora, ore: s.ore, coeff_ricarico: s.coeff_ricarico,
       scala_con_quantita: s.scala_con_quantita,
     }))
-    onApplica(articoli, servizi, tpl.nome)
+    onApplica(articoli, servizi, tpl.nome, {
+      slug: tpl.slug,
+      parametri: { ...valori },
+      parametri_def: tpl.parametri.map((p) => ({ slug: p.slug, label: p.label, tipo: p.tipo, unita: p.unita, opzioni: p.opzioni })),
+    })
   }
 
   if (templates.length === 0) return null

@@ -87,6 +87,8 @@ export interface ArticoloCalcolato {
   coeff_ricarico: number;
   data_ult_costo: string | null;
   manuale: boolean;
+  slug: string | null;
+  qta_formula: string | null;
 }
 
 export interface ServizioCalcolato {
@@ -126,6 +128,8 @@ export function calcolaArticoli(
       coeff_ricarico: r.ricarico_default,
       data_ult_costo: r.data_ult_costo ?? null,
       manuale: !r.codice_articolo,
+      slug: r.slug ?? null,
+      qta_formula: r.qta_formula ?? null,
     };
   });
 }

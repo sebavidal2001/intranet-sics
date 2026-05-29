@@ -11,6 +11,7 @@ import {
   calcBloccoVendita,
   calcBloccoCosto,
   prezzoVecchio,
+  ricalcolaArticoliFormule,
   servizioBloccoDaDB,
   COEFF_RICARICO_DEFAULT,
   MESI_PREZZO_VECCHIO,
@@ -485,12 +486,21 @@ export function BloccoCard({
   const costoCompl = calcBloccoCosto(blocco, q)
 
   function aggiornaArticolo(key: string, campo: keyof ArticoloBlocco, valore: number | string) {
-    onChange({
-      ...blocco,
-      articoli: blocco.articoli.map((a) =>
-        a._key === key ? { ...a, [campo]: valore } : a
-      ),
+    const articoli = blocco.articoli.map((a) => {
+      if (a._key !== key) return a
+      const next = { ...a, [campo]: valore }
+      // Modifica manuale della quantità di una riga-formula → override (la formula non la sovrascrive più)
+      if (campo === "qty" && a.qta_formula) next.qta_override = true
+      return next
     })
+    // Se cambia una quantità, ricalcola le righe-formula dipendenti (es. tubo = fiancate*2)
+    const finali = campo === "qty" ? ricalcolaArticoliFormule(blocco.parametri, articoli) : articoli
+    onChange({ ...blocco, articoli: finali })
+  }
+
+  function aggiornaParametro(slug: string, valore: string) {
+    const parametri = { ...(blocco.parametri ?? {}), [slug]: valore }
+    onChange({ ...blocco, parametri, articoli: ricalcolaArticoliFormule(parametri, blocco.articoli) })
   }
 
   function rimuoviArticolo(key: string) {
@@ -634,10 +644,48 @@ export function BloccoCard({
           {/* Genera da template */}
           <BloccoTemplatePanel
             templates={templates}
-            onApplica={(articoli, servizi, nome) =>
-              onChange({ ...blocco, articoli, servizi, nome: blocco.nome || nome })
+            onApplica={(articoli, servizi, nome, meta) =>
+              onChange({
+                ...blocco,
+                articoli: ricalcolaArticoliFormule(meta.parametri, articoli),
+                servizi,
+                nome: blocco.nome || nome,
+                template_slug: meta.slug,
+                parametri: meta.parametri,
+                parametri_def: meta.parametri_def,
+              })
             }
           />
+
+          {/* Parametri del template (live: al variare ricalcolano le quantità da formula) */}
+          {blocco.parametri_def && blocco.parametri_def.length > 0 && (
+            <div className="rounded-lg border border-[#00a1be]/20 bg-bg-page/40 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-text-muted mb-2">
+                Parametri template{blocco.template_slug ? ` · ${blocco.template_slug}` : ""}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {blocco.parametri_def.map((p) => (
+                  <label key={p.slug} className="text-xs text-text-muted flex items-center gap-1">
+                    {p.label}{p.unita ? ` [${p.unita}]` : ""}
+                    {p.tipo === "bool" ? (
+                      <select value={String(blocco.parametri?.[p.slug] ?? "no")} onChange={(e) => aggiornaParametro(p.slug, e.target.value)}
+                        className="bg-bg border border-border rounded px-1 py-0.5">
+                        <option value="SI">SI</option><option value="no">no</option>
+                      </select>
+                    ) : p.tipo === "select" ? (
+                      <select value={String(blocco.parametri?.[p.slug] ?? "")} onChange={(e) => aggiornaParametro(p.slug, e.target.value)}
+                        className="bg-bg border border-border rounded px-1 py-0.5">
+                        {(p.opzioni ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : (
+                      <input type="number" value={String(blocco.parametri?.[p.slug] ?? "")} onChange={(e) => aggiornaParametro(p.slug, e.target.value)}
+                        className="w-20 bg-bg border border-border rounded px-1 py-0.5" />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Note tecniche */}
           <div>
