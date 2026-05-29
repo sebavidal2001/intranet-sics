@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
@@ -62,12 +63,24 @@ const RUOLI_PER_STATO_TARGET: Record<string, string[]> = {
  * affineremo con ruoli funzionali commerciale/preventivatore/back_office.)
  */
 
-const STATI_VALIDI = new Set([
+const STATI_VALIDI = [
   // legacy compat
   "pending", "ordinato", "rifiutato",
   // workflow nuovo (migration 039)
   "storico", "aperta", "presa_in_carico", "completato", "inviata", "ordinata", "fallita",
-]);
+] as const;
+
+// Validazione body con Zod (hardening): stato enum, importi finiti e non negativi, stringhe limitate.
+const StatoBodySchema = z.object({
+  stato: z.enum(STATI_VALIDI),
+  codici_articolo: z.array(z.string().trim().max(64)).max(500).optional(),
+  motivo_rifiuto_id: z.string().uuid().optional(),
+  note: z.string().trim().max(4000).optional(),
+  importo_ordinato: z.number().finite().min(0).max(100_000_000).optional(),
+  numero_preventivo: z.string().trim().max(64).optional(),
+  importo_offerta: z.number().finite().min(0).max(100_000_000).optional(),
+  note_offerta: z.string().trim().max(4000).optional(),
+});
 
 export async function PATCH(
   request: NextRequest,
@@ -108,23 +121,16 @@ export async function PATCH(
       }
     }
 
-    const body = await request.json() as {
-      stato: string;
-      codici_articolo?: string[];
-      motivo_rifiuto_id?: string;
-      note?: string;
-      importo_ordinato?: number;
-      numero_preventivo?: string;
-      importo_offerta?: number;
-      note_offerta?: string;
-    };
-
-    const { stato, codici_articolo, motivo_rifiuto_id, note, importo_ordinato,
-            numero_preventivo, importo_offerta, note_offerta } = body;
-
-    if (!stato || !STATI_VALIDI.has(stato)) {
-      return NextResponse.json({ error: "Stato non valido" }, { status: 400 });
+    const rawBody = await request.json().catch(() => null);
+    const parsed = StatoBodySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Payload invalido", dettagli: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) },
+        { status: 400 }
+      );
     }
+    const { stato, codici_articolo, motivo_rifiuto_id, note, importo_ordinato,
+            numero_preventivo, importo_offerta, note_offerta } = parsed.data;
 
     // ── Validazione transizione workflow ────────────────────────────────────
     // Se stato corrente è uno workflow nuovo, controlla che la transizione sia valida.
