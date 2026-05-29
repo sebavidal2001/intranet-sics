@@ -29,17 +29,13 @@ export function FlexmoveRiepilogoModal({
 
   const q = blocco.quantita_pezzi ?? 1
 
-  // Voci: catena, guida, travi — quantità totali nel blocco × pezzi
+  // Voci: catena, guida — quantità totali nel blocco × pezzi
   const voci = useMemo(() => {
     const totCatena = blocco.articoli.reduce((s, a) => s + (a.qty ?? 0) * (a.metri_catena ?? 0), 0) * q
     const totGuida = blocco.articoli.reduce((s, a) => s + (a.qty ?? 0) * (a.metri_guida ?? 0), 0) * q
-    const traviRows = blocco.articoli.filter((a) => a.slug === "trave" || /trave/i.test(a.descrizione))
-    const totTravi = traviRows.reduce((s, a) => s + (a.qty ?? 0), 0) * q
-    const traveCodice = traviRows[0]?.codice ?? ""
     return [
       { key: "catena", label: "Catena", codice: blocco.catena_articolo?.codice ?? "", qta: totCatena, unita: "m" },
       { key: "guida", label: "Guida", codice: blocco.guida_articolo?.codice ?? "", qta: totGuida, unita: "m" },
-      { key: "travi", label: "Travi (sommate)", codice: traveCodice, qta: totTravi, unita: "m" },
     ]
   }, [blocco, q])
 
