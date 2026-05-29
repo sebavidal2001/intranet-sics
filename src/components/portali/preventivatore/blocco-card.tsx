@@ -25,6 +25,8 @@ import {
   type Prodotto,
 } from "@/components/portali/preventivatore/nuovo-view-types"
 import { BloccoTemplatePanel, type TemplateListItem } from "@/components/portali/preventivatore/blocco-template-panel"
+import { InlineCodiceSearch } from "@/components/portali/preventivatore/inline-codice-search"
+import { FlexmoveRiepilogoModal } from "@/components/portali/preventivatore/flexmove-riepilogo-modal"
 
 // ─── SearchArticoli ───────────────────────────────────────────────────────────
 
@@ -480,6 +482,7 @@ export function BloccoCard({
 }) {
   const colore = COLORI_BLOCCO[indice % COLORI_BLOCCO.length]
   const [coeffBlocco, setCoeffBlocco] = useState(COEFF_RICARICO_DEFAULT)
+  const [riepilogoOpen, setRiepilogoOpen] = useState(false)
   const q = blocco.quantita_pezzi ?? 1
   const venditaUnitaria = calcBloccoVendita(blocco, 1)   // prezzo vendita singola unità (no spese/margine)
   const costoUnitario = calcBloccoCosto(blocco, 1)
@@ -501,6 +504,22 @@ export function BloccoCard({
     if (blocco.usa_catena_guida && (campo === "ult_costo_componente" || campo === "metri_catena" || campo === "metri_guida")) {
       b2 = { ...b2, articoli: ricalcolaCatenaGuida(b2) }
     }
+    onChange(b2)
+  }
+
+  /** Seleziona un articolo dall'autocomplete per una riga esistente (modifica codice). */
+  function pickArticoloRiga(key: string, p: Prodotto) {
+    const base = p.ult_costo ?? 0
+    const articoli = blocco.articoli.map((a) =>
+      a._key !== key ? a : {
+        ...a,
+        prodotto_id: p.id, codice: p.codice, descrizione: p.descrizione,
+        data_ult_costo: p.data_ult_costo ?? null, manuale: false,
+        ...(blocco.usa_catena_guida ? { ult_costo_componente: base } : { ult_costo: base }),
+      }
+    )
+    let b2: Blocco = { ...blocco, articoli }
+    if (blocco.usa_catena_guida) b2 = { ...b2, articoli: ricalcolaCatenaGuida(b2) }
     onChange(b2)
   }
 
@@ -673,7 +692,17 @@ export function BloccoCard({
 
           {/* Catena/Guida (Nastro): selezione articoli dall'anagrafica (prezzo = €/m da listino) */}
           {blocco.usa_catena_guida && (
-            <div className="rounded-lg border border-[#00a1be]/20 bg-bg-page/40 p-3 grid gap-3 md:grid-cols-2">
+            <div className="rounded-lg border border-[#00a1be]/20 bg-bg-page/40 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wide text-text-muted">Materiali catena / guida</span>
+                <button
+                  onClick={() => setRiepilogoOpen(true)}
+                  className="text-xs inline-flex items-center gap-1 text-[#007a91] hover:underline"
+                >
+                  Riepilogo materiali →
+                </button>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-text-muted mb-1">
                   Catena {blocco.catena_articolo ? `· ${blocco.catena_articolo.codice} (${fmtEur(blocco.catena_articolo.costo)}/m)` : "— da cercare"}
@@ -686,6 +715,8 @@ export function BloccoCard({
                 </div>
                 <SearchArticoli onAggiungi={(p) => selezionaArticoloCG("guida", p)} onAggiungiManuale={() => {}} />
               </div>
+              </div>
+              <FlexmoveRiepilogoModal open={riepilogoOpen} onClose={() => setRiepilogoOpen(false)} blocco={blocco} />
             </div>
           )}
 
@@ -813,12 +844,10 @@ export function BloccoCard({
                     {blocco.articoli.map((a) => (
                       <tr key={a._key} className="hover:bg-bg-page/50">
                         <td className="px-2 py-1.5 border border-border">
-                          <input
+                          <InlineCodiceSearch
                             value={a.codice}
-                            onChange={(e) => aggiornaArticolo(a._key, "codice", e.target.value)}
-                            placeholder="Codice"
-                            className="w-full font-mono text-xs text-[#00a1be] bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
-                            title="Codice articolo (modificabile)"
+                            onText={(t) => aggiornaArticolo(a._key, "codice", t)}
+                            onPick={(p) => pickArticoloRiga(a._key, p)}
                           />
                         </td>
                         <td className="px-2 py-1.5 border border-border text-xs text-text">
