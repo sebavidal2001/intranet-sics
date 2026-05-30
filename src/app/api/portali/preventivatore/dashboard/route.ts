@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { getFiltroCommerciale } from "@/lib/portali/preventivatore/ruoli";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +99,7 @@ export async function GET() {
 
     const err = kpiRes.error ?? topClientiRes.error ?? serieRes.error ?? serieCategorieRes.error ?? topArticoliRes.error ?? attivitaRes.error;
     if (err) {
-      console.error("dashboard rpc error:", err);
+      logError("preventivatore.dashboard", "RPC dashboard fallita", err);
       return NextResponse.json({ error: "Errore caricamento dashboard" }, { status: 500 });
     }
 
@@ -174,7 +175,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error("dashboard unexpected:", error);
+    logError("preventivatore.dashboard", "errore inatteso dashboard", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

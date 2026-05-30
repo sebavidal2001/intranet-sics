@@ -9,6 +9,7 @@ import {
   getFiltroCommerciale,
   getIdClientiVisibili,
 } from "@/lib/portali/preventivatore/ruoli";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -222,13 +223,13 @@ export async function PATCH(
       .eq("id", id);
 
     if (error) {
-      console.error("Stato update error:", error);
+      logError("preventivatore.documenti.stato", "update stato fallita", error, { id });
       return NextResponse.json({ error: "Errore aggiornamento stato: " + error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Stato PATCH error:", error);
+    logError("preventivatore.documenti.stato", "PATCH stato fallita", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

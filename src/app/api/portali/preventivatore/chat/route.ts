@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logError, logWarn } from "@/lib/logger";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { getPreventivatoreScope } from "@/lib/portali/preventivatore/ruoli";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
@@ -51,7 +52,7 @@ async function saveMessages(
 
     // Compatibility fallback for databases not migrated yet with chat_messaggi.modalita.
     if (error.code !== "42703") {
-      console.error("saveMessages insert error:", error);
+      logError("preventivatore.chat", "saveMessages insert fallito", error);
       return;
     }
 
@@ -70,7 +71,7 @@ async function saveMessages(
       ]);
   } catch (err) {
     // Non blocchiamo la risposta se il salvataggio fallisce
-    console.error("saveMessages error:", err);
+    logError("preventivatore.chat", "saveMessages fallito", err);
   }
 }
 
@@ -120,9 +121,9 @@ async function saveUsageEvent({
         cost_source: usage.source,
       });
 
-    if (error) console.error("saveUsageEvent error:", error);
+    if (error) logError("preventivatore.chat", "saveUsageEvent fallito", error);
   } catch (err) {
-    console.error("saveUsageEvent unexpected:", err);
+    logError("preventivatore.chat", "saveUsageEvent inatteso", err);
   }
 }
 
@@ -225,7 +226,7 @@ export async function POST(request: NextRequest) {
       try {
         result = await handleOpenRouter(messages, systemInstruction, temperature, top_p, openrouterModel, toolScope);
       } catch (openrouterErr) {
-        console.warn("OpenRouter fallito, fallback su Gemini:", openrouterErr instanceof Error ? openrouterErr.message : openrouterErr);
+        logWarn("preventivatore.chat", "OpenRouter fallito, fallback su Gemini", { motivo: openrouterErr instanceof Error ? openrouterErr.message : String(openrouterErr) });
         if (!process.env.GEMINI_API_KEY) {
           throw new Error("Nessun provider AI disponibile");
         }
@@ -243,7 +244,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Chat preventivatore error:", error);
+    logError("preventivatore.chat", "richiesta chat fallita", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

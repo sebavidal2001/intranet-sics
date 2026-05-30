@@ -7,6 +7,7 @@ import {
   getFiltroCommerciale,
   getIdClientiVisibili,
 } from "@/lib/portali/preventivatore/ruoli";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
 
     const { data, count, error } = await query;
     if (error) {
-      console.error("Documenti list error:", error);
+      logError("preventivatore.documenti", "lista documenti fallita", error);
       return NextResponse.json({ error: "Errore recupero documenti" }, { status: 500 });
     }
 
@@ -144,7 +145,7 @@ export async function GET(request: NextRequest) {
       dir,
     });
   } catch (error) {
-    console.error("Documenti GET error:", error);
+    logError("preventivatore.documenti", "GET documenti fallita", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -266,7 +267,7 @@ export async function POST(request: NextRequest) {
       .rpc("crea_documento_dal_builder", { p_payload: payloadConUser });
 
     if (rpcErr || !result) {
-      console.error("crea_documento_dal_builder error:", rpcErr);
+      logError("preventivatore.documenti", "crea_documento_dal_builder fallita", rpcErr);
       return NextResponse.json(
         { error: "Errore creazione documento: " + (rpcErr?.message ?? "unknown") },
         { status: 500 }
@@ -277,7 +278,7 @@ export async function POST(request: NextRequest) {
     const r = result as { id: string; codice: string };
     return NextResponse.json({ id: r.id, codice: r.codice });
   } catch (error) {
-    console.error("POST documenti error:", error);
+    logError("preventivatore.documenti", "POST documenti fallita", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

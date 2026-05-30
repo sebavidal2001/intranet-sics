@@ -5,6 +5,7 @@ import { getPortaleAccesso } from "@/lib/auth/portale";
 import { getPreventivatoreScope } from "@/lib/portali/preventivatore/ruoli";
 import { computeBiDashboardData } from "@/lib/portali/preventivatore/bi/query-engine";
 import type { BiDashboardConfig } from "@/lib/portali/preventivatore/bi/types";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     );
     return NextResponse.json({ results, meta });
   } catch (error) {
-    console.error("BI data POST error:", error);
+    logError("preventivatore.bi.data", "BI data POST fallita", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
