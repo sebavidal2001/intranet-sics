@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getFiltroCommerciale, getIdClientiVisibili } from "@/lib/portali/preventivatore/ruoli";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (rpcError) {
-      console.error("RPC match_chunks error:", rpcError);
+      logError("preventivatore.search", "RPC match_chunks error", rpcError);
       return NextResponse.json(
         { error: "Errore ricerca vettoriale" },
         { status: 500 }
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     const { data: documenti, error: docError } = await documentiQuery;
     if (docError) {
-      console.error("Documenti fetch error:", docError);
+      logError("preventivatore.search", "Documenti fetch error", docError);
       return NextResponse.json({ error: "Errore recupero documenti" }, { status: 500 });
     }
 
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(risultati);
   } catch (error) {
-    console.error("Search preventivatore error:", error);
+    logError("preventivatore.search", "Search preventivatore error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

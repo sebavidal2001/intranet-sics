@@ -46,8 +46,13 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Non autenticato → login
+  // Non autenticato
   if (!user) {
+    // Le route API rispondono in JSON: un redirect 302 a una pagina HTML di login
+    // confonde i client `fetch` che si aspettano JSON. Restituiamo 401.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+    }
     return NextResponse.redirect(new URL("/auth/login", request.url));
   }
 

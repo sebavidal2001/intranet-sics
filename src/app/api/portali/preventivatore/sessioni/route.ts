@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -27,13 +28,13 @@ export async function GET() {
       .limit(50);
 
     if (error) {
-      console.error("GET sessioni error:", error);
+      logError("preventivatore.sessioni", "GET sessioni error", error);
       return NextResponse.json({ error: "Errore DB" }, { status: 500 });
     }
 
     return NextResponse.json({ sessioni: data ?? [] });
   } catch (err) {
-    console.error("GET sessioni unexpected:", err);
+    logError("preventivatore.sessioni", "GET sessioni unexpected", err);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -60,13 +61,13 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("POST sessioni error:", error);
+      logError("preventivatore.sessioni", "POST sessioni error", error);
       return NextResponse.json({ error: "Errore creazione sessione" }, { status: 500 });
     }
 
     return NextResponse.json({ sessione: data });
   } catch (err) {
-    console.error("POST sessioni unexpected:", err);
+    logError("preventivatore.sessioni", "POST sessioni unexpected", err);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

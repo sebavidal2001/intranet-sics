@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { getFiltroCommerciale, AGENTE_AIRFLUID } from "@/lib/portali/preventivatore/ruoli";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await q;
 
     if (error) {
-      console.error("destinazioni fetch error:", error);
+      logError("preventivatore.clienti.destinazioni", "destinazioni fetch error", error);
       return NextResponse.json({ error: "Errore recupero destinazioni" }, { status: 500 });
     }
 
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(items);
   } catch (error) {
-    console.error("Destinazioni route error:", error);
+    logError("preventivatore.clienti.destinazioni", "Destinazioni route error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

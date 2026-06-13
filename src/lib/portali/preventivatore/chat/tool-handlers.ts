@@ -211,9 +211,24 @@ export async function toolCercaArticolo(args: {
   query: string;
   codice_preventivo?: string;
   limite?: number;
-}): Promise<Array<{ documento_id: string; codice: string | null; cliente: string | null; estratto: string }>> {
+}, clienteIds: string[] | null = null): Promise<Array<{ documento_id: string; codice: string | null; cliente: string | null; estratto: string }>> {
   const limite = Math.min(args.limite ?? 10, 20);
   const adminClient = createAdminClient();
+  const scope = scopeIds(clienteIds);
+
+  // Scope commerciale: la ricerca testuale legge `chunks` direttamente, che non
+  // ha `cliente_master_id`. Restringiamo prima ai documenti visibili dell'agente,
+  // poi filtriamo i chunk su quei documento_id (coerente con gli altri tool).
+  let docFilterIds: string[] | null = null;
+  if (scope) {
+    const { data: scopedDocs } = await adminClient
+      .schema("preventivatore")
+      .from("documenti")
+      .select("id")
+      .in("cliente_master_id", scope);
+    docFilterIds = (scopedDocs ?? []).map((d: { id: string }) => d.id);
+    if (docFilterIds.length === 0) return [];
+  }
 
   let q = adminClient
     .schema("preventivatore")
@@ -221,6 +236,7 @@ export async function toolCercaArticolo(args: {
     .select("documento_id, contenuto, metadata")
     .ilike("contenuto", `%${args.query}%`);
 
+  if (docFilterIds) q = q.in("documento_id", docFilterIds);
   if (args.codice_preventivo)
     q = q.eq("metadata->>codice_progetto", args.codice_preventivo);
 
@@ -539,8 +555,12 @@ export async function toolDettaglioPreventivo(args: { codice: string }, clienteI
   const scope = scopeIds(clienteIds);
 
   const raw = args.codice.trim().toUpperCase();
-  const withUnderscore = raw.replace(/\//g, "_");
-  const withSlash = raw.replace(/_/g, "/");
+  // Escape dei metacaratteri PostgREST/ILIKE: la virgola separa le condizioni in
+  // `.or()` (rischio di injection del filtro), `%`/`_` sono wildcard SQL. Coerente
+  // con l'escaping già usato in toolCercaArticoloAnagrafica e nella route documenti.
+  const escFilter = (s: string) => s.replace(/[%_,()]/g, (c) => `\\${c}`);
+  const withUnderscore = escFilter(raw.replace(/\//g, "_"));
+  const withSlash = escFilter(raw.replace(/_/g, "/"));
 
   let docQuery = adminClient
     .schema("preventivatore")
@@ -932,7 +952,7 @@ export async function dispatchTool(name: string, args: Record<string, unknown>, 
   const restricted = ids !== null;
   if (name === "list_preventivi")        return toolListPreventivi(args as Parameters<typeof toolListPreventivi>[0], ids);
   if (name === "cerca_simili")           return toolCercaSimili(args as Parameters<typeof toolCercaSimili>[0], ids);
-  if (name === "cerca_articolo")         return toolCercaArticolo(args as Parameters<typeof toolCercaArticolo>[0]);
+  if (name === "cerca_articolo")         return toolCercaArticolo(args as Parameters<typeof toolCercaArticolo>[0], ids);
   if (name === "aggrega_preventivi")     return toolAggregatPreventivi(args as Parameters<typeof toolAggregatPreventivi>[0], ids);
   if (name === "top_articoli")           return toolTopArticoli(args as Parameters<typeof toolTopArticoli>[0], ids);
   if (name === "query_righe_distinta")   return toolQueryRigheDistinta(args as Parameters<typeof toolQueryRigheDistinta>[0], ids);

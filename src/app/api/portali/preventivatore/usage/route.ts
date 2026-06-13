@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
 
     const error = todayRes.error ?? last30Res.error ?? sessionRes.error;
     if (error) {
-      console.error("usage summary error:", error);
+      logError("preventivatore.usage", "usage summary error", error);
       return NextResponse.json({ error: "Errore recupero costi AI" }, { status: 500 });
     }
 
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
       source: "openrouter",
     });
   } catch (error) {
-    console.error("usage summary unexpected:", error);
+    logError("preventivatore.usage", "usage summary unexpected", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

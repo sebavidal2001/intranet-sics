@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export async function GET() {
       .order("cliente", { ascending: true });
 
     if (error) {
-      console.error("Clienti unici fetch error:", error);
+      logError("preventivatore.documenti.clienti", "Clienti unici fetch error", error);
       return NextResponse.json({ error: "Errore recupero clienti" }, { status: 500 });
     }
 
@@ -47,7 +48,7 @@ export async function GET() {
 
     return NextResponse.json(unici);
   } catch (error) {
-    console.error("Clienti documenti route error:", error);
+    logError("preventivatore.documenti.clienti", "Clienti documenti route error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

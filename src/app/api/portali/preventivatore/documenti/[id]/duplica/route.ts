@@ -6,6 +6,7 @@ import {
   getFiltroCommerciale,
   getIdClientiVisibili,
 } from "@/lib/portali/preventivatore/ruoli";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -279,7 +280,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error("Duplica documento error:", error);
+    logError("preventivatore.documenti.duplica", "Duplica documento error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

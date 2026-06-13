@@ -5,6 +5,7 @@ import { getPortaleAccesso } from "@/lib/auth/portale";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
 import { formatBuilderStateForPrompt } from "@/lib/portali/preventivatore/chat/builder-state-prompt";
 import type { BuilderStateForChat } from "@/lib/portali/preventivatore/chat/types";
+import { logError, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -300,7 +301,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insErr) {
-      console.warn("scheda-tecnica: insert audit fallito:", insErr);
+      logWarn("preventivatore.scheda-tecnica", "scheda-tecnica: insert audit fallito", { dettaglio: insErr });
     }
 
     return NextResponse.json({
@@ -311,7 +312,7 @@ export async function POST(request: NextRequest) {
       scheda_id: insertRow?.id ?? "",
     } satisfies SchedaResponse);
   } catch (err) {
-    console.error("scheda-tecnica error:", err);
+    logError("preventivatore.scheda-tecnica", "scheda-tecnica error", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Errore generazione scheda tecnica" },
       { status: 500 }

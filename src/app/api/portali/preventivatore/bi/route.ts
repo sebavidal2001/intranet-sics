@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { DEFAULT_BI_DASHBOARD } from "@/lib/portali/preventivatore/bi/defaults";
 import type { BiDashboardConfig, BiDashboardRow, BiScope } from "@/lib/portali/preventivatore/bi/types";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ dashboard });
   } catch (error) {
-    console.error("BI dashboard GET error:", error);
+    logError("preventivatore.bi", "BI dashboard GET error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -123,12 +124,12 @@ export async function PUT(request: NextRequest) {
         n_widgets: Array.isArray(config.widgets) ? config.widgets.length : 0,
       })
       .then(({ error: logErr }) => {
-        if (logErr && logErr.code !== "42P01") console.error("bi_dashboard_log error:", logErr);
+        if (logErr && logErr.code !== "42P01") logError("preventivatore.bi", "bi_dashboard_log error", logErr);
       });
 
     return NextResponse.json({ dashboard: data });
   } catch (error) {
-    console.error("BI dashboard PUT error:", error);
+    logError("preventivatore.bi", "BI dashboard PUT error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

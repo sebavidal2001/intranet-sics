@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("Correzioni POST error:", err);
+    logError("preventivatore.correzioni", "Correzioni POST error", err);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

@@ -6,6 +6,7 @@ import { CertificatoPDF, type DatiCertificato, type RigaCertificato, type RadarP
 import React, { createElement } from "react";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
 import { getDefaultLogoDataUri } from "@/lib/portali/valutazioni/pdf/logo";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +67,7 @@ export async function GET(
       db.from("sessione_skills").select(`skill:skills(id, nome, ordine, parametro:parametri_radar(id, nome, colore))`).eq("sessione_id", sessioneId),
     ]);
   } catch (err) {
-    console.error("Certificato parallel fetch error:", err);
+    logError("valutazioni.certificato", "Certificato parallel fetch error", err);
     return NextResponse.json({ error: "Errore nel caricamento dei dati" }, { status: 500 });
   }
 

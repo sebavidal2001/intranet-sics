@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { usernameToEmailCandidates } from "@/lib/auth/username";
+import { logError, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
       password: nuovaPassword,
     });
     if (updErr) {
-      console.error("cambio-password updateUserById:", updErr);
+      logError("auth.cambio-password", "cambio-password updateUserById", updErr);
       return NextResponse.json(
         { error: "Errore durante l'aggiornamento della password." },
         { status: 500 }
@@ -93,12 +94,12 @@ export async function POST(request: NextRequest) {
       .eq("id", userId);
     if (flagErr) {
       // La password è già stata cambiata: logghiamo ma non blocchiamo.
-      console.warn("cambio-password: flag primo_accesso non aggiornato:", flagErr);
+      logWarn("auth.cambio-password", "cambio-password: flag primo_accesso non aggiornato", { dettaglio: flagErr });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("cambio-password error:", error);
+    logError("auth.cambio-password", "cambio-password error", error);
     return NextResponse.json({ error: "Errore del server." }, { status: 500 });
   }
 }

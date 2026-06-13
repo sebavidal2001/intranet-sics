@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ template: parsed });
   } catch (error) {
-    console.error("Template ai-genera error:", error);
+    logError("preventivatore.template.ai-genera", "Template ai-genera error", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Errore del server" }, { status: 500 });
   }
 }

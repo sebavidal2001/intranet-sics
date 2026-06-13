@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function GET() {
       .order("ordine");
 
     if (error) {
-      console.error("Motivi rifiuto error:", error);
+      logError("preventivatore.motivi-rifiuto", "Motivi rifiuto error", error);
       return NextResponse.json(
         { error: "Errore recupero motivi rifiuto" },
         { status: 500 }
@@ -40,7 +41,7 @@ export async function GET() {
 
     return NextResponse.json(data ?? []);
   } catch (error) {
-    console.error("Motivi rifiuto GET error:", error);
+    logError("preventivatore.motivi-rifiuto", "Motivi rifiuto GET error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

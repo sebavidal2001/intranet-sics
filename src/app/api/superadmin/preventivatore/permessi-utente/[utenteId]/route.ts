@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export async function GET(
       agente_codice: (utenteRes.data?.preventivatore_agente_codice as string | null) ?? null,
     });
   } catch (e) {
-    console.error("GET permessi-utente:", e);
+    logError("superadmin.preventivatore.permessi-utente", "GET permessi-utente", e);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -130,7 +131,7 @@ export async function POST(
 
     return NextResponse.json({ success: true });
   } catch (e) {
-    console.error("POST permessi-utente:", e);
+    logError("superadmin.preventivatore.permessi-utente", "POST permessi-utente", e);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

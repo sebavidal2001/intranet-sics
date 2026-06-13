@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -179,7 +180,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ testo, fonti: fontiResponse });
   } catch (error) {
-    console.error("Genera descrizione error:", error);
+    logError("preventivatore.genera-descrizione", "Genera descrizione error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

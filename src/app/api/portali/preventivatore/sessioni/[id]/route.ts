@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -58,13 +59,13 @@ export async function GET(
     }
 
     if (msgErr) {
-      console.error("GET messaggi error:", msgErr);
+      logError("preventivatore.sessioni", "GET messaggi error", msgErr);
       return NextResponse.json({ error: "Errore DB" }, { status: 500 });
     }
 
     return NextResponse.json({ sessione, messaggi: messaggi ?? [] });
   } catch (err) {
-    console.error("GET sessione/[id] unexpected:", err);
+    logError("preventivatore.sessioni", "GET sessione/[id] unexpected", err);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -91,13 +92,13 @@ export async function DELETE(
       .eq("user_id", user.id); // sicurezza: solo il proprietario può eliminare
 
     if (error) {
-      console.error("DELETE sessione error:", error);
+      logError("preventivatore.sessioni", "DELETE sessione error", error);
       return NextResponse.json({ error: "Errore eliminazione" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("DELETE sessione unexpected:", err);
+    logError("preventivatore.sessioni", "DELETE sessione unexpected", err);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

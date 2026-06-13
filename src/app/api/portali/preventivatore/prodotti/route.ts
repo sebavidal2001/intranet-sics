@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
       .rpc("search_prodotti", { q, limite: 20 });
 
     if (error) {
-      console.error("Prodotti search_prodotti error:", error);
+      logError("preventivatore.prodotti", "Prodotti search_prodotti error", error);
       return NextResponse.json({ error: "Errore recupero prodotti" }, { status: 500 });
     }
 
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (error) {
-    console.error("Prodotti route error:", error);
+    logError("preventivatore.prodotti", "Prodotti route error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

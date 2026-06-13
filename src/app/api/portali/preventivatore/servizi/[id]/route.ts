@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -74,12 +75,12 @@ export async function PATCH(
       .single();
 
     if (error) {
-      console.error("Servizio update error:", error);
+      logError("preventivatore.servizi", "Servizio update error", error);
       return NextResponse.json({ error: "Errore aggiornamento servizio" }, { status: 500 });
     }
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Servizi PATCH error:", error);
+    logError("preventivatore.servizi", "Servizi PATCH error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -101,12 +102,12 @@ export async function DELETE(
       .eq("id", id);
 
     if (error) {
-      console.error("Servizio delete error:", error);
+      logError("preventivatore.servizi", "Servizio delete error", error);
       return NextResponse.json({ error: "Errore eliminazione servizio" }, { status: 500 });
     }
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Servizi DELETE error:", error);
+    logError("preventivatore.servizi", "Servizi DELETE error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { ExportRow } from "@/lib/types";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -176,7 +177,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Export error:", error);
+    logError("valutazioni.export.powerbi", "Export error", error);
     return NextResponse.json({ error: "Errore durante l'export" }, { status: 500 });
   }
 }

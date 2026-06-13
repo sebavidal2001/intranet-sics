@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +41,12 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await query;
     if (error) {
-      console.error("Servizi fetch error:", error);
+      logError("preventivatore.servizi", "Servizi fetch error", error);
       return NextResponse.json({ error: "Errore recupero servizi" }, { status: 500 });
     }
     return NextResponse.json(data ?? []);
   } catch (error) {
-    console.error("Servizi route error:", error);
+    logError("preventivatore.servizi", "Servizi route error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -91,12 +92,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("Servizio create error:", error);
+      logError("preventivatore.servizi", "Servizio create error", error);
       return NextResponse.json({ error: "Errore creazione servizio" }, { status: 500 });
     }
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Servizi POST error:", error);
+    logError("preventivatore.servizi", "Servizi POST error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

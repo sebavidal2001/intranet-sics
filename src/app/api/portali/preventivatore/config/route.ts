@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 import { invalidateAiConfigCache } from "@/lib/portali/preventivatore/chat/config-cache";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -52,13 +53,13 @@ export async function GET() {
       .order("chiave");
 
     if (error) {
-      console.error("Config fetch error:", error);
+      logError("preventivatore.config", "Config fetch error", error);
       return NextResponse.json({ error: "Errore recupero configurazione" }, { status: 500 });
     }
 
     return NextResponse.json(data ?? []);
   } catch (error) {
-    console.error("Config GET error:", error);
+    logError("preventivatore.config", "Config GET error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -100,7 +101,7 @@ export async function PATCH(request: NextRequest) {
       .upsert(upsertRows, { onConflict: "chiave" });
 
     if (error) {
-      console.error("Config upsert error:", error);
+      logError("preventivatore.config", "Config upsert error", error);
       return NextResponse.json({ error: "Errore salvataggio configurazione" }, { status: 500 });
     }
 
@@ -108,7 +109,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Config PATCH error:", error);
+    logError("preventivatore.config", "Config PATCH error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

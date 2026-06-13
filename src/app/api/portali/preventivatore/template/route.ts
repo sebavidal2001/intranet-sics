@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +29,12 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await query;
     if (error) {
-      console.error("Template list error:", error);
+      logError("preventivatore.template", "Template list error", error);
       return NextResponse.json({ error: "Errore recupero template" }, { status: 500 });
     }
     return NextResponse.json(data ?? []);
   } catch (error) {
-    console.error("Template GET error:", error);
+    logError("preventivatore.template", "Template GET error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -61,12 +62,12 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) {
       if (error.code === "23505") return NextResponse.json({ error: "Slug già esistente" }, { status: 409 });
-      console.error("Template create error:", error);
+      logError("preventivatore.template", "Template create error", error);
       return NextResponse.json({ error: "Errore creazione template" }, { status: 500 });
     }
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Template POST error:", error);
+    logError("preventivatore.template", "Template POST error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

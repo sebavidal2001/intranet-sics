@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { getFiltroCommerciale, AGENTE_AIRFLUID } from "@/lib/portali/preventivatore/ruoli";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await query;
     if (error) {
-      console.error("clienti_master fetch error:", error);
+      logError("preventivatore.clienti", "clienti_master fetch error", error);
       return NextResponse.json({ error: "Errore recupero clienti" }, { status: 500 });
     }
 
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(items);
   } catch (error) {
-    console.error("Clienti route error:", error);
+    logError("preventivatore.clienti", "Clienti route error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

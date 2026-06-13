@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
       .select("codice, descrizione, esistenza_totale, disponibilita_totale")
       .in("codice", codici);
     if (error) {
-      console.error("Giacenza lookup error:", error);
+      logError("preventivatore.prodotti.giacenza", "Giacenza lookup error", error);
       return NextResponse.json({ error: "Errore lookup giacenza" }, { status: 500 });
     }
     const items = ((data ?? []) as Array<{ codice: string; descrizione: string | null; esistenza_totale: number | null; disponibilita_totale: number | null }>).map((r) => ({
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
     }));
     return NextResponse.json({ items });
   } catch (error) {
-    console.error("Giacenza route error:", error);
+    logError("preventivatore.prodotti.giacenza", "Giacenza route error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

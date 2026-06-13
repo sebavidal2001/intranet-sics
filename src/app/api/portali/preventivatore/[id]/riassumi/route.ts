@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { PORTALE_SLUGS } from "@/lib/config/portali";
+import { logError, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -174,7 +175,7 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
       }
     } catch (orErr) {
       if (process.env.GEMINI_API_KEY && process.env.OPENROUTER_API_KEY) {
-        console.warn("OpenRouter fallito, fallback Gemini:", orErr instanceof Error ? orErr.message : orErr);
+        logWarn("preventivatore.riassumi", "OpenRouter fallito, fallback Gemini", { dettaglio: orErr instanceof Error ? orErr.message : orErr });
         riassunto = await callGemini(testoDocumenti);
       } else {
         throw orErr;
@@ -183,7 +184,7 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
 
     return NextResponse.json({ riassunto, n_documenti: documenti.length });
   } catch (err) {
-    console.error("Riassumi documenti error:", err);
+    logError("preventivatore.riassumi", "Riassumi documenti error", err);
     const msg = err instanceof Error ? err.message : "Errore del server";
     return NextResponse.json({ error: msg }, { status: 500 });
   }

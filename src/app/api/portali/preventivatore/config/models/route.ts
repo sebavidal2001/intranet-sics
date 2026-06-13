@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +104,7 @@ export async function GET() {
 
     return NextResponse.json({ models, source: "openrouter" });
   } catch (error) {
-    console.error("OpenRouter models fetch error:", error);
+    logError("preventivatore.config.models", "OpenRouter models fetch error", error);
     return NextResponse.json({ error: "Errore recupero modelli OpenRouter" }, { status: 500 });
   }
 }

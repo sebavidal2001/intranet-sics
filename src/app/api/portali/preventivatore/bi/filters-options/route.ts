@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function GET() {
 
     return NextResponse.json({ anni, clienti, categorie });
   } catch (error) {
-    console.error("filters-options error:", error);
+    logError("preventivatore.bi.filters-options", "filters-options error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { DEFAULT_BI_WIDGETS } from "@/lib/portali/preventivatore/bi/defaults";
 import type { BiWidgetConfig } from "@/lib/portali/preventivatore/bi/types";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
     proposed ??= heuristicProposal(prompt);
     return NextResponse.json({ widget: proposed });
   } catch (error) {
-    console.error("BI ai-propose error:", error);
+    logError("preventivatore.bi.ai-propose", "BI ai-propose error", error);
     const fallback = heuristicProposal("andamento mese categoria");
     return NextResponse.json({ widget: fallback, warning: "Proposta AI non disponibile, usata proposta base." });
   }

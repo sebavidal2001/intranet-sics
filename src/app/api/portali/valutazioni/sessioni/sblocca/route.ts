@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (readError) {
-      console.error("Sblocca sessione - lettura:", readError);
+      logError("valutazioni.sessioni.sblocca", "Sblocca sessione - lettura", readError);
       return NextResponse.json(
         { error: "Errore lettura sessione" },
         { status: 500 }
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
       .eq("id", sessioneId);
 
     if (updateError) {
-      console.error("Sblocca sessione - update:", updateError);
+      logError("valutazioni.sessioni.sblocca", "Sblocca sessione - update", updateError);
       return NextResponse.json(
         { error: "Errore aggiornamento sessione" },
         { status: 500 }
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
       message: `Sessione ${isAperta ? "aperta" : "chiusa"}.`,
     });
   } catch (error) {
-    console.error("Sblocca sessione error:", error);
+    logError("valutazioni.sessioni.sblocca", "Sblocca sessione error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

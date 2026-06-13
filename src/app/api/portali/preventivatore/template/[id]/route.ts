@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!tpl) return NextResponse.json({ error: "Template non trovato" }, { status: 404 });
     return NextResponse.json(tpl);
   } catch (error) {
-    console.error("Template [id] GET error:", error);
+    logError("preventivatore.template", "Template [id] GET error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -92,14 +93,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .schema("preventivatore")
       .rpc("salva_template_full", { p_id: id, p_payload: body });
     if (rpcErr) {
-      console.error("salva_template_full error:", rpcErr);
+      logError("preventivatore.template", "salva_template_full error", rpcErr);
       return NextResponse.json({ error: "Errore salvataggio template" }, { status: 500 });
     }
 
     const tpl = await loadTemplateFull(admin, id);
     return NextResponse.json(tpl);
   } catch (error) {
-    console.error("Template PATCH error:", error);
+    logError("preventivatore.template", "Template PATCH error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }
@@ -116,10 +117,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     const admin = createAdminClient();
     const { error } = await admin.schema("preventivatore").from("template").delete().eq("id", id);
-    if (error) { console.error(error); return NextResponse.json({ error: "Errore eliminazione" }, { status: 500 }); }
+    if (error) { logError("preventivatore.template", "errore", error); return NextResponse.json({ error: "Errore eliminazione" }, { status: 500 }); }
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Template DELETE error:", error);
+    logError("preventivatore.template", "Template DELETE error", error);
     return NextResponse.json({ error: "Errore del server" }, { status: 500 });
   }
 }

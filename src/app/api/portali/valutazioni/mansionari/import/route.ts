@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
       warnings,
     });
   } catch (error) {
-    console.error("Import error:", error);
+    logError("valutazioni.mansionari.import", "Import error", error);
     return NextResponse.json(
       { error: "Errore del server" },
       { status: 500 }
