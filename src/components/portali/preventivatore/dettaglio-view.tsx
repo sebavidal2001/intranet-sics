@@ -39,6 +39,17 @@ function fmtNum(v: number | string | null | undefined, decimals = 2): string {
   return new Intl.NumberFormat("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: decimals }).format(n);
 }
 
+/** Formatta secondi in durata compatta: "1h 12m", "8m 30s", "45s". */
+function fmtDurata(sec: number | null | undefined): string | null {
+  if (sec == null || sec <= 0) return null;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 // ─── Sanity check sui totals estratti ────────────────────────────────────────
 // L'ingestion può aver catturato valori sbagliati (es. ultima cella della riga
 // invece di quella giusta) per fogli con layout non standard. Queste funzioni
@@ -266,11 +277,25 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
         </Button>
         <span className="text-text-muted text-sm">/</span>
         <span className="text-sm font-mono text-text">{documento.codice ?? documento.id.slice(0, 8)}</span>
+        {documento.tipo === "generato" && (
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="ml-auto gap-1.5 text-[#007a91] border-[#00a1be]/40 hover:bg-[#00a1be]/5"
+            title="Riapri questo preventivo nel builder per modificarlo (i prezzi restano congelati)"
+          >
+            <Link href={`/preventivatore/nuovo?edit=${documento.id}`}>
+              <Pencil className="w-3.5 h-3.5" />
+              Modifica
+            </Link>
+          </Button>
+        )}
         <Button
           asChild
           variant="outline"
           size="sm"
-          className="ml-auto gap-1.5 text-emerald-700 border-emerald-300/60 hover:bg-emerald-50"
+          className={`${documento.tipo === "generato" ? "" : "ml-auto "}gap-1.5 text-emerald-700 border-emerald-300/60 hover:bg-emerald-50`}
           title="Crea un nuovo preventivo usando questo come base (prezzi aggiornati ai valori correnti)"
         >
           <Link href={`/preventivatore/nuovo?base=${documento.id}`}>
@@ -386,6 +411,9 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
             />
           )}
           {margineDoc > 0 && <Stat label="Margine tratt." value={`+${margineDoc}%`} />}
+          {fmtDurata(documento.tempo_preventivazione_sec) && (
+            <Stat label="Tempo redazione" value={fmtDurata(documento.tempo_preventivazione_sec)!} />
+          )}
         </div>
 
         {/* Workflow actions (solo per preventivi 'generato' con stato workflow attivo) */}

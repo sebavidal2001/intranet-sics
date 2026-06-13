@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { PostBodySchema } from "@/lib/portali/preventivatore/documenti-schema";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import {
   getFiltroCommerciale,
   getIdClientiVisibili,
 } from "@/lib/portali/preventivatore/ruoli";
-import { logError } from "@/lib/logger";
+import { logError, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -172,59 +172,8 @@ export async function GET(request: NextRequest) {
 //
 // Coefficiente di ricarico SICS: prezzo = costo / coeff (vale per materiali e manodopera).
 
-// ── Schema Zod: validazione body server-side (hardening pre-beta) ───────────
-// Limiti severi per evitare valori sporchi (negativi, infinity, NaN, stringhe troppo lunghe)
-const NUM_POS = z.number().finite().nonnegative();
-const COEFF = z.number().finite().gt(0).lte(2); // coeff > 0 e ≤ 2 (margine 0% al 100%)
-
-const ArticoloSchema = z.object({
-  codice: z.string().trim().max(64),
-  descrizione: z.string().trim().max(500),
-  qty: NUM_POS.max(100000),
-  ult_costo: NUM_POS.max(10_000_000),
-  coeff_ricarico: COEFF,
-});
-
-const ServizioSchema = z.object({
-  nome: z.string().trim().min(1).max(120),
-  categoria: z.string().trim().max(80).optional(),
-  ore: NUM_POS.max(100000),
-  tariffa_ora: NUM_POS.max(1000),
-  coeff_ricarico: COEFF,
-  scala_con_quantita: z.boolean().optional(),
-});
-
-const PCT = z.number().finite().min(0).max(1000);
-
-const BloccoSchema = z.object({
-  nome: z.string().trim().max(120).optional(),
-  tipo: z.string().trim().max(80).optional(),
-  note: z.string().trim().max(2000).optional(),
-  quantita_pezzi: z.number().int().min(1).max(100000).optional(),
-  margine_trattativa_pct: PCT.optional(),
-  articoli: z.array(ArticoloSchema).default([]),
-  servizi: z.array(ServizioSchema).default([]),
-});
-
-const PostBodySchema = z.object({
-  titolo: z.string().trim().max(200).optional(),
-  cliente_master_id: z.string().uuid().optional(),
-  cliente_text: z.string().trim().max(200).optional(),
-  numero_preventivo: z.string().trim().max(64).optional(),
-  data_consegna: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  consegna_settimane_min: z.number().int().min(0).max(260).optional(),
-  consegna_settimane_max: z.number().int().min(0).max(260).optional(),
-  margine_trattativa_pct: PCT.optional(),
-  codice: z.string().trim().regex(/^[GSC]_\d{2}_[\w-]+$/).max(32).optional(),
-  note: z.string().trim().max(4000).optional(),
-  blocchi: z.array(BloccoSchema).min(1, "Almeno un blocco è richiesto"),
-}).refine(
-  (b) => Boolean(b.cliente_master_id) || Boolean(b.cliente_text && b.cliente_text.length > 0),
-  { message: "Cliente mancante (cliente_master_id o cliente_text)" }
-).refine(
-  (b) => b.blocchi.some((bl) => bl.articoli.length > 0 || bl.servizi.length > 0),
-  { message: "Almeno un blocco deve contenere articoli o servizi" }
-);
+// Schema Zod del payload builder: estratto in lib condivisa (le route Next non
+// possono esportare simboli non standard) e riusato dal PUT in documenti/[id].
 
 export async function POST(request: NextRequest) {
   try {
@@ -276,6 +225,18 @@ export async function POST(request: NextRequest) {
 
     // result è già {id, codice} dal RPC
     const r = result as { id: string; codice: string };
+
+    // Registra il tempo di preventivazione (cronometro builder) sul documento
+    // appena creato. Best-effort: se fallisce non compromette la creazione.
+    if (typeof body.tempo_preventivazione_sec === "number" && body.tempo_preventivazione_sec > 0) {
+      const { error: tempoErr } = await admin
+        .schema("preventivatore")
+        .from("documenti")
+        .update({ tempo_preventivazione_sec: body.tempo_preventivazione_sec })
+        .eq("id", r.id);
+      if (tempoErr) logWarn("preventivatore.documenti", "tempo_preventivazione non salvato", { reqId: r.id, dettaglio: tempoErr.message });
+    }
+
     return NextResponse.json({ id: r.id, codice: r.codice });
   } catch (error) {
     logError("preventivatore.documenti", "POST documenti fallita", error);

@@ -31,6 +31,7 @@ export interface PreventivoDocumento {
   consegna_settimane_min: number | null;
   consegna_settimane_max: number | null;
   margine_trattativa_pct: number | string | null;
+  tempo_preventivazione_sec: number | null;
   created_at: string;
   updated_at: string;
 }

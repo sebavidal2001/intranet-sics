@@ -46,7 +46,10 @@ export function InlineCodiceSearch({
       <input
         value={value}
         onChange={(e) => { onText(e.target.value); cerca(e.target.value) }}
-        onFocus={() => { if (risultati.length > 0) setAperto(true) }}
+        // Anche modificando un codice già presente: al focus rilancia la ricerca
+        // sul testo corrente, così compaiono subito i codici che lo contengono
+        // (stesso comportamento dell'inserimento ex novo).
+        onFocus={() => { if (value.trim().length >= 1) cerca(value); else if (risultati.length > 0) setAperto(true) }}
         placeholder="Codice…"
         className="w-full font-mono text-xs text-[#00a1be] bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
         title="Codice articolo: digita per cercarlo in anagrafica"

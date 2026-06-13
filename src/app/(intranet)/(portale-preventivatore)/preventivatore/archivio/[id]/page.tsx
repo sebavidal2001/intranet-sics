@@ -47,7 +47,7 @@ export default async function DettaglioPreventivoPage({
       .schema("preventivatore")
       .from("documenti")
       .select(
-        "id, codice, cliente, cliente_master_id, tipo, categoria, tipo_prodotto, anno, stato, motivo_rifiuto_id, stato_note, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, importo_finale_raw, importo_source, codici_articolo, tags, note, versione_ingest, consegna_settimane_min, consegna_settimane_max, margine_trattativa_pct, created_at, updated_at"
+        "id, codice, cliente, cliente_master_id, tipo, categoria, tipo_prodotto, anno, stato, motivo_rifiuto_id, stato_note, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, importo_finale_raw, importo_source, codici_articolo, tags, note, versione_ingest, consegna_settimane_min, consegna_settimane_max, margine_trattativa_pct, tempo_preventivazione_sec, created_at, updated_at"
       )
       .eq("id", id)
       .maybeSingle(),

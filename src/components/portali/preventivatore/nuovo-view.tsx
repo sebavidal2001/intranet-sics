@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AutocompleteCliente } from "@/components/portali/preventivatore/autocomplete-cliente"
 import { BloccoCard } from "@/components/portali/preventivatore/blocco-card"
+import { PreventivoTimer, clearPreventivoTimer, getPreventivoTimerSeconds } from "@/components/portali/preventivatore/preventivo-timer"
 import type { TemplateListItem } from "@/components/portali/preventivatore/blocco-template-panel"
 import {
   fmtEur,
@@ -66,9 +67,19 @@ export function NuovoView() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [baseLoading, setBaseLoading] = useState(false)
   const [baseAvviso, setBaseAvviso] = useState<string | null>(null)
+  const [editCodice, setEditCodice] = useState<string | null>(null)
+  const [editTempoIniziale, setEditTempoIniziale] = useState(0)
+  const [refreshingPrezzi, setRefreshingPrezzi] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const baseId = searchParams.get("base")
+  // Modifica in place di un preventivo generato già salvato (?edit=<id>).
+  const editId = searchParams.get("edit")
+  // Chiave di persistenza del cronometro: distinta per modifica (per id), nuovo
+  // vuoto e duplicazione da base, così non si mescolano i tempi.
+  const timerKey = editId
+    ? `prev-timer:edit:${editId}`
+    : `prev-timer:${baseId ?? "nuovo"}`
 
   async function handleSalvaPreventivo() {
     if (savingPreventivo) return
@@ -90,6 +101,9 @@ export function NuovoView() {
         consegna_settimane_min: settimaneMin ? Number(settimaneMin) : undefined,
         consegna_settimane_max: settimaneMax ? Number(settimaneMax) : undefined,
         margine_trattativa_pct: margineGlobale || 0,
+        // Tempo cronometrato per redigere il preventivo (produttività). Inviato
+        // solo se > 0 (cronometro effettivamente usato).
+        tempo_preventivazione_sec: getPreventivoTimerSeconds(timerKey) || undefined,
         blocchi: blocchi.map((b) => ({
           nome: b.nome || undefined,
           tipo: b.tipo,
@@ -113,15 +127,20 @@ export function NuovoView() {
           })),
         })),
       }
-      const res = await fetch("/api/portali/preventivatore/documenti", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
+      const res = await fetch(
+        editId ? `/api/portali/preventivatore/documenti/${editId}` : "/api/portali/preventivatore/documenti",
+        {
+          method: editId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      )
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error((data as { error?: string }).error ?? "Errore salvataggio")
       }
+      // Preventivo salvato: azzera il cronometro di questa bozza.
+      clearPreventivoTimer(timerKey)
       // Redirect alla scheda del nuovo preventivo creato
       const id = (data as { id?: string }).id
       if (id) {
@@ -226,6 +245,149 @@ export function NuovoView() {
     return () => { annullato = true }
   }, [baseId])
 
+  // Modifica in place: ricarica un preventivo generato (?edit=<id>) a PREZZI
+  // CONGELATI (i costi salvati, non quelli correnti). Si aggiornano on-demand col
+  // pulsante "Aggiorna prezzi".
+  useEffect(() => {
+    if (!editId) return
+    let annullato = false
+    setBaseLoading(true)
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/portali/preventivatore/documenti/${editId}`)
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? "Errore caricamento preventivo")
+        if (annullato) return
+
+        const d = data as {
+          documento?: { codice?: string | null; tempo_preventivazione_sec?: number | null }
+          titolo?: string
+          cliente?: Cliente | null
+          note?: string
+          margine_trattativa_pct?: number | null
+          consegna_settimane_min?: number | null
+          consegna_settimane_max?: number | null
+          blocchi?: Array<{
+            nome?: string; tipo?: string; note?: string
+            quantita_pezzi?: number; margine_trattativa_pct?: number | null
+            articoli: Array<{ codice: string; descrizione: string; qty: number; ult_costo: number; coeff_ricarico: number; data_ult_costo?: string | null }>
+            servizi: Array<{ nome: string; categoria: string; ore: number; tariffa_ora: number; coeff_ricarico: number; scala_con_quantita?: boolean }>
+          }>
+        }
+
+        setEditCodice(d.documento?.codice ?? null)
+        setEditTempoIniziale(d.documento?.tempo_preventivazione_sec ?? 0)
+        if (d.titolo) setTitolo(d.titolo)
+        if (d.cliente) setCliente(d.cliente)
+        if (d.margine_trattativa_pct != null) setMargineGlobale(d.margine_trattativa_pct)
+        if (d.consegna_settimane_min != null) setSettimaneMin(String(d.consegna_settimane_min))
+        if (d.consegna_settimane_max != null) setSettimaneMax(String(d.consegna_settimane_max))
+
+        const nuoviBlocchi: Blocco[] = (d.blocchi ?? []).map((b, i) => ({
+          _key: genKey(),
+          tipo: b.tipo || "Altro",
+          nome: b.nome || "",
+          note: b.note || "",
+          espanso: i === 0,
+          quantita_pezzi: b.quantita_pezzi ?? 1,
+          margine_trattativa_pct: b.margine_trattativa_pct ?? null,
+          articoli: b.articoli.map((a) => ({
+            _key: genKey(),
+            prodotto_id: "",
+            codice: a.codice,
+            descrizione: a.descrizione,
+            ult_costo: a.ult_costo,
+            qty: a.qty,
+            coeff_ricarico: a.coeff_ricarico,
+            manuale: !a.codice,
+            data_ult_costo: a.data_ult_costo ?? null,
+          })),
+          servizi: b.servizi.map((s) => ({
+            _key: genKey(),
+            servizio_id: "",
+            nome: s.nome,
+            categoria: s.categoria,
+            tariffa_ora: s.tariffa_ora,
+            ore: s.ore,
+            coeff_ricarico: s.coeff_ricarico,
+            scala_con_quantita: s.scala_con_quantita ?? true,
+          })),
+        }))
+        setBlocchi(nuoviBlocchi.length > 0 ? nuoviBlocchi : [creaBlocco()])
+      } catch (err) {
+        if (!annullato) {
+          setSaveError(err instanceof Error ? err.message : "Errore caricamento preventivo")
+          setBlocchi([creaBlocco()])
+        }
+      } finally {
+        if (!annullato) setBaseLoading(false)
+      }
+    })()
+    return () => { annullato = true }
+  }, [editId])
+
+  // Aggiorna i prezzi (costi articoli + tariffe lavorazioni) ai valori correnti,
+  // preservando la struttura del preventivo. Usato in modifica (prezzi congelati).
+  async function aggiornaPrezzi() {
+    if (refreshingPrezzi) return
+    setRefreshingPrezzi(true)
+    setBaseAvviso(null)
+    setSaveError(null)
+    try {
+      const codici = Array.from(
+        new Set(
+          blocchi.flatMap((b) => b.articoli.filter((a) => a.codice && !a.manuale).map((a) => a.codice))
+        )
+      )
+      const costi = new Map<string, { costo: number; data: string | null }>()
+      if (codici.length > 0) {
+        const res = await fetch(`/api/portali/preventivatore/prodotti/costo?codici=${encodeURIComponent(codici.join(","))}`)
+        if (res.ok) {
+          const data = await res.json()
+          for (const it of ((data.items ?? []) as Array<{ codice: string; ult_costo: number | null; data_ult_costo: string | null }>)) {
+            if (it.ult_costo != null) costi.set(it.codice, { costo: Number(it.ult_costo), data: it.data_ult_costo })
+          }
+        }
+      }
+      // Tariffe correnti dal catalogo già caricato (match per nome).
+      const tariffe = new Map<string, number>()
+      for (const s of serviziDB) tariffe.set(s.nome.trim().toLowerCase(), Number(s.tariffa_ora))
+
+      let nArt = 0
+      let nSrv = 0
+      setBlocchi((prev) =>
+        prev.map((b) => ({
+          ...b,
+          articoli: b.articoli.map((a) => {
+            const cur = a.codice ? costi.get(a.codice) : undefined
+            if (cur && Math.abs(cur.costo - a.ult_costo) > 0.001) {
+              nArt++
+              return { ...a, ult_costo: cur.costo, data_ult_costo: cur.data ?? a.data_ult_costo }
+            }
+            return a
+          }),
+          servizi: b.servizi.map((s) => {
+            const t = tariffe.get(s.nome.trim().toLowerCase())
+            if (t != null && Math.abs(t - s.tariffa_ora) > 0.001) {
+              nSrv++
+              return { ...s, tariffa_ora: t }
+            }
+            return s
+          }),
+        }))
+      )
+      setBaseAvviso(
+        nArt === 0 && nSrv === 0
+          ? "Prezzi già allineati ai costi correnti: nessuna variazione."
+          : `Prezzi aggiornati ai costi correnti: ${nArt} articol${nArt === 1 ? "o" : "i"}, ${nSrv} lavorazion${nSrv === 1 ? "e" : "i"}.`
+      )
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Errore aggiornamento prezzi")
+    } finally {
+      setRefreshingPrezzi(false)
+    }
+  }
+
   // Carica il catalogo servizi (per il picker delle lavorazioni nei blocchi)
   useEffect(() => {
     async function caricaServizi() {
@@ -312,6 +474,16 @@ export function NuovoView() {
           .reduce((sum, a) => sum + a.coeff_ricarico, 0) / nArticoliTotali
       : 0
 
+  // Coeff. di ricarico medio dei SERVIZI (prezzo = costo ÷ coeff). Distinto da
+  // quello dei materiali: la card Servizi deve mostrare il proprio, non quello articoli.
+  const nServiziTotali = blocchi.reduce((n, b) => n + b.servizi.length, 0)
+  const coeffRicaricoMedioServizi =
+    nServiziTotali > 0
+      ? blocchi
+          .flatMap((b) => b.servizi)
+          .reduce((sum, s) => sum + s.coeff_ricarico, 0) / nServiziTotali
+      : 0
+
   // Costi "vergini" (senza ricarico) complessivi → margine progetto sul costo.
   const costoVergineMateriale = blocchi.reduce(
     (sum, b) => sum + b.articoli.reduce((s, a) => s + a.ult_costo * a.qty * qPezzi(b), 0),
@@ -344,13 +516,37 @@ export function NuovoView() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-tenorite text-text">
-          {baseId ? "Nuovo Preventivo (da base)" : "Nuovo Preventivo"}
-        </h1>
-        <p className="text-sm text-text-muted mt-1">
-          Costruisci il preventivo per blocchi, aggiungi articoli e lavorazioni.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-tenorite text-text">
+            {editId
+              ? `Modifica preventivo${editCodice ? ` ${editCodice}` : ""}`
+              : baseId
+                ? "Nuovo Preventivo (da base)"
+                : "Nuovo Preventivo"}
+          </h1>
+          <p className="text-sm text-text-muted mt-1">
+            {editId
+              ? "Riprendi e modifica il preventivo. I prezzi sono congelati: usa “Aggiorna prezzi” per allinearli ai costi correnti."
+              : "Costruisci il preventivo per blocchi, aggiungi articoli e lavorazioni."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {editId && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={aggiornaPrezzi}
+              disabled={refreshingPrezzi}
+              className="gap-1.5"
+              title="Allinea costi articoli e tariffe lavorazioni ai valori correnti dell'anagrafica"
+            >
+              {refreshingPrezzi ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}
+              Aggiorna prezzi
+            </Button>
+          )}
+          <PreventivoTimer storageKey={timerKey} initialSeconds={editTempoIniziale} />
+        </div>
       </div>
 
       {baseLoading && (
@@ -578,7 +774,14 @@ export function NuovoView() {
                           <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Materiali</span>
                         </div>
                         {nArticoliTotali > 0 && (
-                          <span className="text-[10px] text-slate-400 tabular-nums shrink-0">{nArticoliTotali} pz</span>
+                          <span className="flex items-center gap-1.5 shrink-0 text-[10px] text-slate-400 tabular-nums">
+                            {coeffRicaricoMedio > 0 && (
+                              <span title="Coefficiente di ricarico medio dei materiali (prezzo = costo ÷ coeff)">
+                                x{coeffRicaricoMedio.toFixed(2)}
+                              </span>
+                            )}
+                            <span>{nArticoliTotali} pz</span>
+                          </span>
                         )}
                       </div>
                       <div className="mt-1 text-lg font-bold text-slate-800 tabular-nums">{fmtEur(totaleArticoli)}</div>
@@ -596,8 +799,13 @@ export function NuovoView() {
                           </div>
                           <span className="text-[10px] uppercase tracking-wider text-amber-700 font-semibold">Servizi</span>
                         </div>
-                        {nArticoliTotali > 0 && coeffRicaricoMedio > 0 && (
-                          <span className="text-[10px] text-amber-600/70 tabular-nums shrink-0">x{coeffRicaricoMedio.toFixed(2)}</span>
+                        {nServiziTotali > 0 && coeffRicaricoMedioServizi > 0 && (
+                          <span
+                            className="text-[10px] text-amber-600/70 tabular-nums shrink-0"
+                            title="Coefficiente di ricarico medio dei servizi (prezzo = costo ÷ coeff)"
+                          >
+                            x{coeffRicaricoMedioServizi.toFixed(2)}
+                          </span>
                         )}
                       </div>
                       <div className="mt-1 text-lg font-bold text-amber-900 tabular-nums">{fmtEur(totaleServizi)}</div>
@@ -680,7 +888,7 @@ export function NuovoView() {
                       ) : (
                         <>
                           <Sparkles className="w-4 h-4" />
-                          Salva Preventivo
+                          {editId ? "Salva modifiche" : "Salva Preventivo"}
                         </>
                       )}
                     </Button>
