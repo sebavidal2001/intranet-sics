@@ -62,6 +62,8 @@ export default async function DettaglioPreventivoPage({
       .from("righe_distinta")
       .select("id, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_pct, ricarico_coefficiente, tipo_riga, totale_riga, codice_blocco")
       .eq("documento_id", id)
+      // `ordine` (migration 065) preserva l'ordine builder; fallback legacy.
+      .order("ordine", { ascending: true, nullsFirst: false })
       .order("sheet_name", { ascending: true, nullsFirst: false })
       .order("id", { ascending: true }),
     sb
@@ -69,6 +71,7 @@ export default async function DettaglioPreventivoPage({
       .from("blocchi")
       .select("id, codice_blocco, sheet_name, totale_ceil_2, note, incluso_offerta, created_at, quantita_pezzi, imballaggio_pct, tempi_accessori_pct, spese_generali_pct, margine_trattativa_pct, costo_complessivo")
       .eq("documento_id", id)
+      .order("ordine", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true }),
   ]);
 

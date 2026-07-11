@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { requireSuperadmin } from "@/lib/auth/require-admin";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -16,6 +17,7 @@ const BlockSchema = z.object({
 export type ActionResult = { success: true } | { success: false; error: string };
 
 export async function creaBlock(formData: FormData): Promise<ActionResult> {
+  await requireSuperadmin();
   const raw = {
     tipo: formData.get("tipo"),
     titolo: formData.get("titolo"),
@@ -48,6 +50,7 @@ export async function creaBlock(formData: FormData): Promise<ActionResult> {
 }
 
 export async function toggleAttivoBlock(id: string, isAttivo: boolean): Promise<void> {
+  await requireSuperadmin();
   const supabase = await createClient();
   const { error } = await supabase
     .from("homepage_blocks")
@@ -59,6 +62,7 @@ export async function toggleAttivoBlock(id: string, isAttivo: boolean): Promise<
 }
 
 export async function eliminaBlock(id: string): Promise<void> {
+  await requireSuperadmin();
   const supabase = await createClient();
   const { error } = await supabase
     .from("homepage_blocks")
@@ -73,6 +77,7 @@ export async function aggiornaBlock(
   id: string,
   formData: FormData
 ): Promise<ActionResult> {
+  await requireSuperadmin();
   const raw = {
     tipo: formData.get("tipo"),
     titolo: formData.get("titolo"),

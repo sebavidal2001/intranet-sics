@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
 import { logError } from "@/lib/logger";
+import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,9 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
     if (!hasMinLivello(livello, "admin")) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+
+    const rl = checkRateLimit(`ai-tpl:${user.id}`, { limit: 20, windowMs: 60_000 });
+    if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
     const body = await request.json().catch(() => ({}));
     const richiesta = String(body?.richiesta ?? "").trim();

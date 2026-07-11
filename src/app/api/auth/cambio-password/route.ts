@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { usernameToEmailCandidates } from "@/lib/auth/username";
 import { logError, logWarn } from "@/lib/logger";
+import { checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,14 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit anti brute-force: la route verifica la vecchia password
+    // autenticando, quindi è un oracolo di verifica. Limitiamo per IP.
+    const rl = checkRateLimit(`cambio-pwd:${clientIp(request)}`, {
+      limit: 5,
+      windowMs: 15 * 60_000,
+    });
+    if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
+
     const body = await request.json();
     const identificativo = String(body?.identificativo ?? "").trim();
     const vecchiaPassword = String(body?.vecchiaPassword ?? "");

@@ -52,6 +52,56 @@ export async function getAgenteCodice(userId: string): Promise<string | null> {
   return (data?.preventivatore_agente_codice as string | null) ?? null;
 }
 
+export type PreventivatoreLivello =
+  "viewer" | "exporter" | "admin" | "superadmin" | null;
+
+/**
+ * Contesto permessi Preventivatore di un utente, caricato in UNA sola query
+ * (RPC `get_preventivatore_context`, migration 064) invece dei 3 round-trip
+ * seriali storici (get_portale_livello + ruoli funzionali + agente_codice).
+ */
+export interface PreventivatoreContext {
+  livello: PreventivatoreLivello;
+  ruoli: string[];
+  agenteCodice: string | null;
+}
+
+export async function getPreventivatoreContext(
+  userId: string
+): Promise<PreventivatoreContext> {
+  const admin = createAdminClient();
+  const { data } = await admin.rpc("get_preventivatore_context", {
+    p_user_id: userId,
+  });
+  const ctx = (data ?? {}) as {
+    livello?: string | null;
+    ruoli?: string[] | null;
+    agente_codice?: string | null;
+  };
+  return {
+    livello: (ctx.livello as PreventivatoreLivello) ?? null,
+    ruoli: ctx.ruoli ?? [],
+    agenteCodice: ctx.agente_codice ?? null,
+  };
+}
+
+/**
+ * Versione sincrona di {@link getFiltroCommerciale} che lavora su un contesto
+ * già caricato (nessuna query). Preferirla nei route handler che hanno già
+ * chiamato {@link getPreventivatoreContext}.
+ */
+export function filtroCommercialeFromContext(
+  ctx: PreventivatoreContext
+): string | null {
+  if (ctx.livello === "admin" || ctx.livello === "superadmin") return null;
+  const isCommerciale = ctx.ruoli.includes(PREVENTIVATORE_RUOLI.commerciale);
+  const haAccessoTotale =
+    ctx.ruoli.includes(PREVENTIVATORE_RUOLI.preventivatore) ||
+    ctx.ruoli.includes(PREVENTIVATORE_RUOLI.back_office);
+  if (!isCommerciale || haAccessoTotale) return null;
+  return ctx.agenteCodice ?? null;
+}
+
 /**
  * Decide se applicare il filtro "vedi solo i miei clienti" all'utente:
  * - L'utente DEVE avere il ruolo funzionale 'commerciale'
@@ -60,10 +110,14 @@ export async function getAgenteCodice(userId: string): Promise<string | null> {
  *
  * Returns null se NON filtrare (l'utente vede tutto), altrimenti il codice agente
  * del commerciale (clienti suoi + AIRFLUID).
+ *
+ * @deprecated Preferire {@link getPreventivatoreContext} +
+ * {@link filtroCommercialeFromContext} (1 sola query invece di 2-3). Mantenuta
+ * per i route handler non ancora migrati.
  */
 export async function getFiltroCommerciale(
   userId: string,
-  livello: "viewer" | "exporter" | "admin" | "superadmin" | null
+  livello: PreventivatoreLivello
 ): Promise<string | null> {
   // Admin e superadmin vedono tutto, sempre.
   if (livello === "admin" || livello === "superadmin") return null;

@@ -85,14 +85,18 @@ export async function GET(
       sb
         .schema("preventivatore")
         .from("blocchi")
+        // `ordine` (migration 065) preserva l'ordine dei blocchi del builder.
+        // Fallback su created_at per eventuali righe legacy con ordine NULL.
         .select("codice_blocco, sheet_name, note, created_at, quantita_pezzi, margine_trattativa_pct")
         .eq("documento_id", id)
+        .order("ordine", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: true }),
       sb
         .schema("preventivatore")
         .from("righe_distinta")
         .select("codice_blocco, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_coefficiente, ricarico_pct, tipo_riga, scala_con_quantita")
         .eq("documento_id", id)
+        .order("ordine", { ascending: true, nullsFirst: false })
         .order("id", { ascending: true }),
     ]);
     if (blocchiRes.error) throw blocchiRes.error;

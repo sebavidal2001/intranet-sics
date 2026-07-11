@@ -93,7 +93,10 @@ export async function POST(
       .from("utenti")
       .update({ preventivatore_agente_codice: agenteCodice })
       .eq("id", utenteId);
-    if (uErr) return NextResponse.json({ error: "Errore aggiornamento agente: " + uErr.message }, { status: 500 });
+    if (uErr) {
+      logError("superadmin.preventivatore.permessi-utente", "update agente_codice", uErr);
+      return NextResponse.json({ error: "Errore aggiornamento agente" }, { status: 500 });
+    }
 
     // 2) lookup id dei ruoli richiesti
     let ruoliIds: string[] = [];
@@ -103,7 +106,10 @@ export async function POST(
         .from("ruoli_funzionali")
         .select("id, slug")
         .in("slug", ruoliSlug);
-      if (rfErr) return NextResponse.json({ error: "Errore lookup ruoli: " + rfErr.message }, { status: 500 });
+      if (rfErr) {
+        logError("superadmin.preventivatore.permessi-utente", "lookup ruoli", rfErr);
+        return NextResponse.json({ error: "Errore lookup ruoli" }, { status: 500 });
+      }
       ruoliIds = (ruoli ?? []).map((r) => r.id as string);
     }
 
@@ -113,7 +119,10 @@ export async function POST(
       .from("utente_ruoli_funzionali")
       .delete()
       .eq("utente_id", utenteId);
-    if (delErr) return NextResponse.json({ error: "Errore reset ruoli: " + delErr.message }, { status: 500 });
+    if (delErr) {
+      logError("superadmin.preventivatore.permessi-utente", "reset ruoli", delErr);
+      return NextResponse.json({ error: "Errore reset ruoli" }, { status: 500 });
+    }
 
     if (ruoliIds.length > 0) {
       const payload = ruoliIds.map((rid) => ({
@@ -126,7 +135,10 @@ export async function POST(
         .schema("preventivatore")
         .from("utente_ruoli_funzionali")
         .insert(payload);
-      if (insErr) return NextResponse.json({ error: "Errore insert ruoli: " + insErr.message }, { status: 500 });
+      if (insErr) {
+        logError("superadmin.preventivatore.permessi-utente", "insert ruoli", insErr);
+        return NextResponse.json({ error: "Errore insert ruoli" }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ success: true });

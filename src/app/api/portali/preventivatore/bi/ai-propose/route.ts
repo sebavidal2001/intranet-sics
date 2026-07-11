@@ -4,6 +4,7 @@ import { getPortaleAccesso } from "@/lib/auth/portale";
 import { DEFAULT_BI_WIDGETS } from "@/lib/portali/preventivatore/bi/defaults";
 import type { BiWidgetConfig } from "@/lib/portali/preventivatore/bi/types";
 import { logError } from "@/lib/logger";
+import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,9 @@ export async function POST(request: NextRequest) {
 
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
     if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+
+    const rl = checkRateLimit(`ai-bi:${user.id}`, { limit: 20, windowMs: 60_000 });
+    if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
     const body = await request.json() as { prompt?: string };
     const prompt = body.prompt?.trim();

@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { PORTALE_SLUGS } from "@/lib/config/portali";
 import { logError, logWarn } from "@/lib/logger";
+import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +116,9 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
 
     const livello = await getPortaleAccesso(supabase, user.id, PORTALE_SLUGS.PREVENTIVATORE);
     if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+
+    const rl = checkRateLimit(`ai-riassumi:${user.id}`, { limit: 20, windowMs: 60_000 });
+    if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
     // Fetch dei chunks Word del documento (preventivo commerciale + note)
     const sb = createAdminClient();

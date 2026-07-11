@@ -20,6 +20,27 @@ const nextConfig = {
     ],
   },
   async headers() {
+    // Content-Security-Policy in modalità Report-Only: non blocca nulla, ma
+    // logga in console le violazioni. Serve a raccogliere le sorgenti reali
+    // (script inline di Next, Supabase, immagini storage) prima di passare a
+    // enforcing. Dopo qualche giorno senza violazioni legittime, rinominare
+    // l'header in "Content-Security-Policy" per attivare il blocco.
+    const supabaseHost = "*.supabase.co";
+    const csp = [
+      "default-src 'self'",
+      // Next.js in produzione usa script con nonce/hash; 'unsafe-inline' resta
+      // come fallback finché non si adotta lo strict-dynamic con nonce.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      `img-src 'self' data: blob: https://${supabaseHost}`,
+      "font-src 'self' data:",
+      `connect-src 'self' https://${supabaseHost} wss://${supabaseHost}`,
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; ");
+
     return [
       {
         source: "/(.*)",
@@ -28,6 +49,7 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Content-Security-Policy-Report-Only", value: csp },
         ],
       },
     ];

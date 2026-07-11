@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { logError } from "@/lib/logger";
+import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,9 @@ export async function POST(request: NextRequest) {
     if (livello === null) {
       return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
+
+    const rl = checkRateLimit(`ai-descr:${user.id}`, { limit: 30, windowMs: 60_000 });
+    if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
     const body = await request.json();
     const { blocchi, modalita, oggetto, cliente } = body as {

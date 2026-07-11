@@ -41,6 +41,14 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Cambio password: deve funzionare anche da NON autenticato (pulsante
+  // "Cambia password" nella pagina di login). La route verifica da sé la
+  // vecchia password ed è protetta da rate limiting. Senza questa eccezione il
+  // blocco 401 più sotto la renderebbe irraggiungibile.
+  if (pathname === "/api/auth/cambio-password") {
+    return supabaseResponse;
+  }
+
   if (pathname.startsWith("/auth/login")) {
     if (user) return NextResponse.redirect(new URL("/", request.url));
     return supabaseResponse;

@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
-import { getFiltroCommerciale } from "@/lib/portali/preventivatore/ruoli";
+import { requirePreventivatore, scopeAgente } from "@/lib/portali/preventivatore/api-guard";
 import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -70,19 +68,16 @@ function pctDelta(curr: number, prev: number): number | null {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const { user, ctx } = guard;
 
     const admin = createAdminClient();
     const sb = admin.schema("preventivatore");
 
     // Filtro commerciale ristretto: tutte le RPC dashboard accettano p_agente_codice
     // (migration 053). NULL = aggregati globali (admin/back_office/preventivatore).
-    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    const agenteCommerciale = scopeAgente(ctx);
 
     const [kpiRes, topClientiRes, serieRes, serieCategorieRes, topArticoliRes, attivitaRes, usageRes] = await Promise.all([
       sb.rpc("dashboard_kpi", { window_months: 12, p_agente_codice: agenteCommerciale }),

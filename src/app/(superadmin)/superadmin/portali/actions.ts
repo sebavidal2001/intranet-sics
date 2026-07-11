@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { requireSuperadmin } from "@/lib/auth/require-admin";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -34,6 +35,7 @@ const PortaleSchema = z.object({
 // ─── creaPortale ────────────────────────────────────────────────────────────
 
 export async function creaPortale(formData: FormData): Promise<ActionResult> {
+  await requireSuperadmin();
   const raw = {
     nome: formData.get("nome"),
     slug: formData.get("slug"),
@@ -70,6 +72,7 @@ export async function creaPortale(formData: FormData): Promise<ActionResult> {
 // ─── modificaPortale ─────────────────────────────────────────────────────────
 
 export async function modificaPortale(formData: FormData): Promise<ActionResult> {
+  await requireSuperadmin();
   const id = formData.get("id");
   if (!id || typeof id !== "string") {
     return { success: false, error: "ID portale mancante" };
@@ -112,6 +115,7 @@ export async function modificaPortale(formData: FormData): Promise<ActionResult>
 }
 
 export async function toggleAttivoPortale(id: string, isAttivo: boolean): Promise<void> {
+  await requireSuperadmin();
   const supabase = await createClient();
   const { error } = await supabase
     .from("portali")
@@ -131,6 +135,7 @@ export type PermessiRuoloUpdate = {
 };
 
 export async function upsertPermessoRuolo(data: PermessiRuoloUpdate): Promise<void> {
+  await requireSuperadmin();
   const supabase = await createClient();
   const { error } = await supabase.from("permessi_portale").upsert(
     {
@@ -156,6 +161,7 @@ export type PermessiUtenteUpdate = {
 };
 
 export async function upsertPermessoUtente(data: PermessiUtenteUpdate): Promise<void> {
+  await requireSuperadmin();
   const supabase = await createClient();
 
   // Costruisce la riga: include is_portal_admin solo se esplicitamente passato
@@ -184,6 +190,7 @@ export async function upsertPermessoUtente(data: PermessiUtenteUpdate): Promise<
 }
 
 export async function eliminaPermessoUtente(portaleId: string, utenteId: string): Promise<void> {
+  await requireSuperadmin();
   const supabase = await createClient();
   const { error } = await supabase
     .from("permessi_utente")

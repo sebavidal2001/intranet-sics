@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logError, logWarn } from "@/lib/logger";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { getPreventivatoreScope } from "@/lib/portali/preventivatore/ruoli";
+import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
 import { handleGemini } from "@/lib/portali/preventivatore/chat/gemini-handler";
 import { handleOpenRouter } from "@/lib/portali/preventivatore/chat/openrouter-handler";
@@ -138,6 +139,10 @@ export async function POST(request: NextRequest) {
 
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
     if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+
+    // Rate limit per-utente: le chiamate AI hanno un costo per token.
+    const rl = checkRateLimit(`ai-chat:${user.id}`, { limit: 30, windowMs: 60_000 });
+    if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
     const body = (await request.json()) as ChatRequestBody;
     const { messages, contesto = "archivio", modalita = "preciso", sessione_id, builder_state } = body;

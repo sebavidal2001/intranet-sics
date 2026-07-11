@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { PostBodySchema } from "@/lib/portali/preventivatore/documenti-schema";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
-import {
-  getFiltroCommerciale,
-  getIdClientiVisibili,
-} from "@/lib/portali/preventivatore/ruoli";
+import { requirePreventivatore, scopeAgente } from "@/lib/portali/preventivatore/api-guard";
+import { getIdClientiVisibili } from "@/lib/portali/preventivatore/ruoli";
 import { logError, logWarn } from "@/lib/logger";
+
+const ID_INESISTENTE = "00000000-0000-0000-0000-000000000000";
 
 export const dynamic = "force-dynamic";
 
@@ -23,49 +21,47 @@ const SORT_COLUMNS = new Set([
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const { user, ctx } = guard;
 
     const { searchParams } = new URL(request.url);
     const statsMode = searchParams.get("stats") === "true";
     const adminClient = createAdminClient();
 
+    // Scope commerciale: le viste riflettono solo i documenti visibili all'utente.
+    const agente = scopeAgente(ctx);
+    const idsClienti = agente ? await getIdClientiVisibili(agente) : null;
+    // Applica il filtro cliente_master_id se l'utente è un commerciale ristretto.
+    const scoped = <T extends { in(col: string, vals: string[]): T }>(qb: T): T =>
+      idsClienti === null
+        ? qb
+        : qb.in("cliente_master_id", idsClienti.length > 0 ? idsClienti : [ID_INESISTENTE]);
+
     if (statsMode) {
-      // Scope commerciale: le statistiche devono riflettere solo i documenti visibili.
-      const agenteStats = await getFiltroCommerciale(user.id, livello);
-      let docsQuery = adminClient
-        .schema("preventivatore")
-        .from("documenti")
-        .select("stato");
-      if (agenteStats) {
-        const idsClienti = await getIdClientiVisibili(agenteStats);
-        docsQuery = docsQuery.in(
-          "cliente_master_id",
-          idsClienti.length > 0 ? idsClienti : ["00000000-0000-0000-0000-000000000000"]
-        );
-      }
-      const { data: docs, error: docsError } = await docsQuery;
+      // Conteggi via `count` (head:true) invece di scaricare tutte le righe: O(1)
+      // in banda e memoria man mano che lo storico cresce.
+      const docsBase = () =>
+        adminClient.schema("preventivatore").from("documenti").select("*", { count: "exact", head: true });
+      const [totRes, pendRes, ordRes, rifRes, chunksRes] = await Promise.all([
+        scoped(docsBase()),
+        scoped(docsBase()).eq("stato", "pending"),
+        scoped(docsBase()).eq("stato", "ordinato"),
+        scoped(docsBase()).eq("stato", "rifiutato"),
+        adminClient.schema("preventivatore").from("chunks").select("*", { count: "exact", head: true }),
+      ]);
 
-      const { count: chunksCount } = await adminClient
-        .schema("preventivatore")
-        .from("chunks")
-        .select("*", { count: "exact", head: true });
-
-      if (docsError) {
+      if (totRes.error) {
+        logError("preventivatore.documenti", "stats fallita", totRes.error);
         return NextResponse.json({ error: "Errore recupero statistiche" }, { status: 500 });
       }
 
-      const allDocs = docs ?? [];
       return NextResponse.json({
-        totale: allDocs.length,
-        pending: allDocs.filter((d) => d.stato === "pending").length,
-        ordinato: allDocs.filter((d) => d.stato === "ordinato").length,
-        rifiutato: allDocs.filter((d) => d.stato === "rifiutato").length,
-        total_chunks: chunksCount ?? 0,
+        totale: totRes.count ?? 0,
+        pending: pendRes.count ?? 0,
+        ordinato: ordRes.count ?? 0,
+        rifiutato: rifRes.count ?? 0,
+        total_chunks: chunksRes.count ?? 0,
       });
     }
 
@@ -98,18 +94,9 @@ export async function GET(request: NextRequest) {
       .order(sort, { ascending: dir === "asc", nullsFirst: false })
       .range(offset, offset + limit - 1);
 
-    // Filtro "io commerciale vedo solo i miei clienti" (vedi lib/portali/preventivatore/ruoli.ts).
+    // Filtro "io commerciale vedo solo i miei clienti" (vedi api-guard/ruoli).
     // Trasparente per admin/back_office/preventivatore o per utenti senza ruolo commerciale.
-    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
-    if (agenteCommerciale) {
-      const idsClienti = await getIdClientiVisibili(agenteCommerciale);
-      if (idsClienti.length === 0) {
-        // Commerciale senza clienti: restituisce 0 record
-        query = query.in("cliente_master_id", ["00000000-0000-0000-0000-000000000000"]);
-      } else {
-        query = query.in("cliente_master_id", idsClienti);
-      }
-    }
+    query = scoped(query);
 
     if (stato && stato !== "tutti") query = query.eq("stato", stato);
     if (cliente) query = query.eq("cliente", cliente);
@@ -177,12 +164,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const { user, ctx } = guard;
 
     // ── 1) Validazione Zod del payload (limiti severi server-side) ──────
     const rawBody = await request.json().catch(() => null);
@@ -196,7 +180,7 @@ export async function POST(request: NextRequest) {
     const body = parsed.data;
 
     // ── 2) Filtro portfolio commerciale: il cliente_master_id deve essere visibile ──
-    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    const agenteCommerciale = scopeAgente(ctx);
     if (agenteCommerciale && body.cliente_master_id) {
       const idsVisibili = await getIdClientiVisibili(agenteCommerciale);
       if (!idsVisibili.includes(body.cliente_master_id)) {
@@ -217,10 +201,7 @@ export async function POST(request: NextRequest) {
 
     if (rpcErr || !result) {
       logError("preventivatore.documenti", "crea_documento_dal_builder fallita", rpcErr);
-      return NextResponse.json(
-        { error: "Errore creazione documento: " + (rpcErr?.message ?? "unknown") },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Errore creazione documento" }, { status: 500 });
     }
 
     // result è già {id, codice} dal RPC
