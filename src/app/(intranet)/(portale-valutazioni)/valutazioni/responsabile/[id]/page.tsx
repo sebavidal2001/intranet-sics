@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ValutazioneForm } from "./valutazione-form";
 import { isValutazioniAdmin } from "@/lib/auth/valutazioni-admin";
@@ -130,6 +131,29 @@ export default async function ValutazioneResponsabilePage({
     } | null }).skill)
     .filter((s): s is NonNullable<typeof s> => s !== null)
     .sort((a, b) => a.ordine - b.ordine);
+
+  // ── Rete di sicurezza: apertura automatica della scheda ──────────────────────
+  // Se il responsabile apre una scheda ancora `programmata` ma già configurata
+  // (mansioni o skill presenti), la si porta a `resp_in_corso` PRIMA di renderare
+  // il form, così il flusso a valle (salvaRisposteResponsabile con completa=true,
+  // che richiede stato='resp_in_corso') funziona. Copre i casi non gestiti dal
+  // trigger su sessione_skills (es. schede con sole mansioni) e l'accesso via URL
+  // diretto. Solo il responsabile della scheda innesca la transizione, non l'admin
+  // che sta solo visionando. Idempotente: agisce solo da 'programmata'.
+  if (
+    !isAdmin &&
+    sessione.responsabile_id === user.id &&
+    sessione.stato === "programmata" &&
+    (mansioni.length > 0 || skills.length > 0)
+  ) {
+    const adminClient = createAdminClient();
+    await adminClient
+      .from("sessioni_utente")
+      .update({ stato: "resp_in_corso" })
+      .eq("id", id)
+      .eq("stato", "programmata");
+    sessione.stato = "resp_in_corso";
+  }
 
   if (mansioni.length === 0 && skills.length === 0) {
     return (
