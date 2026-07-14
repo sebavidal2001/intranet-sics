@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { salvaRisposteResponsabile } from "./actions";
-import { ChevronDown, ChevronUp, Save, CheckCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, Save, CheckCircle, AlertTriangle } from "lucide-react";
 
 interface ParametroRadar {
   id: string;
@@ -100,6 +100,22 @@ export function ValutazioneForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Prima di completare: valida che tutte le voci abbiano un punteggio, poi
+  // apre la conferma. Evita completamenti accidentali e irreversibili.
+  function requestComplete() {
+    const unansweredM = mansioni.filter((m) => valoriMansioni[m.id] === null);
+    const unansweredS = skills.filter((s) => valoriSkills[s.id] === null);
+    const total = unansweredM.length + unansweredS.length;
+    if (total > 0) {
+      setError(`Rispondi a tutte le voci prima di completare (${total} mancanti).`);
+      setConfirmOpen(false);
+      return;
+    }
+    setError(null);
+    setConfirmOpen(true);
+  }
 
   function toggleNote(id: string) {
     setNoteAperte((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -405,20 +421,53 @@ export function ValutazioneForm({
         );
       })()}
 
-      {!isReadOnly && (
+      {!isReadOnly && !confirmOpen && (
         <div className="flex justify-end gap-3 pt-2 pb-8">
           <Button variant="outline" onClick={() => handleSave(false)} disabled={isSubmitting}>
             <Save className="h-4 w-4 mr-2" />
             {isSubmitting ? "Salvataggio..." : "Salva bozza"}
           </Button>
           <Button
-            onClick={() => handleSave(true)}
+            onClick={requestComplete}
             disabled={isSubmitting}
             className="bg-primary hover:bg-primary-dark"
           >
             <CheckCircle className="h-4 w-4 mr-2" />
-            {isSubmitting ? "Completamento..." : "Completa valutazione"}
+            Completa valutazione
           </Button>
+        </div>
+      )}
+
+      {!isReadOnly && confirmOpen && (
+        <div className="pt-2 pb-8">
+          <div className="rounded-xl border border-warning/40 bg-warning/10 p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+              <div>
+                <p className="font-tenorite text-base font-semibold text-text">
+                  Confermi il completamento?
+                </p>
+                <p className="text-sm text-text-muted mt-1">
+                  Una volta completata, la valutazione di <strong>{nomeUtente}</strong> diventa
+                  definitiva: <strong>non potrai più modificarla</strong>. Se vuoi ancora
+                  rivederla, usa invece &quot;Salva bozza&quot;.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={isSubmitting}>
+                Annulla
+              </Button>
+              <Button
+                onClick={() => handleSave(true)}
+                disabled={isSubmitting}
+                className="bg-primary hover:bg-primary-dark"
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                {isSubmitting ? "Completamento..." : "Sì, completa"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
