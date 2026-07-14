@@ -36,7 +36,9 @@ async function getData(id: string): Promise<{
     supabase
       .from("utenti")
       .select("id, nome, cognome, ruolo")
-      .in("ruolo", ["admin", "responsabile"])
+      // Allineata alla pagina modifica: include responsabile_intermedio e i ruoli
+      // amministrativi attuali ("admin" era un ruolo legacy non più esistente).
+      .in("ruolo", ["superadmin", "amministratore", "admin", "responsabile", "responsabile_intermedio"])
       .order("cognome", { ascending: true }),
   ]);
 

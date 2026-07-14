@@ -71,11 +71,17 @@ export default async function ValutazioniPage() {
 
   const supabase = await createClient();
 
-  // Admin possono anche fare valutazioni proprie — non redirect al calendario
-  const isResponsabile =
+  // Admin possono anche fare valutazioni proprie — non redirect al calendario.
+  // Il ruolo serve SOLO per mostrare l'empty state ("nessun collaboratore") ai
+  // responsabili senza schede: la visibilità della sezione team è basata sui
+  // DATI (schede assegnate), vedi sotto. Include responsabile_intermedio.
+  const RUOLI_RESPONSABILE = ["responsabile", "responsabile_intermedio"];
+  const ruoliAggiuntivi =
+    ((userProfile as unknown as { ruoli_aggiuntivi?: string[] }).ruoli_aggiuntivi ?? []);
+  const isResponsabileRuolo =
     isAdmin ||
-    userProfile.ruolo === "responsabile" ||
-    ((userProfile as unknown as { ruoli_aggiuntivi?: string[] }).ruoli_aggiuntivi ?? []).includes("responsabile");
+    RUOLI_RESPONSABILE.includes(userProfile.ruolo) ||
+    ruoliAggiuntivi.some((r) => RUOLI_RESPONSABILE.includes(r));
 
   // ---- Sessioni come collaboratore ----
   const { data: sessioniCollaboratore } = await supabase
@@ -92,9 +98,12 @@ export default async function ValutazioniPage() {
     .order("anno", { ascending: false });
 
   // ---- Sessioni come responsabile ----
+  // Fetch SEMPRE (non gated dal ruolo): chi ha schede assegnate come
+  // responsabile_id le deve vedere a prescindere dal ruolo (es.
+  // responsabile_intermedio, o futuri ruoli). La query è già filtrata
+  // per responsabile_id = utente corrente, e la RLS la consente.
   let sessioniResponsabile: SessioneConUtente[] = [];
-
-  if (isResponsabile) {
+  {
     const { data } = await supabase
       .from("sessioni_utente")
       .select(
@@ -113,6 +122,10 @@ export default async function ValutazioniPage() {
       sessioniResponsabile = data as unknown as SessioneConUtente[];
     }
   }
+
+  // La sezione team è visibile se ci sono schede assegnate (criterio dati)
+  // oppure se l'utente ha un ruolo da responsabile (per l'empty state).
+  const mostraSezioneTeam = sessioniResponsabile.length > 0 || isResponsabileRuolo;
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -293,7 +306,7 @@ export default async function ValutazioniPage() {
         )}
 
         {/* ========== SEZIONE RESPONSABILE ========== */}
-        {isResponsabile && (
+        {mostraSezioneTeam && (
           <section className="space-y-4">
             <h2 className="font-tenorite text-xl font-semibold text-text flex items-center gap-2">
               <UserCheck className="h-5 w-5 text-primary" />
