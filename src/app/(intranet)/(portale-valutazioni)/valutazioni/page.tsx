@@ -22,6 +22,7 @@ import {
   Users,
   History,
   Wrench,
+  FileCheck,
 } from "lucide-react";
 import type { StatoSessioneUtente } from "@/lib/types";
 import { STATO_SESSIONE_LABELS } from "@/lib/types";
@@ -298,6 +299,20 @@ export default async function ValutazioniPage() {
                   </p>
                   <p className="text-xs text-text-muted mt-0.5">
                     Importa anni precedenti
+                  </p>
+                </div>
+              </Link>
+              <Link
+                href="/admin/valutazioni"
+                className="group flex flex-col items-start gap-2 p-4 rounded-xl border border-border bg-bg hover:border-primary/40 hover:bg-primary-light/30 transition-all duration-150"
+              >
+                <FileCheck className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="font-tenorite text-sm text-text group-hover:text-primary transition-colors">
+                    Valutazioni completate
+                  </p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Risultati e certificati PDF
                   </p>
                 </div>
               </Link>
