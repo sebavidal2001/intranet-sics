@@ -47,7 +47,11 @@ export const PostBodySchema = z.object({
   margine_trattativa_pct: PCT.optional(),
   // Tempo cronometrato nel builder (secondi). Cap a 30 giorni di lavoro attivo.
   tempo_preventivazione_sec: z.number().int().min(0).max(2_592_000).optional(),
-  codice: z.string().trim().regex(/^[GSC]_\d{2}_[\w-]+$/).max(32).optional(),
+  // Codice commessa inserito dall'utente (sostituisce il vecchio progressivo G).
+  // Permissivo: lettere/cifre/._-/ (accetta anche i vecchi codici G_/S_/C_ per la
+  // retrocompatibilità del path di modifica). Obbligo di presenza imposto dalla
+  // route POST (create); in modifica (PUT) è opzionale perché il codice è preservato.
+  codice: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/, "Codice commessa non valido").max(64).optional(),
   note: z.string().trim().max(4000).optional(),
   blocchi: z.array(BloccoSchema).min(1, "Almeno un blocco è richiesto"),
 }).refine(

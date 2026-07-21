@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
 import { formatBuilderStateForPrompt } from "@/lib/portali/preventivatore/chat/builder-state-prompt";
+import { getCachedEmbedding } from "@/lib/portali/preventivatore/chat/embedding-cache";
 import type { BuilderStateForChat } from "@/lib/portali/preventivatore/chat/types";
 import { logError, logWarn } from "@/lib/logger";
 
@@ -88,57 +89,85 @@ async function chiamaOpenRouter(opts: {
   return { content, usage: data.usage };
 }
 
-// ─── Recupera schede storiche simili dal RAG ─────────────────────────────────
-// Strategia: prendiamo i primi N chunks (chunk_index = 0, contenente la "descrizione
-// principale" del preventivo) di documenti della stessa categoria/cliente.
+// ─── Recupera schede storiche simili dal RAG (ricerca SEMANTICA) ─────────────
+// Strategia: costruiamo una query dal preventivo corrente (titolo + tipi blocco +
+// descrizioni articoli), la trasformiamo in embedding e cerchiamo i chunk più simili
+// via `match_chunks`. Filtriamo ai soli chunk `ruolo_file='preventivo_commerciale'`
+// (= le schede descrittive di fornitura, lo stile-target) e teniamo i primi N.
+// Questo sostituisce la vecchia euristica ILIKE su cliente/categoria che non
+// sfruttava l'archivio vettoriale e pescava spesso il chunk sbagliato.
+
+type MatchChunkRow = {
+  documento_id: string;
+  contenuto: string;
+  metadata: Record<string, unknown> | null;
+  similarity: number;
+};
 
 async function recuperaEsempiStorici(
   builderState: BuilderStateForChat,
-  maxEsempi: number
+  maxEsempi: number,
+  soglia: number
 ): Promise<Array<{ codice: string; cliente: string | null; contenuto: string }>> {
   const admin = createAdminClient();
-  const tipiBlocco = [...new Set(builderState.blocchi.map((b) => b.tipo))];
-  const cliente = builderState.cliente?.ragione_sociale;
 
-  // Heuristica: cerchiamo chunk_index=0 con metadata.categoria o cliente affine
-  // (semplice ILIKE; il fine-tune semantico via embedding lo faremo se serve)
-  let query = admin
+  // Query di ricerca: ciò che caratterizza il TIPO di fornitura.
+  const tipiBlocco = [...new Set(builderState.blocchi.map((b) => b.tipo).filter(Boolean))];
+  const descrArticoli = builderState.blocchi
+    .flatMap((b) => b.articoli.map((a) => a.descrizione))
+    .filter(Boolean)
+    .slice(0, 30);
+  const queryText = [
+    builderState.titolo ?? "",
+    tipiBlocco.join(", "),
+    descrArticoli.join("; "),
+  ].filter(Boolean).join(". ").trim();
+  if (!queryText) return [];
+
+  let queryEmbedding: number[];
+  try {
+    queryEmbedding = await getCachedEmbedding(queryText);
+  } catch (e) {
+    logWarn("preventivatore.scheda-tecnica", "embedding query fallito → nessun esempio", { dettaglio: String(e) });
+    return [];
+  }
+
+  // Pool ampio (30) → filtriamo alle schede commerciali → primi maxEsempi.
+  const { data, error } = await admin
     .schema("preventivatore")
-    .from("chunks")
-    .select("contenuto, documento_id, chunk_index, documenti!inner(codice, cliente, categoria)")
-    .eq("chunk_index", 0)
-    .limit(maxEsempi);
+    .rpc("match_chunks", {
+      query_embedding: queryEmbedding,
+      match_threshold: soglia,
+      match_count: 30,
+    });
+  if (error) {
+    logWarn("preventivatore.scheda-tecnica", "match_chunks fallito → nessun esempio", { dettaglio: error.message });
+    return [];
+  }
 
-  if (cliente) {
-    // Prima prova: stesso cliente
-    const { data: byClient } = await query.eq("documenti.cliente", cliente);
-    if (byClient && byClient.length > 0) {
-      return byClient.map((c) => ({
-        codice: (c.documenti as unknown as { codice: string }).codice,
-        cliente: (c.documenti as unknown as { cliente: string | null }).cliente,
-        contenuto: c.contenuto?.slice(0, 6000) ?? "",
-      }));
-    }
+  const rows = (data ?? []) as MatchChunkRow[];
+  const schede = rows.filter((r) => (r.metadata?.["ruolo_file"] as string | undefined) === "preventivo_commerciale");
+  // Se per qualche motivo non ci sono schede commerciali, ripieghiamo sul pool grezzo.
+  const scelti = (schede.length > 0 ? schede : rows).slice(0, maxEsempi);
+  if (scelti.length === 0) return [];
+
+  // Codice/cliente dei documenti selezionati (per etichettare gli esempi).
+  const docIds = [...new Set(scelti.map((r) => r.documento_id))];
+  const docMap = new Map<string, { codice: string; cliente: string | null }>();
+  const { data: docs } = await admin
+    .schema("preventivatore")
+    .from("documenti")
+    .select("id, codice, cliente")
+    .in("id", docIds);
+  for (const d of (docs ?? []) as Array<{ id: string; codice: string; cliente: string | null }>) {
+    docMap.set(d.id, { codice: d.codice, cliente: d.cliente });
   }
-  // Fallback: per categoria/tipo
-  if (tipiBlocco.length > 0) {
-    const tipoLike = tipiBlocco[0].toLowerCase();
-    const { data: byCat } = await admin
-      .schema("preventivatore")
-      .from("chunks")
-      .select("contenuto, documento_id, chunk_index, documenti!inner(codice, cliente, categoria)")
-      .eq("chunk_index", 0)
-      .ilike("documenti.categoria", `%${tipoLike}%`)
-      .limit(maxEsempi);
-    if (byCat && byCat.length > 0) {
-      return byCat.map((c) => ({
-        codice: (c.documenti as unknown as { codice: string }).codice,
-        cliente: (c.documenti as unknown as { cliente: string | null }).cliente,
-        contenuto: c.contenuto?.slice(0, 6000) ?? "",
-      }));
-    }
-  }
-  return [];
+
+  return scelti.map((r) => ({
+    codice: docMap.get(r.documento_id)?.codice ?? "n/d",
+    cliente: docMap.get(r.documento_id)?.cliente ?? null,
+    contenuto: r.contenuto?.slice(0, 6000) ?? "",
+  }));
 }
 
 /**
@@ -192,6 +221,7 @@ export async function POST(request: NextRequest) {
 
     const temperature = Math.max(0, Math.min(1, parseFloat(cfg.temperatura_scheda_tecnica ?? "0.4") || 0.4));
     const maxEsempi = parseInt(cfg.max_esempi_scheda ?? "4", 10) || 4;
+    const sogliaEsempi = parseFloat(cfg.soglia_similarity_scheda ?? "0.35") || 0.35;
     const systemSchedaTecnica = cfg.system_prompt_scheda_tecnica ?? "Sei un redattore tecnico SICS. Genera la scheda tecnica del preventivo.";
     const systemDomande = cfg.system_prompt_domande_scheda ?? "Formula domande JSON per raccogliere info mancanti.";
 
@@ -209,8 +239,8 @@ export async function POST(request: NextRequest) {
     void isVuoto;
     const dovrebbeChiedere = !haRisposte && !body.forza_generazione;
 
-    // Recupera esempi storici (per arricchire entrambe le fasi)
-    const esempi = await recuperaEsempiStorici(body.builder_state, maxEsempi);
+    // Recupera esempi storici (ricerca semantica; arricchisce entrambe le fasi)
+    const esempi = await recuperaEsempiStorici(body.builder_state, maxEsempi, sogliaEsempi);
 
     if (dovrebbeChiedere) {
       // ─── Fase 1: chiedo domande ─────────────────────────────────────────────
@@ -257,8 +287,9 @@ export async function POST(request: NextRequest) {
 
     // ─── Fase 2: generazione scheda definitiva ───────────────────────────────
     const userPromptScheda = [
-      "Genera la SCHEDA DI FORNITURA per il seguente preventivo, seguendo fedelmente lo stile delle schede storiche fornite (struttura per prodotto/posizione con 'Sviluppo:' e 'Comprendente:', chiusura 'Compreso/Escluso nella fornitura').",
-      "Rispetta le regole inviolabili del system prompt: niente prezzi, niente codici interni SICS, niente tabelle.",
+      "Genera la DESCRIZIONE DI FORNITURA per il seguente preventivo, imitando FEDELMENTE struttura e stile delle schede storiche allegate (sono lo stile-target).",
+      "Struttura attesa: intestazione (Spett.le <cliente> / Alla c.a. / Oggetto), poi 'Descrizione fornitura:' con un breve paragrafo discorsivo su scopo e dimensioni principali, poi una o più sezioni 'CARATTERISTICHE TECNICHE <TIPO>:' con elenco puntato (una caratteristica per riga, con serie/codici COMMERCIALI), infine 'Compreso nella fornitura:' ed 'Escluso dalla fornitura:'.",
+      "NON elencare lavorazioni, ore o fasi di officina. Rispetta le regole inviolabili del system prompt: niente prezzi, niente codici interni SICS, niente tabelle.",
       "",
       formatBuilderStateForPrompt(body.builder_state),
       "",

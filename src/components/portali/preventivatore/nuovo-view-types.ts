@@ -121,6 +121,12 @@ export interface Blocco {
   quantita_pezzi: number
   /** Override % margine trattativa per il blocco (null = usa il margine globale). */
   margine_trattativa_pct: number | null
+  /**
+   * Switch "Lavorazioni" del blocco (UI). Default true.
+   * Se false: la sezione lavorazioni è nascosta e i servizi valgono 0 (array svuotato).
+   * È un flag solo-builder: non viene persistito (i servizi vuoti bastano a ricostruirlo).
+   */
+  lavorazioni_attive?: boolean
   /** Slug del template da cui è stato generato il blocco (se applicato). */
   template_slug?: string | null
   /** Valori dei parametri del template (per il ricalcolo live delle formule). */
@@ -210,15 +216,22 @@ export function calcCostoServizio(s: ServizioBlocco): number {
   return s.tariffa_ora * s.ore
 }
 
-/** Moltiplicatore di un servizio dato Q: Q se scala, altrimenti 1 (una tantum). */
-function multServizio(s: ServizioBlocco, q: number): number {
-  return s.scala_con_quantita ? q : 1
+/**
+ * Moltiplicatore di un servizio dato Q.
+ * - `scala_con_quantita = true` (es. Lavorazione/Montaggio/Collaudo): il costo è
+ *   inserito per l'intero lotto e va RIPARTITO sul singolo pezzo → ÷ Q.
+ * - `scala_con_quantita = false` (es. Progettazione/Manuale, una tantum): × 1.
+ * Guardia su Q=0 per evitare divisioni per zero.
+ */
+export function multServizio(s: ServizioBlocco, q: number): number {
+  if (!s.scala_con_quantita) return 1
+  return q > 0 ? 1 / q : 1
 }
 
 /**
  * Prezzo di vendita del blocco (con ricarico) a quantità `q`.
- * Materiali × q (scalano sempre); manodopera × q solo se scala_con_quantita.
- * NON include imballaggio/spese/margine.
+ * Materiali × q (scalano sempre); manodopera ÷ q se scala_con_quantita (ripartita
+ * sui pezzi), altrimenti × 1 (una tantum). NON include imballaggio/spese/margine.
  */
 export function calcBloccoVendita(b: Blocco, q = 1): number {
   const mat = b.articoli.reduce((s, a) => s + calcNettoArticolo(a) * q, 0)
@@ -226,7 +239,7 @@ export function calcBloccoVendita(b: Blocco, q = 1): number {
   return mat + srv
 }
 
-/** Costo vergine del blocco a quantità `q` (stessa logica di scala). */
+/** Costo vergine del blocco a quantità `q` (stessa logica di scala: manodopera ÷q se scala). */
 export function calcBloccoCosto(b: Blocco, q = 1): number {
   const mat = b.articoli.reduce((s, a) => s + calcCostoArticolo(a) * q, 0)
   const srv = b.servizi.reduce((s, sv) => s + calcCostoServizio(sv) * multServizio(sv, q), 0)

@@ -35,25 +35,25 @@ describe("cost model SICS (canonico)", () => {
     expect(calcTotaleServizio(srv({ ore: 4, tariffa_ora: 25, coeff_ricarico: 0.5 }))).toBe(200);
   });
 
-  it("vendita complessiva: materiali ×Q, manodopera ×Q se scala, una-tantum ×1", () => {
-    // 1000×3 + 200×3 + 500×1 = 4100
-    expect(calcBloccoVendita(b, 3)).toBe(4100);
-    // unità singola (Q=1): 1000 + 200 + 500
+  it("vendita complessiva: materiali ×Q, manodopera ÷Q se scala (ripartita), una-tantum ×1", () => {
+    // 1000×3 + 200÷3 + 500×1 = 3000 + 66.6667 + 500 = 3566.6667
+    expect(calcBloccoVendita(b, 3)).toBeCloseTo(3566.6667, 3);
+    // unità singola (Q=1): 1000 + 200 + 500 (÷1 = ×1, invariato)
     expect(calcBloccoVendita(b, 1)).toBe(1700);
   });
 
   it("costo vergine complessivo", () => {
-    // 500×1×3 + 25×4×3 + 25×10×1 = 1500 + 300 + 250 = 2050
-    expect(calcBloccoCosto(b, 3)).toBe(2050);
+    // 500×1×3 + (25×4)÷3 + (25×10)×1 = 1500 + 33.3333 + 250 = 1783.3333
+    expect(calcBloccoCosto(b, 3)).toBeCloseTo(1783.3333, 3);
   });
 
   it("prezzo finale: vendita + imb(1% su vendita) + tempi(2.8% su costo) + spese(24.2% su costo)", () => {
-    // base 4100 ; imb 41 ; tempi 2050*0.028=57.4 ; spese 2050*0.242=496.1 ; margine 0
-    expect(calcBloccoPrezzoFinale(b, 3, 0)).toBeCloseTo(4694.5, 2);
+    // vend 3566.6667 ; imb 35.6667 ; tempi 1783.3333*0.028=49.9333 ; spese 1783.3333*0.242=431.5667 ; margine 0
+    expect(calcBloccoPrezzoFinale(b, 3, 0)).toBeCloseTo(4083.8333, 2);
     // con margine globale 5%
-    expect(calcBloccoPrezzoFinale(b, 3, 5)).toBeCloseTo(4694.5 * 1.05, 2);
+    expect(calcBloccoPrezzoFinale(b, 3, 5)).toBeCloseTo(4083.8333 * 1.05, 2);
     // override margine blocco prevale sul globale
-    expect(calcBloccoPrezzoFinale(blocco({ ...b, margine_trattativa_pct: 10 }), 3, 5)).toBeCloseTo(4694.5 * 1.1, 2);
+    expect(calcBloccoPrezzoFinale(blocco({ ...b, margine_trattativa_pct: 10 }), 3, 5)).toBeCloseTo(4083.8333 * 1.1, 2);
   });
 });
 

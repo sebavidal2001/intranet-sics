@@ -14,6 +14,7 @@ import {
   fmtEur,
   calcNettoArticolo,
   calcTotaleServizio,
+  multServizio,
   calcTotaleBlocco,
   calcBloccoVendita,
   calcBloccoCosto,
@@ -54,6 +55,8 @@ const SchedaTecnicaDialog = dynamic(
 
 export function NuovoView() {
   const [titolo, setTitolo] = useState("")
+  // Codice commessa inserito dall'utente (sostituisce il vecchio progressivo G).
+  const [codiceCommessa, setCodiceCommessa] = useState("")
   const [cliente, setCliente] = useState<Cliente | null>(null)
   const [settimaneMin, setSettimaneMin] = useState("")
   const [settimaneMax, setSettimaneMax] = useState("")
@@ -87,6 +90,11 @@ export function NuovoView() {
       setSaveError("Seleziona un cliente prima di salvare")
       return
     }
+    // In creazione il codice commessa è obbligatorio (in modifica è preservato dal record).
+    if (!editId && !codiceCommessa.trim()) {
+      setSaveError("Inserisci il codice commessa prima di salvare")
+      return
+    }
     if (blocchi.length === 0 || blocchi.every((b) => b.articoli.length === 0 && b.servizi.length === 0)) {
       setSaveError("Aggiungi almeno un articolo o servizio in un blocco")
       return
@@ -96,6 +104,7 @@ export function NuovoView() {
     try {
       const payload = {
         titolo: titolo.trim() || undefined,
+        codice: codiceCommessa.trim() || undefined,
         cliente_master_id: cliente.id,
         cliente_text: cliente.ragione_sociale,
         consegna_settimane_min: settimaneMin ? Number(settimaneMin) : undefined,
@@ -276,6 +285,7 @@ export function NuovoView() {
         }
 
         setEditCodice(d.documento?.codice ?? null)
+        setCodiceCommessa(d.documento?.codice ?? "")
         setEditTempoIniziale(d.documento?.tempo_preventivazione_sec ?? 0)
         if (d.titolo) setTitolo(d.titolo)
         if (d.cliente) setCliente(d.cliente)
@@ -451,7 +461,7 @@ export function NuovoView() {
     0
   )
   const totaleServizi = blocchi.reduce(
-    (sum, b) => sum + b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * (sv.scala_con_quantita ? qPezzi(b) : 1), 0),
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * multServizio(sv, qPezzi(b)), 0),
     0
   )
   // Add-on complessivi: imballaggio sul prezzo di vendita; tempi accessori e spese sul costo
@@ -490,7 +500,7 @@ export function NuovoView() {
     0
   )
   const costoVergineManodopera = blocchi.reduce(
-    (sum, b) => sum + b.servizi.reduce((s, sv) => s + sv.tariffa_ora * sv.ore * (sv.scala_con_quantita ? qPezzi(b) : 1), 0),
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + sv.tariffa_ora * sv.ore * multServizio(sv, qPezzi(b)), 0),
     0
   )
   const costoVergineTotale = costoVergineMateriale + costoVergineManodopera
@@ -573,17 +583,34 @@ export function NuovoView() {
 
           {/* Header card */}
           <div className="border border-border rounded-xl bg-bg p-5 space-y-4">
-            {/* Titolo */}
-            <div>
-              <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
-                Titolo preventivo
-              </label>
-              <Input
-                value={titolo}
-                onChange={(e) => setTitolo(e.target.value)}
-                placeholder="Es. Impianto scale Montenegro"
-                className="text-base font-medium"
-              />
+            {/* Codice commessa (obbligatorio in creazione) + Titolo */}
+            <div className="grid grid-cols-[minmax(0,220px)_1fr] gap-4">
+              <div>
+                <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
+                  Codice commessa <span className="text-danger">*</span>
+                </label>
+                <Input
+                  value={codiceCommessa}
+                  onChange={(e) => setCodiceCommessa(e.target.value)}
+                  placeholder="Es. 2026-0142"
+                  disabled={!!editId}
+                  className="text-base font-medium tabular-nums"
+                />
+                {editId && (
+                  <p className="text-[11px] text-text-muted mt-1">Il codice non è modificabile in modifica.</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
+                  Titolo preventivo
+                </label>
+                <Input
+                  value={titolo}
+                  onChange={(e) => setTitolo(e.target.value)}
+                  placeholder="Es. Impianto scale Montenegro"
+                  className="text-base font-medium"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
