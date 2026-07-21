@@ -179,6 +179,11 @@ export async function POST(request: NextRequest) {
     }
     const body = parsed.data;
 
+    // ── 1b) Codice commessa obbligatorio in creazione (sostituisce il progressivo G) ──
+    if (!body.codice || body.codice.trim().length === 0) {
+      return NextResponse.json({ error: "Codice commessa obbligatorio" }, { status: 400 });
+    }
+
     // ── 2) Filtro portfolio commerciale: il cliente_master_id deve essere visibile ──
     const agenteCommerciale = scopeAgente(ctx);
     if (agenteCommerciale && body.cliente_master_id) {
@@ -200,6 +205,13 @@ export async function POST(request: NextRequest) {
       .rpc("crea_documento_dal_builder", { p_payload: payloadConUser });
 
     if (rpcErr || !result) {
+      // Doppione codice commessa: vincolo UNIQUE su documenti.codice → 409 con alert chiaro.
+      if (rpcErr?.code === "23505") {
+        return NextResponse.json(
+          { error: `Esiste già un preventivo con il codice commessa "${body.codice}".` },
+          { status: 409 }
+        );
+      }
       logError("preventivatore.documenti", "crea_documento_dal_builder fallita", rpcErr);
       return NextResponse.json({ error: "Errore creazione documento" }, { status: 500 });
     }

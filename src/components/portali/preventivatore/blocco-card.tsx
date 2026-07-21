@@ -232,7 +232,7 @@ function ServiziSection({
                 <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20" title="Coefficiente di ricarico SICS: prezzo = (ore × tariffa) / coeff">
                   Ricarico
                 </th>
-                <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20" title="×Q = scala con la quantità pezzi del blocco · 1× = una tantum">
+                <th className="text-center text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-20" title="÷Q = ripartita sui pezzi del blocco · 1× = una tantum">
                   Tipo
                 </th>
                 <th className="text-right text-xs font-medium text-text-muted uppercase tracking-wide px-2 py-1.5 border border-border w-24">
@@ -283,17 +283,17 @@ function ServiziSection({
                       }`}
                       title={
                         s.scala_con_quantita
-                          ? "Scala con la quantità: il totale viene moltiplicato per i pezzi del blocco. Clicca per renderla una tantum."
-                          : "Una tantum: conteggiata una volta sola. Clicca per farla scalare con la quantità."
+                          ? "Ripartita sui pezzi: il costo (per l'intero lotto) viene diviso per i pezzi del blocco. Clicca per renderla una tantum."
+                          : "Una tantum: conteggiata una volta sola. Clicca per ripartirla sui pezzi."
                       }
                     >
-                      {s.scala_con_quantita ? "×Q" : "1×"}
+                      {s.scala_con_quantita ? "÷Q" : "1×"}
                     </button>
                   </td>
                   <td className="px-2 py-1.5 border border-border text-right text-sm font-medium text-text">
                     {fmtEur(calcTotaleServizio(s))}
                     {s.scala_con_quantita && quantita > 1 && (
-                      <span className="block text-[10px] text-emerald-600 tabular-nums">×{quantita} = {fmtEur(calcTotaleServizio(s) * quantita)}</span>
+                      <span className="block text-[10px] text-emerald-600 tabular-nums">÷{quantita} = {fmtEur(calcTotaleServizio(s) / quantita)}</span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 border border-border text-center">
@@ -602,6 +602,17 @@ export function BloccoCard({
         s._key === key ? { ...s, scala_con_quantita: !s.scala_con_quantita } : s
       ),
     })
+  }
+
+  // Switch "Lavorazioni" del blocco: spegnendolo si azzerano i servizi (contano 0)
+  // e la sezione viene nascosta; riaccendendolo si riparte da una sezione vuota.
+  function toggleLavorazioni() {
+    const attive = blocco.lavorazioni_attive ?? true
+    if (attive) {
+      onChange({ ...blocco, lavorazioni_attive: false, servizi: [] })
+    } else {
+      onChange({ ...blocco, lavorazioni_attive: true })
+    }
   }
 
   return (
@@ -945,16 +956,44 @@ export function BloccoCard({
             )}
           </div>
 
-          {/* Servizi & Lavorazioni */}
-          <ServiziSection
-            servizi={blocco.servizi}
-            serviziDisponibili={serviziDB}
-            quantita={q}
-            onAggiungi={aggiungiServizio}
-            onRimuovi={rimuoviServizio}
-            onAggiorna={aggiornaServizio}
-            onToggleScala={toggleScalaServizio}
-          />
+          {/* Servizi & Lavorazioni — con switch attiva/disattiva per blocco */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-text">Lavorazioni</span>
+              <button
+                type="button"
+                onClick={toggleLavorazioni}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  (blocco.lavorazioni_attive ?? true)
+                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                }`}
+                title={
+                  (blocco.lavorazioni_attive ?? true)
+                    ? "Lavorazioni attive. Clicca per disattivarle (i servizi vengono azzerati)."
+                    : "Lavorazioni disattivate. Clicca per riattivarle."
+                }
+              >
+                <span className={`w-2 h-2 rounded-full ${(blocco.lavorazioni_attive ?? true) ? "bg-emerald-500" : "bg-slate-400"}`} />
+                {(blocco.lavorazioni_attive ?? true) ? "Attive" : "Disattivate"}
+              </button>
+            </div>
+            {(blocco.lavorazioni_attive ?? true) ? (
+              <ServiziSection
+                servizi={blocco.servizi}
+                serviziDisponibili={serviziDB}
+                quantita={q}
+                onAggiungi={aggiungiServizio}
+                onRimuovi={rimuoviServizio}
+                onAggiorna={aggiornaServizio}
+                onToggleScala={toggleScalaServizio}
+              />
+            ) : (
+              <p className="text-xs text-text-muted italic">
+                Lavorazioni disattivate per questo blocco: non incidono sul prezzo.
+              </p>
+            )}
+          </div>
 
           {/* Recap economico del blocco: prezzo vendita + costo (unità e complessivo) */}
           <div className="rounded-lg border border-border bg-bg-page/60 px-4 py-3">
@@ -965,9 +1004,9 @@ export function BloccoCard({
               <div className="text-right tabular-nums text-text-muted">{fmtEur(costoUnitario)}</div>
               {q > 1 && (
                 <>
-                  <div className="text-text border-t border-border pt-1.5 font-medium">Prezzo vendita × {q}</div>
+                  <div className="text-text border-t border-border pt-1.5 font-medium">Prezzo vendita compl. ({q} pz)</div>
                   <div className="text-right tabular-nums text-text border-t border-border pt-1.5 font-medium" style={{ color: "#007a91" }}>{fmtEur(venditaCompl)}</div>
-                  <div className="text-text-muted">Costo × {q}</div>
+                  <div className="text-text-muted">Costo compl. ({q} pz)</div>
                   <div className="text-right tabular-nums text-text-muted">{fmtEur(costoCompl)}</div>
                 </>
               )}

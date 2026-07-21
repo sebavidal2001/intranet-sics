@@ -95,7 +95,12 @@ function parseDate(v) {
 }
 
 function hashRiga(p) {
-  const s = [p.descrizione, p.uc, p.categoria, p.gruppo, p.cat_merc, p.reparto_codice, p.reparto_desc, p.fornitore_codice, p.fornitore, p.ult_costo, p.data_ult_costo].join('|');
+  const s = [
+    p.descrizione, p.uc, p.categoria, p.cat_esposizione_codice,
+    p.cat_merc, p.cat_merc_codice, p.gruppo, p.gruppo_codice,
+    p.reparto_codice, p.reparto_desc, p.cat_fiscale_codice, p.cat_fiscale_desc,
+    p.fornitore_codice, p.fornitore, p.ult_costo, p.data_ult_costo,
+  ].join('|');
   return createHash('md5').update(s).digest('hex');
 }
 
@@ -121,6 +126,44 @@ function colIdx(headers, names) {
   return -1;
 }
 
+// Colonne quantità di movimento (per magazzino) → campo DB in prodotti_giacenze.
+// Importate "as-is" così da avere in DB tutte le info del cruscotto.
+const QTA_COLS = [
+  ['qta_rim_iniziale',   'Qta Rim Iniziale'],
+  ['qta_caricata',       'Qta Caricata'],
+  ['qta_scaricata',      'Qta Scaricata'],
+  ['qta_altri_carichi',  'Qta Altri Carichi'],
+  ['qta_altri_scarichi', 'Qta Altri Scarichi'],
+  ['qta_imp_produzione', 'Qta Imp Produzione'],
+  ['qta_ord_clienti',    'Qta Ord Clienti'],
+  ['qta_ord_fornitori',  'Qta Ord Fornitori'],
+  ['qta_vis_clienti',    'Qta Vis Clienti'],
+  ['qta_vis_fornitori',  'Qta Vis Fornitori'],
+  ['qta_reso_clienti',   'Qta Reso Clienti'],
+  ['qta_reso_fornitori', 'Qta Reso Fornitori'],
+  ['qta_ord_produzione', 'Qta Ord Produzione'],
+  ['qta_cl_clienti',     'Qta Cl Clienti'],
+  ['qta_cl_fornitori',   'Qta Cl Fornitori'],
+  ['qta_cl_terzi',       'Qta Cl Terzi'],
+  ['qta_gruppo_lib_1',   'Qta Gruppo Lib 1'],
+  ['qta_gruppo_lib_2',   'Qta Gruppo Lib 2'],
+  ['qta_gruppo_lib_3',   'Qta Gruppo Lib 3'],
+  ['qta_gruppo_lib_4',   'Qta Gruppo Lib 4'],
+];
+
+// Campi numerici di una riga giacenza (per select/confronto "invariata").
+const GIAC_NUM_FIELDS = ['esistenza', 'disponibilita', ...QTA_COLS.map(([f]) => f)];
+
+// Firma numerica di una riga giacenza: due righe con firma uguale = invariate.
+// null/undefined trattati come '' (le righe DB pre-migration hanno le qta a NULL →
+// firma diversa dal file → vengono ri-upsertate una volta per backfillare le qta).
+function giacSig(o) {
+  return GIAC_NUM_FIELDS.map((f) => {
+    const v = o[f];
+    return v === null || v === undefined ? '' : String(Number(v));
+  }).join('|');
+}
+
 // ─── Parsing → record DB ───────────────────────────────────────────────────
 function parseAll(path) {
   const { headers, rows } = readRows(path);
@@ -131,10 +174,15 @@ function parseAll(path) {
     descrizione:   colIdx(headers, ['Descrizione', 'descrizione']),
     uc:            colIdx(headers, ['Codice Uc', 'UC', 'uc', 'unita_misura']),
     categoria:     colIdx(headers, ['Cat Esposizione Descrizione', 'categoria']),
+    cat_esp_cod:   colIdx(headers, ['Cat Esposizione Codice', 'cat_esposizione_codice']),
     cat_merc:      colIdx(headers, ['Cat Merceologica Descrizione', 'cat_merc']),
+    cat_merc_cod:  colIdx(headers, ['Cat Merceologica Codice', 'cat_merc_codice']),
     gruppo:        colIdx(headers, ['Gruppo Articoli Descrizione', 'gruppo']),
+    gruppo_cod:    colIdx(headers, ['Gruppo Articoli Codice', 'gruppo_codice']),
     reparto_cod:   colIdx(headers, ['Reparto Codice', 'reparto_codice']),
     reparto_desc:  colIdx(headers, ['Reparto Descrizione', 'reparto_desc']),
+    cat_fisc_cod:  colIdx(headers, ['Cat Fiscale Codice', 'cat_fiscale_codice']),
+    cat_fisc_desc: colIdx(headers, ['Cat Fiscale Descrizione', 'cat_fiscale_desc']),
     forn_cod:      colIdx(headers, ['Cat Com Articolo Codice', 'fornitore_codice']),
     forn_desc:     colIdx(headers, ['Cat Com Articolo Descrizione', 'fornitore']),
     ult_costo:     colIdx(headers, ['Ult Costo', 'ult_costo']),
@@ -143,6 +191,8 @@ function parseAll(path) {
     esistenza:     colIdx(headers, ['Esistenza', 'esistenza']),
     disp:          colIdx(headers, ['Disponibilita', 'Disponibilità', 'disponibilita']),
   };
+  // Indici delle colonne quantità di movimento (una tantum).
+  const QTA_IDX = QTA_COLS.map(([field, header]) => [field, colIdx(headers, [header])]);
 
   if (H.codice < 0) throw new Error('Colonna "Codice" non trovata');
 
@@ -156,18 +206,24 @@ function parseAll(path) {
     const mag = String(r[H.magazzino] || '').trim();
     if (!mag) continue;
 
+    const txt = (i) => (i >= 0 ? (String(r[i] || '').trim() || null) : null);
     const ana = {
       codice: cod,
       codice_norm: normCodice(cod),
-      descrizione: String(r[H.descrizione] || '').trim() || null,
-      uc: H.uc >= 0 ? (String(r[H.uc] || '').trim() || null) : null,
-      categoria: H.categoria >= 0 ? (String(r[H.categoria] || '').trim() || null) : null,
-      cat_merc: H.cat_merc >= 0 ? (String(r[H.cat_merc] || '').trim() || null) : null,
-      gruppo: H.gruppo >= 0 ? (String(r[H.gruppo] || '').trim() || null) : null,
-      reparto_codice: H.reparto_cod >= 0 ? (String(r[H.reparto_cod] || '').trim() || null) : null,
-      reparto_desc: H.reparto_desc >= 0 ? (String(r[H.reparto_desc] || '').trim() || null) : null,
-      fornitore_codice: H.forn_cod >= 0 ? (String(r[H.forn_cod] || '').trim() || null) : null,
-      fornitore:        H.forn_desc >= 0 ? (String(r[H.forn_desc] || '').trim() || null) : null,
+      descrizione: txt(H.descrizione),
+      uc: txt(H.uc),
+      categoria: txt(H.categoria),
+      cat_esposizione_codice: txt(H.cat_esp_cod),
+      cat_merc: txt(H.cat_merc),
+      cat_merc_codice: txt(H.cat_merc_cod),
+      gruppo: txt(H.gruppo),
+      gruppo_codice: txt(H.gruppo_cod),
+      reparto_codice: txt(H.reparto_cod),
+      reparto_desc: txt(H.reparto_desc),
+      cat_fiscale_codice: txt(H.cat_fisc_cod),
+      cat_fiscale_desc: txt(H.cat_fisc_desc),
+      fornitore_codice: txt(H.forn_cod),
+      fornitore:        txt(H.forn_desc),
       ult_costo: H.ult_costo >= 0 ? parseNumber(r[H.ult_costo]) : null,
       data_ult_costo: H.data_costo >= 0 ? parseDate(r[H.data_costo]) : null,
     };
@@ -178,12 +234,17 @@ function parseAll(path) {
       anagrafica.set(cod, { ...ana, _mag: mag });
     }
 
-    giacenze.push({
+    const giac = {
       codice: cod,
       magazzino: mag,
       esistenza: parseNumber(r[H.esistenza]) ?? 0,
       disponibilita: H.disp >= 0 ? (parseNumber(r[H.disp]) ?? 0) : 0,
-    });
+    };
+    // Tutte le colonne quantità di movimento (as-is; null se assente nel file).
+    for (const [field, idx] of QTA_IDX) {
+      giac[field] = idx >= 0 ? parseNumber(r[idx]) : null;
+    }
+    giacenze.push(giac);
   }
 
   // Pulisci _mag e calcola hash_riga
@@ -360,7 +421,7 @@ async function main() {
       const slice = codici.slice(i, i + pageSize);
       const { data, error } = await supabase
         .from('prodotti_giacenze')
-        .select('codice, magazzino, esistenza, disponibilita')
+        .select(['codice', 'magazzino', ...GIAC_NUM_FIELDS].join(', '))
         .in('codice', slice);
       if (error) throw new Error('select giacenze: ' + error.message);
       if (data) giacenzeDb.push(...data);
@@ -399,7 +460,7 @@ async function main() {
       if (!ex) {
         nuove++;
         giacenzeToUpsert.push({ ...g, aggiornato_il: new Date().toISOString() });
-      } else if (Number(ex.esistenza) !== g.esistenza || Number(ex.disponibilita) !== g.disponibilita) {
+      } else if (giacSig(ex) !== giacSig(g)) {
         aggiornate++;
         giacenzeToUpsert.push({ ...g, aggiornato_il: new Date().toISOString() });
       }
