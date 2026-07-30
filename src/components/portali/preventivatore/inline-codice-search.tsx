@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { fmtEur, type Prodotto } from "@/components/portali/preventivatore/nuovo-view-types"
+import { fmtEur, capitalizzaDescrizione, type Prodotto } from "@/components/portali/preventivatore/nuovo-view-types"
 
 /**
  * Input "codice" con autocomplete sull'anagrafica (come la ricerca articoli classica):
@@ -66,7 +66,7 @@ export function InlineCodiceSearch({
                 <span className="text-xs font-mono font-medium text-[#00a1be] truncate">{p.codice}</span>
                 {p.ult_costo != null && <span className="text-[11px] text-text-muted shrink-0">{fmtEur(p.ult_costo)}</span>}
               </div>
-              <div className="text-[11px] text-text truncate">{p.descrizione}</div>
+              <div className="text-[11px] text-text truncate">{capitalizzaDescrizione(p.descrizione)}</div>
             </button>
           ))}
         </div>

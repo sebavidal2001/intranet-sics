@@ -262,7 +262,10 @@ export async function POST(request: NextRequest) {
         systemPrompt: systemDomande,
         userPrompt,
         temperature: 0.2,
-        maxTokens: 1024,
+        // 1024 era troppo poco: con gli esempi storici il JSON delle domande veniva
+        // TRONCATO (finish_reason=length) → il parse falliva e la fase 1 saltava,
+        // generando subito la scheda senza mai chiedere nulla.
+        maxTokens: 4096,
       });
 
       // Estraggo il JSON dalla risposta (anche se l'LLM dovesse aver aggiunto testo extra)
@@ -272,6 +275,21 @@ export async function POST(request: NextRequest) {
         if (match) parsed = JSON.parse(match[0]);
       } catch {
         parsed = null;
+      }
+      // Recupero di un JSON troncato: tengo le domande complete già chiuse.
+      if (!parsed && content.includes('"domande"')) {
+        const domande: Domanda[] = [];
+        for (const m of content.matchAll(/\{[^{}]*"id"[^{}]*\}/g)) {
+          try {
+            const d = JSON.parse(m[0]) as Domanda;
+            if (d?.id && d?.testo) domande.push({ ...d, tipo: d.tipo ?? "text" });
+          } catch { /* frammento incompleto: lo salto */ }
+        }
+        if (domande.length > 0) {
+          const motivoMatch = content.match(/"motivo"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+          parsed = { tipo: "domande", motivo: motivoMatch?.[1], domande };
+          logWarn("preventivatore.scheda-tecnica", "JSON domande troncato: recuperate parzialmente", { n: domande.length });
+        }
       }
 
       if (parsed?.tipo === "domande" && Array.isArray(parsed.domande) && parsed.domande.length > 0) {

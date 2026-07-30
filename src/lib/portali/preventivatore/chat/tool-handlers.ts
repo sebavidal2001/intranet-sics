@@ -21,6 +21,32 @@ function scopeIds(ids: string[] | null | undefined): string[] | null {
   return ids.length > 0 ? ids : [ZERO_UUID];
 }
 
+// ─── Codici preventivo: separatore tollerante ────────────────────────────────
+// Gli utenti scrivono indifferentemente `C/25/25`, `C_25_25` o `c 25 25`, mentre in
+// DB il codice è salvato con underscore. Queste helper generano le varianti da
+// cercare, così ogni tool che accetta un codice trova il documento.
+
+/** Escape dei metacaratteri PostgREST/ILIKE (`,` separa le condizioni in `.or()`). */
+export function escapeIlike(s: string): string {
+  return s.replace(/[%_,()]/g, (c) => `\\${c}`);
+}
+
+/** Varianti `_` e `/` del codice, normalizzate in maiuscolo. */
+export function variantiCodice(codice: string): { conUnderscore: string; conSlash: string } {
+  const raw = codice.trim().toUpperCase().replace(/\s+/g, "_");
+  return {
+    conUnderscore: raw.replace(/[/\-.]/g, "_"),
+    conSlash: raw.replace(/[_\-.]/g, "/"),
+  };
+}
+
+/** Filtro `.or()` PostgREST che matcha il codice in entrambe le notazioni. */
+function filtroCodiceOr(campo: string, codice: string, parziale = false): string {
+  const { conUnderscore, conSlash } = variantiCodice(codice);
+  const wrap = (s: string) => (parziale ? `%${escapeIlike(s)}%` : escapeIlike(s));
+  return `${campo}.ilike.${wrap(conUnderscore)},${campo}.ilike.${wrap(conSlash)}`;
+}
+
 // ─── Tool: list_preventivi ────────────────────────────────────────────────────
 
 export async function toolListPreventivi(args: {
@@ -238,7 +264,8 @@ export async function toolCercaArticolo(args: {
 
   if (docFilterIds) q = q.in("documento_id", docFilterIds);
   if (args.codice_preventivo)
-    q = q.eq("metadata->>codice_progetto", args.codice_preventivo);
+    // Tollerante al separatore: `C/25/25` trova anche `C_25_25` (e viceversa).
+    q = q.or(filtroCodiceOr("metadata->>codice_progetto", args.codice_preventivo));
 
   const { data, error } = await q.limit(limite * 3);
 
@@ -554,23 +581,26 @@ export async function toolDettaglioPreventivo(args: { codice: string }, clienteI
   const adminClient = createAdminClient();
   const scope = scopeIds(clienteIds);
 
-  const raw = args.codice.trim().toUpperCase();
-  // Escape dei metacaratteri PostgREST/ILIKE: la virgola separa le condizioni in
-  // `.or()` (rischio di injection del filtro), `%`/`_` sono wildcard SQL. Coerente
-  // con l'escaping già usato in toolCercaArticoloAnagrafica e nella route documenti.
-  const escFilter = (s: string) => s.replace(/[%_,()]/g, (c) => `\\${c}`);
-  const withUnderscore = escFilter(raw.replace(/\//g, "_"));
-  const withSlash = escFilter(raw.replace(/_/g, "/"));
+  const SELECT_DOC = "id, codice, cliente, stato, categoria, importo_preventivo, importo_ordinato, importo_offerta, data_offerta, data_consegna_richiesta, data_consegna_confermata, data_consegna_effettiva, giorni_consegna_offerti, numero_offerta, numero_preventivo, tipo_cartella, tipo";
 
-  let docQuery = adminClient
-    .schema("preventivatore")
-    .from("documenti")
-    .select("id, codice, cliente, stato, categoria, importo_preventivo, importo_ordinato, importo_offerta, data_offerta, data_consegna_richiesta, data_consegna_confermata, data_consegna_effettiva, giorni_consegna_offerti, numero_offerta, numero_preventivo, tipo_cartella, tipo")
-    .or(`codice.ilike.${withUnderscore},codice.ilike.${withSlash}`);
-  if (scope) docQuery = docQuery.in("cliente_master_id", scope);
-  const { data: docs, error: docErr } = await docQuery.limit(1);
+  // Cerca il codice in entrambe le notazioni (`C/25/25` ↔ `C_25_25`). Se non trova
+  // nulla riprova con match parziale, che copre differenze di padding (C_25_25 vs C_25_025).
+  async function cercaDoc(parziale: boolean) {
+    let q = adminClient
+      .schema("preventivatore")
+      .from("documenti")
+      .select(SELECT_DOC)
+      .or(filtroCodiceOr("codice", args.codice, parziale));
+    if (scope) q = q.in("cliente_master_id", scope);
+    return q.limit(1);
+  }
 
+  let { data: docs, error: docErr } = await cercaDoc(false);
   if (docErr) { console.error("dettaglio_preventivo doc error:", docErr); return null; }
+  if (!docs || docs.length === 0) {
+    ({ data: docs, error: docErr } = await cercaDoc(true));
+    if (docErr) { console.error("dettaglio_preventivo doc error (parziale):", docErr); return null; }
+  }
   if (!docs || docs.length === 0) return null;
 
   type DocRow = { id: string; codice: string; cliente: string | null; stato: string | null; categoria: string | null; importo_preventivo: number | null; importo_ordinato: number | null; data_offerta: string | null };

@@ -9,16 +9,21 @@ import { Input } from "@/components/ui/input"
 import { AutocompleteCliente } from "@/components/portali/preventivatore/autocomplete-cliente"
 import { BloccoCard } from "@/components/portali/preventivatore/blocco-card"
 import { PreventivoTimer, clearPreventivoTimer, getPreventivoTimerSeconds } from "@/components/portali/preventivatore/preventivo-timer"
+import { NumInput } from "@/components/portali/preventivatore/num-input"
 import type { TemplateListItem } from "@/components/portali/preventivatore/blocco-template-panel"
 import {
   fmtEur,
   calcNettoArticolo,
   calcTotaleServizio,
-  multServizio,
+  multServizioComplessivo,
+  multServizioUnitario,
+  calcBloccoVenditaUnitaria,
   calcTotaleBlocco,
   calcBloccoVendita,
   calcBloccoCosto,
   calcBloccoPrezzoFinale,
+  calcBloccoPrezzoUnitario,
+  calcBloccoCostoUnitario,
   calcImballaggio,
   calcTempiAccessori,
   calcSpeseGenerali,
@@ -461,7 +466,7 @@ export function NuovoView() {
     0
   )
   const totaleServizi = blocchi.reduce(
-    (sum, b) => sum + b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * multServizio(sv, qPezzi(b)), 0),
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * multServizioComplessivo(sv), 0),
     0
   )
   // Add-on complessivi: imballaggio sul prezzo di vendita; tempi accessori e spese sul costo
@@ -500,13 +505,45 @@ export function NuovoView() {
     0
   )
   const costoVergineManodopera = blocchi.reduce(
-    (sum, b) => sum + b.servizi.reduce((s, sv) => s + sv.tariffa_ora * sv.ore * multServizio(sv, qPezzi(b)), 0),
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + sv.tariffa_ora * sv.ore * multServizioComplessivo(sv), 0),
     0
   )
   const costoVergineTotale = costoVergineMateriale + costoVergineManodopera
   const margineEuro = totaleGlobale - costoVergineTotale
   const marginePct =
     costoVergineTotale > 0 ? (margineEuro / costoVergineTotale) * 100 : null
+
+  // ── Totali UNITARI (per singolo pezzo) ────────────────────────────────────
+  // Materiali per 1 pz; manodopera del lotto ripartita ÷Q. Vale: unitario × Q = complessivo.
+  const totaleArticoliUnit = blocchi.reduce(
+    (sum, b) => sum + b.articoli.reduce((s, a) => s + calcNettoArticolo(a), 0),
+    0
+  )
+  const totaleServiziUnit = blocchi.reduce(
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * multServizioUnitario(sv, qPezzi(b)), 0),
+    0
+  )
+  const totaleGlobaleUnit = blocchi.reduce(
+    (sum, b) => sum + calcBloccoPrezzoUnitario(b, qPezzi(b), margineGlobale),
+    0
+  )
+  const costoUnitTotale = blocchi.reduce((sum, b) => sum + calcBloccoCostoUnitario(b, qPezzi(b)), 0)
+  const imballaggioUnit = blocchi.reduce((sum, b) => sum + calcImballaggio(calcBloccoVenditaUnitaria(b, qPezzi(b))), 0)
+  const tempiAccessoriUnit = blocchi.reduce((sum, b) => sum + calcTempiAccessori(calcBloccoCostoUnitario(b, qPezzi(b))), 0)
+  const speseGeneraliUnit = blocchi.reduce((sum, b) => sum + calcSpeseGenerali(calcBloccoCostoUnitario(b, qPezzi(b))), 0)
+  const costoMaterialeUnit = blocchi.reduce(
+    (sum, b) => sum + b.articoli.reduce((s, a) => s + a.ult_costo * a.qty, 0),
+    0
+  )
+  const costoManodoperaUnit = blocchi.reduce(
+    (sum, b) => sum + b.servizi.reduce((s, sv) => s + sv.tariffa_ora * sv.ore * multServizioUnitario(sv, qPezzi(b)), 0),
+    0
+  )
+  const margineEuroUnit = totaleGlobaleUnit - costoUnitTotale
+  // Quantità pezzi mostrata in etichetta: se tutti i blocchi hanno lo stesso Q usa quello.
+  const qUnici = Array.from(new Set(blocchi.map((b) => qPezzi(b))))
+  const qEtichetta = qUnici.length === 1 ? qUnici[0] : null
+  const mostraComplessivi = qUnici.some((q) => q > 1)
 
   // Indicatore di completezza per la vista d'insieme
   const coseDaCompletare: string[] = []
@@ -660,14 +697,13 @@ export function NuovoView() {
                   <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
                     Margine trattativa (%)
                   </label>
-                  <Input
-                    type="number"
+                  <NumInput
                     min={0}
                     step={0.5}
                     value={margineGlobale}
-                    onChange={(e) => setMargineGlobale(Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(n) => setMargineGlobale(n)}
                     placeholder="0"
-                    className="text-sm"
+                    className="flex h-10 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm transition-colors placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a1be]/40"
                   />
                 </div>
               </div>
@@ -789,8 +825,9 @@ export function NuovoView() {
                 <div aria-hidden className="pointer-events-none absolute -bottom-12 -left-12 w-40 h-40 rounded-full bg-emerald-300/10 blur-3xl" />
 
                 <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-3 lg:p-4">
-                  {/* KPI cards */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 flex-1 min-w-0">
+                  {/* KPI cards: valori UNITARI (per pezzo) + fila complessivi sotto */}
+                  <div className="flex-1 min-w-0 space-y-2">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                     {/* Materiali */}
                     <div className="group relative rounded-xl border border-slate-200/70 bg-white/70 backdrop-blur-sm px-3 py-2.5 transition-all hover:border-slate-300 hover:shadow-md">
                       <div className="flex items-center justify-between gap-2">
@@ -798,7 +835,7 @@ export function NuovoView() {
                           <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-slate-200 transition-colors">
                             <Package className="w-3.5 h-3.5 text-slate-600" />
                           </div>
-                          <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Materiali</span>
+                          <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Materiali / pz</span>
                         </div>
                         {nArticoliTotali > 0 && (
                           <span className="flex items-center gap-1.5 shrink-0 text-[10px] text-slate-400 tabular-nums">
@@ -811,9 +848,9 @@ export function NuovoView() {
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 text-lg font-bold text-slate-800 tabular-nums">{fmtEur(totaleArticoli)}</div>
-                      {costoVergineMateriale > 0 && (
-                        <div className="text-[10px] text-slate-400 tabular-nums">costo {fmtEur(costoVergineMateriale)}</div>
+                      <div className="mt-1 text-lg font-bold text-slate-800 tabular-nums">{fmtEur(totaleArticoliUnit)}</div>
+                      {costoMaterialeUnit > 0 && (
+                        <div className="text-[10px] text-slate-400 tabular-nums">costo {fmtEur(costoMaterialeUnit)}</div>
                       )}
                     </div>
 
@@ -824,7 +861,7 @@ export function NuovoView() {
                           <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center group-hover:bg-amber-200 transition-colors">
                             <Hammer className="w-3.5 h-3.5 text-amber-700" />
                           </div>
-                          <span className="text-[10px] uppercase tracking-wider text-amber-700 font-semibold">Servizi</span>
+                          <span className="text-[10px] uppercase tracking-wider text-amber-700 font-semibold">Servizi / pz</span>
                         </div>
                         {nServiziTotali > 0 && coeffRicaricoMedioServizi > 0 && (
                           <span
@@ -835,9 +872,9 @@ export function NuovoView() {
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 text-lg font-bold text-amber-900 tabular-nums">{fmtEur(totaleServizi)}</div>
-                      {costoVergineManodopera > 0 && (
-                        <div className="text-[10px] text-amber-600/60 tabular-nums">costo {fmtEur(costoVergineManodopera)}</div>
+                      <div className="mt-1 text-lg font-bold text-amber-900 tabular-nums">{fmtEur(totaleServiziUnit)}</div>
+                      {costoManodoperaUnit > 0 && (
+                        <div className="text-[10px] text-amber-600/60 tabular-nums">costo {fmtEur(costoManodoperaUnit)}</div>
                       )}
                     </div>
 
@@ -849,16 +886,16 @@ export function NuovoView() {
                           <div className="w-7 h-7 rounded-lg bg-[#00a1be]/20 flex items-center justify-center group-hover:bg-[#00a1be]/30 transition-colors">
                             <Sparkles className="w-3.5 h-3.5 text-[#007a91]" />
                           </div>
-                          <span className="text-[10px] uppercase tracking-wider text-[#007a91] font-semibold">Totale</span>
+                          <span className="text-[10px] uppercase tracking-wider text-[#007a91] font-semibold">Prezzo / pz</span>
                         </div>
                         <span className="text-[10px] text-[#007a91]/70 tabular-nums shrink-0">{blocchi.length} {blocchi.length === 1 ? "blocco" : "blocchi"}</span>
                       </div>
-                      <div className="relative mt-1 text-xl font-bold tabular-nums bg-gradient-to-r from-[#007a91] to-[#00a1be] bg-clip-text text-transparent">
-                        {fmtEur(totaleGlobale)}
+                      <div className="relative mt-1 text-2xl font-bold tabular-nums bg-gradient-to-r from-[#007a91] to-[#00a1be] bg-clip-text text-transparent">
+                        {fmtEur(totaleGlobaleUnit)}
                       </div>
-                      {(imballaggioTotale > 0 || tempiAccessoriTotale > 0 || speseGeneraliTotale > 0 || margineGlobale > 0) && (
+                      {(imballaggioUnit > 0 || tempiAccessoriUnit > 0 || speseGeneraliUnit > 0 || margineGlobale > 0) && (
                         <div className="relative text-[10px] text-[#007a91]/70 tabular-nums leading-tight">
-                          incl. imb. {fmtEur(imballaggioTotale)} · tempi {fmtEur(tempiAccessoriTotale)} · spese {fmtEur(speseGeneraliTotale)}
+                          incl. imb. {fmtEur(imballaggioUnit)} · tempi {fmtEur(tempiAccessoriUnit)} · spese {fmtEur(speseGeneraliUnit)}
                           {margineGlobale > 0 && ` · marg. +${margineGlobale}%`}
                         </div>
                       )}
@@ -872,17 +909,48 @@ export function NuovoView() {
                           <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
                             <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
                           </div>
-                          <span className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">Margine</span>
+                          <span className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">Margine / pz</span>
                         </div>
                         {marginePct != null && (
                           <span className="text-[10px] text-emerald-600/70 tabular-nums shrink-0">+{marginePct.toFixed(0)}%</span>
                         )}
                       </div>
-                      <div className="relative mt-1 text-lg font-bold text-emerald-700 tabular-nums">{fmtEur(margineEuro)}</div>
-                      {costoVergineTotale > 0 && (
-                        <div className="text-[10px] text-emerald-600/60 tabular-nums">su costo {fmtEur(costoVergineTotale)}</div>
+                      <div className="relative mt-1 text-lg font-bold text-emerald-700 tabular-nums">{fmtEur(margineEuroUnit)}</div>
+                      {costoUnitTotale > 0 && (
+                        <div className="text-[10px] text-emerald-600/60 tabular-nums">su costo {fmtEur(costoUnitTotale)}</div>
                       )}
                     </div>
+                  </div>
+
+                  {/* Fila complessiva: totali per TUTTI i pezzi (discreta, secondaria) */}
+                  {mostraComplessivi && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold shrink-0">
+                          Totale complessivo{qEtichetta ? ` · ${qEtichetta} pezzi` : " · tutti i pezzi"}
+                        </span>
+                        <span className="h-px flex-1 bg-slate-200" />
+                      </div>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                        <div className="rounded-lg bg-slate-50 px-2.5 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wide text-slate-400">Materiali</div>
+                          <div className="text-[13px] text-slate-600 tabular-nums">{fmtEur(totaleArticoli)}</div>
+                        </div>
+                        <div className="rounded-lg bg-amber-50/70 px-2.5 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wide text-amber-600/80">Servizi (lotto)</div>
+                          <div className="text-[13px] text-amber-800 tabular-nums">{fmtEur(totaleServizi)}</div>
+                        </div>
+                        <div className="rounded-lg bg-[#00a1be]/8 px-2.5 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wide text-[#007a91]/80">Prezzo</div>
+                          <div className="text-[13px] font-semibold text-[#007a91] tabular-nums">{fmtEur(totaleGlobale)}</div>
+                        </div>
+                        <div className="rounded-lg bg-emerald-50 px-2.5 py-1.5">
+                          <div className="text-[9px] uppercase tracking-wide text-emerald-600/80">Margine</div>
+                          <div className="text-[13px] text-emerald-700 tabular-nums">{fmtEur(margineEuro)}</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                   </div>
 
                   {/* Actions — impilati in verticale per lasciare spazio alle card */}

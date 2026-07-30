@@ -171,6 +171,48 @@ export function genKey(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
+/**
+ * Sigle e unità che devono restare in MAIUSCOLO nelle descrizioni articolo.
+ * (I token che contengono cifre — es. `FMIE-A85`, `W=85MM`, `Ø60` — sono già
+ * preservati automaticamente perché sono codici/misure.)
+ */
+const SIGLE_DESCRIZIONE = new Set([
+  "HDPE", "PVC", "PTFE", "PP", "PE", "PA", "PU", "POM", "ABS", "EPDM", "NBR", "PET",
+  "INOX", "AISI", "UNI", "ISO", "DIN", "CE", "IP", "SX", "DX", "AC", "DC", "KW", "HP",
+  "RPM", "VAC", "VDC", "LED", "PLC", "USB", "NR", "MT", "PZ", "ØD", "OK",
+])
+
+/**
+ * Normalizza una descrizione da anagrafica (tutta MAIUSCOLA) in "prima lettera
+ * maiuscola, resto minuscolo", preservando sigle tecniche e codici.
+ *   "TESTATA FOLLE FMIE-A85"  → "Testata folle FMIE-A85"
+ *   "GUIDA HDPE COLORE BIANCO" → "Guida HDPE colore bianco"
+ * Se la descrizione non è tutta maiuscola viene lasciata invariata (l'utente
+ * l'ha già scritta come voleva).
+ */
+export function capitalizzaDescrizione(testo: string): string {
+  const s = (testo ?? "").trim()
+  if (!s) return s
+  // Solo se è "urlata": nessuna lettera minuscola presente.
+  if (/[a-zàèéìòùâêîôû]/.test(s)) return s
+
+  const convertito = s
+    .split(/(\s+)/)
+    .map((tok) => {
+      if (/^\s+$/.test(tok) || tok === "") return tok
+      const nudo = tok.replace(/[^A-Za-zÀ-Ý]/g, "")
+      if (/\d/.test(tok)) return tok                      // codici e misure: invariati
+      if (SIGLE_DESCRIZIONE.has(nudo.toUpperCase())) return tok
+      return tok.toLowerCase()
+    })
+    .join("")
+
+  // Prima lettera utile in maiuscolo
+  const idx = convertito.search(/[a-zàèéìòùâêîôû]/)
+  if (idx < 0) return convertito
+  return convertito.slice(0, idx) + convertito[idx].toUpperCase() + convertito.slice(idx + 1)
+}
+
 export function fmtEur(n: number): string {
   return new Intl.NumberFormat("it-IT", {
     style: "currency",
@@ -217,32 +259,63 @@ export function calcCostoServizio(s: ServizioBlocco): number {
 }
 
 /**
- * Moltiplicatore di un servizio dato Q.
- * - `scala_con_quantita = true` (es. Lavorazione/Montaggio/Collaudo): il costo è
- *   inserito per l'intero lotto e va RIPARTITO sul singolo pezzo → ÷ Q.
- * - `scala_con_quantita = false` (es. Progettazione/Manuale, una tantum): × 1.
- * Guardia su Q=0 per evitare divisioni per zero.
+ * Moltiplicatore di un servizio nel totale COMPLESSIVO del blocco.
+ *
+ * Le ore di manodopera si intendono sempre riferite all'INTERO LOTTO: nel totale
+ * complessivo contano quindi una volta sola (× 1), qualunque sia il flag.
+ * Es. 1000 € di lavorazione con 10 pezzi → 1000 € nel totale.
  */
-export function multServizio(s: ServizioBlocco, q: number): number {
+export function multServizioComplessivo(_s: ServizioBlocco): number {
+  return 1
+}
+
+/**
+ * Moltiplicatore di un servizio nella vista PER PEZZO. Qui il flag conta:
+ *  - `scala_con_quantita = true`  (÷Q): costo del lotto RIPARTITO → ÷ Q
+ *      es. 1000 € su 10 pezzi → 100 € per pezzo
+ *  - `scala_con_quantita = false` (1×): voce UNA TANTUM, non ripartita → × 1
+ *      es. 1000 € restano 1000 € sul singolo pezzo (e 1000 € nel totale)
+ *
+ * Nota: con voci "1×" l'unitario NON è il complessivo diviso Q — sono due viste
+ * con significati diversi, ed è voluto.
+ */
+export function multServizioUnitario(s: ServizioBlocco, q: number): number {
   if (!s.scala_con_quantita) return 1
   return q > 0 ? 1 / q : 1
 }
 
 /**
- * Prezzo di vendita del blocco (con ricarico) a quantità `q`.
- * Materiali × q (scalano sempre); manodopera ÷ q se scala_con_quantita (ripartita
- * sui pezzi), altrimenti × 1 (una tantum). NON include imballaggio/spese/margine.
+ * Prezzo di vendita COMPLESSIVO del blocco (con ricarico) a quantità `q`.
+ * Materiali × q (inseriti per 1 pezzo); manodopera × 1 (ore del lotto).
+ * NON include imballaggio/spese/margine.
  */
 export function calcBloccoVendita(b: Blocco, q = 1): number {
   const mat = b.articoli.reduce((s, a) => s + calcNettoArticolo(a) * q, 0)
-  const srv = b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * multServizio(sv, q), 0)
+  const srv = b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * multServizioComplessivo(sv), 0)
   return mat + srv
 }
 
-/** Costo vergine del blocco a quantità `q` (stessa logica di scala: manodopera ÷q se scala). */
+/** Costo vergine COMPLESSIVO del blocco a quantità `q` (manodopera = ore del lotto, × 1). */
 export function calcBloccoCosto(b: Blocco, q = 1): number {
   const mat = b.articoli.reduce((s, a) => s + calcCostoArticolo(a) * q, 0)
-  const srv = b.servizi.reduce((s, sv) => s + calcCostoServizio(sv) * multServizio(sv, q), 0)
+  const srv = b.servizi.reduce((s, sv) => s + calcCostoServizio(sv) * multServizioComplessivo(sv), 0)
+  return mat + srv
+}
+
+/**
+ * Prezzo di vendita per SINGOLO PEZZO: materiali per 1 pz + manodopera secondo
+ * il flag (÷Q se ripartita, intera se una tantum).
+ */
+export function calcBloccoVenditaUnitaria(b: Blocco, q = 1): number {
+  const mat = b.articoli.reduce((s, a) => s + calcNettoArticolo(a), 0)
+  const srv = b.servizi.reduce((s, sv) => s + calcTotaleServizio(sv) * multServizioUnitario(sv, q), 0)
+  return mat + srv
+}
+
+/** Costo vergine per SINGOLO PEZZO (stessa logica della vendita unitaria). */
+export function calcBloccoCostoUnitario(b: Blocco, q = 1): number {
+  const mat = b.articoli.reduce((s, a) => s + calcCostoArticolo(a), 0)
+  const srv = b.servizi.reduce((s, sv) => s + calcCostoServizio(sv) * multServizioUnitario(sv, q), 0)
   return mat + srv
 }
 
@@ -271,6 +344,19 @@ export function margineEffettivo(b: Blocco, margineGlobale: number): number {
 export function calcBloccoPrezzoFinale(b: Blocco, q: number, margineGlobale: number): number {
   const vend = calcBloccoVendita(b, q)
   const costo = calcBloccoCosto(b, q)
+  const conAddon = vend + calcImballaggio(vend) + calcTempiAccessori(costo) + calcSpeseGenerali(costo)
+  return conAddon * (1 + margineEffettivo(b, margineGlobale) / 100)
+}
+
+/**
+ * Prezzo finale per SINGOLO PEZZO: stessa formula del complessivo, ma calcolata
+ * sulla base unitaria (add-on e margine ricalcolati su vendita/costo del pezzo).
+ * Con sole voci ÷Q coincide con `prezzo complessivo ÷ Q`; con voci una tantum no,
+ * perché quelle restano intere sul pezzo (comportamento voluto).
+ */
+export function calcBloccoPrezzoUnitario(b: Blocco, q: number, margineGlobale: number): number {
+  const vend = calcBloccoVenditaUnitaria(b, q)
+  const costo = calcBloccoCostoUnitario(b, q)
   const conAddon = vend + calcImballaggio(vend) + calcTempiAccessori(costo) + calcSpeseGenerali(costo)
   return conAddon * (1 + margineEffettivo(b, margineGlobale) / 100)
 }
