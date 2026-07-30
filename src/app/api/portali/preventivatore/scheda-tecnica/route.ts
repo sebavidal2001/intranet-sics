@@ -4,8 +4,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
 import { formatBuilderStateForPrompt } from "@/lib/portali/preventivatore/chat/builder-state-prompt";
-import { getCachedEmbedding } from "@/lib/portali/preventivatore/chat/embedding-cache";
 import type { BuilderStateForChat } from "@/lib/portali/preventivatore/chat/types";
+import {
+  chiamaOpenRouterChat,
+  recuperaEsempi,
+  formattaEsempi,
+  registraUsage,
+  risolveModello,
+} from "@/lib/portali/preventivatore/scheda-tecnica/ai";
 import { logError, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -42,156 +48,8 @@ type RequestBody = {
 };
 
 type SchedaResponse =
-  | { tipo: "scheda"; contenuto_md: string; modello: string; provider: string; scheda_id: string }
+  | { tipo: "scheda"; contenuto_md: string; modello: string; provider: string; scheda_id: string; costo?: number | null }
   | { tipo: "domande"; motivo: string; domande: Domanda[] };
-
-// ─── Helpers OpenRouter ──────────────────────────────────────────────────────
-
-async function chiamaOpenRouter(opts: {
-  model: string;
-  systemPrompt: string;
-  userPrompt: string;
-  temperature: number;
-  maxTokens: number;
-}): Promise<{ content: string; usage: { prompt_tokens?: number; completion_tokens?: number; cost?: number } | undefined }> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY non configurata");
-
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    signal: AbortSignal.timeout(60_000),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://intranet-sics.vercel.app",
-      "X-Title": "SICS Scheda Tecnica",
-    },
-    body: JSON.stringify({
-      model: opts.model,
-      messages: [
-        { role: "system", content: opts.systemPrompt },
-        { role: "user", content: opts.userPrompt },
-      ],
-      temperature: opts.temperature,
-      max_tokens: opts.maxTokens,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-    throw new Error(err?.error?.message ?? `OpenRouter HTTP ${res.status}`);
-  }
-  const data = (await res.json()) as {
-    choices: Array<{ message: { content: string } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
-  };
-  const content = data.choices?.[0]?.message?.content ?? "";
-  return { content, usage: data.usage };
-}
-
-// ─── Recupera schede storiche simili dal RAG (ricerca SEMANTICA) ─────────────
-// Strategia: costruiamo una query dal preventivo corrente (titolo + tipi blocco +
-// descrizioni articoli), la trasformiamo in embedding e cerchiamo i chunk più simili
-// via `match_chunks`. Filtriamo ai soli chunk `ruolo_file='preventivo_commerciale'`
-// (= le schede descrittive di fornitura, lo stile-target) e teniamo i primi N.
-// Questo sostituisce la vecchia euristica ILIKE su cliente/categoria che non
-// sfruttava l'archivio vettoriale e pescava spesso il chunk sbagliato.
-
-type MatchChunkRow = {
-  documento_id: string;
-  contenuto: string;
-  metadata: Record<string, unknown> | null;
-  similarity: number;
-};
-
-async function recuperaEsempiStorici(
-  builderState: BuilderStateForChat,
-  maxEsempi: number,
-  soglia: number
-): Promise<Array<{ codice: string; cliente: string | null; contenuto: string }>> {
-  const admin = createAdminClient();
-
-  // Query di ricerca: ciò che caratterizza il TIPO di fornitura.
-  const tipiBlocco = [...new Set(builderState.blocchi.map((b) => b.tipo).filter(Boolean))];
-  const descrArticoli = builderState.blocchi
-    .flatMap((b) => b.articoli.map((a) => a.descrizione))
-    .filter(Boolean)
-    .slice(0, 30);
-  const queryText = [
-    builderState.titolo ?? "",
-    tipiBlocco.join(", "),
-    descrArticoli.join("; "),
-  ].filter(Boolean).join(". ").trim();
-  if (!queryText) return [];
-
-  let queryEmbedding: number[];
-  try {
-    queryEmbedding = await getCachedEmbedding(queryText);
-  } catch (e) {
-    logWarn("preventivatore.scheda-tecnica", "embedding query fallito → nessun esempio", { dettaglio: String(e) });
-    return [];
-  }
-
-  // Pool ampio (30) → filtriamo alle schede commerciali → primi maxEsempi.
-  const { data, error } = await admin
-    .schema("preventivatore")
-    .rpc("match_chunks", {
-      query_embedding: queryEmbedding,
-      match_threshold: soglia,
-      match_count: 30,
-    });
-  if (error) {
-    logWarn("preventivatore.scheda-tecnica", "match_chunks fallito → nessun esempio", { dettaglio: error.message });
-    return [];
-  }
-
-  const rows = (data ?? []) as MatchChunkRow[];
-  const schede = rows.filter((r) => (r.metadata?.["ruolo_file"] as string | undefined) === "preventivo_commerciale");
-  // Se per qualche motivo non ci sono schede commerciali, ripieghiamo sul pool grezzo.
-  const scelti = (schede.length > 0 ? schede : rows).slice(0, maxEsempi);
-  if (scelti.length === 0) return [];
-
-  // Codice/cliente dei documenti selezionati (per etichettare gli esempi).
-  const docIds = [...new Set(scelti.map((r) => r.documento_id))];
-  const docMap = new Map<string, { codice: string; cliente: string | null }>();
-  const { data: docs } = await admin
-    .schema("preventivatore")
-    .from("documenti")
-    .select("id, codice, cliente")
-    .in("id", docIds);
-  for (const d of (docs ?? []) as Array<{ id: string; codice: string; cliente: string | null }>) {
-    docMap.set(d.id, { codice: d.codice, cliente: d.cliente });
-  }
-
-  return scelti.map((r) => ({
-    codice: docMap.get(r.documento_id)?.codice ?? "n/d",
-    cliente: docMap.get(r.documento_id)?.cliente ?? null,
-    contenuto: r.contenuto?.slice(0, 6000) ?? "",
-  }));
-}
-
-/**
- * Risolve il modello da usare per la scheda tecnica.
- *
- * Priorità:
- *   1. `modello_scheda_tecnica` (specifico, se valorizzato)
- *   2. `modello_generazione`    (lo stesso modello della chat — default sensato)
- *   3. Fallback hard-coded a `anthropic/claude-haiku-4.5`
- *
- * Formato accettato (entrambi i campi):
- *   - `openrouter:provider/modello`
- *   - `provider/modello`           (auto-OpenRouter se contiene "/")
- *   - `gemini-...`                 (Gemini)
- */
-function risolveModello(
-  configSpecific: string | undefined,
-  configFallback: string | undefined
-): { provider: "openrouter" | "gemini"; model: string } {
-  const candidate = configSpecific?.trim() || configFallback?.trim() || "openrouter:anthropic/claude-haiku-4.5";
-  if (candidate.startsWith("openrouter:")) return { provider: "openrouter", model: candidate.slice("openrouter:".length) };
-  if (candidate.includes("/")) return { provider: "openrouter", model: candidate };
-  return { provider: "gemini", model: candidate };
-}
 
 // ─── Main handler ────────────────────────────────────────────────────────────
 
@@ -239,8 +97,8 @@ export async function POST(request: NextRequest) {
     void isVuoto;
     const dovrebbeChiedere = !haRisposte && !body.forza_generazione;
 
-    // Recupera esempi storici (ricerca semantica; arricchisce entrambe le fasi)
-    const esempi = await recuperaEsempiStorici(body.builder_state, maxEsempi, sogliaEsempi);
+    // Esempi di riferimento: schede APPROVATE (prioritarie) + storiche dai Word.
+    const esempi = await recuperaEsempi(body.builder_state, maxEsempi, sogliaEsempi);
 
     if (dovrebbeChiedere) {
       // ─── Fase 1: chiedo domande ─────────────────────────────────────────────
@@ -251,22 +109,22 @@ export async function POST(request: NextRequest) {
         "",
         formatBuilderStateForPrompt(body.builder_state),
         "",
-        esempi.length > 0
-          ? `\nPreventivi storici simili (${esempi.length}):\n` +
-            esempi.map((e) => `--- ${e.codice} (${e.cliente ?? "n/d"}) ---\n${e.contenuto}`).join("\n\n")
-          : "Nessun preventivo storico simile trovato.",
+        formattaEsempi(esempi),
       ].join("\n");
 
-      const { content, usage } = await chiamaOpenRouter({
+      const { content, usage } = await chiamaOpenRouterChat({
         model,
-        systemPrompt: systemDomande,
-        userPrompt,
+        messages: [
+          { role: "system", content: systemDomande },
+          { role: "user", content: userPrompt },
+        ],
         temperature: 0.2,
         // 1024 era troppo poco: con gli esempi storici il JSON delle domande veniva
         // TRONCATO (finish_reason=length) → il parse falliva e la fase 1 saltava,
         // generando subito la scheda senza mai chiedere nulla.
         maxTokens: 4096,
       });
+      await registraUsage({ userId: user.id, model, modalita: "scheda_domande", usage });
 
       // Estraggo il JSON dalla risposta (anche se l'LLM dovesse aver aggiunto testo extra)
       let parsed: { tipo?: string; motivo?: string; domande?: Domanda[] } | null = null;
@@ -315,19 +173,19 @@ export async function POST(request: NextRequest) {
         ? "\nINFORMAZIONI AGGIUNTIVE FORNITE DALL'UTENTE:\n" +
           body.risposte_domande!.map((r) => `- ${r.id}: ${r.risposta}`).join("\n")
         : "",
-      esempi.length > 0
-        ? `\nPREVENTIVI STORICI SIMILI (${esempi.length}) — usali come riferimento di stile:\n` +
-          esempi.map((e) => `### ESEMPIO ${e.codice} (${e.cliente ?? "n/d"})\n${e.contenuto}`).join("\n\n")
-        : "Nessun preventivo storico simile disponibile: basati ESCLUSIVAMENTE sui dati del builder.",
+      formattaEsempi(esempi),
     ].join("\n");
 
-    const { content: schedaMd, usage } = await chiamaOpenRouter({
+    const { content: schedaMd, usage } = await chiamaOpenRouterChat({
       model,
-      systemPrompt: systemSchedaTecnica,
-      userPrompt: userPromptScheda,
+      messages: [
+        { role: "system", content: systemSchedaTecnica },
+        { role: "user", content: userPromptScheda },
+      ],
       temperature,
       maxTokens: 8192,
     });
+    await registraUsage({ userId: user.id, model, modalita: "scheda_tecnica", usage });
 
     // Salva l'audit
     const admin = createAdminClient();
@@ -359,6 +217,7 @@ export async function POST(request: NextRequest) {
       modello: model,
       provider: "openrouter",
       scheda_id: insertRow?.id ?? "",
+      costo: usage?.cost ?? null,
     } satisfies SchedaResponse);
   } catch (err) {
     logError("preventivatore.scheda-tecnica", "scheda-tecnica error", err);
