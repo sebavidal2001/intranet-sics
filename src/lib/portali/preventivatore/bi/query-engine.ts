@@ -125,15 +125,19 @@ function aggregate(rows: RawRow[], metric: BiMetricConfig): number {
 
 function matchesFilter(row: RawRow, filter: BiFilterConfig): boolean {
   const raw = valueForField(row, filter.field);
-  const value = typeof raw === "string" ? raw.toLowerCase() : raw;
-  const target = typeof filter.value === "string" ? filter.value.toLowerCase() : filter.value;
+  // Confronto per VALORE, non per tipo: i filtri della UI arrivano come stringa
+  // (es. anno "2025" da una <select>) mentre in DB il campo è numerico (2025).
+  // Con `===` stretto nessuna riga passava → "i filtri non funzionano".
+  const norm = (v: unknown) => (v == null ? "" : String(v).trim().toLowerCase());
+  const value = norm(raw);
+  const target = norm(filter.value);
 
   if (filter.op === "eq") return value === target;
   if (filter.op === "neq") return value !== target;
   if (filter.op === "contains") return String(value ?? "").includes(String(target ?? ""));
   if (filter.op === "in") {
-    const list = Array.isArray(filter.value) ? filter.value.map((v) => String(v).toLowerCase()) : [];
-    return list.includes(String(raw ?? "").toLowerCase());
+    const list = Array.isArray(filter.value) ? filter.value.map(norm) : [];
+    return list.includes(value);
   }
 
   const n = Number(raw);

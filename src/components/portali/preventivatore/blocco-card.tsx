@@ -10,6 +10,9 @@ import {
   calcTotaleServizio,
   calcBloccoVendita,
   calcBloccoCosto,
+  calcBloccoVenditaUnitaria,
+  calcBloccoCostoUnitario,
+  capitalizzaDescrizione,
   prezzoVecchio,
   ricalcolaArticoliFormule,
   ricalcolaCatenaGuida,
@@ -26,6 +29,7 @@ import {
 } from "@/components/portali/preventivatore/nuovo-view-types"
 import { BloccoTemplatePanel, type TemplateListItem } from "@/components/portali/preventivatore/blocco-template-panel"
 import { InlineCodiceSearch } from "@/components/portali/preventivatore/inline-codice-search"
+import { NumInput } from "@/components/portali/preventivatore/num-input"
 import { FlexmoveRiepilogoModal } from "@/components/portali/preventivatore/flexmove-riepilogo-modal"
 
 // ─── SearchArticoli ───────────────────────────────────────────────────────────
@@ -249,12 +253,11 @@ function ServiziSection({
                     <span className="text-[10px] text-text-muted ml-1.5">{s.categoria}</span>
                   </td>
                   <td className="px-2 py-1.5 border border-border">
-                    <input
-                      type="number"
-                      min={0.5}
+                    <NumInput
+                      min={0}
                       step={0.5}
                       value={s.ore}
-                      onChange={(e) => onAggiorna(s._key, "ore", Math.max(0, Number(e.target.value)))}
+                      onChange={(n) => onAggiorna(s._key, "ore", n)}
                       className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
                     />
                   </td>
@@ -262,13 +265,12 @@ function ServiziSection({
                     {fmtEur(s.tariffa_ora)}
                   </td>
                   <td className="px-2 py-1.5 border border-border">
-                    <input
-                      type="number"
+                    <NumInput
                       min={0.01}
                       max={1}
                       step={0.05}
                       value={s.coeff_ricarico}
-                      onChange={(e) => onAggiorna(s._key, "coeff_ricarico", Math.max(0.01, Number(e.target.value)))}
+                      onChange={(n) => onAggiorna(s._key, "coeff_ricarico", n)}
                       className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1 tabular-nums"
                       title="Coefficiente di ricarico SICS (es. 0.5 = costo × 2, 0.65 = costo × 1.538)"
                     />
@@ -484,8 +486,9 @@ export function BloccoCard({
   const [coeffBlocco, setCoeffBlocco] = useState(COEFF_RICARICO_DEFAULT)
   const [riepilogoOpen, setRiepilogoOpen] = useState(false)
   const q = blocco.quantita_pezzi ?? 1
-  const venditaUnitaria = calcBloccoVendita(blocco, 1)   // prezzo vendita singola unità (no spese/margine)
-  const costoUnitario = calcBloccoCosto(blocco, 1)
+  // Unitari = complessivo ÷ Q (materiali per 1 pz + ore del lotto ripartite). No spese/margine.
+  const venditaUnitaria = calcBloccoVenditaUnitaria(blocco, q)
+  const costoUnitario = calcBloccoCostoUnitario(blocco, q)
   const venditaCompl = calcBloccoVendita(blocco, q)
   const costoCompl = calcBloccoCosto(blocco, q)
 
@@ -513,7 +516,7 @@ export function BloccoCard({
     const articoli = blocco.articoli.map((a) =>
       a._key !== key ? a : {
         ...a,
-        prodotto_id: p.id, codice: p.codice, descrizione: p.descrizione,
+        prodotto_id: p.id, codice: p.codice, descrizione: capitalizzaDescrizione(p.descrizione),
         data_ult_costo: p.data_ult_costo ?? null, manuale: false,
         ...(blocco.usa_catena_guida ? { ult_costo_componente: base } : { ult_costo: base }),
       }
@@ -524,7 +527,7 @@ export function BloccoCard({
   }
 
   function selezionaArticoloCG(tipo: "catena" | "guida", p: Prodotto) {
-    const ref = { codice: p.codice, descrizione: p.descrizione, costo: p.ult_costo ?? 0 }
+    const ref = { codice: p.codice, descrizione: capitalizzaDescrizione(p.descrizione), costo: p.ult_costo ?? 0 }
     const b2: Blocco = tipo === "catena"
       ? { ...blocco, catena_articolo: ref }
       : { ...blocco, guida_articolo: ref }
@@ -545,7 +548,7 @@ export function BloccoCard({
       _key: genKey(),
       prodotto_id: p.id,
       codice: p.codice,
-      descrizione: p.descrizione,
+      descrizione: capitalizzaDescrizione(p.descrizione),
       ult_costo: p.ult_costo ?? 0,
       qty: 1,
       coeff_ricarico: COEFF_RICARICO_DEFAULT,
@@ -645,15 +648,15 @@ export function BloccoCard({
         {/* Quantità pezzi del blocco */}
         <div className="flex items-center gap-1 shrink-0" title="Numero di pezzi da produrre per questo blocco">
           <span className="text-[10px] uppercase tracking-wide text-text-muted">Pz</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={q}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => onChange({ ...blocco, quantita_pezzi: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
-            className="w-14 text-center text-sm rounded-md border border-border bg-bg px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40 tabular-nums"
-          />
+          <div onClick={(e) => e.stopPropagation()} className="contents">
+            <NumInput
+              min={1}
+              step={1}
+              value={q}
+              onChange={(n) => onChange({ ...blocco, quantita_pezzi: Math.max(1, Math.floor(n || 1)) })}
+              className="w-14 text-center text-sm rounded-md border border-border bg-bg px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40 tabular-nums"
+            />
+          </div>
         </div>
 
         <div className="shrink-0 text-right leading-tight">
@@ -789,13 +792,12 @@ export function BloccoCard({
               {blocco.articoli.length > 0 && (
                 <div className="ml-auto flex items-center gap-1.5" title="Imposta lo stesso coefficiente di ricarico a tutti i materiali del blocco (poi modificabili singolarmente)">
                   <span className="text-[10px] uppercase tracking-wide text-text-muted">Coeff. blocco</span>
-                  <input
-                    type="number"
+                  <NumInput
                     min={0.01}
                     max={1}
                     step={0.01}
                     value={coeffBlocco}
-                    onChange={(e) => setCoeffBlocco(Math.max(0.01, Number(e.target.value)))}
+                    onChange={(n) => setCoeffBlocco(n)}
                     className="w-14 text-center text-xs rounded border border-border bg-bg px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 tabular-nums"
                   />
                   <button
@@ -871,13 +873,11 @@ export function BloccoCard({
                           />
                         </td>
                         <td className="px-2 py-1.5 border border-border">
-                          <input
-                            type="number"
-                            min={1}
+                          <NumInput
+                            min={0}
+                            emptyValue={1}
                             value={a.qty}
-                            onChange={(e) =>
-                              aggiornaArticolo(a._key, "qty", Math.max(1, Number(e.target.value)))
-                            }
+                            onChange={(n) => aggiornaArticolo(a._key, "qty", n)}
                             className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
                           />
                         </td>
@@ -891,28 +891,24 @@ export function BloccoCard({
                                 : undefined
                           }
                         >
-                          <input
-                            type="number"
+                          <NumInput
                             min={0}
                             step={0.01}
                             value={blocco.usa_catena_guida ? (a.ult_costo_componente ?? a.ult_costo) : a.ult_costo}
-                            onChange={(e) =>
-                              aggiornaArticolo(a._key, blocco.usa_catena_guida ? "ult_costo_componente" : "ult_costo", Math.max(0, Number(e.target.value)))
+                            onChange={(n) =>
+                              aggiornaArticolo(a._key, blocco.usa_catena_guida ? "ult_costo_componente" : "ult_costo", n)
                             }
                             className={`w-full text-right text-sm border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1 ${prezzoVecchio(a.data_ult_costo) ? "bg-amber-100" : "bg-transparent"}`}
                             title={blocco.usa_catena_guida ? "Costo base del componente (catena/guida aggiunti nel Netto)" : undefined}
                           />
                         </td>
                         <td className="px-2 py-1.5 border border-border">
-                          <input
-                            type="number"
+                          <NumInput
                             min={0.01}
                             max={1}
                             step={0.01}
                             value={a.coeff_ricarico}
-                            onChange={(e) =>
-                              aggiornaArticolo(a._key, "coeff_ricarico", Math.max(0.01, Number(e.target.value)))
-                            }
+                            onChange={(n) => aggiornaArticolo(a._key, "coeff_ricarico", n)}
                             className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
                             title="Convenzione SICS: prezzo = ult_costo / coeff_ricarico (es. 0.5 = ricarico 100%)"
                           />
@@ -920,13 +916,13 @@ export function BloccoCard({
                         {blocco.usa_catena_guida && (
                           <>
                             <td className="px-2 py-1.5 border border-border">
-                              <input type="number" min={0} step={0.01} value={a.metri_catena ?? 0}
-                                onChange={(e) => aggiornaArticolo(a._key, "metri_catena", Math.max(0, Number(e.target.value)))}
+                              <NumInput min={0} step={0.01} value={a.metri_catena ?? 0}
+                                onChange={(n) => aggiornaArticolo(a._key, "metri_catena", n)}
                                 className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1" />
                             </td>
                             <td className="px-2 py-1.5 border border-border">
-                              <input type="number" min={0} step={0.01} value={a.metri_guida ?? 0}
-                                onChange={(e) => aggiornaArticolo(a._key, "metri_guida", Math.max(0, Number(e.target.value)))}
+                              <NumInput min={0} step={0.01} value={a.metri_guida ?? 0}
+                                onChange={(n) => aggiornaArticolo(a._key, "metri_guida", n)}
                                 className="w-full text-center text-sm bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1" />
                             </td>
                           </>
