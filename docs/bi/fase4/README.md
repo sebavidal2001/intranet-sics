@@ -45,7 +45,33 @@ deploy di intranet-sics in `/opt/intranet-sics/scripts/`.
 
 ---
 
-## Installazione
+## Installazione rapida
+
+I file sono già stati copiati in `/tmp/fase4` sulla VM. Prima il deploy
+dell'app (gli script di ingest arrivano da lì), poi un comando solo:
+
+```bash
+ssh intra-adm@192.168.1.21 'cd /opt/intranet-sics && ./deploy.sh'
+```
+
+```bash
+ssh -t intra-adm@192.168.1.21 'sudo bash /tmp/fase4/installa.sh --check'
+```
+
+```bash
+ssh -t intra-adm@192.168.1.21 'sudo bash /tmp/fase4/installa.sh'
+```
+
+`--check` verifica prerequisiti, corrispondenza della patch e collaudo su copia
+isolata, senza scrivere nulla. L'installazione vera riesegue le stesse verifiche
+prima di toccare il sistema e si ferma al primo problema.
+
+La procedura passo per passo qui sotto resta valida se preferisci controllare
+ogni singolo passaggio.
+
+---
+
+## Installazione passo per passo
 
 ### 0. Copiare i file sulla VM
 
