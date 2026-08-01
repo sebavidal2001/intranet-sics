@@ -88,6 +88,15 @@ if (( run_trovati == 0 )); then
   log "Nessun run da elaborare."
 fi
 
+# Manutenzione dopo ogni ciclo con almeno un run: la retention è conservativa
+# e idempotente (tocca solo staging orfano e run senza storico), quindi non
+# serve un timer dedicato.
+STATO_SCRIPT="${BI_CRUSCOTTO_STATO:-/opt/intranet-sics/scripts/bi-cruscotto-stato.mjs}"
+if (( run_trovati > 0 )) && [[ -f "$STATO_SCRIPT" ]]; then
+  # Lo stato "non ok" non è un errore di questo script: si limita a registrarlo.
+  node "$STATO_SCRIPT" --retention || true
+fi
+
 # Uscita diversa da zero se almeno un run è fallito: systemd lo marca failed e
 # il fatto diventa visibile in `systemctl status`.
 (( run_falliti == 0 )) || exit 1

@@ -165,7 +165,10 @@ async function segnaFallito(messaggio, pulisci = false) {
     if (DRY_RUN) {
       await segnaFallito("dry-run: nessun ingest eseguito", true);
       console.log("\n  Dry-run: staging ripulito, produzione non toccata.");
-      process.exit(bloccanti.length ? 1 : 0);
+      // exitCode invece di exit(): lasciando chiudere il processo da solo si
+      // evita l'assertion di libuv su Windows quando restano handle aperti.
+      process.exitCode = bloccanti.length ? 1 : 0;
+      return;
     }
 
     if (bloccanti.length) throw new Error(`validazione fallita: ${bloccanti.map((a) => a.tipo).join(", ")}`);
@@ -189,5 +192,5 @@ async function segnaFallito(messaggio, pulisci = false) {
   }
 })().catch((e) => {
   console.error(`\nERRORE: ${e.message ?? e}`);
-  process.exit(1);
+  process.exitCode = 1;
 });
