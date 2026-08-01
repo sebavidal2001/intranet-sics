@@ -41,3 +41,9 @@ tsconfig.tsbuildinfo
 ingest-c-audit.json
 ingest-*-audit.json
 ingest-*-audit.csv
+
+# Profilo browser usato dallo script di cattura schermate
+.playwright-profile/
+
+# Report riconciliazione BI (contengono codici articolo aziendali)
+supabase/backups/**/riconciliazione-*.csv
