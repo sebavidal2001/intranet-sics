@@ -94,5 +94,9 @@ WHERE articolo.utilizzabile = 'S'
 ORDER BY articolo.codice,
          vs_riepilogo_magazzino.magazzino;
 
+-- WITH COLUMN NAMES e' indispensabile: FORMAT ASCII, da solo, NON scrive la
+-- riga di intestazione. Senza, il consumatore non puo' verificare che le 40
+-- colonne siano quelle attese nell'ordine atteso, e un cambio di tracciato
+-- passerebbe inosservato spostando i valori nelle colonne sbagliate.
 OUTPUT TO 'C:\Impresa\Viste_BI\Esportazioni\cruscotto_articoli.csv'
-FORMAT ASCII DELIMITED BY ';' QUOTE '"' ENCODING 'UTF-8';
+FORMAT ASCII DELIMITED BY ';' QUOTE '"' ENCODING 'UTF-8' WITH COLUMN NAMES;
