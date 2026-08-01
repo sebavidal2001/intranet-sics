@@ -88,22 +88,63 @@ else
       }' "$CONFIG" > "$TMPCFG"
   # Un JSON troncato qui manderebbe in crash il receiver al riavvio.
   jq -e . "$TMPCFG" >/dev/null || muori "il config prodotto non è JSON valido"
-  install -o root -g root -m 640 "$TMPCFG" "$CONFIG"
-  rm -f "$TMPCFG"
-  verde "  aggiunto"
+
+  # Proprietario, gruppo e permessi vanno ripresi dal file esistente, non
+  # imposti a mano: il receiver gira come utente impresa-bi e legge questo
+  # file tramite il GRUPPO. Scriverlo root:root lo lascerebbe senza accesso e
+  # il servizio non ripartirebbe piu'.
+  chown --reference="$CONFIG" "$TMPCFG"
+  chmod --reference="$CONFIG" "$TMPCFG"
+  mv "$TMPCFG" "$CONFIG"
+  verde "  aggiunto (proprietario e permessi invariati)"
 fi
 echo "  dataset configurati: $(jq -r '.datasets | keys | join(", ")' "$CONFIG")"
 
+# Controllo esplicito prima di riavviare: se l'utente del servizio non riesce a
+# leggere la configurazione, e' meglio saperlo adesso che da un servizio morto.
+UTENTE_SERVIZIO="$(systemctl show -p User --value impresa-bi-ingest)"
+UTENTE_SERVIZIO="${UTENTE_SERVIZIO:-impresa-bi}"
+if ! sudo -u "$UTENTE_SERVIZIO" test -r "$CONFIG"; then
+  muori "l'utente $UTENTE_SERVIZIO non puo' leggere $CONFIG.
+  Permessi attuali: $(stat -c '%U:%G %a' "$CONFIG")
+  Ripristinare con:
+    BK=\$(ls -t $CONFIG.before-cruscotto-* | head -1)
+    chown --reference=\$BK $CONFIG && chmod --reference=\$BK $CONFIG"
+fi
+verde "  leggibile dall'utente $UTENTE_SERVIZIO"
+
 passo "Riavvio del receiver"
-systemctl restart impresa-bi-ingest
+systemctl restart impresa-bi-ingest || true
 sleep 2
 PORTA="$(jq -r '.listen_port // 8765' "$CONFIG")"
 if curl -sf "localhost:$PORTA/health" >/dev/null; then
   verde "  in ascolto e sano su :$PORTA"
 else
-  rosso "  /health non risponde. Ultime righe del log:"
+  rosso "  /health non risponde: riporto il receiver allo stato precedente."
   journalctl -u impresa-bi-ingest -n 20 --no-pager || true
-  muori "il receiver non è ripartito correttamente"
+
+  # Il servizio non va MAI lasciato a terra: la pipeline commerciale gira ogni
+  # notte. Si ripristinano configurazione e receiver, poi si riavvia.
+  BK_CFG="$(ls -t "$CONFIG".before-cruscotto-* 2>/dev/null | head -1 || true)"
+  if [[ -n "$BK_CFG" ]]; then
+    cp -a "$BK_CFG" "$CONFIG"
+    rosso "  configurazione ripristinata da $BK_CFG"
+  fi
+  BK_RCV="$(ls -t "$RECEIVER".before-profili-* 2>/dev/null | head -1 || true)"
+  if [[ -n "$BK_RCV" ]]; then
+    python3 "$PACCHETTO/patch-receiver-profili.py" --file "$RECEIVER" --restore "$BK_RCV" >/dev/null
+    rosso "  receiver ripristinato da $BK_RCV"
+  fi
+
+  systemctl restart impresa-bi-ingest || true
+  sleep 2
+  if curl -sf "localhost:$PORTA/health" >/dev/null; then
+    giallo "  il receiver e' tornato in servizio nello stato precedente."
+  else
+    rosso "  ATTENZIONE: il receiver resta fermo anche dopo il ripristino."
+    rosso "  Controllare: journalctl -u impresa-bi-ingest -n 50"
+  fi
+  muori "il receiver non è ripartito con la nuova configurazione"
 fi
 
 passo "Runner e unit systemd"
