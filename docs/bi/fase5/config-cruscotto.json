@@ -1,0 +1,8 @@
+{
+  "SqlFile": "CRUSCOTTO_ARTICOLI.sql",
+  "OutputFile": "cruscotto_articoli.csv",
+  "Dataset": "cruscotto_articoli",
+  "ExpectedColumns": 40,
+  "Profilo": "cruscotto",
+  "HeaderPattern": "^codice$"
+}

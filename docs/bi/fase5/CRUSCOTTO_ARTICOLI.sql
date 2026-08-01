@@ -4,11 +4,9 @@
    Destinazione sul server SQL Anywhere:
      C:\Impresa\Viste_BI\Query\CRUSCOTTO_ARTICOLI.sql
 
-   Differenze rispetto alla query fornita dall'utente:
-     - OUTPUT su file TEMPORANEO (.csv.tmp). Il rename in .csv lo esegue
-       Invoke-BIPipeline.ps1 solo a estrazione riuscita, così il consumatore
-       Linux non legge mai un CSV troncato a metà scrittura.
-   Nient'altro è stato modificato: 40 colonne, stesso ordine, stessa semantica.
+   Identica alla query fornita: 40 colonne, stesso ordine, stessa semantica.
+   L'ORDER BY rende l'output deterministico, e quindi stabile il confronto
+   change-only a valle.
 
    Ult_Costo e data_Ult_Costo provengono dal listino ultimo costo aziendale:
      dba.vs_listino_ultimo_costo.prezzo
@@ -96,5 +94,5 @@ WHERE articolo.utilizzabile = 'S'
 ORDER BY articolo.codice,
          vs_riepilogo_magazzino.magazzino;
 
-OUTPUT TO 'C:\Impresa\Viste_BI\Esportazioni\cruscotto_articoli.csv.tmp'
+OUTPUT TO 'C:\Impresa\Viste_BI\Esportazioni\cruscotto_articoli.csv'
 FORMAT ASCII DELIMITED BY ';' QUOTE '"' ENCODING 'UTF-8';
