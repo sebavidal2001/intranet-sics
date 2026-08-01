@@ -1,0 +1,30 @@
+# Fine-riga.
+#
+# Su Windows git converte LF in CRLF nel working copy. Per i file che vengono
+# copiati ed eseguiti su Linux questo e' fatale: bash legge il \r finale come
+# parte del comando e fallisce con "$'\r': command not found".
+# Qui si forza LF a prescindere dal sistema su cui si lavora.
+
+*.sh       text eol=lf
+*.py       text eol=lf
+*.mjs      text eol=lf
+*.cjs      text eol=lf
+*.service  text eol=lf
+*.path     text eol=lf
+*.timer    text eol=lf
+*.sql      text eol=lf
+
+# PowerShell resta con i fine-riga di Windows: gira solo li'.
+*.ps1      text eol=crlf
+
+# Binari: nessuna conversione.
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.woff     binary
+*.woff2    binary
+*.pdf      binary
+*.docx     binary
+*.xlsx     binary
