@@ -1,31 +1,35 @@
 /**
  * bi-riconcilia-cruscotto.mjs — Report di riconciliazione PRE-import (Fase 1).
  *
- * Confronta uno snapshot del Cruscotto articoli (CSV o XLSX) con lo stato
- * corrente del database, SENZA scrivere nulla. Produce un report CSV con le
- * anomalie da valutare prima di attivare la pipeline.
+ * Confronta uno snapshot del Cruscotto articoli con lo stato del database,
+ * SENZA scrivere nulla. Usa il parser ufficiale del tracciato (40 colonne,
+ * decimali con virgola, escape \x0d\x0a) in scripts/lib/cruscotto-parser.mjs.
  *
- * Controlli prodotti:
- *   1. codici nel Cruscotto ma non in preventivatore.prodotti
- *   2. codici in prodotti ma non nel Cruscotto  (NON vengono disattivati)
- *   3. duplicati per codice articolo
- *   4. duplicati per (codice, magazzino)
- *   5. articoli senza costo (ultimo_costo NULL/vuoto)
- *   6. magazzini non presenti oggi in prodotti_giacenze
- *   7. righe con disponibilita != esistenza + ord_fornitori - ord_clienti - imp_produzione
- *   8. valori numerici non validi
- *   9. righe senza chiave (codice o magazzino mancante)
+ * Controlli:
+ *   1. intestazione: 40 colonne attese, nomi e ordine
+ *   2. codici nel Cruscotto ma non in preventivatore.prodotti
+ *   3. codici in prodotti ma non nel Cruscotto (MAI disattivati automaticamente)
+ *   4. duplicati per codice articolo / per (codice, magazzino)
+ *   5. articoli senza costo (restano NULL)
+ *   6. magazzini non riconosciuti
+ *   7. disponibilità diversa dalla formula (tolleranza 0,001)
+ *   8. valori numerici o date non interpretabili
+ *   9. righe senza chiave
+ *  10. costi sospetti (possibili importi in lire non convertiti)
  *
  * Uso:
- *   node scripts/bi-riconcilia-cruscotto.mjs --file=<path.csv|path.xlsx> [--csv] [--out=<dir>]
+ *   node scripts/bi-riconcilia-cruscotto.mjs --file=<path.csv|xlsx> [--csv] [--out=<dir>]
  */
 
 import fs from "fs";
 import path from "path";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
+import {
+  COLONNE_ATTESE, validaIntestazione, rigaToRecord,
+  disponibilitaAttesa, parseNumIta, parseDataIso, parseCsv,
+} from "./lib/cruscotto-parser.mjs";
 
-// ─── env ────────────────────────────────────────────────────────────────────
 for (const line of fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8").split(/\r?\n/)) {
   if (!line || line.startsWith("#") || !line.includes("=")) continue;
   const i = line.indexOf("=");
@@ -37,13 +41,13 @@ for (const line of fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8
 
 const arg = (n, d = null) => {
   const m = process.argv.find((a) => a === `--${n}` || a.startsWith(`--${n}=`));
-  if (!m) return d;
-  return m === `--${n}` ? true : m.split("=").slice(1).join("=");
+  return !m ? d : (m === `--${n}` ? true : m.split("=").slice(1).join("="));
 };
 
 const FILE = arg("file");
-const FORCE_CSV = !!arg("csv");
 const OUT_DIR = arg("out", "supabase/backups/20260801_preflight");
+const TOLLERANZA = 0.001;
+const SOGLIA_COSTO_SOSPETTO = 50000; // oltre → probabile importo in lire
 if (!FILE) { console.error("Manca --file=<path>"); process.exit(1); }
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
@@ -51,52 +55,32 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
   auth: { persistSession: false }, db: { schema: "preventivatore" },
 });
 
-// ─── parsing numerico coerente con l'import esistente ────────────────────────
-function parseNum(v) {
-  if (v === null || v === undefined || v === "") return null;
-  if (typeof v === "number") return Number.isFinite(v) ? v : NaN;
-  const s = String(v).trim().replace(/[€%\s]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
-  if (s === "") return null;
-  const x = Number.parseFloat(s);
-  return Number.isFinite(x) ? x : NaN; // NaN = valore non valido (controllo 8)
-}
-
-const COL = {
-  codice: ["codice", "Codice"],
-  magazzino: ["magazzino", "Magazzino"],
-  costo: ["ultimo_costo", "Ult Costo", "ult_costo"],
-  esistenza: ["esistenza", "Esistenza"],
-  disponibilita: ["disponibilita", "Disponibilita", "Disponibilità"],
-  ordForn: ["qta_ord_fornitori", "Qta Ord Fornitori"],
-  ordCli: ["qta_ord_clienti", "Qta Ord Clienti"],
-  impProd: ["qta_imp_produzione", "Qta Imp Produzione"],
-};
-
-function idx(headers, names) {
-  for (const n of names) {
-    const i = headers.findIndex((h) => String(h).trim().toLowerCase() === n.toLowerCase());
-    if (i >= 0) return i;
-  }
-  return -1;
-}
-
 function leggi(file) {
-  const isCsv = FORCE_CSV || /\.csv$/i.test(file);
-  const wb = isCsv
-    ? XLSX.read(fs.readFileSync(file, "utf8"), { type: "string", raw: false, FS: ";" })
-    : XLSX.read(fs.readFileSync(file), { type: "buffer", cellDates: true });
+  const isCsv = arg("csv") || /\.csv$/i.test(file);
+  if (isCsv) {
+    // Parser dedicato: il tracciato SQL Anywhere ha TUTTI i campi quotati.
+    const data = parseCsv(fs.readFileSync(file, "utf8"), ";");
+    return { headers: data[0].map((h) => String(h ?? "").trim()), righe: data.slice(1) };
+  }
+  const wb = XLSX.read(fs.readFileSync(file), { type: "buffer", cellDates: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
-  return { headers: data[0].map((h) => String(h || "").trim()), righe: data.slice(1) };
+  return { headers: data[0].map((h) => String(h ?? "").trim()), righe: data.slice(1) };
 }
 
-// ─── main ───────────────────────────────────────────────────────────────────
 (async () => {
   console.log("Riconciliazione Cruscotto ↔ database (sola lettura)\n  file:", FILE);
   const { headers, righe } = leggi(FILE);
-  const H = Object.fromEntries(Object.entries(COL).map(([k, names]) => [k, idx(headers, names)]));
-  if (H.codice < 0) throw new Error('Colonna "codice" non trovata');
-  console.log(`  colonne: ${headers.length} · righe: ${righe.length}`);
+
+  // ── 1) Intestazione ──
+  const val = validaIntestazione(headers);
+  console.log(`  colonne: ${val.nColonne} (attese ${COLONNE_ATTESE.length}) · righe: ${righe.length}`);
+  if (!val.ok) {
+    console.log(`  ⚠ mancanti: ${val.mancanti.join(", ") || "-"}`);
+    console.log(`  ⚠ inattese: ${val.inattese.join(", ") || "-"}`);
+  } else {
+    console.log(`  ✓ intestazione conforme${val.ordineDiverso ? " (ordine diverso dall'atteso)" : ""}`);
+  }
 
   // ── stato DB ──
   const codiciDb = new Set();
@@ -120,62 +104,83 @@ function leggi(file) {
   // ── analisi ──
   const anomalie = [];
   const add = (tipo, codice, magazzino, dettaglio) => anomalie.push({ tipo, codice, magazzino, dettaglio });
+  const chiavi = new Map();
+  const codiciFile = new Map();
+  const contatori = { senzaCosto: 0, dispErrata: 0, numInvalidi: 0, dataInvalida: 0, senzaChiave: 0, costoSospetto: 0 };
 
-  const visteChiavi = new Map();   // codice|magazzino -> n
-  const codiciFile = new Map();    // codice -> n righe
-  let senzaCosto = 0, dispErrata = 0, numInvalidi = 0, senzaChiave = 0;
+  for (const riga of righe) {
+    const r = rigaToRecord(headers, riga);
 
-  for (const r of righe) {
-    const codice = String(r[H.codice] ?? "").trim();
-    const magazzino = H.magazzino >= 0 ? String(r[H.magazzino] ?? "").trim() : "";
-    if (!codice || !magazzino) { senzaChiave++; add("riga_senza_chiave", codice || "(vuoto)", magazzino || "(vuoto)", "codice o magazzino mancante"); continue; }
+    if (!r.codice || !r.magazzino) {
+      contatori.senzaChiave++;
+      add("riga_senza_chiave", r.codice ?? "(vuoto)", r.magazzino ?? "(vuoto)", "codice o magazzino mancante");
+      continue;
+    }
 
-    codiciFile.set(codice, (codiciFile.get(codice) ?? 0) + 1);
-    const key = `${codice}|${magazzino}`;
-    visteChiavi.set(key, (visteChiavi.get(key) ?? 0) + 1);
+    codiciFile.set(r.codice, (codiciFile.get(r.codice) ?? 0) + 1);
+    const key = `${r.codice}|${r.magazzino}`;
+    chiavi.set(key, (chiavi.get(key) ?? 0) + 1);
 
-    const costo = H.costo >= 0 ? parseNum(r[H.costo]) : null;
-    if (Number.isNaN(costo)) { numInvalidi++; add("numero_non_valido", codice, magazzino, `ultimo_costo="${r[H.costo]}"`); }
-    else if (costo === null) { senzaCosto++; add("articolo_senza_costo", codice, magazzino, "ultimo_costo assente → resterà NULL"); }
+    // costo
+    if (Number.isNaN(r.ult_costo)) {
+      contatori.numInvalidi++;
+      add("numero_non_valido", r.codice, r.magazzino, "Ult_Costo non interpretabile");
+    } else if (r.ult_costo === null) {
+      contatori.senzaCosto++;
+      add("articolo_senza_costo", r.codice, r.magazzino, "Ult_Costo vuoto → resterà NULL");
+    } else if (r.ult_costo > SOGLIA_COSTO_SOSPETTO) {
+      contatori.costoSospetto++;
+      add("costo_sospetto", r.codice, r.magazzino, `${r.ult_costo} (data ${r.data_ult_costo ?? "n/d"}): possibile importo in lire`);
+    }
 
-    if (!magazziniDb.has(magazzino)) add("magazzino_non_riconosciuto", codice, magazzino, "non presente oggi in prodotti_giacenze");
+    if (r.data_ult_costo === undefined) {
+      contatori.dataInvalida++;
+      add("data_non_valida", r.codice, r.magazzino, "data_Ult_Costo non interpretabile");
+    }
 
-    // disponibilità derivata
-    if (H.esistenza >= 0 && H.disponibilita >= 0 && H.ordForn >= 0 && H.ordCli >= 0 && H.impProd >= 0) {
-      const e = parseNum(r[H.esistenza]) ?? 0, d = parseNum(r[H.disponibilita]) ?? 0;
-      const of = parseNum(r[H.ordForn]) ?? 0, oc = parseNum(r[H.ordCli]) ?? 0, ip = parseNum(r[H.impProd]) ?? 0;
-      if ([e, d, of, oc, ip].some(Number.isNaN)) { numInvalidi++; add("numero_non_valido", codice, magazzino, "quantità non numeriche"); }
-      else {
-        const atteso = e + of - oc - ip;
-        if (Math.abs(atteso - d) > 0.001) { dispErrata++; add("disponibilita_non_coerente", codice, magazzino, `attesa ${atteso}, trovata ${d}`); }
+    if (!magazziniDb.has(r.magazzino)) add("magazzino_non_riconosciuto", r.codice, r.magazzino, "non presente oggi in prodotti_giacenze");
+
+    // quantità non numeriche
+    const qtaNaN = Object.entries(r).filter(([k, v]) => k.startsWith("qta_") && Number.isNaN(v)).map(([k]) => k);
+    if (qtaNaN.length) {
+      contatori.numInvalidi++;
+      add("numero_non_valido", r.codice, r.magazzino, `quantità non numeriche: ${qtaNaN.join(", ")}`);
+    } else {
+      const atteso = disponibilitaAttesa(r);
+      const disp = Number(r.disponibilita ?? 0) || 0;
+      if (Math.abs(atteso - disp) > TOLLERANZA) {
+        contatori.dispErrata++;
+        add("disponibilita_non_coerente", r.codice, r.magazzino, `attesa ${atteso}, trovata ${disp}`);
       }
     }
   }
 
-  for (const [key, n] of visteChiavi) if (n > 1) add("duplicato_codice_magazzino", key.split("|")[0], key.split("|")[1], `${n} righe`);
+  for (const [key, n] of chiavi) if (n > 1) { const [c, m] = key.split("|"); add("duplicato_codice_magazzino", c, m, `${n} righe`); }
 
   const nuovi = [...codiciFile.keys()].filter((c) => !codiciDb.has(c));
   const mancanti = [...codiciDb].filter((c) => !codiciFile.has(c));
-  nuovi.forEach((c) => add("codice_nuovo_non_in_db", c, "", "presente nel Cruscotto, assente in prodotti"));
-  mancanti.forEach((c) => add("codice_db_non_nel_cruscotto", c, "", "presente in prodotti, assente nel Cruscotto → NON disattivato automaticamente"));
+  nuovi.forEach((c) => add("codice_nuovo_non_in_db", c, "", "nel Cruscotto, assente in prodotti"));
+  mancanti.forEach((c) => add("codice_db_non_nel_cruscotto", c, "", "in prodotti, assente nel Cruscotto → NON disattivato automaticamente"));
 
-  // ── report ──
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "");
   const out = path.join(OUT_DIR, `riconciliazione-cruscotto-${stamp}.csv`);
   const esc = (s) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  fs.writeFileSync(out, ["tipo;codice;magazzino;dettaglio", ...anomalie.map((a) => [a.tipo, a.codice, a.magazzino, a.dettaglio].map(esc).join(";"))].join("\n"), "utf8");
+  fs.writeFileSync(out, ["tipo;codice;magazzino;dettaglio",
+    ...anomalie.map((a) => [a.tipo, a.codice, a.magazzino, a.dettaglio].map(esc).join(";"))].join("\n"), "utf8");
 
   const per = anomalie.reduce((m, a) => ((m[a.tipo] = (m[a.tipo] ?? 0) + 1), m), {});
   console.log("\n─── RIEPILOGO ───");
   console.log(`  righe snapshot        : ${righe.length}`);
   console.log(`  articoli unici        : ${codiciFile.size}`);
-  console.log(`  coppie codice+mag     : ${visteChiavi.size}`);
+  console.log(`  coppie codice+mag     : ${chiavi.size}`);
   console.log(`  codici nuovi          : ${nuovi.length}`);
   console.log(`  codici solo in DB     : ${mancanti.length}`);
-  console.log(`  senza costo           : ${senzaCosto}`);
-  console.log(`  disponibilità anomala : ${dispErrata}`);
-  console.log(`  numeri non validi     : ${numInvalidi}`);
-  console.log(`  righe senza chiave    : ${senzaChiave}`);
-  console.log("\n  dettaglio per tipo:", per);
+  console.log(`  senza costo           : ${contatori.senzaCosto}`);
+  console.log(`  costi sospetti (lire?): ${contatori.costoSospetto}`);
+  console.log(`  disponibilità anomala : ${contatori.dispErrata}`);
+  console.log(`  numeri non validi     : ${contatori.numInvalidi}`);
+  console.log(`  date non valide       : ${contatori.dataInvalida}`);
+  console.log(`  righe senza chiave    : ${contatori.senzaChiave}`);
+  console.log("\n  per tipo:", per);
   console.log(`\n✓ Report: ${out} (${anomalie.length} righe)`);
 })().catch((e) => { console.error("ERRORE:", e.message || e); process.exit(1); });
