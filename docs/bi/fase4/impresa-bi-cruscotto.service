@@ -1,0 +1,32 @@
+[Unit]
+Description=Impresa BI — ingest del Cruscotto articoli su Supabase
+After=network-online.target impresa-bi-ingest.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=impresa-bi
+Group=impresa-bi
+EnvironmentFile=/etc/impresa-bi/supabase.env
+Environment=BI_CRUSCOTTO_READY=/var/lib/impresa-bi/ready-cruscotto
+Environment=BI_CRUSCOTTO_PROCESSED=/var/lib/impresa-bi/processed-cruscotto
+Environment=BI_CRUSCOTTO_FAILED=/var/lib/impresa-bi/failed-cruscotto
+Environment=BI_CRUSCOTTO_SCRIPT=/opt/intranet-sics/scripts/bi-ingest-cruscotto.mjs
+Environment=HOME=/var/lib/impresa-bi
+Environment=NODE_OPTIONS=--max-old-space-size=1024
+WorkingDirectory=/var/lib/impresa-bi
+ExecStart=/opt/impresa-bi/cruscotto-ingest.sh
+TimeoutStartSec=30min
+UMask=0027
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/impresa-bi
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictRealtime=true

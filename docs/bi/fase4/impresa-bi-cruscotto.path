@@ -1,0 +1,13 @@
+[Unit]
+Description=Monitora i run Cruscotto articoli pronti per l'ingest
+
+[Path]
+# Directory distinta da /var/lib/impresa-bi/ready: impresa-bi-daily.path e
+# impresa-bi-loader.path guardano quella e non devono svegliarsi per il
+# Cruscotto.
+PathChanged=/var/lib/impresa-bi/ready-cruscotto
+DirectoryNotEmpty=/var/lib/impresa-bi/ready-cruscotto
+Unit=impresa-bi-cruscotto.service
+
+[Install]
+WantedBy=multi-user.target
