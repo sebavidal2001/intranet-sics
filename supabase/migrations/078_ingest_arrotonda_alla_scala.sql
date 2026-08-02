@@ -1,0 +1,54 @@
+-- ============================================================================
+-- 078 — Confrontare i valori come verranno memorizzati, non come arrivano
+--
+-- Applicata in produzione. Il contenuto è già riportato dentro la 075
+-- (blocco _snap): questo file resta come traccia del difetto e della verifica.
+--
+-- IL DIFETTO
+--
+-- Lo staging conserva i numeri a piena precisione, ma le tabelle di
+-- destinazione hanno scala fissa:
+--
+--   bi.giacenze_storico.valore        numeric(18,3)
+--   preventivatore.prodotti_giacenze  numeric(_,3)
+--   bi.costi_storico.costo            numeric(14,4)
+--   preventivatore.prodotti.ult_costo numeric(14,4)
+--
+-- Il CSV del gestionale porta 4 decimali sulle quantità e 6 sui costi. Il
+-- confronto change-only avveniva quindi alla precisione piena, mentre la
+-- scrittura arrotondava: 22.8414 risultava "diverso" dal 22.841 già in
+-- archivio, si tentava di registrare il cambiamento, e la riga inserita
+-- diventava identica alla precedente.
+--
+-- Sintomo osservato al primo run incrementale (il caso normale di ogni notte):
+--   new row for relation "giacenze_storico" violates check constraint
+--   "giacenze_storico_cambio_reale"
+--
+-- Il primo run non l'aveva mostrato perché lo storico era vuoto: senza righe
+-- aperte da confrontare, l'arrotondamento non produceva collisioni.
+--
+-- Senza il vincolo CHECK il danno sarebbe stato peggiore e silenzioso: righe
+-- di storico spurie a ogni notte, per sempre, su ogni articolo con decimali
+-- oltre la scala — e uno storico dei cambiamenti pieno di cambiamenti mai
+-- avvenuti.
+--
+-- LA CORREZIONE
+--
+-- I valori vengono portati alla scala di destinazione in _snap, una volta sola
+-- e prima di ogni confronto. La validazione a monte continua a lavorare sui
+-- dati grezzi, dove la precisione piena serve a verificare la formula della
+-- disponibilità.
+--
+-- VERIFICA (tre run consecutivi sugli stessi dati, in transazione con rollback)
+--
+--   run 1 : 4.650 prodotti aggiornati (riallineamento hash), 0 giacenze,
+--           0 storico — 4,0 s
+--   run 2 : 0 / 0 / 0 — 3,3 s
+--   run 3 : 0 / 0 / 0 — 5,1 s
+--
+-- A dati invariati il sistema non scrive nulla: è la condizione che deve
+-- valere ogni notte in cui il gestionale non cambia.
+-- ============================================================================
+
+-- Il corpo della funzione è quello consolidato in 075. Su un database pulito
+-- basta eseguire la 075: questo file non aggiunge nulla di suo.
