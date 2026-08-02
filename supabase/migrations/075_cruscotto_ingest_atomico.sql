@@ -322,36 +322,36 @@ begin
          s.reparto_codice, s.reparto_descrizione,
          s.cat_fiscale_codice, s.cat_fiscale_descrizione,
          s.cat_esposizione_codice, s.cat_esposizione_descrizione,
-         -- Arrotondamento alla scala delle colonne di destinazione: 4 per i
-         -- costi, 3 per le quantità. Lo staging conserva la precisione piena
-         -- del CSV (4 decimali sulle quantità, 6 sui costi), ma le tabelle di
-         -- arrivo hanno scala fissa. Confrontare i valori grezzi e scriverli
-         -- arrotondati faceva risultare "cambiato" ciò che cambiato non era:
-         -- 22.8414 contro il 22.841 già in archivio. Da qui in poi confronto
-         -- e scrittura vedono gli stessi numeri.
-         round(s.ult_costo, 4) as ult_costo, s.data_ult_costo,
-         round(s.qta_rim_iniziale, 3)   as qta_rim_iniziale,
-         round(s.qta_caricata, 3)       as qta_caricata,
-         round(s.qta_scaricata, 3)      as qta_scaricata,
-         round(s.qta_altri_carichi, 3)  as qta_altri_carichi,
-         round(s.qta_altri_scarichi, 3) as qta_altri_scarichi,
-         round(s.qta_imp_produzione, 3) as qta_imp_produzione,
-         round(s.qta_ord_clienti, 3)    as qta_ord_clienti,
-         round(s.qta_ord_fornitori, 3)  as qta_ord_fornitori,
-         round(s.qta_vis_clienti, 3)    as qta_vis_clienti,
-         round(s.qta_vis_fornitori, 3)  as qta_vis_fornitori,
-         round(s.qta_reso_clienti, 3)   as qta_reso_clienti,
-         round(s.qta_reso_fornitori, 3) as qta_reso_fornitori,
-         round(s.qta_ord_produzione, 3) as qta_ord_produzione,
-         round(s.qta_cl_clienti, 3)     as qta_cl_clienti,
-         round(s.qta_cl_fornitori, 3)   as qta_cl_fornitori,
-         round(s.qta_cl_terzi, 3)       as qta_cl_terzi,
-         round(s.qta_gruppo_lib_1, 3)   as qta_gruppo_lib_1,
-         round(s.qta_gruppo_lib_2, 3)   as qta_gruppo_lib_2,
-         round(s.qta_gruppo_lib_3, 3)   as qta_gruppo_lib_3,
-         round(s.qta_gruppo_lib_4, 3)   as qta_gruppo_lib_4,
-         round(s.esistenza, 3)          as esistenza,
-         round(s.disponibilita, 3)      as disponibilita
+         -- Arrotondamento alla scala delle colonne di destinazione, che dalla
+         -- migration 079 è numeric(18,6) ovunque: tutti i decimali che il
+         -- gestionale esporta (4 sulle quantità, 6 sui costi) vengono
+         -- conservati. Serve comunque, perché confronto e scrittura devono
+         -- vedere gli stessi numeri: se un domani arrivassero più decimali di
+         -- quanti la colonna ne tiene, senza questo ogni riga risulterebbe
+         -- "cambiata" a ogni notte senza esserlo.
+         round(s.ult_costo, 6) as ult_costo, s.data_ult_costo,
+         round(s.qta_rim_iniziale, 6)   as qta_rim_iniziale,
+         round(s.qta_caricata, 6)       as qta_caricata,
+         round(s.qta_scaricata, 6)      as qta_scaricata,
+         round(s.qta_altri_carichi, 6)  as qta_altri_carichi,
+         round(s.qta_altri_scarichi, 6) as qta_altri_scarichi,
+         round(s.qta_imp_produzione, 6) as qta_imp_produzione,
+         round(s.qta_ord_clienti, 6)    as qta_ord_clienti,
+         round(s.qta_ord_fornitori, 6)  as qta_ord_fornitori,
+         round(s.qta_vis_clienti, 6)    as qta_vis_clienti,
+         round(s.qta_vis_fornitori, 6)  as qta_vis_fornitori,
+         round(s.qta_reso_clienti, 6)   as qta_reso_clienti,
+         round(s.qta_reso_fornitori, 6) as qta_reso_fornitori,
+         round(s.qta_ord_produzione, 6) as qta_ord_produzione,
+         round(s.qta_cl_clienti, 6)     as qta_cl_clienti,
+         round(s.qta_cl_fornitori, 6)   as qta_cl_fornitori,
+         round(s.qta_cl_terzi, 6)       as qta_cl_terzi,
+         round(s.qta_gruppo_lib_1, 6)   as qta_gruppo_lib_1,
+         round(s.qta_gruppo_lib_2, 6)   as qta_gruppo_lib_2,
+         round(s.qta_gruppo_lib_3, 6)   as qta_gruppo_lib_3,
+         round(s.qta_gruppo_lib_4, 6)   as qta_gruppo_lib_4,
+         round(s.esistenza, 6)          as esistenza,
+         round(s.disponibilita, 6)      as disponibilita
     from bi.cruscotto_staging s
    where s.run_id = p_run_id;
 

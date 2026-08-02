@@ -1,0 +1,48 @@
+-- ============================================================================
+-- 079 — Conservare tutti i decimali che arrivano dal Cruscotto
+--
+-- Applicata in produzione.
+--
+-- IL PROBLEMA
+--
+-- Il gestionale esporta quantità con 4 decimali e costi con 6 (per esempio
+-- 12.626944). Le colonne ne tenevano rispettivamente 3 e 4, quindi il dato
+-- veniva troncato in scrittura. Per i costi la perdita esisteva già prima di
+-- questa pipeline: non è una regressione, è un difetto ereditato.
+--
+-- La migration 078 aveva allineato il CONFRONTO alla scala della tabella. Così
+-- l'ingest smetteva di fallire, ma il troncamento restava: era la soluzione
+-- sbagliata, perché adattava il dato al contenitore invece del contrario.
+--
+-- LA CORREZIONE
+--
+-- Scala 6 con precisione 18 su tutte le colonne interessate: copre i 6
+-- decimali dei costi, i 4 delle quantità, e lascia margine se il gestionale un
+-- domani ne esportasse di più.
+--
+--   bi.giacenze_storico       valore, valore_precedente, delta
+--   bi.costi_storico          costo
+--   preventivatore.prodotti   ult_costo
+--   preventivatore.prodotti_giacenze   tutte le quantità
+--
+-- NOTE DI ESECUZIONE
+--
+-- - `delta` è una colonna generata da valore e valore_precedente: PostgreSQL
+--   non consente di cambiare il tipo delle sorgenti finché esiste, quindi va
+--   rimossa e ricreata identica.
+-- - Nove viste leggono queste colonne e ne impediscono l'ALTER. La migration
+--   salva definizioni, proprietario e privilegi, ricrea tutto e riapplica i
+--   grant: nessuna definizione viene trascritta a mano, così non se ne perde
+--   nessuna e non si introducono differenze.
+-- - La ricostruzione procede a giri ripetuti perché una vista può poggiare su
+--   un'altra e l'ordine non è noto in anticipo.
+--
+-- Dopo l'applicazione: 27 viste presenti, tutte le colonne a numeric(18,6).
+--
+-- Lo storico è stato azzerato e ricostruito al run successivo: conteneva solo
+-- il baseline del giorno prima, con i valori già troncati. Tenerlo avrebbe
+-- prodotto ~36.000 variazioni apparenti (22.841 → 22.8414) mai avvenute.
+-- ============================================================================
+
+-- Il corpo eseguito è quello riportato sopra; su un database nuovo le colonne
+-- vanno create direttamente a numeric(18,6) e questa migration non serve.
