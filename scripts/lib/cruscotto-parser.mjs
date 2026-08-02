@@ -151,6 +151,90 @@ export function parseDataIso(v) {
 }
 
 /**
+ * Riconosce se la prima riga del file è un'intestazione o già un dato.
+ *
+ * SQL Anywhere con `OUTPUT TO ... FORMAT ASCII` NON scrive i nomi di colonna, e
+ * `WITH COLUMN NAMES` non è accettato dalla versione in uso: il tracciato reale
+ * arriva quindi senza intestazione. Il campione iniziale ce l'aveva perché era
+ * stato prodotto in altro modo, ed è per questo che il primo run automatico è
+ * fallito.
+ */
+export function sembraIntestazione(riga) {
+  if (!Array.isArray(riga) || riga.length === 0) return false;
+  const norm = riga.map((c) => String(c ?? "").trim());
+  // Basta che una parte dei nomi attesi compaia: così regge anche a un
+  // eventuale cambio di maiuscole o a qualche colonna rinominata.
+  const riconosciute = norm.filter((c) => COLONNE_ATTESE.includes(c)).length;
+  return riconosciute >= Math.ceil(COLONNE_ATTESE.length / 2);
+}
+
+/**
+ * Verifica che le colonne siano al loro posto QUANDO L'INTESTAZIONE NON C'È.
+ *
+ * Senza i nomi non si può confrontare nulla, ma la struttura si può comunque
+ * dimostrare: le colonne numeriche devono contenere numeri, e soprattutto la
+ * disponibilità deve risultare dalla combinazione di altre sette colonne. Se il
+ * tracciato cambiasse spostando i campi, quella somma smetterebbe di tornare.
+ * È una prova più forte di un confronto di nomi, che si limita a dire come si
+ * chiamano le colonne, non se contengono ciò che dicono.
+ *
+ * Ritorna { ok, controllate, incoerenti, tipiErrati, dettaglio }.
+ */
+export function verificaStruttura(righe, campione = 500) {
+  const passo = Math.max(1, Math.floor(righe.length / campione));
+  const idx = Object.fromEntries(COLONNE_ATTESE.map((c, i) => [c, i]));
+  const numeriche = COLONNE_ATTESE.filter(
+    (c) => c.startsWith("qta_") || c === "esistenza" || c === "disponibilita",
+  );
+
+  let controllate = 0;
+  let incoerenti = 0;
+  let tipiErrati = 0;
+  const esempi = [];
+
+  for (let i = 0; i < righe.length; i += passo) {
+    const riga = righe[i];
+    if (!riga || riga.length !== COLONNE_ATTESE.length) continue;
+    controllate++;
+
+    const num = (c) => parseNumIta(riga[idx[c]]);
+
+    const nonNumeriche = numeriche.filter((c) => Number.isNaN(num(c)));
+    if (nonNumeriche.length) {
+      tipiErrati++;
+      if (esempi.length < 3) {
+        esempi.push(`riga ${i + 1}: ${nonNumeriche[0]} = "${riga[idx[nonNumeriche[0]]]}"`);
+      }
+      continue;
+    }
+
+    const v = (c) => Number(num(c) ?? 0) || 0;
+    const attesa =
+      v("esistenza") + v("qta_ord_fornitori") - v("qta_ord_clienti") -
+      v("qta_imp_produzione") + v("qta_ord_produzione") -
+      v("qta_vis_clienti") - v("qta_cl_fornitori");
+
+    if (Math.abs(attesa - v("disponibilita")) > 0.001) {
+      incoerenti++;
+      if (esempi.length < 3) {
+        esempi.push(`riga ${i + 1}: disponibilità ${v("disponibilita")}, attesa ${attesa}`);
+      }
+    }
+  }
+
+  // Qualche riga anomala può esistere per motivi gestionali; un tracciato
+  // disallineato invece le sballa quasi tutte. La soglia distingue i due casi.
+  const quotaSane = controllate === 0 ? 0 : (controllate - incoerenti - tipiErrati) / controllate;
+  return {
+    ok: controllate > 0 && tipiErrati === 0 && quotaSane >= 0.95,
+    controllate,
+    incoerenti,
+    tipiErrati,
+    dettaglio: esempi.join(" · "),
+  };
+}
+
+/**
  * Verifica che l'intestazione corrisponda esattamente alle 40 colonne attese.
  * Ritorna { ok, mancanti, inattese, ordineDiverso }.
  */

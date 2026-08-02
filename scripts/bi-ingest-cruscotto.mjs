@@ -25,6 +25,7 @@ import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import {
   COLONNE_ATTESE, validaIntestazione, parseCsv,
+  sembraIntestazione, verificaStruttura,
   pulisciTesto, parseNumIta, parseDataIso,
 } from "./lib/cruscotto-parser.mjs";
 
@@ -112,14 +113,50 @@ async function segnaFallito(messaggio, pulisci = false) {
   const dati = parseCsv(contenuto.toString("utf8"), ";");
   if (dati.length < 2) throw new Error("Il file non contiene righe dati");
 
-  const headers = dati[0].map((h) => String(h ?? "").trim());
-  const val = validaIntestazione(headers);
-  if (!val.ok) {
-    throw new Error(`Intestazione non conforme — mancanti: [${val.mancanti.join(", ")}] · inattese: [${val.inattese.join(", ")}]`);
-  }
-  console.log(`  colonne:     ${val.nColonne}/${COLONNE_ATTESE.length} conformi`);
+  // Il tracciato può arrivare con o senza intestazione: SQL Anywhere, con
+  // `FORMAT ASCII`, non scrive i nomi di colonna. In entrambi i casi la
+  // struttura va dimostrata, solo per vie diverse.
+  let headers;
+  let righeGrezze;
 
-  const righe = dati.slice(1).map((r, i) => convertiRiga(headers, r, i + 1));
+  if (sembraIntestazione(dati[0])) {
+    headers = dati[0].map((h) => String(h ?? "").trim());
+    righeGrezze = dati.slice(1);
+    const val = validaIntestazione(headers);
+    if (!val.ok) {
+      throw new Error(
+        `Intestazione non conforme — mancanti: [${val.mancanti.join(", ")}] · inattese: [${val.inattese.join(", ")}]`,
+      );
+    }
+    console.log(`  colonne:     ${val.nColonne}/${COLONNE_ATTESE.length} conformi (da intestazione)`);
+  } else {
+    // Senza nomi si usa l'ordine posizionale, ma non per fede: si verifica che
+    // i numeri siano numeri e che la disponibilità risulti dalla combinazione
+    // delle altre sette colonne. Se il tracciato cambiasse, quella somma
+    // smetterebbe di tornare.
+    headers = [...COLONNE_ATTESE];
+    righeGrezze = dati;
+
+    const larghezze = new Set(righeGrezze.map((r) => r.length));
+    if (!(larghezze.size === 1 && larghezze.has(COLONNE_ATTESE.length))) {
+      throw new Error(
+        `File senza intestazione con numero di colonne inatteso: trovate ${[...larghezze].join("/")}, attese ${COLONNE_ATTESE.length}`,
+      );
+    }
+
+    const str = verificaStruttura(righeGrezze);
+    if (!str.ok) {
+      throw new Error(
+        `File senza intestazione e struttura non verificabile: su ${str.controllate} righe campionate, ` +
+        `${str.tipiErrati} con valori non numerici e ${str.incoerenti} con disponibilità incoerente. ` +
+        `${str.dettaglio}`,
+      );
+    }
+    console.log(`  colonne:     ${COLONNE_ATTESE.length}/${COLONNE_ATTESE.length} per posizione (nessuna intestazione)`);
+    console.log(`  struttura:   verificata su ${str.controllate} righe campionate`);
+  }
+
+  const righe = righeGrezze.map((r, i) => convertiRiga(headers, r, i + 1));
   console.log(`  righe:       ${righe.length}`);
 
   // Registrazione del run PRIMA di caricare: se qualcosa va storto a metà,

@@ -94,9 +94,12 @@ WHERE articolo.utilizzabile = 'S'
 ORDER BY articolo.codice,
          vs_riepilogo_magazzino.magazzino;
 
--- WITH COLUMN NAMES e' indispensabile: FORMAT ASCII, da solo, NON scrive la
--- riga di intestazione. Senza, il consumatore non puo' verificare che le 40
--- colonne siano quelle attese nell'ordine atteso, e un cambio di tracciato
--- passerebbe inosservato spostando i valori nelle colonne sbagliate.
+-- FORMAT ASCII non scrive la riga di intestazione, e WITH COLUMN NAMES non e'
+-- accettato da questa versione di SQL Anywhere ("Syntax error: 'WITH' was not
+-- expected here"). Il file arriva quindi senza nomi di colonna.
+-- La verifica del tracciato avviene a valle, in scripts/lib/cruscotto-parser.mjs:
+-- le colonne numeriche devono contenere numeri e la disponibilita' deve
+-- risultare dalla combinazione delle altre sette. Se il tracciato cambiasse,
+-- quella somma smetterebbe di tornare.
 OUTPUT TO 'C:\Impresa\Viste_BI\Esportazioni\cruscotto_articoli.csv'
-FORMAT ASCII DELIMITED BY ';' QUOTE '"' ENCODING 'UTF-8' WITH COLUMN NAMES;
+FORMAT ASCII DELIMITED BY ';' QUOTE '"' ENCODING 'UTF-8';
