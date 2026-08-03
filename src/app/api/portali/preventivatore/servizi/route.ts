@@ -65,6 +65,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const nome = String(body?.nome ?? "").trim();
     if (!nome) return NextResponse.json({ error: "Nome obbligatorio" }, { status: 400 });
+    // Tetto alla lunghezza: senza, un payload può scrivere stringhe illimitate
+    // in una tabella letta a ogni apertura del builder.
+    if (nome.length > 120) {
+      return NextResponse.json({ error: "Nome troppo lungo (max 120 caratteri)" }, { status: 400 });
+    }
 
     const tariffaOra = parseNonNegativeNumber(body?.tariffa_ora, 0);
     const ordine = parseNonNegativeNumber(body?.ordine, 999);
@@ -81,9 +86,9 @@ export async function POST(request: NextRequest) {
       .from("servizi_manodopera")
       .insert({
         nome,
-        categoria: String(body?.categoria ?? "").trim() || "Manodopera",
+        categoria: String(body?.categoria ?? "").trim().slice(0, 120) || "Manodopera",
         tariffa_ora: tariffaOra,
-        unita: String(body?.unita ?? "h").trim() || "h",
+        unita: String(body?.unita ?? "h").trim().slice(0, 16) || "h",
         ordine,
         is_attivo: body?.is_attivo !== false,
         scala_con_quantita: body?.scala_con_quantita !== false,

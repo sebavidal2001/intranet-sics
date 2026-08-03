@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { PORTALE_SLUGS } from "@/lib/config/portali";
+import { getFiltroCommerciale, getIdClientiVisibili } from "@/lib/portali/preventivatore/ruoli";
 import { logError, logWarn } from "@/lib/logger";
 import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
@@ -125,11 +126,22 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
     const { data: docRow, error: docErr } = await sb
       .schema("preventivatore")
       .from("documenti")
-      .select("codice, cliente, note")
+      .select("codice, cliente, note, cliente_master_id")
       .eq("id", id)
       .maybeSingle();
     if (docErr) throw docErr;
     if (!docRow) return NextResponse.json({ error: "Documento non trovato" }, { status: 404 });
+
+    // Scope commerciale: senza questo controllo bastava conoscere un UUID per
+    // farsi riassumere dall'AI un preventivo di un cliente fuori portfolio —
+    // la lettura qui usa l'admin client, quindi RLS e grant non filtrano nulla.
+    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    if (agenteCommerciale && docRow.cliente_master_id) {
+      const idsVisibili = await getIdClientiVisibili(agenteCommerciale);
+      if (!idsVisibili.includes(docRow.cliente_master_id as string)) {
+        return NextResponse.json({ error: "Documento fuori dal tuo portfolio" }, { status: 403 });
+      }
+    }
 
     const { data: wordChunks, error: chunkErr } = await sb
       .schema("preventivatore")

@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getFiltroCommerciale, getIdClientiVisibili } from "@/lib/portali/preventivatore/ruoli";
+import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { idsMasterPerRagioneSociale } from "@/lib/portali/preventivatore/clienti-filtro";
 import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
+
+// La query finisce in un embedding a pagamento: limitarne la lunghezza evita
+// sia costi anomali sia payload giganti verso Gemini.
+const SearchBodySchema = z.object({
+  query: z.string().trim().min(1, "Query obbligatoria").max(1000),
+  filtro_stato: z.string().trim().max(32).optional(),
+  filtro_cliente: z.string().trim().max(200).optional(),
+  filtro_destinazione_id: z.string().uuid().optional(),
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,16 +39,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { query, filtro_stato, filtro_cliente } = body as {
-      query: string;
-      filtro_stato?: string;
-      filtro_cliente?: string;
-    };
+    // Ogni ricerca genera un embedding Gemini a pagamento: senza limite una
+    // sola sessione può bruciare quota indefinitamente.
+    const rl = checkRateLimit(`ai-search:${user.id}`, { limit: 30, windowMs: 60_000 });
+    if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
-    if (!query || typeof query !== "string" || !query.trim()) {
-      return NextResponse.json({ error: "Query obbligatoria" }, { status: 400 });
+    const rawBody = await request.json().catch(() => null);
+    const parsed = SearchBodySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Payload invalido", dettagli: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) },
+        { status: 400 }
+      );
     }
+    const { query, filtro_stato, filtro_cliente, filtro_destinazione_id } = parsed.data;
 
     // Generate embedding
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -91,7 +107,18 @@ export async function POST(request: NextRequest) {
       documentiQuery = documentiQuery.eq("stato", filtro_stato);
     }
     if (filtro_cliente) {
-      documentiQuery = documentiQuery.ilike("cliente", `%${filtro_cliente}%`);
+      // Stessa risoluzione della lista archivio: il filtro arriva come ragione
+      // sociale del master, che con un ilike sul TEXT non intercetterebbe le
+      // varianti storiche ("ALPHAMAC srl" non matcha "ALPHAMAC").
+      const idsCliente = await idsMasterPerRagioneSociale(filtro_cliente);
+      documentiQuery = idsCliente.length > 0
+        ? documentiQuery.in("cliente_master_id", idsCliente)
+        : documentiQuery.eq("cliente", filtro_cliente);
+    }
+    // Secondo livello (sede/divisione), come nella lista classica: senza questo
+    // il filtro sarebbe attivo a video ma ignorato in modalità AI.
+    if (filtro_destinazione_id && /^[0-9a-f-]{36}$/i.test(filtro_destinazione_id)) {
+      documentiQuery = documentiQuery.eq("cliente_master_id", filtro_destinazione_id);
     }
 
     const { data: documenti, error: docError } = await documentiQuery;

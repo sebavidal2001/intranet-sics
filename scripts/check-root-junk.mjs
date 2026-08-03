@@ -8,7 +8,7 @@ const ROOT = process.cwd();
 
 // File di root ammessi (tracciati). Le dotfile note + i config di progetto.
 const ALLOW = new Set([
-  ".env.example", ".env.local.example", ".eslintrc.json", ".gitignore", ".mcp.json",
+  ".env.example", ".env.local.example", ".eslintrc.json", ".gitattributes", ".gitignore", ".mcp.json",
   "CLAUDE.md", "DEPLOYMENT.md", "README.md", "deploy.sh",
   "next.config.mjs", "package.json", "package-lock.json",
   "postcss.config.mjs", "tailwind.config.mjs", "tsconfig.json", "vitest.config.ts",

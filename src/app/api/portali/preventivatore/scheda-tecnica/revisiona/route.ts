@@ -10,6 +10,7 @@ import {
   type ChatMsg,
 } from "@/lib/portali/preventivatore/scheda-tecnica/ai";
 import { logError, logWarn } from "@/lib/logger";
+import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,10 @@ export async function POST(request: NextRequest) {
 
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
     if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+
+    // Revisione scheda = chiamata OpenRouter a pagamento.
+    const rl = checkRateLimit(`ai-scheda-rev:${user.id}`, { limit: 20, windowMs: 60_000 });
+    if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
     const body = (await request.json()) as RequestBody;
     const schedaCorrente = (body?.scheda_corrente ?? "").trim();

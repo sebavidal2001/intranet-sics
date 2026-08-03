@@ -1,37 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
+import { haRuoloFunzionaleAsync, PREVENTIVATORE_RUOLI } from "@/lib/portali/preventivatore/ruoli";
 import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
 // Whitelist livelli che possono modificare i totals di un documento.
-const ADMIN_LEVELS = new Set(["admin", "superadmin", "exporter"]);
+// `exporter` è escluso: per definizione (vedi src/lib/auth/portale.ts) è
+// "visualizza + scarica PDF/CSV, nessuna modifica strutturale", mentre qui si
+// riscrivono importi e margini. Chi deve correggere i totali è admin del
+// portale, oppure ha il ruolo funzionale preventivatore (controllato sotto).
+const ADMIN_LEVELS = new Set(["admin", "superadmin"]);
 
-interface PatchTotals {
-  totale_materiale?: number | null;
-  ricarico_materiale_coeff?: number | null;
-  totale_manodopera?: number | null;
-  ricarico_manodopera_coeff?: number | null;
-  imballo?: number | null;
-  tempi_accessori?: number | null;
-  spese_generali?: number | null;
-  variabili_progettuali?: number | null;
-  totale_costi?: number | null;
-  totale?: number | null;
-  margine_trattativa?: number | null;
-  prezzo_finale?: number | null;
-}
+// Validazione a runtime del payload: qui si riscrivono importi e margini di un
+// preventivo, quindi un cast a interfaccia TypeScript (che a runtime non
+// controlla nulla) non basta. Limiti coerenti con `documenti/[id]/stato`.
+const ImportoOpzionale = z.number().finite().min(-100_000_000).max(100_000_000).nullable().optional();
 
-interface PatchBody {
-  documento_id: string;
-  importo_preventivo?: number | null;
-  chunk_id?: string;            // se specificato, aggiorna i totals di quel chunk
-  totals_patch?: PatchTotals;   // valori da applicare/sovrascrivere
-  tipo_prodotto?: string;
-  categoria?: string;
-}
+const TotalsPatchSchema = z.object({
+  totale_materiale: ImportoOpzionale,
+  ricarico_materiale_coeff: z.number().finite().min(0).max(1000).nullable().optional(),
+  totale_manodopera: ImportoOpzionale,
+  ricarico_manodopera_coeff: z.number().finite().min(0).max(1000).nullable().optional(),
+  imballo: ImportoOpzionale,
+  tempi_accessori: ImportoOpzionale,
+  spese_generali: ImportoOpzionale,
+  variabili_progettuali: ImportoOpzionale,
+  totale_costi: ImportoOpzionale,
+  totale: ImportoOpzionale,
+  margine_trattativa: ImportoOpzionale,
+  prezzo_finale: ImportoOpzionale,
+});
+
+const PatchBodySchema = z.object({
+  documento_id: z.string().uuid("documento_id non valido"),
+  importo_preventivo: ImportoOpzionale,
+  chunk_id: z.string().uuid().optional(),
+  totals_patch: TotalsPatchSchema.optional(),
+  tipo_prodotto: z.string().trim().max(120).optional(),
+  categoria: z.string().trim().max(120).optional(),
+});
+
+type PatchBody = z.infer<typeof PatchBodySchema>;
 
 function num(v: unknown): { raw: number; ceil_2: number } | null {
   if (v === null || v === undefined || v === "") return null;
@@ -48,17 +61,25 @@ export async function POST(request: NextRequest) {
 
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
     if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-    if (!ADMIN_LEVELS.has(livello)) {
+    const puoCorreggere =
+      ADMIN_LEVELS.has(livello) ||
+      (await haRuoloFunzionaleAsync(user.id, livello, [PREVENTIVATORE_RUOLI.preventivatore]));
+    if (!puoCorreggere) {
       return NextResponse.json(
-        { error: "Solo admin/exporter possono modificare i totali." },
+        { error: "Per modificare i totali serve il ruolo 'preventivatore' o i permessi di admin." },
         { status: 403 }
       );
     }
 
-    const body = (await request.json()) as PatchBody;
-    if (!body.documento_id || !/^[0-9a-f-]{36}$/i.test(body.documento_id)) {
-      return NextResponse.json({ error: "documento_id non valido" }, { status: 400 });
+    const rawBody = await request.json().catch(() => null);
+    const parsed = PatchBodySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Payload invalido", dettagli: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) },
+        { status: 400 }
+      );
     }
+    const body: PatchBody = parsed.data;
 
     const admin = createAdminClient().schema("preventivatore");
 

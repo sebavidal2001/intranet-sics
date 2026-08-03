@@ -26,10 +26,10 @@ function scopeIds(ids: string[] | null | undefined): string[] | null {
 // DB il codice è salvato con underscore. Queste helper generano le varianti da
 // cercare, così ogni tool che accetta un codice trova il documento.
 
-/** Escape dei metacaratteri PostgREST/ILIKE (`,` separa le condizioni in `.or()`). */
-export function escapeIlike(s: string): string {
-  return s.replace(/[%_,()]/g, (c) => `\\${c}`);
-}
+// Escape dei metacaratteri PostgREST/ILIKE: definizione unica in `postgrest.ts`,
+// importata (e ri-esportata) qui perché i test e i tool la usano da questo modulo.
+import { escapeIlike } from "@/lib/portali/preventivatore/postgrest";
+export { escapeIlike };
 
 /** Varianti `_` e `/` del codice, normalizzate in maiuscolo. */
 export function variantiCodice(codice: string): { conUnderscore: string; conSlash: string } {
