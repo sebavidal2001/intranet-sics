@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { PostBodySchema } from "@/lib/portali/preventivatore/documenti-schema";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePreventivatore, scopeAgente } from "@/lib/portali/preventivatore/api-guard";
-import { getIdClientiVisibili } from "@/lib/portali/preventivatore/ruoli";
+import {
+  getIdClientiVisibili,
+  haRuoloFunzionale,
+  PREVENTIVATORE_RUOLI,
+} from "@/lib/portali/preventivatore/ruoli";
+import { idsMasterPerRagioneSociale } from "@/lib/portali/preventivatore/clienti-filtro";
+import { escapeIlike } from "@/lib/portali/preventivatore/postgrest";
 import { logError, logWarn } from "@/lib/logger";
 
 const ID_INESISTENTE = "00000000-0000-0000-0000-000000000000";
@@ -69,6 +75,7 @@ export async function GET(request: NextRequest) {
     const q = (searchParams.get("q") ?? "").trim();
     const stato = searchParams.get("stato");
     const cliente = searchParams.get("cliente");
+    const destinazioneId = searchParams.get("destinazione_id");
     const tipo = searchParams.get("tipo"); // storico | generato
     const categoria = searchParams.get("categoria");
     const importoMin = searchParams.get("importo_min");
@@ -99,7 +106,18 @@ export async function GET(request: NextRequest) {
     query = scoped(query);
 
     if (stato && stato !== "tutti") query = query.eq("stato", stato);
-    if (cliente) query = query.eq("cliente", cliente);
+    // Il valore arriva dal dropdown = ragione sociale del master: va risolto
+    // sugli id anagrafica, altrimenti "ALPHAMAC srl" non pescherebbe i 42
+    // storici scritti come "ALPHAMAC".
+    if (cliente) {
+      const idsCliente = await idsMasterPerRagioneSociale(cliente);
+      query = idsCliente.length > 0
+        ? query.in("cliente_master_id", idsCliente)
+        : query.eq("cliente", cliente);
+    }
+    // Secondo livello: una singola sede/divisione del cliente selezionato.
+    // In AND con il filtro cliente, quindi lo restringe.
+    if (destinazioneId) query = query.eq("cliente_master_id", destinazioneId);
     if (tipo && tipo !== "tutti") query = query.eq("tipo", tipo);
     if (categoria) query = query.eq("categoria", categoria);
 
@@ -109,7 +127,9 @@ export async function GET(request: NextRequest) {
     if (!isNaN(importoMaxNum)) query = query.lte("importo_preventivo", importoMaxNum);
 
     if (q) {
-      const escaped = q.replace(/[%_,]/g, (c) => `\\${c}`);
+      // Escaping condiviso: copre anche `(` e `)`, che chiuderebbero in anticipo
+      // il gruppo `or=(...)` di PostgREST.
+      const escaped = escapeIlike(q);
       // Free-text su codice, numero_offerta, cliente
       query = query.or(`codice.ilike.%${escaped}%,numero_offerta.ilike.%${escaped}%,cliente.ilike.%${escaped}%`);
     }
@@ -167,6 +187,16 @@ export async function POST(request: NextRequest) {
     const guard = await requirePreventivatore();
     if (!guard.ok) return guard.response;
     const { user, ctx } = guard;
+
+    // Creare un preventivo è un'operazione del preventivatore, non di chiunque
+    // abbia accesso al portale: un commerciale in sola lettura non deve poterlo
+    // fare. Admin/superadmin restano abilitati.
+    if (!haRuoloFunzionale(ctx, [PREVENTIVATORE_RUOLI.preventivatore])) {
+      return NextResponse.json(
+        { error: "Per creare un preventivo serve il ruolo 'preventivatore'." },
+        { status: 403 }
+      );
+    }
 
     // ── 1) Validazione Zod del payload (limiti severi server-side) ──────
     const rawBody = await request.json().catch(() => null);

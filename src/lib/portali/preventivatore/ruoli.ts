@@ -21,6 +21,14 @@ export type PreventivatoreRuoloSlug =
 export const AGENTE_AIRFLUID = "AIRFLUID";
 
 /**
+ * Codice agente sentinella che non corrisponde a nessun cliente reale. Usato
+ * quando un commerciale è ristretto ma non ha un codice agente configurato:
+ * il filtro resta attivo e non seleziona nulla (fail-closed) invece di essere
+ * disattivato (fail-open).
+ */
+export const AGENTE_NESSUNO = "__NESSUN_CLIENTE__";
+
+/**
  * Ritorna i ruoli funzionali (slug) associati a un utente nel Preventivatore.
  * Array vuoto se l'utente non ha ruoli assegnati.
  */
@@ -99,7 +107,41 @@ export function filtroCommercialeFromContext(
     ctx.ruoli.includes(PREVENTIVATORE_RUOLI.preventivatore) ||
     ctx.ruoli.includes(PREVENTIVATORE_RUOLI.back_office);
   if (!isCommerciale || haAccessoTotale) return null;
-  return ctx.agenteCodice ?? null;
+  // Fail-closed: un commerciale senza codice agente NON vede tutto, vede zero.
+  // Vedi il commento in `getFiltroCommerciale`.
+  return ctx.agenteCodice ?? AGENTE_NESSUNO;
+}
+
+/**
+ * Autorizzazione per **operazione**, basata sui ruoli funzionali.
+ *
+ * Prima le operazioni di workflow erano gate-ate su `livello >= admin`: il
+ * controllo sui ruoli funzionali che seguiva era irraggiungibile (se sei admin
+ * passi comunque), quindi di fatto o eri admin del portale o non potevi fare
+ * nulla. Conseguenza pratica: back office e preventivatori non potevano
+ * lavorare senza ricevere i permessi pieni sul portale.
+ *
+ * Con questo helper il livello di portale serve solo a stabilire **se vedi il
+ * portale**, mentre *cosa puoi farci* dipende dal ruolo funzionale. Admin e
+ * superadmin restano scorciatoia per tutto.
+ */
+export function haRuoloFunzionale(
+  ctx: PreventivatoreContext,
+  ruoliAmmessi: readonly string[]
+): boolean {
+  if (ctx.livello === "admin" || ctx.livello === "superadmin") return true;
+  return ctx.ruoli.some((r) => ruoliAmmessi.includes(r));
+}
+
+/** Versione per i route handler che hanno solo `userId` e `livello`. */
+export async function haRuoloFunzionaleAsync(
+  userId: string,
+  livello: PreventivatoreLivello,
+  ruoliAmmessi: readonly string[]
+): Promise<boolean> {
+  if (livello === "admin" || livello === "superadmin") return true;
+  const ruoli = await getRuoliFunzionali(userId);
+  return ruoli.some((r) => ruoliAmmessi.includes(r));
 }
 
 /**
@@ -131,7 +173,12 @@ export async function getFiltroCommerciale(
   if (!isCommerciale || haAccessoTotale) return null;
 
   const codice = await getAgenteCodice(userId);
-  if (!codice) return null; // commerciale senza codice associato: vede tutto (degraded mode)
+  // Fail-closed. Prima qui si ritornava `null` = "vede tutto": una
+  // configurazione incompleta (commerciale creato senza codice agente) apriva
+  // l'intero archivio invece di chiuderlo. Ora resta ristretto e non vede
+  // nulla finché il codice non viene assegnato — errore evidente e innocuo,
+  // invece che silenzioso e pericoloso.
+  if (!codice) return AGENTE_NESSUNO;
   return codice;
 }
 

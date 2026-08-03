@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
+import { getPortaleAccesso } from "@/lib/auth/portale";
 import {
-  getRuoliFunzionali,
+  haRuoloFunzionaleAsync,
   PREVENTIVATORE_RUOLI,
   getFiltroCommerciale,
   getIdClientiVisibili,
@@ -95,8 +95,14 @@ export async function PATCH(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
+    // Il livello di portale stabilisce solo SE vedi il preventivatore; CHI può
+    // fare una data transizione è deciso dal ruolo funzionale, più sotto
+    // (RUOLI_PER_STATO_TARGET). Prima qui c'era `hasMinLivello(livello,"admin")`
+    // che rendeva irraggiungibile quel controllo: o eri admin del portale o non
+    // potevi muovere nulla, quindi back office e preventivatori non potevano
+    // lavorare senza permessi pieni.
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (!hasMinLivello(livello, "admin")) {
+    if (livello === null) {
       return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
@@ -152,18 +158,24 @@ export async function PATCH(
     }
 
     // ── Validazione ruolo funzionale per il nuovo stato ─────────────────────
-    // superadmin/admin del portale bypass; altrimenti l'utente deve avere uno dei ruoli ammessi.
-    if (livello !== "superadmin" && livello !== "admin") {
-      const ruoliRichiesti = RUOLI_PER_STATO_TARGET[stato];
-      if (ruoliRichiesti && ruoliRichiesti.length > 0) {
-        const ruoliUtente = await getRuoliFunzionali(user.id);
-        const ok = ruoliUtente.some((r) => ruoliRichiesti.includes(r));
-        if (!ok) {
-          return NextResponse.json({
-            error: `Per passare allo stato '${stato}' serve uno dei ruoli: ${ruoliRichiesti.join(", ")}.`
-          }, { status: 403 });
-        }
+    // superadmin/admin del portale bypassano; altrimenti serve uno dei ruoli
+    // ammessi per lo stato di destinazione. È QUESTO il vero controllo di
+    // autorizzazione sul workflow.
+    const ruoliRichiesti = RUOLI_PER_STATO_TARGET[stato];
+    if (ruoliRichiesti && ruoliRichiesti.length > 0) {
+      const ok = await haRuoloFunzionaleAsync(user.id, livello, ruoliRichiesti);
+      if (!ok) {
+        return NextResponse.json({
+          error: `Per passare allo stato '${stato}' serve uno dei ruoli: ${ruoliRichiesti.join(", ")}.`
+        }, { status: 403 });
       }
+    } else if (livello !== "admin" && livello !== "superadmin") {
+      // Stati senza ruolo mappato (legacy: pending/ordinato/rifiutato/storico):
+      // restano riservati agli admin, come prima.
+      return NextResponse.json(
+        { error: `Lo stato '${stato}' può essere impostato solo da un admin del portale.` },
+        { status: 403 }
+      );
     }
 
     // Validazioni per stati specifici

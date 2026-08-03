@@ -5,6 +5,8 @@ import { getPortaleAccesso } from "@/lib/auth/portale";
 import {
   getFiltroCommerciale,
   getIdClientiVisibili,
+  haRuoloFunzionaleAsync,
+  PREVENTIVATORE_RUOLI,
 } from "@/lib/portali/preventivatore/ruoli";
 import { PostBodySchema } from "@/lib/portali/preventivatore/documenti-schema";
 import { logError, logWarn } from "@/lib/logger";
@@ -240,6 +242,15 @@ export async function PUT(
     const acc = await verificaAccesso(id);
     if ("error" in acc) return NextResponse.json({ error: acc.error }, { status: acc.status });
     const { user, livello } = acc;
+
+    // Come per la creazione: modificare la distinta è del preventivatore.
+    // Un commerciale in sola lettura non deve poter riscrivere un preventivo.
+    if (!(await haRuoloFunzionaleAsync(user.id, livello, [PREVENTIVATORE_RUOLI.preventivatore]))) {
+      return NextResponse.json(
+        { error: "Per modificare un preventivo serve il ruolo 'preventivatore'." },
+        { status: 403 }
+      );
+    }
 
     const rawBody = await request.json().catch(() => null);
     const parsed = PostBodySchema.safeParse(rawBody);
