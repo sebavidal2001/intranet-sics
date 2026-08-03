@@ -9,6 +9,8 @@ export type BiField =
   | "anno"
   | "mese"
   | "cliente"
+  | "cliente_testo"
+  | "cliente_codice"
   | "categoria"
   | "tipo_prodotto"
   | "stato"

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
 import { getFiltroCommerciale, AGENTE_AIRFLUID } from "@/lib/portali/preventivatore/ruoli";
+import { escapeIlike } from "@/lib/portali/preventivatore/postgrest";
 import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,10 @@ export async function GET(request: NextRequest) {
         "id, codice_cliente, ragione_sociale, destinazione, id_destinazione, cap, localita, cat_zona, agente_nome, agente_codice, cat_commerciale"
       )
       .eq("attivo", true)
+      // Esclude gli alias: il Cruscotto esporta più id_destinazione per la stessa
+      // sede e senza questo filtro l'autocomplete mostra la stessa voce N volte
+      // (ALPHAMAC srl compariva 4 volte). Vedi migration 080.
+      .is("duplicato_di", null)
       .order("ragione_sociale", { ascending: true })
       .limit(60);
 
@@ -56,7 +61,7 @@ export async function GET(request: NextRequest) {
 
     if (q) {
       // Match su ragione OR destinazione
-      const esc = q.replace(/[%_,]/g, (c) => `\\${c}`);
+      const esc = escapeIlike(q);
       query = query.or(`ragione_sociale.ilike.%${esc}%,destinazione.ilike.%${esc}%`);
     }
 

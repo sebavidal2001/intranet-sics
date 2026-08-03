@@ -249,6 +249,24 @@ function cleanInt(v) {
     }
   }
 
+  // 7-bis) Deduplica: il file esporta più id_destinazione per la stessa sede
+  // (487 gruppi, 604 righe in eccesso al primo giro). La RPC elegge una riga
+  // canonica per gruppo, marca le altre con duplicato_di e sposta i preventivi
+  // sulla canonica. Idempotente: senza questa chiamata i doppioni tornerebbero
+  // a ogni import. Vedi migration 080.
+  const { data: dedupRows, error: dedupErr } = await db
+    .schema("preventivatore")
+    .rpc("dedup_clienti_master");
+  if (dedupErr) {
+    console.error("Errore deduplica clienti_master:", dedupErr);
+    errori++;
+  } else {
+    const d = Array.isArray(dedupRows) ? dedupRows[0] : dedupRows;
+    console.log(
+      `  Dedup: ${d?.alias_marcati ?? 0} alias marcati, ${d?.canonici ?? 0} promossi a canonici, ${d?.documenti_ripuntati ?? 0} preventivi ripuntati`
+    );
+  }
+
   // 8) Chiude log entry
   await db
     .schema("preventivatore")

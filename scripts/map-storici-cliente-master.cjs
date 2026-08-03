@@ -48,24 +48,28 @@ const MAP = [
   { db: "SPECIAL VIDEO",  dest_id: "11096" },                       // SPECIALVIDEO srl
 
   // ── B. IMA — destinazioni canoniche scelte ──
-  { db: "IMA",            dest_id: "390"   },                       // IMA spa HQ
-  { db: "IMA R.I.",       dest_id: "2203"  },                       // IMA Revisioni Industriali srl
-  { db: "IMA RI",         dest_id: "2203"  },
-  { db: "IMA SAFE",       dest_id: "2340"  },                       // IMA spa-div.SAFE
-  { db: "IMA-SAFE",       dest_id: "2340"  },
-  { db: "IMA LIFE",       dest_id: "2143"  },                       // IMA spa-div. LIFE
-  { db: "IMA-LIFE",       dest_id: "2143"  },
-  { db: "IMA BFB",        dest_id: "1760"  },                       // IMA spa-div.BFB Division
-  { db: "IMA-BFB",        dest_id: "1760"  },
-  { db: "IMA div.BFB",    dest_id: "1760"  },
-  { db: "IMA GIMA",       dest_id: "2712"  },                       // IMA spa-B.U IMA (DIV.2900-GIMA)
-  { db: "IMA-GIMA",       dest_id: "2712"  },
-  { db: "GIMA",           dest_id: "2712"  },                       // (alias IMA GIMA)
+  // `codice` è obbligatorio qui: id_destinazione NON è univoco nel Cruscotto
+  // (243 valori condivisi tra clienti diversi). Senza filtro, "IMA SAFE"
+  // (dest 2340) risolveva su SIR spa socio unico — che ha anch'essa la 2340 —
+  // e 30 preventivi IMA finivano attribuiti a SIR.
+  { db: "IMA",            codice: "05000253", dest_id: "390"   },   // IMA spa HQ
+  { db: "IMA R.I.",       codice: "05000253", dest_id: "2203"  },   // IMA Revisioni Industriali srl
+  { db: "IMA RI",         codice: "05000253", dest_id: "2203"  },
+  { db: "IMA SAFE",       codice: "05000253", dest_id: "2340"  },   // IMA spa-div.SAFE
+  { db: "IMA-SAFE",       codice: "05000253", dest_id: "2340"  },
+  { db: "IMA LIFE",       codice: "05000253", dest_id: "2143"  },   // IMA spa-div. LIFE
+  { db: "IMA-LIFE",       codice: "05000253", dest_id: "2143"  },
+  { db: "IMA BFB",        codice: "05000253", dest_id: "1760"  },   // IMA spa-div.BFB Division
+  { db: "IMA-BFB",        codice: "05000253", dest_id: "1760"  },
+  { db: "IMA div.BFB",    codice: "05000253", dest_id: "1760"  },
+  { db: "IMA GIMA",       codice: "05000253", dest_id: "2712"  },   // IMA spa-B.U IMA (DIV.2900-GIMA)
+  { db: "IMA-GIMA",       codice: "05000253", dest_id: "2712"  },
+  { db: "GIMA",           codice: "05000253", dest_id: "2712"  },   // (alias IMA GIMA)
 
   // ── B. WALVOIL ──
-  { db: "WALVOIL",             dest_id: "4087" },                   // WALVOIL spa HQ (più recente)
-  { db: "WALVOIL BIBBIANO",    dest_id: "2832" },
-  { db: "WALVOIL CORTE TEGGE", dest_id: "2970" },
+  { db: "WALVOIL",             codice: "05002466", dest_id: "4087" },  // WALVOIL spa HQ (più recente)
+  { db: "WALVOIL BIBBIANO",    codice: "05002466", dest_id: "2832" },
+  { db: "WALVOIL CORTE TEGGE", codice: "05002466", dest_id: "2970" },
 
   // ── C1. Match parziali confermati ──
   { db: "ALLESTIMENTI E PUBBLICITA'", dest_id: "10691" },
@@ -180,7 +184,7 @@ const MAP = [
 ];
 
 async function resolveTargetId(entry) {
-  let q = db.schema("preventivatore").from("clienti_master").select("id, ragione_sociale, destinazione, id_destinazione");
+  let q = db.schema("preventivatore").from("clienti_master").select("id, codice_cliente, ragione_sociale, destinazione, id_destinazione");
   if (entry.dest_id) {
     q = q.eq("id_destinazione", entry.dest_id);
     if (entry.codice) q = q.eq("codice_cliente", entry.codice);
@@ -198,6 +202,17 @@ async function resolveTargetId(entry) {
     return null;
   }
   if (!data || data.length === 0) return null;
+
+  // Guardia anti-ambiguità: se lo stesso id_destinazione appartiene a clienti
+  // diversi il target NON è determinabile — meglio fallire che agganciare il
+  // preventivo all'azienda sbagliata (vedi commento IMA SAFE sopra).
+  const codiciDiversi = new Set(data.map((r) => r.codice_cliente).filter(Boolean));
+  if (entry.dest_id && !entry.codice && codiciDiversi.size > 1) {
+    console.error(
+      `  ⚠ ${entry.db}: id_destinazione ${entry.dest_id} ambiguo tra ${[...codiciDiversi].join(", ")} — aggiungi 'codice' alla entry`
+    );
+    return null;
+  }
 
   // Preferenza: HQ pura (ragione_sociale.trim() == destinazione.trim()), poi id_destinazione minore (int)
   const sorted = [...data].sort((a, b) => {

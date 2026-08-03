@@ -19,12 +19,32 @@ export async function GET() {
     const admin = createAdminClient().schema("preventivatore");
     const [anniRes, clientiRes, categorieRes] = await Promise.all([
       admin.from("documenti").select("anno").not("anno", "is", null).order("anno", { ascending: false }),
-      admin.from("documenti").select("cliente").not("cliente", "is", null).order("cliente", { ascending: true }),
+      // Il BI raggruppa per ragione sociale del master (vedi query-engine): il
+      // dropdown deve offrire le stesse voci, non le varianti di testo storiche.
+      admin
+        .from("documenti")
+        .select("cliente, clienti_master(ragione_sociale)")
+        .order("cliente", { ascending: true }),
       admin.from("documenti").select("categoria").not("categoria", "is", null).order("categoria", { ascending: true }),
     ]);
 
     const anni = Array.from(new Set((anniRes.data ?? []).map((r) => (r as { anno: number }).anno))).sort((a, b) => b - a);
-    const clienti = Array.from(new Set((clientiRes.data ?? []).map((r) => (r as { cliente: string }).cliente))).sort();
+    const clienti = Array.from(
+      new Set(
+        (clientiRes.data ?? [])
+          .map((r) => {
+            // L'embed è many-to-one, ma i tipi generati lo dichiarano array:
+            // normalizziamo entrambe le forme.
+            const row = r as unknown as {
+              cliente: string | null;
+              clienti_master: { ragione_sociale: string | null } | { ragione_sociale: string | null }[] | null;
+            };
+            const master = Array.isArray(row.clienti_master) ? row.clienti_master[0] : row.clienti_master;
+            return master?.ragione_sociale ?? row.cliente;
+          })
+          .filter((v): v is string => Boolean(v))
+      )
+    ).sort();
     const categorie = Array.from(new Set((categorieRes.data ?? []).map((r) => (r as { categoria: string }).categoria))).sort();
 
     return NextResponse.json({ anni, clienti, categorie });

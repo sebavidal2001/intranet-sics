@@ -35,11 +35,22 @@ const RIGA_FIELDS = [
   "totale_riga",
 ] as const;
 
+// Anagrafica master agganciata al documento (FK documenti.cliente_master_id).
+// Serve a raggruppare per cliente reale invece che per il testo libero storico:
+// "ALPHAMAC" e "ALPHAMAC srl" sono lo stesso 05006264, "IMA SAFE"/"IMA-BFB"/…
+// sono tutte IMA spa. Stessa scelta già fatta lato RPC nella migration 041.
+const DOC_EMBED = "clienti_master(codice_cliente,ragione_sociale)";
+const DOC_SELECT = [...DOC_FIELDS, DOC_EMBED].join(",");
+
+// Campi calcolati in fase di normalizzazione, non colonne del DB.
+const DOC_DERIVED_FIELDS = ["cliente_testo", "cliente_codice"] as const;
+
 // ─── Whitelist parametri (security) ────────────────────────────────────────────
 // Tutti i campi/operatori validi. Qualsiasi cosa fuori da queste liste viene
 // rigettata o ignorata, anche se Supabase SDK protegge da SQL injection.
 const ALLOWED_FIELDS: ReadonlySet<string> = new Set([
   ...DOC_FIELDS,
+  ...DOC_DERIVED_FIELDS,
   ...RIGA_FIELDS,
   "mese",
 ]);
@@ -201,6 +212,33 @@ function computeWidget(rows: RawRow[], widget: BiWidgetConfig, globalFilters: Bi
   return { widget_id: widget.id, total: scopedRows.length, data };
 }
 
+type MasterRow = { codice_cliente?: string | null; ragione_sociale?: string | null };
+// L'embed è many-to-one (FK su documenti), ma PostgREST/tipi generati possono
+// restituirlo come oggetto o come array a un elemento: gestiamo entrambi.
+type EmbeddedMaster = MasterRow | MasterRow[] | null;
+
+/**
+ * Appiattisce una riga `documenti` con l'anagrafica master agganciata.
+ *
+ * `cliente` diventa la ragione sociale del master: è la chiave con cui il BI
+ * raggruppa, così le varianti di digitazione storiche collassano su una voce
+ * sola. Il testo originale del preventivo resta disponibile come
+ * `cliente_testo` (utile per ritrovare divisione/stabilimento: "IMA SAFE",
+ * "WALVOIL CORTE TEGGE", "MONTENEGRO div. CANNAMELA").
+ * Se il documento non è ancora agganciato al master si ricade sul testo.
+ */
+function normalizeDocRow(raw: Record<string, unknown>): RawRow {
+  const embedded = (raw.clienti_master ?? null) as EmbeddedMaster;
+  const master = Array.isArray(embedded) ? embedded[0] ?? null : embedded;
+  const testo = (raw.cliente ?? null) as string | null;
+  const out: RawRow = {};
+  for (const field of DOC_FIELDS) out[field] = (raw[field] ?? null) as string | number | null;
+  out.cliente = master?.ragione_sociale ?? testo;
+  out.cliente_testo = testo;
+  out.cliente_codice = master?.codice_cliente ?? null;
+  return out;
+}
+
 export interface LoadedDataset {
   rows: RawRow[];
   total_in_db: number;
@@ -223,12 +261,12 @@ export async function loadBiRows(
     let q = admin
       .schema("preventivatore")
       .from("documenti")
-      .select(DOC_FIELDS.join(","), { count: "exact" })
+      .select(DOC_SELECT, { count: "exact" })
       .limit(DOC_LIMIT);
     if (scopeIds) q = q.in("cliente_master_id", scopeIds);
     const { data, count, error } = await q;
     if (error) throw error;
-    const rows = (data ?? []) as unknown as RawRow[];
+    const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map(normalizeDocRow);
     return {
       rows,
       total_in_db: count ?? rows.length,
@@ -240,17 +278,16 @@ export async function loadBiRows(
   let rq = admin
     .schema("preventivatore")
     .from("righe_distinta")
-    .select(`${RIGA_FIELDS.join(",")}, documenti!inner(${DOC_FIELDS.join(",")})`, { count: "exact" })
+    .select(`${RIGA_FIELDS.join(",")}, documenti!inner(${DOC_SELECT})`, { count: "exact" })
     .limit(RIGA_LIMIT);
   if (scopeIds) rq = rq.in("documenti.cliente_master_id", scopeIds);
   const { data, count, error } = await rq;
   if (error) throw error;
 
   const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => {
-    const doc = row.documenti as RawRow | undefined;
-    const flat: RawRow = {};
+    const doc = (row.documenti ?? {}) as Record<string, unknown>;
+    const flat: RawRow = { ...normalizeDocRow(doc) };
     for (const field of RIGA_FIELDS) flat[field] = row[field] as string | number | null;
-    for (const field of DOC_FIELDS) flat[field] = doc?.[field] ?? null;
     return flat;
   });
   return {

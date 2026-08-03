@@ -4,6 +4,8 @@ export const BI_FIELD_LABELS: Record<BiField, string> = {
   anno: "Anno",
   mese: "Mese",
   cliente: "Cliente",
+  cliente_testo: "Cliente (testo del preventivo)",
+  cliente_codice: "Codice cliente",
   categoria: "Categoria",
   tipo_prodotto: "Tipo prodotto",
   stato: "Stato",

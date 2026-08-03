@@ -39,6 +39,9 @@ export async function GET(request: NextRequest) {
       )
       .eq("codice_cliente", codice)
       .eq("attivo", true)
+      // Una sola voce per sede reale: gli alias creati dai doppi id_destinazione
+      // del Cruscotto restano fuori dall'elenco (migration 080).
+      .is("duplicato_di", null)
       .order("destinazione", { ascending: true, nullsFirst: true })
       .limit(200);
 
