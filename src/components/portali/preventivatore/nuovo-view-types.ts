@@ -171,47 +171,11 @@ export function genKey(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
-/**
- * Sigle e unità che devono restare in MAIUSCOLO nelle descrizioni articolo.
- * (I token che contengono cifre — es. `FMIE-A85`, `W=85MM`, `Ø60` — sono già
- * preservati automaticamente perché sono codici/misure.)
- */
-const SIGLE_DESCRIZIONE = new Set([
-  "HDPE", "PVC", "PTFE", "PP", "PE", "PA", "PU", "POM", "ABS", "EPDM", "NBR", "PET",
-  "INOX", "AISI", "UNI", "ISO", "DIN", "CE", "IP", "SX", "DX", "AC", "DC", "KW", "HP",
-  "RPM", "VAC", "VDC", "LED", "PLC", "USB", "NR", "MT", "PZ", "ØD", "OK",
-])
-
-/**
- * Normalizza una descrizione da anagrafica (tutta MAIUSCOLA) in "prima lettera
- * maiuscola, resto minuscolo", preservando sigle tecniche e codici.
- *   "TESTATA FOLLE FMIE-A85"  → "Testata folle FMIE-A85"
- *   "GUIDA HDPE COLORE BIANCO" → "Guida HDPE colore bianco"
- * Se la descrizione non è tutta maiuscola viene lasciata invariata (l'utente
- * l'ha già scritta come voleva).
- */
-export function capitalizzaDescrizione(testo: string): string {
-  const s = (testo ?? "").trim()
-  if (!s) return s
-  // Solo se è "urlata": nessuna lettera minuscola presente.
-  if (/[a-zàèéìòùâêîôû]/.test(s)) return s
-
-  const convertito = s
-    .split(/(\s+)/)
-    .map((tok) => {
-      if (/^\s+$/.test(tok) || tok === "") return tok
-      const nudo = tok.replace(/[^A-Za-zÀ-Ý]/g, "")
-      if (/\d/.test(tok)) return tok                      // codici e misure: invariati
-      if (SIGLE_DESCRIZIONE.has(nudo.toUpperCase())) return tok
-      return tok.toLowerCase()
-    })
-    .join("")
-
-  // Prima lettera utile in maiuscolo
-  const idx = convertito.search(/[a-zàèéìòùâêîôû]/)
-  if (idx < 0) return convertito
-  return convertito.slice(0, idx) + convertito[idx].toUpperCase() + convertito.slice(idx + 1)
-}
+// `capitalizzaDescrizione` vive ora in `@/lib/portali/preventivatore/testo`
+// insieme alla formattazione dei nomi cliente: è usata sia dal builder sia
+// dalle viste di lettura, quindi non è più un helper del solo nuovo-view.
+// Ri-esportata qui per non rompere gli import esistenti.
+export { capitalizzaDescrizione } from "@/lib/portali/preventivatore/testo"
 
 export function fmtEur(n: number): string {
   return new Intl.NumberFormat("it-IT", {

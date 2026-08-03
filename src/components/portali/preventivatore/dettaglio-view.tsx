@@ -8,6 +8,7 @@ import { DocumentoWordDialog } from "./documento-word-dialog";
 import { MarkdownLight } from "./markdown-light";
 import { CorreggiTotaliDialog } from "./correggi-totali-dialog";
 import { WorkflowActions } from "./workflow-actions";
+import { formattaNomeCliente, capitalizzaDescrizione } from "@/lib/portali/preventivatore/testo";
 import {
   TOTAL_LABELS,
   TOTAL_ORDER,
@@ -341,7 +342,7 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
               )}
             </div>
             <p className="text-base text-text">
-              {documento.cliente ?? "Cliente non specificato"}
+              {documento.cliente ? formattaNomeCliente(documento.cliente) : "Cliente non specificato"}
               {documento.numero_offerta && (
                 <span className="text-text-muted text-sm ml-2">
                   · Offerta nr. <span className="font-mono">{documento.numero_offerta}</span>
@@ -808,7 +809,7 @@ function RigheTable({
                   {colCodice && (
                     <td className="px-3 py-1.5 font-mono text-xs text-[#00a1be]">{r.codice_articolo ?? "—"}</td>
                   )}
-                  <td className="px-3 py-1.5 text-text">{r.descrizione}</td>
+                  <td className="px-3 py-1.5 text-text">{capitalizzaDescrizione(r.descrizione)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{fmtNum(r.quantita, 3)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{fmtEuro(r.prezzo_unitario)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-text-muted">
@@ -1048,7 +1049,7 @@ function BloccoExcelCard({
                     <td className="px-3 py-1.5 font-mono text-xs text-[#00a1be]">
                       {r.codice_articolo ?? "—"}
                     </td>
-                    <td className="px-3 py-1.5 text-text">{r.descrizione}</td>
+                    <td className="px-3 py-1.5 text-text">{capitalizzaDescrizione(r.descrizione)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{fmtNum(r.quantita, 3)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{fmtEuro(r.prezzo_unitario)}</td>
                     {haRicarico && (

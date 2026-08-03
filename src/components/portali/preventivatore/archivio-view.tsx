@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { formattaNomeCliente } from "@/lib/portali/preventivatore/testo"
 
 const ChatAI = dynamic(
   () => import("@/components/portali/preventivatore/chat-ai").then((m) => m.ChatAI),
@@ -37,6 +38,13 @@ const ChatAI = dynamic(
 
 type StatoDocumento = "pending" | "ordinato" | "rifiutato"
 type TipoDocumento = "storico" | "generato"
+
+/** Sede/divisione del cliente selezionato, con quanti preventivi ha. */
+type Destinazione = {
+  id: string
+  destinazione: string | null
+  n: number
+}
 
 interface DocumentoItem {
   id: string
@@ -133,6 +141,7 @@ export function ArchivioView() {
   const [filtroStato, setFiltroStato] = useState<string>("tutti")
   const [filtroTipo, setFiltroTipo] = useState<string>("tutti")
   const [filtroCliente, setFiltroCliente] = useState<string>("")
+  const [filtroDestinazione, setFiltroDestinazione] = useState<string>("")
   const [importoMin, setImportoMin] = useState("")
   const [importoMax, setImportoMax] = useState("")
 
@@ -155,8 +164,9 @@ export function ArchivioView() {
   // Filtri sidebar collapsed (mobile)
   const [filtriOpen, setFiltriOpen] = useState(false)
 
-  // Clienti dropdown
+  // Clienti dropdown + secondo livello (sedi/divisioni del cliente scelto)
   const [clientiDisponibili, setClientiDisponibili] = useState<string[]>([])
+  const [destinazioniDisponibili, setDestinazioniDisponibili] = useState<Destinazione[]>([])
 
   // Modal stato
   const [modalOrdinato, setModalOrdinato] = useState<string | null>(null)
@@ -179,6 +189,22 @@ export function ArchivioView() {
       .catch(() => {})
   }, [])
 
+  // ── Sedi/divisioni del cliente selezionato ──────────────────────────────────
+  // Solo quelle con almeno un preventivo: elencare tutta l'anagrafica sarebbe
+  // rumore (IMA ha 47 destinazioni, 6 usate).
+  useEffect(() => {
+    if (!filtroCliente) {
+      setDestinazioniDisponibili([])
+      return
+    }
+    let cancelled = false
+    fetch(`/api/portali/preventivatore/documenti/destinazioni?cliente=${encodeURIComponent(filtroCliente)}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((d: Destinazione[]) => { if (!cancelled) setDestinazioniDisponibili(d ?? []) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [filtroCliente])
+
   // ── Build query string ──────────────────────────────────────────────────────
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
@@ -186,6 +212,7 @@ export function ArchivioView() {
     if (filtroStato !== "tutti") params.set("stato", filtroStato)
     if (filtroTipo !== "tutti") params.set("tipo", filtroTipo)
     if (filtroCliente) params.set("cliente", filtroCliente)
+    if (filtroDestinazione) params.set("destinazione_id", filtroDestinazione)
     if (importoMin) params.set("importo_min", importoMin)
     if (importoMax) params.set("importo_max", importoMax)
     params.set("sort", sort)
@@ -193,12 +220,12 @@ export function ArchivioView() {
     params.set("page", String(page))
     params.set("limit", String(PAGE_SIZE))
     return params.toString()
-  }, [q, filtroStato, filtroTipo, filtroCliente, importoMin, importoMax, sort, dir, page])
+  }, [q, filtroStato, filtroTipo, filtroCliente, filtroDestinazione, importoMin, importoMax, sort, dir, page])
 
   // ── Reset alla pagina 1 quando cambiano filtri (NON sort/dir/page) ──────────
   useEffect(() => {
     setPage(1)
-  }, [q, filtroStato, filtroTipo, filtroCliente, importoMin, importoMax])
+  }, [q, filtroStato, filtroTipo, filtroCliente, filtroDestinazione, importoMin, importoMax])
 
   // ── Fetch lista (modalità classica) ─────────────────────────────────────────
   useEffect(() => {
@@ -231,6 +258,7 @@ export function ArchivioView() {
           query: q.trim(),
           filtro_stato: filtroStato === "tutti" ? undefined : filtroStato,
           filtro_cliente: filtroCliente || undefined,
+          filtro_destinazione_id: filtroDestinazione || undefined,
         }),
       })
       if (!res.ok) {
@@ -245,7 +273,7 @@ export function ArchivioView() {
     } finally {
       setLoading(false)
     }
-  }, [q, filtroStato, filtroCliente])
+  }, [q, filtroStato, filtroCliente, filtroDestinazione])
 
   const exitAiMode = () => {
     setAiMode(false)
@@ -258,6 +286,7 @@ export function ArchivioView() {
     setFiltroStato("tutti")
     setFiltroTipo("tutti")
     setFiltroCliente("")
+    setFiltroDestinazione("")
     setImportoMin("")
     setImportoMax("")
     setPage(1)
@@ -269,6 +298,7 @@ export function ArchivioView() {
     (filtroStato !== "tutti" ? 1 : 0) +
     (filtroTipo !== "tutti" ? 1 : 0) +
     (filtroCliente ? 1 : 0) +
+    (filtroDestinazione ? 1 : 0) +
     (importoMin ? 1 : 0) +
     (importoMax ? 1 : 0)
 
@@ -461,21 +491,62 @@ export function ArchivioView() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="justify-between text-xs gap-1 w-full">
-                  <span className="truncate">{filtroCliente || "Tutti i clienti"}</span>
+                  <span className="truncate">{filtroCliente ? formattaNomeCliente(filtroCliente) : "Tutti i clienti"}</span>
                   <ChevronDown className="w-3 h-3 shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
-                <DropdownMenuItem onClick={() => setFiltroCliente("")} className={!filtroCliente ? "font-medium" : ""}>
+                <DropdownMenuItem
+                  onClick={() => { setFiltroCliente(""); setFiltroDestinazione("") }}
+                  className={!filtroCliente ? "font-medium" : ""}
+                >
                   Tutti i clienti
                 </DropdownMenuItem>
                 {clientiDisponibili.map((c) => (
-                  <DropdownMenuItem key={c} onClick={() => setFiltroCliente(c)} className={filtroCliente === c ? "font-medium" : ""}>
-                    {c}
+                  <DropdownMenuItem
+                    key={c}
+                    // Cambiando cliente la sede scelta non ha più senso: si azzera.
+                    onClick={() => { setFiltroCliente(c); setFiltroDestinazione("") }}
+                    className={filtroCliente === c ? "font-medium" : ""}
+                  >
+                    {formattaNomeCliente(c)}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Sede / divisione — solo se il cliente ne ha più di una con preventivi */}
+            {filtroCliente && destinazioniDisponibili.length > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="justify-between text-xs gap-1 w-full">
+                    <span className="truncate">
+                      {filtroDestinazione
+                        ? formattaNomeCliente(
+                            destinazioniDisponibili.find((d) => d.id === filtroDestinazione)?.destinazione ?? ""
+                          ) || "Sede"
+                        : "Tutte le sedi"}
+                    </span>
+                    <ChevronDown className="w-3 h-3 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                  <DropdownMenuItem onClick={() => setFiltroDestinazione("")} className={!filtroDestinazione ? "font-medium" : ""}>
+                    Tutte le sedi
+                  </DropdownMenuItem>
+                  {destinazioniDisponibili.map((d) => (
+                    <DropdownMenuItem
+                      key={d.id}
+                      onClick={() => setFiltroDestinazione(d.id)}
+                      className={filtroDestinazione === d.id ? "font-medium" : ""}
+                    >
+                      {formattaNomeCliente(d.destinazione ?? "—")}
+                      <span className="ml-2 text-text-muted">{d.n}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {/* Tipo */}
             <DropdownMenu>
@@ -587,7 +658,7 @@ export function ArchivioView() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium text-text text-sm font-mono">{r.codice ?? "—"}</p>
-                          {r.cliente && <span className="text-sm text-text-muted">· {r.cliente}</span>}
+                          {r.cliente && <span className="text-sm text-text-muted">· {formattaNomeCliente(r.cliente)}</span>}
                           {r.tipo === "generato" && (
                             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#00a1be]/10 text-[#007a91]">
                               Generato
