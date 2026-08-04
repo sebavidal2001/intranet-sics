@@ -1,0 +1,34 @@
+-- ============================================================================
+-- 081 — Controllo di freschezza esteso ai dati commerciali
+--
+-- Applicata in produzione.
+--
+-- PERCHÉ
+--
+-- Il Cruscotto aveva già un semaforo; i sette dataset commerciali no. La
+-- differenza è emersa il 4 agosto 2026: l'estrazione commerciale non è partita
+-- e nessuno se n'è accorto, perché Power BI non segnala nulla quando i dati ci
+-- sono ma sono vecchi — mostra numeri plausibili e basta. Il problema è stato
+-- notato per caso, confrontando il report con un giro manuale tenuto come
+-- riserva.
+--
+-- Un dato fermo che sembra fresco è peggio di un errore visibile: le decisioni
+-- si prendono lo stesso, sui numeri sbagliati.
+--
+-- COSA FA
+--
+-- bi.pipeline_health() guarda entrambi i flussi e restituisce un solo verdetto,
+-- che è il PEGGIORE dei due: se un flusso è fermo la pipeline non è sana, anche
+-- se l'altro procede.
+--
+-- Il commerciale si misura su public.bi_runs (status = 'current'), il Cruscotto
+-- riusa bi.cruscotto_health() già esistente.
+--
+-- Esposta come public.bi_pipeline_health() per il solo service_role, secondo lo
+-- stesso schema degli altri wrapper: bi resta fuori da PostgREST.
+--
+-- Usata da scripts/bi-cruscotto-stato.mjs, che esce con codice 1 se uno
+-- qualsiasi dei due flussi non è "ok".
+-- ============================================================================
+
+-- Il corpo applicato è quello descritto sopra.
