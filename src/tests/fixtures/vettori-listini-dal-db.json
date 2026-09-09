@@ -1,0 +1,984 @@
+[
+    {
+        "nome": "FedEx",
+        "fasce": [
+            {
+                "tipo": "fisso",
+                "pesoA": 0.500,
+                "pesoDa": 0.000,
+                "importo": 6.1800,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 1.500,
+                "pesoDa": 0.500,
+                "importo": 6.1800,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 4.000,
+                "pesoDa": 1.500,
+                "importo": 7.2200,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 6.000,
+                "pesoDa": 4.000,
+                "importo": 8.0000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 11.000,
+                "pesoDa": 6.000,
+                "importo": 8.9200,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 21.000,
+                "pesoDa": 11.000,
+                "importo": 10.1200,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 31.000,
+                "pesoDa": 21.000,
+                "importo": 11.3300,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 41.000,
+                "pesoDa": 31.000,
+                "importo": 13.3800,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 51.000,
+                "pesoDa": 41.000,
+                "importo": 15.3700,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 71.000,
+                "pesoDa": 51.000,
+                "importo": 20.0900,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 100.000,
+                "pesoDa": 71.000,
+                "importo": 28.3100,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": null,
+                "pesoDa": 100.000,
+                "importo": 28.3100,
+                "scattoKg": 50.000,
+                "scattoImporto": 16.0600
+            }
+        ],
+        "codice": "fedex",
+        "carburante": 0.24300,
+        "zonaCodice": "Z1",
+        "adeguamento": null,
+        "supplementi": [
+            {
+                "nome": "Pallet 80x60",
+                "codice": "pallet",
+                "valore": 10.0000,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "bancale",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Merce non sovrapponibile",
+                "codice": "non_sovrapp",
+                "valore": 30.0000,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "non_sovrapponibile",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            }
+        ],
+        "arrotondamentoKg": 0.000,
+        "arrotondamentoDaKg": 0.000,
+        "divisoreVolumetrico": 250.00,
+        "pesoMinimoTassabile": 0.000
+    },
+    {
+        "nome": "GLS",
+        "fasce": [
+            {
+                "tipo": "fisso",
+                "pesoA": 3.000,
+                "pesoDa": 0.000,
+                "importo": 12.0000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 5.000,
+                "pesoDa": 3.000,
+                "importo": 12.9000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 10.000,
+                "pesoDa": 5.000,
+                "importo": 13.6400,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 20.000,
+                "pesoDa": 10.000,
+                "importo": 16.0300,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 30.000,
+                "pesoDa": 20.000,
+                "importo": 19.2600,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 50.000,
+                "pesoDa": 30.000,
+                "importo": 27.9200,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 100.000,
+                "pesoDa": 50.000,
+                "importo": 41.7400,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": null,
+                "pesoDa": 100.000,
+                "importo": 41.7400,
+                "scattoKg": 50.000,
+                "scattoImporto": 20.4600
+            }
+        ],
+        "codice": "gls",
+        "carburante": 0.13000,
+        "zonaCodice": "CAL_SIC",
+        "adeguamento": 0.07210,
+        "supplementi": [
+            {
+                "nome": "Handling",
+                "codice": "handling",
+                "valore": 0.0300,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "per_kg",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Adeguamento autostrade e traghetti",
+                "codice": "autostrade",
+                "valore": 0.2000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Safety & Energy Surcharge",
+                "codice": "safety_energy",
+                "valore": 0.2000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Inoltro fuori provincia",
+                "codice": "inoltro_prov",
+                "valore": 0.6000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "fuori_provincia",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Oversized",
+                "codice": "oversized",
+                "valore": 9.0000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "oversized",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "per_collo",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "ZTL",
+                "codice": "ztl",
+                "valore": 1.5000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "ztl",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Bollettazione manuale",
+                "codice": "etichetta_man",
+                "valore": 5.0000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "etichetta_manuale",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Fermo deposito / triangolazione",
+                "codice": "triangolazione",
+                "valore": 7.2500,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "triangolazione",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Riconsegna da giacenza",
+                "codice": "giacenza",
+                "valore": 3.1000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "giacenza",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Assicurazione 10/10",
+                "codice": "assicurazione",
+                "valore": 0.5000,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": 10.001,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            }
+        ],
+        "arrotondamentoKg": 0.000,
+        "arrotondamentoDaKg": 0.000,
+        "divisoreVolumetrico": 300.00,
+        "pesoMinimoTassabile": 0.000
+    },
+    {
+        "nome": "GLS",
+        "fasce": [
+            {
+                "tipo": "fisso",
+                "pesoA": 3.000,
+                "pesoDa": 0.000,
+                "importo": 8.0400,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 5.000,
+                "pesoDa": 3.000,
+                "importo": 8.6800,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 10.000,
+                "pesoDa": 5.000,
+                "importo": 9.6300,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 20.000,
+                "pesoDa": 10.000,
+                "importo": 12.0000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 30.000,
+                "pesoDa": 20.000,
+                "importo": 15.2400,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 50.000,
+                "pesoDa": 30.000,
+                "importo": 23.9100,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 100.000,
+                "pesoDa": 50.000,
+                "importo": 36.9100,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": null,
+                "pesoDa": 100.000,
+                "importo": 36.9100,
+                "scattoKg": 50.000,
+                "scattoImporto": 18.1000
+            }
+        ],
+        "codice": "gls",
+        "carburante": 0.13000,
+        "zonaCodice": "IT",
+        "adeguamento": 0.07210,
+        "supplementi": [
+            {
+                "nome": "Handling",
+                "codice": "handling",
+                "valore": 0.0300,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "per_kg",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Adeguamento autostrade e traghetti",
+                "codice": "autostrade",
+                "valore": 0.2000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Safety & Energy Surcharge",
+                "codice": "safety_energy",
+                "valore": 0.2000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Inoltro fuori provincia",
+                "codice": "inoltro_prov",
+                "valore": 0.6000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "fuori_provincia",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Oversized",
+                "codice": "oversized",
+                "valore": 9.0000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "oversized",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "per_collo",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "ZTL",
+                "codice": "ztl",
+                "valore": 1.5000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "ztl",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Bollettazione manuale",
+                "codice": "etichetta_man",
+                "valore": 5.0000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "etichetta_manuale",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Fermo deposito / triangolazione",
+                "codice": "triangolazione",
+                "valore": 7.2500,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "triangolazione",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Riconsegna da giacenza",
+                "codice": "giacenza",
+                "valore": 3.1000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "giacenza",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Assicurazione 10/10",
+                "codice": "assicurazione",
+                "valore": 0.5000,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": 10.001,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            }
+        ],
+        "arrotondamentoKg": 0.000,
+        "arrotondamentoDaKg": 0.000,
+        "divisoreVolumetrico": 300.00,
+        "pesoMinimoTassabile": 0.000
+    },
+    {
+        "nome": "GLS",
+        "fasce": [
+            {
+                "tipo": "fisso",
+                "pesoA": 3.000,
+                "pesoDa": 0.000,
+                "importo": 13.6400,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 5.000,
+                "pesoDa": 3.000,
+                "importo": 15.8200,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 10.000,
+                "pesoDa": 5.000,
+                "importo": 17.6500,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 20.000,
+                "pesoDa": 10.000,
+                "importo": 20.0600,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 30.000,
+                "pesoDa": 20.000,
+                "importo": 25.5100,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 50.000,
+                "pesoDa": 30.000,
+                "importo": 35.3000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 100.000,
+                "pesoDa": 50.000,
+                "importo": 57.7800,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": null,
+                "pesoDa": 100.000,
+                "importo": 57.7800,
+                "scattoKg": 50.000,
+                "scattoImporto": 28.3200
+            }
+        ],
+        "codice": "gls",
+        "carburante": 0.13000,
+        "zonaCodice": "SARD",
+        "adeguamento": 0.07210,
+        "supplementi": [
+            {
+                "nome": "Handling",
+                "codice": "handling",
+                "valore": 0.0300,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "per_kg",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Adeguamento autostrade e traghetti",
+                "codice": "autostrade",
+                "valore": 0.2000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Safety & Energy Surcharge",
+                "codice": "safety_energy",
+                "valore": 0.2000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Inoltro fuori provincia",
+                "codice": "inoltro_prov",
+                "valore": 0.6000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "fuori_provincia",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Oversized",
+                "codice": "oversized",
+                "valore": 9.0000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "oversized",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "per_collo",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "ZTL",
+                "codice": "ztl",
+                "valore": 1.5000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "ztl",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Bollettazione manuale",
+                "codice": "etichetta_man",
+                "valore": 5.0000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "etichetta_manuale",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Fermo deposito / triangolazione",
+                "codice": "triangolazione",
+                "valore": 7.2500,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "triangolazione",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Riconsegna da giacenza",
+                "codice": "giacenza",
+                "valore": 3.1000,
+                "baseNolo": true,
+                "sogliaKgA": null,
+                "condizione": "giacenza",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Assicurazione 10/10",
+                "codice": "assicurazione",
+                "valore": 0.5000,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": 10.001,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            }
+        ],
+        "arrotondamentoKg": 0.000,
+        "arrotondamentoDaKg": 0.000,
+        "divisoreVolumetrico": 300.00,
+        "pesoMinimoTassabile": 0.000
+    },
+    {
+        "nome": "TNT",
+        "fasce": [
+            {
+                "tipo": "fisso",
+                "pesoA": 1.000,
+                "pesoDa": 0.000,
+                "importo": 6.1800,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 3.000,
+                "pesoDa": 1.000,
+                "importo": 7.2200,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 5.000,
+                "pesoDa": 3.000,
+                "importo": 8.0000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 10.000,
+                "pesoDa": 5.000,
+                "importo": 8.9200,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 20.000,
+                "pesoDa": 10.000,
+                "importo": 10.1200,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 30.000,
+                "pesoDa": 20.000,
+                "importo": 11.3300,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 40.000,
+                "pesoDa": 30.000,
+                "importo": 13.3800,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 50.000,
+                "pesoDa": 40.000,
+                "importo": 15.3700,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 70.000,
+                "pesoDa": 50.000,
+                "importo": 20.0900,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 100.000,
+                "pesoDa": 70.000,
+                "importo": 28.3100,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": null,
+                "pesoDa": 100.000,
+                "importo": 28.3100,
+                "scattoKg": 50.000,
+                "scattoImporto": 16.0600
+            }
+        ],
+        "codice": "tnt",
+        "carburante": 0.24300,
+        "zonaCodice": "IT",
+        "adeguamento": null,
+        "supplementi": [
+            {
+                "nome": "Pallet 80x60",
+                "codice": "pallet",
+                "valore": 10.0000,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "bancale",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Merce non sovrapponibile",
+                "codice": "non_sovrapp",
+                "valore": 30.0000,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "non_sovrapponibile",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Movimentazione manuale",
+                "codice": "manual_handling",
+                "valore": 10.0000,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "movimentazione_manuale",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "fisso_spedizione",
+                "importoMinimo": null,
+                "importoMassimo": null
+            }
+        ],
+        "arrotondamentoKg": 0.000,
+        "arrotondamentoDaKg": 0.000,
+        "divisoreVolumetrico": 250.00,
+        "pesoMinimoTassabile": 0.000
+    },
+    {
+        "nome": "Trading Post",
+        "fasce": [
+            {
+                "tipo": "fisso",
+                "pesoA": 3.000,
+                "pesoDa": 0.000,
+                "importo": 8.9000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 5.000,
+                "pesoDa": 3.000,
+                "importo": 9.2000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 10.000,
+                "pesoDa": 5.000,
+                "importo": 9.5000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 20.000,
+                "pesoDa": 10.000,
+                "importo": 9.9000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 30.000,
+                "pesoDa": 20.000,
+                "importo": 11.5000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 40.000,
+                "pesoDa": 30.000,
+                "importo": 12.9000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 50.000,
+                "pesoDa": 40.000,
+                "importo": 16.3000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "fisso",
+                "pesoA": 100.000,
+                "pesoDa": 50.000,
+                "importo": 22.5000,
+                "scattoKg": null,
+                "scattoImporto": null
+            },
+            {
+                "tipo": "quintale",
+                "pesoA": null,
+                "pesoDa": 100.000,
+                "importo": 22.5000,
+                "scattoKg": null,
+                "scattoImporto": null
+            }
+        ],
+        "codice": "trading_post",
+        "carburante": null,
+        "zonaCodice": "ER_LOM_PIE",
+        "adeguamento": null,
+        "supplementi": [
+            {
+                "nome": "Addizionale di gestione",
+                "codice": "addizionale_gestione",
+                "valore": 0.1100,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "sempre",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "percentuale_nolo",
+                "importoMinimo": null,
+                "importoMassimo": null
+            },
+            {
+                "nome": "Provvigione assegno",
+                "codice": "provvigione_assegno",
+                "valore": 0.0200,
+                "baseNolo": false,
+                "sogliaKgA": null,
+                "condizione": "assegno",
+                "sogliaKgDa": null,
+                "tipoCalcolo": "percentuale_nolo",
+                "importoMinimo": 5.0000,
+                "importoMassimo": null
+            }
+        ],
+        "arrotondamentoKg": 100.000,
+        "arrotondamentoDaKg": 100.000,
+        "divisoreVolumetrico": 300.00,
+        "pesoMinimoTassabile": 3.000
+    }
+]

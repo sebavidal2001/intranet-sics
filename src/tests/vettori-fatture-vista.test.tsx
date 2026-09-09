@@ -1,0 +1,22 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { FattureView } from "@/components/portali/vettori/fatture-view";
+
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it("separa le direzioni e lascia pesi e quadratura nei dettagli", async () => {
+  const riga = (n: number, direzione: string) => ({ riga_numero: n, data: "2026-07-01", riferimento: `B${n}`, controparte: `Azienda ${n}`, direzione, totale: 20, peso: 3, abbinamento: "numero", motivo_abbinamento: "Bolla trovata", controllo: { esito: "in_linea", atteso_totale: 20, peso_reale: 3, peso_volumetrico: 5, peso_tassabile: 5, scostamento: 0, avvertenze: [] } });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ fattura: { vettore: "gls", numero: "1", data: "2026-07-31", avvertenze: [], righeNonLette: [] }, quadratura: { ok: true, confronti: [], note: [] }, righe: [riga(1, "entrata"), riga(2, "uscita")] }) }));
+  const { container } = render(<FattureView />);
+  fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(["pdf"], "fattura.pdf", { type: "application/pdf" })] } });
+  await screen.findByText("Azienda 1");
+  expect(screen.queryByText("Azienda 2")).toBeNull();
+  expect(screen.getByText("Dettagli della quadratura").closest("details")!.open).toBe(false);
+  const articolo = screen.getByRole("article", { name: "Spedizione B1" });
+  const dettagli = within(articolo).getByText("Dettagli e misure").closest("details")!;
+  expect(dettagli.open).toBe(false);
+  expect(within(articolo).getByText("Peso volumetrico").closest("details")).toBe(dettagli);
+  fireEvent.click(screen.getByRole("button", { name: /Invii a clienti/ }));
+  await waitFor(() => expect(screen.getByText("Azienda 2")).toBeTruthy());
+  expect(screen.queryByText("Azienda 1")).toBeNull();
+  expect(screen.getByText("2 spedizioni lette", { exact: false })).toBeTruthy();
+});

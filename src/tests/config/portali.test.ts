@@ -11,8 +11,12 @@ describe("PORTALE_SLUGS", () => {
     expect(PORTALE_SLUGS.PREVENTIVATORE).toBe("preventivatore");
   });
 
-  it("contiene esattamente due chiavi", () => {
-    expect(Object.keys(PORTALE_SLUGS)).toHaveLength(2);
+  it("VETTORI è uguale a 'vettori'", () => {
+    expect(PORTALE_SLUGS.VETTORI).toBe("vettori");
+  });
+
+  it("contiene esattamente tre chiavi", () => {
+    expect(Object.keys(PORTALE_SLUGS)).toHaveLength(3);
   });
 
   it("i valori sono stringhe non vuote", () => {
@@ -23,7 +27,7 @@ describe("PORTALE_SLUGS", () => {
   });
 
   it("i valori corrispondono al tipo PortaleSlug", () => {
-    const validSlugs: PortaleSlug[] = ["valutazioni", "preventivatore"];
+    const validSlugs: PortaleSlug[] = ["valutazioni", "preventivatore", "vettori"];
     for (const slug of Object.values(PORTALE_SLUGS)) {
       expect(validSlugs).toContain(slug);
     }

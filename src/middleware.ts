@@ -2,6 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // Il bridge locale non riceve cookie: ritira una sola bozza con token monouso.
+  if (request.nextUrl.pathname === "/api/portali/vettori/outlook/ritira" && request.method === "POST") {
+    return NextResponse.next({ request });
+  }
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

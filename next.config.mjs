@@ -5,6 +5,29 @@ const nextConfig = {
   // con `next start`. Rimosso per coerenza con la modalità di deploy reale.
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    // Il riconoscimento ottico delle fatture FedEx usa due pacchetti che non
+    // si possono impacchettare: `@napi-rs/canvas` porta un binario nativo
+    // (`.node`, che webpack non sa leggere e su cui la build si ferma) e
+    // `tesseract.js` carica i suoi moduli WebAssembly a runtime. Restano
+    // esterni e vengono richiesti dal `node_modules` sul server, che è come
+    // il deploy sulla VM funziona già oggi.
+    serverComponentsExternalPackages: ["@napi-rs/canvas", "tesseract.js"],
+  },
+  webpack(config, { isServer }) {
+    // `serverComponentsExternalPackages` da solo non basta: l'import dinamico
+    // dentro un route handler viene comunque tracciato da webpack, che arriva
+    // al `.node` e si ferma. Dichiararli esterni qui è esplicito e vale per
+    // tutto il codice server.
+    if (isServer) {
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : [config.externals]),
+        "@napi-rs/canvas",
+        "tesseract.js",
+      ].filter(Boolean);
+    }
+    return config;
+  },
   images: {
     remotePatterns: [
       {

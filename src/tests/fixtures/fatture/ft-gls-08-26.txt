@@ -1,0 +1,70 @@
+Sede di Imola
+Via Gronchi, 97
+40026 Imola - BO
+Italia
+Telefono +39 0542 640129
+Fax +39 0542 641516
+Mail imola@gls-italy.com
+www.gls-italy.com
+GLS Enterprise S.R.L. Sede legale: VIA BASENTO, 19 - 20098 SAN GIULIANO MILANESE MI - Italia - Cap.Soc. Euro 1.019.000,00 i.v.
+Reg.Imp. di Milano -
+C.F. 04102770965 - P.IVA 04102770965 - R.E.A. 1725402 - Albo Autotr. MI/0882022/M
+Societa' soggetta a direzione e coordinamento di GLS Italy S.p.A.Cliente: AIRFLUID S.R.L. CASTEL GUELFO Pag.:
+Data N. Sp. BDA Destinatario/Mittente Col Peso Pes/Vol Nolo Dir. Fis. Dir. Ass. Assic. Varie Antic. Supplementi
+-------- --------- ----------- --------------------- ----- --------- --------- ---------- --------- --------- --------- -------- ------ -----------
+04/08/26 260159218 3248 da FLUIDOTECNICA TRAN 1 0,1 0,4 9,80 T
+04/08/26 260159296 445 da LINEARTECK S.R.L. 1 4,0 0,0 9,95 T
+04/08/26 260159423 0 da AIREX SPA (E8) Mod 1 13,3 9,0 13,55 T
+0 0 - A.10/10 - 0,50
+04/08/26 260159529 1350 da SAF SRL (L1) Carbo 2 13,0 9,2 14,14 T
+0 0 - A.10/10 - 0,50
+04/08/26 260159627 2175 da Cosmotecnica srl ( 1 4,8 4,2 10,57 T
+04/08/26 260159668 0 da PBMEK SRL (M6) Pad 2 17,3 8,6 14,27 T
+0 0 - A.10/10 - 0,50
+04/08/26 260159826 1879 da MEC FLUID 2 SRL (V 3 32,1 22,8 26,62 T
+0 0 - A.10/10 - 0,50
+04/08/26 Tot.Giorno- Sped:7 11 84,6 54,2 98,90 2,00
+05/08/26 260160449 915 da TESEO SRL (BS) Des 1 57,0 45,3 40,37 T
+0 0 - A.10/10 - 0,50
+05/08/26 260160456 12532 da AIGNEP SPA (BS ) B 1 63,0 48,1 40,55 T
+0 0 - A.10/10 - 0,50
+05/08/26 260160531 399 da BIANCHI INDUSTRIAL 1 0,6 1,0 9,22 T
+05/08/26 260160791 DDT26-0918 da EFFECTO GROUP SPA 1 2,0 6,4 11,57 T
+05/08/26 Tot.Giorno- Sped:4 4 122,6 100,8 101,71 1,00
+06/08/26 260161705 0 da CKD ITALIA SRL (T1 1 3,8 5,4 11,54 T
+07/08/26 260162384 1647 da MA-TER S.R.L. (M5) 2 9,4 13,6 14,16 T
+0 0 - A.10/10 - 0,50
+07/08/26 260162583 2289 CLEVERTECH SPA (E5) C 1 0,3 1,0 14,07 RT
+07/08/26 Tot.Giorno- Sped:2 3 9,7 14,6 28,23 0,50
+26/08/26 260166397 2878 da ORTECO SRL (E3) Sa 1 3,3 2,7 10,53 T
+26/08/26 260166462 906 da FMI Srl (E9) Parma 1 74,0 171,2 79,40 T
+0 0 - A.10/10 - 0,50
+26/08/26 Tot.Giorno- Sped:2 2 77,3 173,9 89,93 0,50
+28/08/26 260167685 0 da TSA (E3) Zola Pred 1 8,8 4,9 11,64 T
+Sede di Imola
+Via Gronchi, 97
+40026 Imola - BO
+Italia
+Telefono +39 0542 640129
+Fax +39 0542 641516
+Mail imola@gls-italy.com
+www.gls-italy.com
+GLS Enterprise S.R.L. Sede legale: VIA BASENTO, 19 - 20098 SAN GIULIANO MILANESE MI - Italia - Cap.Soc. Euro 1.019.000,00 i.v.
+Reg.Imp. di Milano -
+C.F. 04102770965 - P.IVA 04102770965 - R.E.A. 1725402 - Albo Autotr. MI/0882022/M
+Societa' soggetta a direzione e coordinamento di GLS Italy S.p.A.Cliente: AIRFLUID S.R.L. CASTEL GUELFO Pag.:
+TOTALI Num.Sped Colli Peso Peso/Vol Nolo Dir/Fisso Dir/Ass Assic/ne Varie Anticipate
+-------- -------- ------- --------- --------- ----------- ----------- ----------- ----------- ----------- -----------
+Generale 17 22 306,8 353,8 341,95 4,00
+Numero spedizioni soggette a Supplemento Bollettazione Manuale (R): 1 Importo Totale (compreso nel nolo): 5,00
+Numero spedizioni soggette a Supplemento Adeg. Autostrade e Traghetti (T): 17 Importo Totale (compreso nel nolo): 3,40
+Numero spedizioni soggette a Supplemento Supplemento Handling : 17 Importo Totale (compreso nel nolo): 12,46
+Numero spedizioni soggette a Supplemento Safety & Energy Surcharge : 17 Importo Totale (compreso nel nolo): 3,40
+Adeguamento ISTAT: (calcolato sul costo del trasporto)
+Adeguamento anno corrente ( 1,50%): 4,88
+Adeguamento anni Precedenti: 20,66
+Totale adeguamento ISTAT: 25,54
+Totale nolo generale incluso adeguamento ISTAT: 367,49
+Fuel Surcharge:
+Periodo Dal: 01/08/26 Al: 31/08/26 Tot. Nolo: 367,49 Imp. % Camionistico 13,50 Importo: 49,61
+Totale Surcharge: 49,61

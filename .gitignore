@@ -47,3 +47,6 @@ ingest-*-audit.csv
 
 # Report riconciliazione BI (contengono codici articolo aziendali)
 supabase/backups/**/riconciliazione-*.csv
+
+# Cluster PostgreSQL usa e getta del collaudo vettori
+scripts/collaudo-vettori/.pg/
