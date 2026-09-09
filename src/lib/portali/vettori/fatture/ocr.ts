@@ -43,8 +43,17 @@ import type { Canvas } from "@napi-rs/canvas";
  * ────────────────────────────────────────────────────────────────────────────
  */
 
-/** Punti per pollice della rasterizzazione. 300 è lo standard per l'OCR. */
-export const DPI = 300;
+/**
+ * Punti per pollice della rasterizzazione.
+ *
+ * 400, non i 300 che si consigliano di solito. Misurato sulle due fatture FedEx
+ * vere: a 300 una riga non si lasciava leggere e la fattura di luglio si
+ * fermava a quattro spedizioni su sei; a 400 quella riga torna intera. A 500
+ * non migliora più niente e compare un errore nuovo — «11047» letto «111047» —
+ * perché ingrandire oltre il tratto reale della stampa aggiunge solo bordi
+ * sfrangiati.
+ */
+export const DPI = 400;
 const DPI_PDF = 72;
 
 export interface Parola {
@@ -100,7 +109,13 @@ export async function rasterizza(
   const { getDocumentProxy, renderPageAsImage } = await import("unpdf");
   const canvasImport = () => import("@napi-rs/canvas");
 
-  const pdf = await getDocumentProxy(bytes);
+  // Copia dei byte, non i byte originali. pdf.js **svuota** l'array che gli si
+  // passa: dopo la lettura il chiamante si ritrova un buffer staccato, e la
+  // seconda apertura fallisce con «Cannot transfer object of unsupported type».
+  // La route di acquisizione fa esattamente questo — prima prova a estrarre il
+  // testo, poi passa gli stessi byte al riconoscimento ottico — quindi senza
+  // questa copia il riconoscimento non partirebbe mai in produzione.
+  const pdf = await getDocumentProxy(bytes.slice());
   const quante = Math.min(pdf.numPages, opzioni.massimoPagine ?? 20);
   const pagine: PaginaRasterizzata[] = [];
 
@@ -615,4 +630,121 @@ export function celleDiRiga(riga: Parola[], bande: Banda[]): Cella[] {
       };
     })
     .sort((a, b) => a.banda - b.banda);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Orientamento                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ruota una tela di un multiplo di 90 gradi.
+ *
+ * Serve perché le fatture arrivano come le ha girate lo scanner. La prima
+ * fattura FedEx vera che ho aperto era **coricata**: pagina A4 in orizzontale
+ * con il testo verticale. Il riconoscimento restituiva 1.428 «parole» come
+ * `[OX=8]` e `NMWWOSFr`, con confidenza intorno al 40%. Non è un difetto del
+ * motore: stava leggendo righe di caratteri girati di lato.
+ */
+export async function ruota(
+  tela: Canvas,
+  gradi: 0 | 90 | 180 | 270
+): Promise<Canvas> {
+  if (gradi === 0) return tela;
+
+  const { createCanvas } = await import("@napi-rs/canvas");
+  const scambia = gradi === 90 || gradi === 270;
+  const nuova = createCanvas(
+    scambia ? tela.height : tela.width,
+    scambia ? tela.width : tela.height
+  );
+  const c = nuova.getContext("2d");
+  c.fillStyle = "#ffffff";
+  c.fillRect(0, 0, nuova.width, nuova.height);
+  c.translate(nuova.width / 2, nuova.height / 2);
+  c.rotate((gradi * Math.PI) / 180);
+  c.drawImage(tela as never, -tela.width / 2, -tela.height / 2);
+  return nuova;
+}
+
+/**
+ * Quanto «sembra testo» quello che il motore ha letto.
+ *
+ * Serve a scegliere fra i quattro orientamenti senza avere il modello di
+ * riconoscimento dell'orientamento (`osd`), che andrebbe scaricato a parte.
+ *
+ * Il criterio: si contano solo le parole di almeno tre caratteri fatte di sole
+ * lettere, cifre e punteggiatura da documento, e si somma la loro confidenza.
+ * Una pagina girata produce tanti frammenti corti e strani — `[OX=8]`, `NEES`,
+ * `p]` — che questo conteggio scarta, e le poche parole che restano le legge
+ * male. Una pagina dritta produce parole vere lette con sicurezza.
+ */
+export function punteggioTesto(parole: Parola[]): number {
+  const buone = parole.filter(
+    (p) => p.testo.length >= 3 && /^[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9.,/:'-]*$/.test(p.testo)
+  );
+  if (buone.length === 0) return 0;
+  return buone.reduce((a, p) => a + p.confidenza, 0);
+}
+
+/**
+ * Trova come è girata la pagina e la raddrizza.
+ *
+ * Prova i quattro orientamenti su una copia **a bassa risoluzione**: bastano
+ * 100 punti per pollice per capire da che parte sta il testo, e girare quattro
+ * riconoscimenti a piena risoluzione costerebbe due minuti a pagina.
+ */
+export async function correggiOrientamento(
+  pagina: PaginaRasterizzata
+): Promise<{ pagina: PaginaRasterizzata; gradi: 0 | 90 | 180 | 270; punteggi: number[] }> {
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
+
+  // Copia ridotta per la prova: un terzo della risoluzione di lavoro.
+  const fattore = 1 / 3;
+  const piccola = createCanvas(
+    Math.max(1, Math.round(pagina.larghezza * fattore)),
+    Math.max(1, Math.round(pagina.altezza * fattore))
+  );
+  const cp = piccola.getContext("2d");
+  cp.fillStyle = "#ffffff";
+  cp.fillRect(0, 0, piccola.width, piccola.height);
+  cp.drawImage(
+    await loadImage(pagina.tela.toBuffer("image/png")),
+    0,
+    0,
+    piccola.width,
+    piccola.height
+  );
+
+  const gradiPossibili: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
+  const punteggi: number[] = [];
+  let migliore: 0 | 90 | 180 | 270 = 0;
+  let massimo = -1;
+
+  for (const g of gradiPossibili) {
+    const prova = await ruota(piccola, g);
+    const riconosciuta = await riconosciPagina(
+      { numero: pagina.numero, larghezza: prova.width, altezza: prova.height, tela: prova },
+      { binarizza: false }
+    );
+    const punteggio = punteggioTesto(riconosciuta.parole);
+    punteggi.push(Math.round(punteggio));
+    if (punteggio > massimo) {
+      massimo = punteggio;
+      migliore = g;
+    }
+  }
+
+  if (migliore === 0) return { pagina, gradi: 0, punteggi };
+
+  const raddrizzata = await ruota(pagina.tela, migliore);
+  return {
+    pagina: {
+      numero: pagina.numero,
+      larghezza: raddrizzata.width,
+      altezza: raddrizzata.height,
+      tela: raddrizzata,
+    },
+    gradi: migliore,
+    punteggi,
+  };
 }

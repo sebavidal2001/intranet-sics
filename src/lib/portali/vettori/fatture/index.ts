@@ -160,6 +160,22 @@ export function quadra(fattura: FatturaLetta): EsitoQuadratura {
   );
   confronta("il nolo", t.nolo, somma((r) => r.nolo));
 
+  // Il totale delle spedizioni è, per alcune fatture, l'unico numero
+  // dichiarato: le FedEx non stampano né il conteggio delle spedizioni né il
+  // peso complessivo. Senza questo confronto una fattura da cui si è letta
+  // metà delle righe «quadra», perché tutte le altre voci sono nulle e i
+  // confronti nulli passano.
+  //
+  // Si confronta `totaleRighe` e non `totaleDocumento`: vedi il commento sul
+  // tipo: su GLS i due numeri sono diversi di proposito.
+  confronta("il totale delle spedizioni", t.totaleRighe ?? null, somma((r) => r.totale));
+
+  // Zero righe non è mai una fattura letta: è una lettura fallita che, senza
+  // questo controllo, passerebbe indenne perché non c'è niente da confrontare.
+  if (n === 0) {
+    note.push("Nessuna spedizione letta: non c'è niente da acquisire.");
+  }
+
   if (fattura.righeNonLette.length > 0) {
     note.push(
       `${fattura.righeNonLette.length} righe sembravano spedizioni ma non si sono lasciate leggere.`
@@ -167,7 +183,7 @@ export function quadra(fattura: FatturaLetta): EsitoQuadratura {
   }
 
   const ok =
-    confronti.every((c) => c.ok) && fattura.righeNonLette.length === 0;
+    n > 0 && confronti.every((c) => c.ok) && fattura.righeNonLette.length === 0;
 
   if (!ok) {
     note.push(

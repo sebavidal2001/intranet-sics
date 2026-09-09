@@ -19,8 +19,20 @@
 
 set -euo pipefail
 
-DB="${VETTORI_DB:-postgres}"
-UTENTE_DB="${VETTORI_DB_USER:-postgres}"
+# Il database dell'applicazione NON e `postgres`: quello e il database di
+# servizio del cluster. Si cerca invece quello che contiene `public.portali`,
+# che e la tabella dei portali dell'intranet ed esiste solo li. Cercarlo invece
+# di scriverlo evita l'errore che questo script ha fatto la prima volta:
+# applicare le migration al database sbagliato e fermarsi a meta.
+DB="${VETTORI_DB:-}"
+if [ -z "$DB" ]; then
+  for d in $(sudo -u postgres psql -tAc       "SELECT datname FROM pg_database WHERE datistemplate = false"); do
+    if sudo -u postgres psql -d "$d" -tAc         "SELECT to_regclass('public.portali') IS NOT NULL" 2>/dev/null | grep -q t; then
+      DB="$d"
+      break
+    fi
+  done
+fi
 CARTELLA_MIGRATION="supabase/migrations"
 MIGRATION=(
   087_portale_vettori_listini.sql
@@ -42,6 +54,13 @@ psql_() { sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB" "$@"; }
 
 # ---------------------------------------------------------------- controlli
 echo "== Controlli preliminari =="
+
+if [ -z "$DB" ]; then
+  rosso "Non trovo il database dell'intranet: nessuno contiene public.portali."
+  giallo "Indicalo a mano:  VETTORI_DB=nome bash scripts/vettori/attiva-su-vm.sh"
+  exit 1
+fi
+verde "Database: $DB"
 
 if [ ! -d "$CARTELLA_MIGRATION" ]; then
   rosso "Non trovo $CARTELLA_MIGRATION. Lo script va lanciato dalla radice di /opt/intranet-sics."

@@ -5,12 +5,15 @@ import {
   raggruppaInRighe,
   rasterizza,
   riconosciPagina,
+  correggiOrientamento,
   rileggiCelle,
+  DPI,
   type Cella,
   type PaginaRasterizzata,
   type PaginaRiconosciuta,
 } from "./ocr";
 import { leggiNumero, plausibile, ricomponiImporto } from "./numeri";
+import { leggiPerRighe, verso_righe } from "./fedex-righe";
 
 /**
  * Lettura delle fatture FedEx per riconoscimento ottico.
@@ -104,11 +107,24 @@ export async function leggiFedexOcr(
   bytes: Uint8Array,
   opzioni: { dpi?: number } = {}
 ): Promise<LetturaOcr> {
-  const pagine = await rasterizza(bytes, { dpi: opzioni.dpi ?? 300 });
+  const spiegazioni: string[] = [];
+
+  // Le fatture arrivano come le ha girate lo scanner: la prima FedEx vera era
+  // coricata di 90 gradi, e il riconoscimento restituiva frammenti illeggibili
+  // al 40% di confidenza. Si raddrizza prima di leggere.
+  const grezze = await rasterizza(bytes, { dpi: opzioni.dpi ?? DPI });
+  const pagine: PaginaRasterizzata[] = [];
+  for (const g of grezze) {
+    const { pagina, gradi } = await correggiOrientamento(g);
+    if (gradi !== 0) {
+      spiegazioni.push(`Pagina ${g.numero} raddrizzata di ${gradi} gradi.`);
+    }
+    pagine.push(pagina);
+  }
+
   const riconosciute: PaginaRiconosciuta[] = [];
   for (const p of pagine) riconosciute.push(await riconosciPagina(p));
 
-  const spiegazioni: string[] = [];
   const righeGrezze: RigaOcr[] = [];
   let progressivo = 0;
 
@@ -132,9 +148,48 @@ export async function leggiFedexOcr(
     );
   }
 
-  // I totali si leggono PRIMA dei ruoli: la percentuale carburante stampata in
-  // testa serve a riconoscere quale colonna e il totale di riga, che spesso e
-  // la somma delle altre maggiorata di quella percentuale.
+  // ---- prima strategia: il tracciato a blocchi, quello che FedEx usa davvero ----
+  //
+  // Si prova per prima perché è l'unica misurata su fatture vere. La lettura a
+  // colonne resta come ricaduta: servirebbe se un giorno FedEx passasse a una
+  // tabella, e ha dietro il collaudo sul documento sintetico.
+  const perRighe = leggiPerRighe(riconosciute);
+  if (perRighe.blocchi.length > 0) {
+    const { righe, totali: t, avvertenze } = verso_righe(perRighe);
+    spiegazioni.push(
+      `Tracciato a blocchi: ${perRighe.blocchi.length} spedizioni riconosciute dalla lettera di vettura.`
+    );
+    for (const a of avvertenze) spiegazioni.push(a);
+
+    return {
+      fattura: {
+        vettore: "fedex",
+        numero: perRighe.numero,
+        data: perRighe.data,
+        anno: perRighe.data ? Number(perRighe.data.slice(0, 4)) : null,
+        mese: perRighe.data ? Number(perRighe.data.slice(5, 7)) : null,
+        righe,
+        righeNonLette: perRighe.nonLette,
+        totali: t,
+        avvertenze: [
+          "Fattura letta per riconoscimento ottico: ogni riga va confermata prima dell'acquisizione.",
+          ...avvertenze,
+        ],
+      },
+      righeGrezze,
+      ruoli: {},
+    pagine: pagine.map((p, i) => ({
+      numero: p.numero,
+      immagine: `data:image/png;base64,${riconosciute[i].immagine.toString("base64")}`,
+    })),
+      spiegazioni,
+    };
+  }
+
+  // ---- ricaduta: la lettura a colonne ----
+  spiegazioni.push(
+    "Nessuna lettera di vettura riconosciuta: si prova a leggere il documento come una tabella."
+  );
   const totali = leggiTotali(riconosciute);
   const ruoli = assegnaRuoli(righeGrezze, spiegazioni, totali.percentualeCarburante);
 

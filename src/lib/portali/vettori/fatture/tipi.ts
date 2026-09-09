@@ -57,6 +57,23 @@ export interface TotaliDichiarati {
   carburante: number | null;
   percentualeCarburante: number | null;
   totaleDocumento: number | null;
+  /**
+   * Il totale che la **somma delle righe** deve fare, quando la fattura lo
+   * dichiara in una forma confrontabile.
+   *
+   * È distinto da `totaleDocumento` perché non tutti i vettori compongono il
+   * documento allo stesso modo. Su TNT e Trading Post le righe sommano al
+   * totale stampato. Su GLS no, e non è un errore: carburante e adeguamento
+   * ISTAT sono applicati a piè di fattura sull'imponibile complessivo, non
+   * riga per riga — sulla fattura di luglio 1.024,22 di righe contro 1.238,46
+   * di documento. Confrontare i due numeri farebbe fallire la quadratura di
+   * ogni fattura GLS corretta, e in poche settimane nessuno guarderebbe più il
+   * risultato del controllo.
+   *
+   * Lo valorizza il parser che sa di poterlo fare. Lasciato `null`, il
+   * confronto non viene tentato.
+   */
+  totaleRighe?: number | null;
 }
 
 export interface EsitoQuadratura {
