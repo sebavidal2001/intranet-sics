@@ -8,6 +8,7 @@ import {
   nomiCompatibili,
   raggruppaInSpedizioni,
   riepilogoAbbinamento,
+  siglaProvincia,
   type BollaGestionale,
 } from "@/lib/portali/vettori/abbinamento";
 import { leggiFattura } from "@/lib/portali/vettori/fatture";
@@ -292,5 +293,51 @@ describe("quello che non si aggancia lo dice, con il motivo", () => {
     const esiti = abbina(f.righe, []);
     expect(esiti).toHaveLength(23);
     expect(esiti.every((e) => e.qualita === "nessuno")).toBe(true);
+  });
+});
+
+/**
+ * Il caso che ha fatto cadere la pagina Bolle in produzione il 12 settembre.
+ *
+ * `spedizioni.zona_provincia` e' `char(2)`; il gestionale ci mette anche sigle
+ * di tre lettere per l'estero. Poiche' la sincronizzazione e' un ciclo unico,
+ * un solo documento con `RSM` faceva fallire il caricamento dell'intera pagina.
+ */
+describe("sigle di provincia che non sono province", () => {
+  it("scarta le sigle estere invece di troncarle", () => {
+    expect(siglaProvincia("RSM")).toBeNull();
+    expect(siglaProvincia("CHE")).toBeNull();
+    expect(siglaProvincia("MI")).toBe("MI");
+    expect(siglaProvincia("mi")).toBe("MI");
+    expect(siglaProvincia(" bo ")).toBe("BO");
+    expect(siglaProvincia("")).toBeNull();
+    expect(siglaProvincia(null)).toBeNull();
+  });
+
+  it("una bolla per San Marino non porta con se una provincia inventata", () => {
+    const bolla = {
+      id_documento: 1,
+      tipo_registro: "DV",
+      codice_profilo: "BC",
+      numero_documento: "BF-1",
+      numero_progressivo: "1",
+      data_documento: "2026-09-12",
+      codice_soggetto: "C1",
+      soggetto: "Cliente San Marino",
+      zona_cap: "47896",
+      zona_provincia: "RSM",
+      tipo_trasporto_codice: "01",
+      tipo_trasporto: "Franco",
+      vettore_codice: "gls",
+      num_colli: 1,
+      peso_lordo: 10,
+      peso_netto: 9,
+      volume: null,
+    } as unknown as BollaGestionale;
+
+    const [spedizione] = raggruppaInSpedizioni([bolla]);
+    expect(spedizione.zonaProvincia).toBeNull();
+    // Il CAP resta: serve a capire dove stava andando, e non ha vincoli di lunghezza.
+    expect(spedizione.zonaCap).toBe("47896");
   });
 });

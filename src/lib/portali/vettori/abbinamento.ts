@@ -80,6 +80,26 @@ function n(v: string | number | null | undefined): number | null {
  * il `tipo_registro` (`DA` / `DV`) è il classificatore primario, come stabilito
  * per `filiera_righe`, e il profilo serve da conferma.
  */
+/**
+ * Sigla di provincia, o niente.
+ *
+ * `vettori.spedizioni.zona_provincia` e' `char(2)`, ma il gestionale ci mette
+ * anche sigle di tre lettere per le destinazioni estere: quattro documenti
+ * riportano `RSM` (San Marino) e `CHE`. Il driver rifiutava l'intera riga con
+ * «value too long for type character(2)», e siccome la sincronizzazione delle
+ * bolle e' un ciclo unico, **un solo documento estero faceva fallire il
+ * caricamento di tutta la pagina Bolle**.
+ *
+ * Non si tronca: `RSM` accorciato a `RS` sarebbe una provincia che non esiste,
+ * e finirebbe in una zona tariffaria a caso. Una destinazione che non e' una
+ * provincia italiana e' semplicemente senza provincia, e il listino ricade
+ * sulla sua zona predefinita.
+ */
+export function siglaProvincia(valore: string | null | undefined): string | null {
+  const sigla = (valore ?? "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(sigla) ? sigla : null;
+}
+
 export function direzioneDi(b: BollaGestionale): Direzione | null {
   if (b.tipo_registro === "DA") return "entrata";
   if (b.tipo_registro === "DV") return "uscita";
@@ -157,7 +177,7 @@ export function raggruppaInSpedizioni(
       codiceControparte: b.codice_soggetto,
       controparte: b.soggetto,
       zonaCap: b.zona_cap,
-      zonaProvincia: b.zona_provincia,
+      zonaProvincia: siglaProvincia(b.zona_provincia),
       portoCodice: b.tipo_trasporto_codice,
       porto: b.tipo_trasporto,
       aNostroCarico: aNostroCarico(direzione, b.tipo_trasporto_codice),

@@ -14,6 +14,20 @@ const nuovoScaglione = (): ScaglioneDraft => ({ pesoDa: "", pesoA: "", importo: 
 const oggi = () => new Date().toISOString().slice(0, 10);
 const nuovoAccordo = (): AccordoDraft => ({ codiceCliente: "", ragioneSociale: "", validoDal: oggi(), validoAl: "", modalita: "tabella", importo: "", nota: "" });
 const stringa = (n: number | null) => n === null ? "" : String(n);
+
+/** Il minimo che deve esserci perche' la sezione sappia disegnarsi. */
+function rispostaValida(body: unknown): body is RispostaRiaddebito {
+  if (typeof body !== "object" || body === null) return false;
+  const dati = body as Partial<RispostaRiaddebito>;
+  const v = dati.versione;
+  return (
+    Array.isArray(dati.accordi) &&
+    typeof v === "object" && v !== null &&
+    typeof v.validoDal === "string" &&
+    (v.basePeso === "reale" || v.basePeso === "tassabile") &&
+    Array.isArray(v.scaglioni)
+  );
+}
 const errorePayload = (v: unknown, fallback: string) => typeof v === "object" && v !== null && "error" in v && typeof v.error === "string" ? v.error : fallback;
 
 export function RiaddebitoImpostazioni() {
@@ -34,10 +48,16 @@ export function RiaddebitoImpostazioni() {
       const res = await fetch("/api/portali/vettori/riaddebito", { cache: "no-store" });
       const body: unknown = await res.json();
       if (!res.ok) throw new Error(errorePayload(body, "Impostazioni di riaddebito non disponibili."));
-      const dati = body as RispostaRiaddebito;
-      setVersione(dati.versione); setAccordi(dati.accordi);
-      setValidoDal(dati.versione.validoDal); setBasePeso(dati.versione.basePeso);
-      setScaglioni(dati.versione.scaglioni.map((s) => ({ pesoDa: String(s.pesoDa), pesoA: stringa(s.pesoA), importo: stringa(s.importo), nota: s.nota ?? "" })));
+      // La forma si controlla prima di scrivere qualunque stato. Senza, una
+      // risposta inattesa lasciava `accordi` a undefined e faceva esplodere il
+      // render: non un messaggio d'errore, ma l'intera pagina Impostazioni
+      // bianca, listini compresi, per un guasto che riguarda solo il riaddebito.
+      if (!rispostaValida(body)) {
+        throw new Error("Impostazioni di riaddebito in un formato non riconosciuto.");
+      }
+      setVersione(body.versione); setAccordi(body.accordi);
+      setValidoDal(body.versione.validoDal); setBasePeso(body.versione.basePeso);
+      setScaglioni(body.versione.scaglioni.map((s) => ({ pesoDa: String(s.pesoDa), pesoA: stringa(s.pesoA), importo: stringa(s.importo), nota: s.nota ?? "" })));
     } catch (causa) { setErrore(causa instanceof Error ? causa.message : "Non è stato possibile contattare il server.") }
     finally { setCaricamento(false) }
   }, []);
