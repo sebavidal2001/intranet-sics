@@ -88,6 +88,7 @@ const ORIGINI: Record<OrigineSpedizione, string> = {
   gestionale: "Gestionale",
   manuale: "Manuale",
   excel_storico: "Excel storico",
+  simulazione: "Simulazione",
 };
 
 interface Filtri {

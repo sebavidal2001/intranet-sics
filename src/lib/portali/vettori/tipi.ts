@@ -212,7 +212,11 @@ export interface BolleResponse {
 
 export type DirezioneStorico = "entrata" | "uscita";
 
-export type OrigineSpedizione = "gestionale" | "manuale" | "excel_storico";
+export type OrigineSpedizione =
+  | "gestionale"
+  | "manuale"
+  | "excel_storico"
+  | "simulazione";
 
 /** Stato editoriale della fatturazione, distinto dallo stato DB del documento. */
 export type StatoFatturazione = "fatturata" | "bozza" | "non_fatturata";
@@ -355,4 +359,131 @@ export interface CostoAtteso {
   totale: number;
   /** Note su cosa non si è potuto calcolare, e perché. */
   avvertenze: string[];
+}
+
+/* ------------------------------------------------------------------ */
+/*  Simulazione: CAP, gruppi di colli, riaddebito                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Da dove viene la provincia usata per scegliere la zona tariffaria.
+ *
+ * Non e' un dettaglio da nascondere: `prefisso` significa che il CAP non era in
+ * elenco e la provincia e' stata dedotta dalle prime tre cifre. La differenza fra
+ * un dato e una deduzione va davanti a chi decide il vettore, non in un log.
+ */
+export type FonteProvincia = "cap" | "prefisso" | "manuale";
+
+export interface EsitoCap {
+  cap: string;
+  /** Piu' di una: il CAP sta a cavallo e va chiesto quale. Vuota se estero. */
+  province: string[];
+  comuni: string[];
+  /** `anci_istat`, `gestionale`, `manuale` o `prefisso`. */
+  fonte: string;
+  /** Una sola provincia italiana certa: si puo' procedere senza chiedere. */
+  certo: boolean;
+  /** San Marino e simili: CAP di forma italiana, destinazione internazionale. */
+  estero: boolean;
+}
+
+/**
+ * Un gruppo di colli con le stesse misure.
+ *
+ * Una bolla con sei colli di tre formati diversi sono tre gruppi, non sei righe:
+ * e' cosi' che si inserisce al banco e cosi' che il volume torna.
+ */
+export interface GruppoColli {
+  quantita: number;
+  lunghezzaCm: number;
+  larghezzaCm: number;
+  altezzaCm: number;
+  /** Peso del singolo collo, se pesato. Facoltativo: fa fede il peso totale. */
+  pesoRealeKg?: number | null;
+}
+
+export type BasePesoRiaddebito = "reale" | "tassabile";
+
+export interface ScaglioneRiaddebito {
+  pesoDa: number;
+  /** null = scaglione finale aperto. */
+  pesoA: number | null;
+  /** null = nessun importo automatico, va chiesta un'offerta. */
+  importo: number | null;
+  nota: string | null;
+}
+
+export type ModalitaRiaddebitoCliente =
+  | "tabella"
+  | "importo_fisso"
+  | "nessun_addebito";
+
+export interface AccordoRiaddebitoCliente {
+  id: string;
+  codiceCliente: string;
+  ragioneSociale: string | null;
+  validoDal: string;
+  validoAl: string | null;
+  modalita: ModalitaRiaddebitoCliente;
+  importo: number | null;
+  nota: string | null;
+}
+
+export interface VersioneRiaddebito {
+  validoDal: string;
+  validoAl: string | null;
+  basePeso: BasePesoRiaddebito;
+  scaglioni: ScaglioneRiaddebito[];
+}
+
+/**
+ * Quanto si addebita al cliente per questa spedizione.
+ *
+ * `importo` null non e' zero: significa che la tabella non risponde e serve
+ * un'offerta. Mostrarlo come 0,00 produrrebbe un margine inventato.
+ */
+export interface EsitoRiaddebito {
+  importo: number | null;
+  /** Il peso su cui e' stato letto lo scaglione, e quale peso era. */
+  pesoUsato: number;
+  basePeso: BasePesoRiaddebito;
+  /** 'scaglione 10-30 kg', 'accordo cliente: importo fisso', ... */
+  regola: string;
+  /** Perche' non c'e' un importo, quando manca. */
+  avvertenza: string | null;
+}
+
+/** Una voce del confronto fra vettori. */
+export interface EsitoSimulazione {
+  vettoreId: string;
+  vettoreCodice: string;
+  vettoreNome: string;
+  disponibile: boolean;
+  motivoIndisponibilita?: string;
+  listino?: { etichetta: string; validoDal: string; validoAl: string | null } | null;
+  calcolo?: CostoAtteso;
+  /** Differenza in euro rispetto alla soluzione piu' conveniente. */
+  differenzaDalMigliore?: number;
+  /** Quanto si addebita al cliente scegliendo questo vettore. */
+  riaddebito?: EsitoRiaddebito;
+  /** Riaddebito meno costo. null quando uno dei due non e' calcolabile. */
+  margine?: number | null;
+}
+
+export interface RispostaSimulazione {
+  data: string;
+  cap: string | null;
+  provincia: string | null;
+  fonteProvincia: FonteProvincia | null;
+  /** Presente quando il CAP non basta a decidere: l'interfaccia deve chiedere. */
+  capDaChiarire?: EsitoCap | null;
+  risultati: EsitoSimulazione[];
+}
+
+/** Conferma di una simulazione: diventa una spedizione da misurare o gia misurata. */
+export interface ConfermaSimulazione {
+  simulazioneId: string;
+  spedizioneId: string | null;
+  /** true = manca il numero di bolla e la spedizione e' in coda `da_numerare`. */
+  daNumerare: boolean;
 }
