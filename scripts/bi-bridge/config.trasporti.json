@@ -1,0 +1,28 @@
+{
+    "DbisqlPath": "C:\\Program Files\\SQL Anywhere 11\\Bin32\\dbisql.com",
+    "DataSource": "airfluid90",
+    "SqlRoot": "C:\\Impresa\\Viste_BI",
+    "OutputRoot": "C:\\Impresa\\Viste_BI\\Esportazioni",
+    "RuntimeRoot": "C:\\ProgramData\\ImpresaBI",
+    "LinuxIngestBaseUrl": "https://intranet.s-ics.com/api/v1/bi-ingest",
+    "MaxAgeHours": 1,
+    "LockWaitSecondsRiconciliazione": 1800,
+    "Queries": [
+        {
+            "Modo": "live",
+            "Dataset": "trasporti_documenti",
+            "SqlFile": "TRASPORTI_DOCUMENTI_LIVE.sql",
+            "OutputFile": "Live\\trasporti_documenti_live.csv",
+            "ExpectedColumns": 68,
+            "HeaderPattern": "^id_documento$"
+        },
+        {
+            "Modo": "riconciliazione",
+            "Dataset": "trasporti_documenti",
+            "SqlFile": "TRASPORTI_DOCUMENTI.sql",
+            "OutputFile": "trasporti_documenti.csv",
+            "ExpectedColumns": 68,
+            "HeaderPattern": "^id_documento$"
+        }
+    ]
+}
