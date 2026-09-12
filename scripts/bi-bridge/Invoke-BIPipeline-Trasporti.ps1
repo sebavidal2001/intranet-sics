@@ -736,6 +736,7 @@ try {
 
             $manifest = [ordered]@{
                 run_id = $runId
+                mode = $Modo
                 source = $env:COMPUTERNAME
                 completed_at = (Get-Date).ToString("s")
                 files = @($info)

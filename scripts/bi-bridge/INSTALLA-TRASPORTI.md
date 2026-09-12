@@ -64,6 +64,19 @@ Un'esecuzione con -SkipUpload registra observed_max_id per il collaudo, ma non a
 last_seen_id. Lo stato conserva anche gli ID della coda già consegnata: le 50 righe rilette
 per sicurezza non provocano un upload continuo quando non è arrivato alcun documento nuovo.
 
+### Contratto del manifest verso Linux
+
+Il campo `mode` del manifest fa parte del contratto verso il lato Linux e contiene la
+modalità del run: `live` oppure `riconciliazione`. Il caricatore si appoggia a questo campo
+per decidere se può marcare come spariti i documenti non più presenti nel gestionale: può
+farlo soltanto per una riconciliazione, che copre la finestra a 90 giorni, e mai per un run
+live, che per costruzione contiene soltanto ID nuovi.
+
+Questo dato non è ridondante anche se la modalità compare nel file di stato: tutti i run
+arrivano nella stessa directory `ready-trasporti` e il manifest è il contratto disponibile
+al caricatore Linux. Il campo `mode` non deve quindi essere rimosso da chi in futuro modifica
+il launcher.
+
 Il CSV ad alta frequenza è separato dagli export notturni:
 
     C:\Impresa\Viste_BI\Esportazioni\Live\trasporti_documenti_live.csv
