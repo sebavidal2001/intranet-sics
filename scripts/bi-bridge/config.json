@@ -1,0 +1,61 @@
+{
+    "DbisqlPath":  "C:\\Program Files\\SQL Anywhere 11\\Bin32\\dbisql.com",
+    "DataSource":  "airfluid90",
+    "SqlRoot":  "C:\\Impresa\\Viste_BI",
+    "OutputRoot":  "C:\\Impresa\\Viste_BI\\Esportazioni",
+    "RuntimeRoot":  "C:\\ProgramData\\ImpresaBI",
+    "LinuxIngestBaseUrl":  "https://intranet.s-ics.com/api/v1/bi-ingest",
+    "MaxAgeHours":  26,
+    "Queries":  [
+                    {
+                        "Dataset":  "consegnato",
+                        "SqlFile":  "CONSEGNATO.sql",
+                        "OutputFile":  "consegnato.csv",
+                        "ExpectedColumns":  17
+                    },
+                    {
+                        "Dataset":  "consegnato_futuro_per_mese",
+                        "SqlFile":  "CONSEGNATO_FUTURO_PER_MESE.sql",
+                        "OutputFile":  "consegnato_futuro_per_mese.csv",
+                        "ExpectedColumns":  17
+                    },
+                    {
+                        "Dataset":  "controllo_banco",
+                        "SqlFile":  "CONTROLLO_BANCO.sql",
+                        "OutputFile":  "controllo_banco.csv",
+                        "ExpectedColumns":  17
+                    },
+                    {
+                        "Dataset":  "fatturato",
+                        "SqlFile":  "FATTURATO.sql",
+                        "OutputFile":  "fatturato.csv",
+                        "ExpectedColumns":  17
+                    },
+                    {
+                        "Dataset":  "ordinato",
+                        "SqlFile":  "ORDINATO.sql",
+                        "OutputFile":  "ordinato.csv",
+                        "ExpectedColumns":  17
+                    },
+                    {
+                        "Dataset":  "portafoglio",
+                        "SqlFile":  "PORTAFOGLIO.sql",
+                        "OutputFile":  "portafoglio.csv",
+                        "ExpectedColumns":  17
+                    },
+                    {
+                        "Dataset":  "preventivi_aperti",
+                        "SqlFile":  "PREVENTIVI_APERTI.sql",
+                        "OutputFile":  "preventivi_aperti.csv",
+                        "ExpectedColumns":  32
+                    },
+                    {
+                        "SqlFile":  "CRUSCOTTO_ARTICOLI.sql",
+                        "OutputFile":  "cruscotto_articoli.csv",
+                        "Dataset":  "cruscotto_articoli",
+                        "ExpectedColumns":  40,
+                        "Profilo":  "cruscotto",
+                        "HeaderPattern":  "^codice$"
+                    }
+                ]
+}
