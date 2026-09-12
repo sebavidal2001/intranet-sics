@@ -94,34 +94,81 @@ Task `IMPRESA_BI_TRASPORTI` con la finestra mobile a 90 giorni già collaudata (
 Orario: **04:15**, non 03:30. Il venerdì alle 03:30 gira Prophet sulla VM e non vanno
 sovrapposte due estrazioni pesanti.
 
-## Misura: tentata il 12 settembre, non riuscita
+## Misura eseguita il 12 settembre 2026 — il polling regge
 
-Il predicato sulla PK toglie il rischio per costruzione, ma la misura va fatta lo stesso prima
-di registrare il task. Il primo tentativo è fallito e vale la pena verbalizzarlo, perché
-l'errore si ripeterebbe.
+Eseguita su SRVWOA contro il gestionale in produzione, di sabato, in sola lettura.
 
-Due invocazioni di `dbisql` da SRVWOA via WinRM:
+| Prova | Tempo SQL | Tempo totale |
+|---|---:|---:|
+| `MAX(id_documento)` | 0,031 s | 0,45 s |
+| **Query PK a vuoto** (quella che girerebbe ogni 90 s) | **0,515 s** | **0,85 s** |
+| Query PK con il margine di 50 | 0,515 s | 0,86 s (9 righe) |
 
-1. `dbisql -nogui -c <conn> "READ '<file>'"` — forma sbagliata. Il processo ha macinato 100
-   secondi di CPU senza produrre output. Terminato manualmente.
-2. Forma corretta, copiata da `Invoke-BIPipeline.ps1:323` — file SQL come **argomento
-   posizionale** più `-datasource airfluid90`. Il processo è rimasto appeso **23 minuti con
-   12,5 secondi di CPU**: bloccato, non in calcolo, nessun CSV prodotto. Terminato
-   manualmente. Nessun task BI era in esecuzione, nessun residuo lasciato.
+Criterio di accettazione (sotto 2 secondi) **superato**: a un run ogni 90 secondi il gestionale
+resta occupato meno dell'1% del tempo.
 
-Conclusione operativa: **`dbisql` non va invocato interattivamente via WinRM.** È
-un'applicazione Java che in sessione non interattiva si blocca su qualcosa che da attività
-pianificata non capita — la pipeline lo lancia così da mesi senza problemi. La misura va
-quindi eseguita **come attività pianificata, fuori orario di lavoro**.
+### Gli indici confermano che la PK era l'unica strada
 
-Cosa misurare, quando si farà:
+Interrogando il catalogo per `id_documento`, `data_creazione` e `data_modifica`, esiste
+**un solo indice**:
 
-- durata della query PK a vuoto (nessun ID nuovo): criterio di accettazione **sotto 2 secondi**;
-- presenza di indici su `data_creazione` / `data_modifica`, che serve comunque a dimensionare
-  la riconciliazione giornaliera;
-- le due verifiche sulla monotonia di `id_documento` elencate sopra.
+```
+index_name    column_name
+documento     id_documento
+```
 
-Finché queste misure non esistono, **nessun task viene registrato su SRVWOA**.
+Le colonne data **non sono indicizzate**. Il predicato scartato per prudenza avrebbe fatto una
+scansione completa (l'ID massimo osservato e' 574.271) ogni 90 secondi, in orario di lavoro.
+La scelta della chiave primaria non era cautela: era l'unica possibile, e ora e' misurata.
+
+## Le due trappole di dbisql, pagate care
+
+Arrivare a quei numeri e' costato tre ore, per due ragioni che si mascheravano a vicenda.
+
+### Il BOM manda dbisql in un ciclo infinito
+
+`Set-Content -Encoding UTF8` scrive il byte order mark. dbisql non lo digerisce: risponde
+`Errore di sintassi vicino a 'i' alla riga 1`, `SQLCODE=-131`, e apre un **prompt interattivo**
+`1. Stop / 2. Continue / Select an option:`. Senza nessuno che risponda resta li' a stampare la
+domanda: 45 MB di output, CPU al 20%, nessun risultato, processo da terminare a mano.
+Dall'esterno sembra esattamente una query lenta.
+
+I file SQL destinati a dbisql vanno scritti **senza BOM**, in modo compatibile con
+PowerShell 4.0:
+
+```powershell
+[IO.File]::WriteAllText($percorso, $testo, (New-Object System.Text.UTF8Encoding($false)))
+```
+
+Nel repository esistono gia' `MIGRAZIONE_PIPELINE_V2/windows/Query/ENCODING.md` e un backup
+chiamato `.with-bom.backup`: era gia' successo.
+
+### Sotto WinRM serve Start-Process, non l'operatore di chiamata
+
+Invocando `& $dbisql ...` da una sessione WinRM i flussi di console non hanno destinazione e il
+processo si blocca. Con i flussi rediretti su file funziona:
+
+```powershell
+Start-Process -FilePath $dbisql -ArgumentList @('-c',$conn,'-datasource','airfluid90','-nogui',$f) -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -PassThru
+```
+
+Da **attivita' pianificata** l'operatore `&` va invece benissimo — e' quello che la pipeline usa
+da mesi — perche' li' una console c'e'.
+
+### Due conclusioni sbagliate, per memoria
+
+Durante la diagnosi ho scritto in questi documenti prima che «dbisql non funziona via WinRM» e
+poi che «la causa e' la stringa di connessione». **Nessuna delle due era vera.** Entrambe erano
+inferenze tratte dai sintomi — un processo fermo, poi un processo che consumava CPU — senza un
+esperimento di controllo. Il controllo (`SELECT 1`, che non tocca alcuna tabella) ha dato la
+risposta in trenta secondi, e andava fatto per primo.
+
+Resta vero, verificato separatamente, che da attivita' pianificata serve `LogonType=Password`
+come `IMPRESA_BI_GIORNALIERO`: registrando il task senza password si ottiene un logon
+`Interactive`, DPAPI non decifra la credenziale del gestionale e il task esce con codice 1
+senza spiegare perche'.
+
+Le misure ora esistono e sono favorevoli. Restano da chiudere, prima di registrare i task: il canale SMTP degli allarmi e la mappatura del dataset nel loader Linux.
 
 ## Divisione del lavoro
 

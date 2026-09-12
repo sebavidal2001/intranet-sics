@@ -14,15 +14,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type {
-  Direzione,
+  DirezioneStorico,
   EsitoStorico,
+  OrigineSpedizione,
   RigaStorico,
-  ValoriFiltro,
-} from "@/lib/portali/vettori/storico";
+  ValoriFiltroStorico,
+} from "@/lib/portali/vettori/tipi";
 
 /**
- * Storico delle spedizioni controllate — quello che nei fogli erano le due
- * tabelle «partenze» e «arrivi».
+ * Storico delle spedizioni registrate — quello che nei fogli erano le due
+ * tabelle «partenze» e «arrivi». La fattura può essere compilata in seguito.
  *
  * La direzione è una **linguetta**, non una colonna: cambiano la chiave di
  * aggancio, il significato del porto e la controparte, e mescolarle renderebbe
@@ -36,7 +37,7 @@ import type {
 
 interface Props {
   iniziali: EsitoStorico;
-  valori: ValoriFiltro;
+  valori: ValoriFiltroStorico;
 }
 
 const MESI = [
@@ -80,11 +81,17 @@ const num = (n: number | null | undefined, d = 1) =>
 const pct = (n: number | null | undefined) =>
   n == null ? "—" : `${n > 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
 
-const coloreEsito = (e: string) =>
+const coloreEsito = (e: string | null) =>
   ESITI.find((x) => x.slug === e)?.colore ?? "var(--color-text-muted)";
 
+const ORIGINI: Record<OrigineSpedizione, string> = {
+  gestionale: "Gestionale",
+  manuale: "Manuale",
+  excel_storico: "Excel storico",
+};
+
 interface Filtri {
-  direzione: Direzione;
+  direzione: DirezioneStorico;
   cerca: string;
   vettori: string[];
   esiti: string[];
@@ -256,6 +263,7 @@ export function StoricoView({ iniziali, valori }: Props) {
 
   const t = dati.totali;
   const differenza = t.fatturato - t.atteso;
+  const haImporti = t.righe_valide > 0;
   const conteggi = dati.per_direzione ?? {};
   const attivi = useMemo(() => {
     const n =
@@ -282,9 +290,9 @@ export function StoricoView({ iniziali, valori }: Props) {
       <header className="mb-4">
         <h1 className="font-tenorite text-2xl font-bold text-text">Storico spedizioni</h1>
         <p className="text-sm text-text-muted mt-1 max-w-3xl">
-          Tutte le spedizioni controllate, come nei fogli: partenze e arrivi
-          separati, con quanto è stato fatturato accanto a quanto sarebbe dovuto
-          costare. Si filtra e si esporta.
+          Tutte le spedizioni registrate, come nei fogli: partenze e arrivi
+          separati. I dati della fattura e del controllo si completano quando il
+          documento del vettore viene acquisito.
         </p>
       </header>
 
@@ -337,7 +345,7 @@ export function StoricoView({ iniziali, valori }: Props) {
           <select
             value={filtri.anno ?? ""}
             onChange={(e) => aggiorna("anno", e.target.value ? Number(e.target.value) : null)}
-            aria-label="Anno della fattura"
+            aria-label="Anno di riferimento"
             className="h-9 rounded-lg border border-border bg-bg px-2 text-sm text-text"
           >
             <option value="">Tutti gli anni</option>
@@ -351,7 +359,7 @@ export function StoricoView({ iniziali, valori }: Props) {
           <select
             value={filtri.mese ?? ""}
             onChange={(e) => aggiorna("mese", e.target.value ? Number(e.target.value) : null)}
-            aria-label="Mese della fattura"
+            aria-label="Mese di riferimento"
             className="h-9 rounded-lg border border-border bg-bg px-2 text-sm text-text"
           >
             <option value="">Tutti i mesi</option>
@@ -558,15 +566,23 @@ export function StoricoView({ iniziali, valori }: Props) {
         <Tessera
           titolo={filtri.direzione === "uscita" ? "Partenze" : "Arrivi"}
           valore={num(t.righe, 0)}
-          nota={`${num(t.colli, 0)} colli · ${num(t.kg, 0)} kg`}
+          nota={`${num(t.colli, 0)} colli · ${num(t.kg, 0)} kg · ${num(t.spedizioni_non_fatturate, 0)} senza fattura`}
         />
-        <Tessera titolo="Fatturato" valore={eur(t.fatturato, 0)} nota="dalle fatture acquisite" />
-        <Tessera titolo="Atteso" valore={eur(t.atteso, 0)} nota="secondo i listini" />
+        <Tessera
+          titolo="Fatturato"
+          valore={haImporti ? eur(t.fatturato, 0) : "—"}
+          nota={haImporti ? "solo fatture confermate o chiuse" : "nessuna fattura acquisita"}
+        />
+        <Tessera
+          titolo="Atteso"
+          valore={haImporti ? eur(t.atteso, 0) : "—"}
+          nota={haImporti ? "secondo i listini" : "non ancora disponibile"}
+        />
         <Tessera
           titolo="Differenza"
-          valore={eur(differenza, 0)}
-          nota={t.atteso > 0 ? `${((differenza / t.atteso) * 100).toFixed(1)}% sul dovuto` : "non calcolabile"}
-          colore={differenza > 0 ? "var(--color-danger)" : "var(--color-success)"}
+          valore={haImporti ? eur(differenza, 0) : "—"}
+          nota={haImporti && t.atteso > 0 ? `${((differenza / t.atteso) * 100).toFixed(1)}% sul dovuto` : "non calcolabile"}
+          colore={haImporti ? (differenza > 0 ? "var(--color-danger)" : "var(--color-success)") : "var(--color-text-muted)"}
         />
         <Tessera
           titolo="Da decidere"
@@ -575,6 +591,25 @@ export function StoricoView({ iniziali, valori }: Props) {
           colore={t.con_anomalie_aperte > 0 ? "var(--color-warning)" : "var(--color-text-muted)"}
         />
       </div>
+
+      {t.spedizioni_non_fatturate > 0 && (
+        <div
+          className="mb-4 rounded-lg border p-3 flex items-start gap-2.5"
+          style={{
+            borderColor: "var(--color-primary)",
+            background: "color-mix(in srgb, var(--color-primary) 6%, var(--color-bg))",
+          }}
+        >
+          <PackageSearch className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          <p className="text-xs text-text leading-snug">
+            <strong className="font-tenorite">
+              {num(t.spedizioni_non_fatturate, 0)} spedizioni non ancora fatturate.
+            </strong>{" "}
+            Sono comprese nel conteggio, nei colli e nei kg, ma non negli importi
+            o negli scostamenti.
+          </p>
+        </div>
+      )}
 
       {t.righe_bozza > 0 && (
         <div
@@ -621,7 +656,7 @@ export function StoricoView({ iniziali, valori }: Props) {
             <p className="text-xs text-text-muted mt-1 max-w-md mx-auto">
               {attivi > 0
                 ? "Prova ad allargare il periodo o ad azzerare i filtri."
-                : "Lo storico si riempie man mano che le fatture vengono acquisite nella pagina Fatture: ogni riga controllata resta qui."}
+                : "Lo storico si riempie quando una spedizione viene registrata; i dati economici arrivano in seguito con la fattura."}
             </p>
           </div>
         ) : (
@@ -703,6 +738,7 @@ function Riga({
   onApri: () => void;
 }) {
   const differenza = r.fatturato != null && r.atteso != null ? r.fatturato - r.atteso : null;
+  const senzaFattura = r.stato_fatturazione === "non_fatturata";
 
   return (
     <>
@@ -718,6 +754,17 @@ function Riga({
           {r.stato_fattura === "bozza" && (
             <span className="ml-1.5 text-[9px] uppercase tracking-wider text-warning">bozza</span>
           )}
+          {senzaFattura && (
+            <span
+              className="ml-1.5 inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+              style={{
+                color: "var(--color-primary-dark)",
+                background: "color-mix(in srgb, var(--color-primary) 12%, var(--color-bg))",
+              }}
+            >
+              non ancora fatturata
+            </span>
+          )}
         </td>
         <td className="px-3 py-1.5 font-mono text-[12px] whitespace-nowrap">
           {r.riferimento ?? <span className="text-danger">senza bolla</span>}
@@ -725,16 +772,26 @@ function Riga({
         <td className="px-3 py-1.5 max-w-[220px] truncate" title={r.controparte ?? ""}>
           {r.controparte ?? "—"}
         </td>
-        <td className="px-3 py-1.5 whitespace-nowrap text-text-muted">{r.vettore_nome}</td>
+        <td className="px-3 py-1.5 whitespace-nowrap text-text-muted">
+          {r.vettore_nome ?? "Non indicato"}
+        </td>
         <td className="px-3 py-1.5 text-center text-text-muted">{r.provincia ?? "—"}</td>
-        <td className="px-3 py-1.5 text-right tabular-nums">{r.colli ?? "—"}</td>
-        <td className="px-3 py-1.5 text-right tabular-nums">
+        <td className="px-3 py-1.5 text-right tabular-nums font-tenorite">{r.colli ?? "—"}</td>
+        <td className="px-3 py-1.5 text-right tabular-nums font-tenorite">
           {num(r.peso_tassato ?? r.peso, 0)}
         </td>
-        <td className="px-3 py-1.5 text-right tabular-nums font-medium">{eur(r.fatturato)}</td>
-        <td className="px-3 py-1.5 text-right tabular-nums text-text-muted">{eur(r.atteso)}</td>
+        <td className="px-3 py-1.5 text-right tabular-nums font-tenorite font-medium">
+          <span title={senzaFattura ? "Importo disponibile quando arriva la fattura" : undefined}>
+            {eur(r.fatturato)}
+          </span>
+        </td>
+        <td className="px-3 py-1.5 text-right tabular-nums font-tenorite text-text-muted">
+          <span title={senzaFattura ? "Costo atteso calcolabile dopo l'acquisizione della fattura" : undefined}>
+            {eur(r.atteso)}
+          </span>
+        </td>
         <td
-          className="px-3 py-1.5 text-right tabular-nums font-medium whitespace-nowrap"
+          className="px-3 py-1.5 text-right tabular-nums font-tenorite font-medium whitespace-nowrap"
           style={{ color: coloreEsito(r.esito) }}
         >
           {pct(r.scostamento)}
@@ -758,33 +815,55 @@ function Riga({
                 {r.peso_applicato && <Voce nome="Fa prezzo" valore={r.peso_applicato} />}
               </Blocco>
 
-              <Blocco titolo="Composizione fatturata">
-                <Voce nome="Nolo" valore={eur(r.nolo)} />
-                <Voce nome="Supplementi" valore={eur(r.supplementi)} />
-                <Voce nome="Adeguamento" valore={eur(r.adeguamento)} />
-                <Voce nome="Carburante" valore={eur(r.carburante)} />
-                <Voce nome="Totale" valore={eur(r.fatturato)} forte />
-              </Blocco>
+              {senzaFattura ? (
+                <Blocco titolo="Fatturazione">
+                  <p className="text-text-muted leading-relaxed">
+                    Fattura non ancora presente. Gli importi non sono valorizzati.
+                  </p>
+                </Blocco>
+              ) : (
+                <Blocco titolo="Composizione fatturata">
+                  <Voce nome="Nolo" valore={eur(r.nolo)} />
+                  <Voce nome="Supplementi" valore={eur(r.supplementi)} />
+                  <Voce nome="Adeguamento" valore={eur(r.adeguamento)} />
+                  <Voce nome="Carburante" valore={eur(r.carburante)} />
+                  <Voce nome="Totale" valore={eur(r.fatturato)} forte />
+                </Blocco>
+              )}
 
-              <Blocco titolo="Controllo">
-                <Voce nome="Atteso" valore={eur(r.atteso)} />
-                <Voce
-                  nome="Differenza"
-                  valore={differenza == null ? "—" : eur(differenza)}
-                  forte
-                />
-                <Voce nome="Listino" valore={r.listino ?? "—"} />
-                <Voce nome="Zona" valore={r.zona ?? "—"} />
-              </Blocco>
+              {senzaFattura ? (
+                <Blocco titolo="Controllo">
+                  <p className="text-text-muted leading-relaxed">
+                    In attesa della fattura: esito e scostamento non sono ancora calcolabili.
+                  </p>
+                </Blocco>
+              ) : (
+                <Blocco titolo="Controllo">
+                  <Voce nome="Atteso" valore={eur(r.atteso)} />
+                  <Voce
+                    nome="Differenza"
+                    valore={differenza == null ? "—" : eur(differenza)}
+                    forte
+                  />
+                  <Voce nome="Listino" valore={r.listino ?? "—"} />
+                  <Voce nome="Zona" valore={r.zona ?? "—"} />
+                </Blocco>
+              )}
 
               <Blocco titolo="Documento">
-                <Voce nome="Fattura" valore={`${r.fattura_numero ?? "—"} · ${r.data_fattura ?? "—"}`} />
+                <Voce
+                  nome="Fattura"
+                  valore={senzaFattura ? "Non ancora presente" : `${r.fattura_numero ?? "—"} · ${r.data_fattura ?? "—"}`}
+                />
                 <Voce nome="N. spedizione vettore" valore={r.numero_spedizione ?? "—"} />
                 <Voce nome="Porto" valore={r.porto_descrizione ?? "—"} />
+                <Voce nome="Origine" valore={r.origine ? ORIGINI[r.origine] : "—"} />
                 <Voce
                   nome="Aggancio bolla"
                   valore={
-                    ABBINAMENTI.find((a) => a.slug === r.abbinamento)?.nome ?? r.abbinamento
+                    r.abbinamento == null
+                      ? "Non ancora eseguito"
+                      : ABBINAMENTI.find((a) => a.slug === r.abbinamento)?.nome ?? r.abbinamento
                   }
                 />
               </Blocco>

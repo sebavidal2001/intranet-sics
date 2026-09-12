@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { versoCsv } from "@/lib/portali/vettori/storico";
-import type { RigaStorico } from "@/lib/portali/vettori/storico";
+import type { RigaStorico } from "@/lib/portali/vettori/tipi";
 
 /**
  * L'esportazione dello storico.
@@ -22,6 +22,8 @@ function riga(p: Partial<RigaStorico> = {}): RigaStorico {
     anno: 2026,
     mese: 7,
     stato_fattura: "confermata",
+    stato_fatturazione: "fatturata",
+    origine: "gestionale",
     riga_numero: 1,
     data_spedizione: "2026-07-12",
     numero_spedizione: "SP1",
@@ -132,5 +134,43 @@ describe("versoCsv", () => {
   it("scrive una riga per spedizione", () => {
     const csv = versoCsv([riga({ id: "1" }), riga({ id: "2" }), riga({ id: "3" })]);
     expect(csv.split("\n").filter((r) => r.trim() !== "")).toHaveLength(4);
+  });
+
+  it("esporta una spedizione non fatturata senza trasformare gli importi in zero", () => {
+    const csv = versoCsv([
+      riga({
+        fattura_id: null,
+        fattura_numero: null,
+        data_fattura: null,
+        anno: null,
+        mese: null,
+        stato_fattura: null,
+        stato_fatturazione: "non_fatturata",
+        origine: "excel_storico",
+        riga_numero: null,
+        nolo: null,
+        supplementi: null,
+        adeguamento: null,
+        carburante: null,
+        fatturato: null,
+        atteso: null,
+        scostamento: null,
+        esito: null,
+        abbinamento: null,
+        listino: null,
+        zona: null,
+      }),
+    ]);
+    const intestazioni = csv.slice(1).split("\n")[0].split(";");
+    const dati = csv.split("\n")[1].split(";");
+    const valore = (nome: string) => dati[intestazioni.indexOf(nome)];
+
+    expect(valore("Origine")).toBe("Excel storico");
+    expect(valore("Fatturato")).toBe("");
+    expect(valore("Atteso")).toBe("");
+    expect(valore("Differenza")).toBe("");
+    expect(valore("Scostamento %")).toBe("");
+    expect(valore("Stato fatturazione")).toBe("Non ancora fatturata");
+    expect(valore("Stato fattura")).toBe("");
   });
 });

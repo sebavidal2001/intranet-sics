@@ -157,6 +157,125 @@ export interface BolleResponse {
   altrePagine: boolean;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Storico spedizioni                                                */
+/* ------------------------------------------------------------------ */
+
+export type DirezioneStorico = "entrata" | "uscita";
+
+export type OrigineSpedizione = "gestionale" | "manuale" | "excel_storico";
+
+/** Stato editoriale della fatturazione, distinto dallo stato DB del documento. */
+export type StatoFatturazione = "fatturata" | "bozza" | "non_fatturata";
+
+export type EsitoControllo =
+  | "in_linea"
+  | "da_verificare"
+  | "anomalia"
+  | "non_valutabile";
+
+export type TipoAbbinamento = "numero" | "assistito" | "manuale" | "nessuno";
+
+export interface RigaStorico {
+  id: string;
+  fattura_id: string | null;
+  direzione: DirezioneStorico | null;
+  vettore_codice: string | null;
+  vettore_nome: string | null;
+  fattura_numero: string | null;
+  data_fattura: string | null;
+  anno: number | null;
+  mese: number | null;
+  stato_fattura: "bozza" | "confermata" | "chiusa" | null;
+  stato_fatturazione: StatoFatturazione;
+  origine: OrigineSpedizione | null;
+  riga_numero: number | null;
+  data_spedizione: string | null;
+  numero_spedizione: string | null;
+  riferimento: string | null;
+  controparte: string | null;
+  controparte_codice: string | null;
+  provincia: string | null;
+  cap: string | null;
+  porto_descrizione: string | null;
+  a_nostro_carico: boolean | null;
+  colli: number | null;
+  peso: number | null;
+  peso_volumetrico: number | null;
+  peso_tassato: number | null;
+  nolo: number | null;
+  supplementi: number | null;
+  adeguamento: number | null;
+  carburante: number | null;
+  fatturato: number | null;
+  atteso: number | null;
+  scostamento: number | null;
+  /** NULL significa che la fattura non esiste ancora, non "non valutabile". */
+  esito: EsitoControllo | null;
+  abbinamento: TipoAbbinamento | null;
+  listino: string | null;
+  zona: string | null;
+  peso_applicato: string | null;
+  avvertenze: string[] | null;
+  anomalie: number;
+  anomalie_aperte: number;
+}
+
+export interface TotaliStorico {
+  /** Righe fattura più spedizioni non ancora fatturate. */
+  righe: number;
+  /** Sole righe di fatture confermate o chiuse. */
+  righe_valide: number;
+  righe_bozza: number;
+  spedizioni_non_fatturate: number;
+  /** Colli e kg includono le spedizioni non fatturate, ma non le bozze. */
+  colli: number;
+  kg: number;
+  /** Gli importi includono soltanto fatture confermate o chiuse. */
+  fatturato: number;
+  atteso: number;
+  anomalie: number;
+  con_anomalie_aperte: number;
+}
+
+export interface EsitoStorico {
+  righe: RigaStorico[];
+  totali: TotaliStorico;
+  /** Quante righe per direzione, calcolate ignorando il filtro di direzione. */
+  per_direzione: Record<string, number> | null;
+  pagina: number;
+  per_pagina: number;
+}
+
+export interface FiltriStorico {
+  direzione?: DirezioneStorico | null;
+  vettori?: string[] | null;
+  da?: string | null;
+  a?: string | null;
+  anno?: number | null;
+  mese?: number | null;
+  esiti?: string[] | null;
+  abbinamenti?: string[] | null;
+  province?: string[] | null;
+  cerca?: string | null;
+  soloAnomalie?: boolean;
+  pesoMin?: number | null;
+  pesoMax?: number | null;
+  importoMin?: number | null;
+  importoMax?: number | null;
+  scostamentoMin?: number | null;
+  ordine?: string | null;
+  pagina?: number;
+  perPagina?: number;
+}
+
+export interface ValoriFiltroStorico {
+  vettori: Array<{ codice: string; nome: string }>;
+  province: string[];
+  periodi: Array<{ anno: number; mese: number }>;
+  anni: number[];
+}
+
 export interface VoceCalcolo {
   codice: string;
   descrizione: string;

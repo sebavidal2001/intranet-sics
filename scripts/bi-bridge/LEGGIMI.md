@@ -32,8 +32,15 @@ Gli SHA-256 della copia coincidono con quelli dei file installati su SRVWOA:
 - `dbisql` va invocato con il file SQL come **argomento posizionale** più
   `-datasource airfluid90`, come fa `Invoke-BIPipeline.ps1`. La forma `"READ '<file>'"` fa
   macinare il processo a vuoto.
-- `dbisql` **non funziona via WinRM**: in sessione non interattiva si blocca. Le esecuzioni
-  vanno fatte come attività pianificata.
+- **I file SQL per dbisql vanno scritti senza BOM.** `Set-Content -Encoding UTF8` lo aggiunge,
+  dbisql risponde `SQLCODE=-131` e apre un prompt `1. Stop / 2. Continue` che nessuno chiude:
+  il processo resta appeso per sempre stampando la domanda, e dall'esterno sembra una query
+  lenta. Usare `[IO.File]::WriteAllText($p, $testo, (New-Object System.Text.UTF8Encoding($false)))`.
+- Da **attività pianificata** l'operatore `&` va bene: lo usa la pipeline da mesi. Da **WinRM**
+  no: servono `Start-Process` e i flussi rediretti su file, altrimenti la console non ha
+  destinazione e il processo si blocca.
+- Da attività pianificata serve `LogonType=Password`: registrando il task senza password si
+  ottiene un logon `Interactive` e DPAPI non decifra la credenziale del gestionale.
 
 ## Segreti
 

@@ -1,102 +1,28 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import type {
+  EsitoStorico,
+  FiltriStorico,
+  RigaStorico,
+  ValoriFiltroStorico,
+} from "@/lib/portali/vettori/tipi";
+
+export type {
+  EsitoStorico,
+  FiltriStorico,
+  RigaStorico,
+  ValoriFiltroStorico,
+} from "@/lib/portali/vettori/tipi";
 
 /**
- * Lo storico delle spedizioni controllate.
+ * Lo storico delle spedizioni registrate, fatturate o ancora da fatturare.
  *
  * È l'archivio che nei fogli erano i due elenchi «partenze» e «arrivi»: la
  * schermata di acquisizione mostra una fattura mentre la si carica e poi
- * sparisce, questo si riapre a distanza di mesi. Vedi la migration 095 per il
- * perché la direzione sia un filtro e non una colonna.
+ * sparisce, questo si riapre a distanza di mesi. Dalla migration 098 include
+ * anche le spedizioni che non hanno ancora una riga di fattura agganciata.
  */
 
 const SCHEMA = "vettori";
-
-export type Direzione = "entrata" | "uscita";
-
-export interface RigaStorico {
-  id: string;
-  fattura_id: string;
-  direzione: Direzione | null;
-  vettore_codice: string;
-  vettore_nome: string;
-  fattura_numero: string | null;
-  data_fattura: string | null;
-  anno: number | null;
-  mese: number | null;
-  stato_fattura: string;
-  riga_numero: number;
-  data_spedizione: string | null;
-  numero_spedizione: string | null;
-  riferimento: string | null;
-  controparte: string | null;
-  controparte_codice: string | null;
-  provincia: string | null;
-  cap: string | null;
-  porto_descrizione: string | null;
-  a_nostro_carico: boolean | null;
-  colli: number | null;
-  peso: number | null;
-  peso_volumetrico: number | null;
-  peso_tassato: number | null;
-  nolo: number | null;
-  supplementi: number | null;
-  adeguamento: number | null;
-  carburante: number | null;
-  fatturato: number | null;
-  atteso: number | null;
-  scostamento: number | null;
-  esito: "in_linea" | "da_verificare" | "anomalia" | "non_valutabile";
-  abbinamento: "numero" | "assistito" | "manuale" | "nessuno";
-  listino: string | null;
-  zona: string | null;
-  peso_applicato: string | null;
-  avvertenze: string[] | null;
-  anomalie: number;
-  anomalie_aperte: number;
-}
-
-export interface TotaliStorico {
-  righe: number;
-  righe_valide: number;
-  righe_bozza: number;
-  colli: number;
-  kg: number;
-  fatturato: number;
-  atteso: number;
-  anomalie: number;
-  con_anomalie_aperte: number;
-}
-
-export interface EsitoStorico {
-  righe: RigaStorico[];
-  totali: TotaliStorico;
-  /** Quante righe per direzione, calcolate ignorando il filtro di direzione. */
-  per_direzione: Record<string, number> | null;
-  pagina: number;
-  per_pagina: number;
-}
-
-export interface FiltriStorico {
-  direzione?: Direzione | null;
-  vettori?: string[] | null;
-  da?: string | null;
-  a?: string | null;
-  anno?: number | null;
-  mese?: number | null;
-  esiti?: string[] | null;
-  abbinamenti?: string[] | null;
-  province?: string[] | null;
-  cerca?: string | null;
-  soloAnomalie?: boolean;
-  pesoMin?: number | null;
-  pesoMax?: number | null;
-  importoMin?: number | null;
-  importoMax?: number | null;
-  scostamentoMin?: number | null;
-  ordine?: string | null;
-  pagina?: number;
-  perPagina?: number;
-}
 
 /** Un array vuoto non è un filtro: azzerarlo evita di non trovare mai niente. */
 const lista = (v: string[] | null | undefined) => (v && v.length > 0 ? v : null);
@@ -128,18 +54,11 @@ export async function elencoSpedizioni(f: FiltriStorico = {}): Promise<EsitoStor
   return data as EsitoStorico;
 }
 
-export interface ValoriFiltro {
-  vettori: Array<{ codice: string; nome: string }>;
-  province: string[];
-  periodi: Array<{ anno: number; mese: number }>;
-  anni: number[];
-}
-
-export async function valoriFiltro(): Promise<ValoriFiltro> {
+export async function valoriFiltro(): Promise<ValoriFiltroStorico> {
   const admin = createAdminClient();
   const { data, error } = await admin.schema(SCHEMA).rpc("filtri_spedizioni");
   if (error) throw new Error(`Lettura filtri fallita: ${error.message}`);
-  return data as ValoriFiltro;
+  return data as ValoriFiltroStorico;
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,12 +66,12 @@ export async function valoriFiltro(): Promise<ValoriFiltro> {
 /* ------------------------------------------------------------------ */
 
 const INTESTAZIONI = [
-  "Direzione", "Data spedizione", "Vettore", "Fattura", "Data fattura",
+  "Direzione", "Data spedizione", "Vettore", "Origine", "Fattura", "Data fattura",
   "Riferimento", "N. spedizione", "Controparte", "Codice controparte",
   "Provincia", "CAP", "Porto", "Colli", "Peso reale", "Peso volumetrico",
   "Peso tassato", "Peso applicato", "Nolo", "Supplementi", "Adeguamento",
   "Carburante", "Fatturato", "Atteso", "Differenza", "Scostamento %",
-  "Esito", "Abbinamento", "Listino", "Zona", "Anomalie aperte", "Stato fattura",
+  "Esito", "Abbinamento", "Listino", "Zona", "Anomalie aperte", "Stato fatturazione", "Stato fattura",
 ];
 
 /**
@@ -175,7 +94,14 @@ export function versoCsv(righe: RigaStorico[]): string {
     [
       r.direzione === "entrata" ? "Arrivo" : r.direzione === "uscita" ? "Partenza" : "",
       r.data_spedizione ?? "",
-      r.vettore_nome,
+      r.vettore_nome ?? "",
+      r.origine === "excel_storico"
+        ? "Excel storico"
+        : r.origine === "gestionale"
+          ? "Gestionale"
+          : r.origine === "manuale"
+            ? "Manuale"
+            : "",
       r.fattura_numero ?? "",
       r.data_fattura ?? "",
       r.riferimento ?? "",
@@ -198,12 +124,17 @@ export function versoCsv(righe: RigaStorico[]): string {
       num(r.atteso),
       r.fatturato != null && r.atteso != null ? num(r.fatturato - r.atteso) : "",
       r.scostamento != null ? num(r.scostamento * 100, 1) : "",
-      r.esito,
-      r.abbinamento,
+      r.esito ?? "",
+      r.abbinamento ?? "",
       r.listino ?? "",
       r.zona ?? "",
       r.anomalie_aperte,
-      r.stato_fattura,
+      r.stato_fatturazione === "non_fatturata"
+        ? "Non ancora fatturata"
+        : r.stato_fatturazione === "bozza"
+          ? "Fattura in bozza"
+          : "Fatturata",
+      r.stato_fattura ?? "",
     ]
       .map(campo)
       .join(";")
