@@ -2,13 +2,24 @@
 
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot "config.trasporti.json"),
+    # Nessun valore predefinito qui: su PowerShell 4.0 $PSScriptRoot e' VUOTO
+    # dentro il blocco param() quando lo script viene lanciato con -File, e
+    # Join-Path fallisce prima ancora che lo script cominci. Verificato su
+    # SRVWOA il 12 settembre 2026. Il percorso si risolve nel corpo.
+    [string]$ConfigPath,
     [ValidateSet("live", "riconciliazione")]
     [string]$Modo = "live",
     [switch]$SkipUpload,
     [switch]$Prova,
     [long]$UltimoIdVisto = -1
 )
+
+# $PSScriptRoot qui e' valorizzato: nel corpo funziona, nel param() no.
+# $MyInvocation copre il caso in cui lo script venga invocato con il dot-source.
+if (-not $ConfigPath) {
+    $cartella = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+    $ConfigPath = Join-Path $cartella "config.trasporti.json"
+}
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"

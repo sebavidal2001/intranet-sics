@@ -1,7 +1,7 @@
 {
     "DbisqlPath": "C:\\Program Files\\SQL Anywhere 11\\Bin32\\dbisql.com",
     "DataSource": "airfluid90",
-    "SqlRoot": "C:\\Impresa\\Viste_BI",
+    "SqlRoot": "C:\\Impresa\\BI_Bridge\\query",
     "OutputRoot": "C:\\Impresa\\Viste_BI\\Esportazioni",
     "RuntimeRoot": "C:\\ProgramData\\ImpresaBI",
     "LinuxIngestBaseUrl": "https://intranet.s-ics.com/api/v1/bi-ingest",
