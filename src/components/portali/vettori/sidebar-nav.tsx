@@ -58,9 +58,9 @@ export function VettoriSidebar({
   // Il magazzino vede le bolle e la simulazione: non ha motivo di avere
   // sotto gli occhi fatture, anomalie e listini mentre misura un collo.
   const voci = [
+    ...VOCI_COMUNI,
     ...(puoRegistrareArrivi ? VOCI_BOLLE : []),
     ...(puoGestire ? VOCI_AMMINISTRAZIONE : []),
-    ...VOCI_COMUNI,
     ...(puoGestire ? VOCI_GESTIONE : []),
   ]
 

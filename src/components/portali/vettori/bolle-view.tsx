@@ -153,6 +153,11 @@ function draftDaDocumento(documento: BollaDocumento): TestataDraft {
   };
 }
 
+function daNumerare(documento: BollaDocumento): boolean {
+  const stato = (documento as unknown as { stato?: unknown }).stato;
+  return stato === "da_numerare" || (documento.origine === "simulazione" && documento.numeroDocumento === null);
+}
+
 function nuovoDraft(vettori: BollaVettoreOpzione[]): TestataDraft {
   return {
     direzione: "entrata",
@@ -227,7 +232,7 @@ export function BolleView() {
     if (filtro === "da_misurare") return documento.statoMisure === "da_misurare";
     if (filtro === "congelate") return documento.congelata;
     return true;
-  });
+  }).sort((a, b) => Number(daNumerare(b)) - Number(daNumerare(a)));
 
   return (
     <div className="mx-auto max-w-[1500px] pb-12 text-text selection:bg-primary/20 selection:text-text">
@@ -471,9 +476,11 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
   const riepilogo = riepilogoMisureBolla(misureValide, documento.divisoreVolumetrico, null);
   const colliMisurati = misureValide.reduce((somma, misura) => somma + misura.quantita, 0);
   const numeroBolla = documento.numeroDocumento ?? `spedizione ${documento.idSpedizione.slice(0, 8)}`;
+  const richiedeNumero = daNumerare(documento);
 
   return (
-    <article aria-label={`Bolla ${numeroBolla}`} className={`overflow-hidden rounded-xl bg-bg ${documento.congelata ? "border border-slate-400" : documento.statoMisure === "da_misurare" ? "border border-warning/60 shadow-[0_6px_20px_rgba(245,158,11,0.10)]" : "border border-border"}`}>
+    <article aria-label={richiedeNumero ? "Bolla da numerare" : `Bolla ${numeroBolla}`} className={`overflow-hidden rounded-xl bg-bg ${richiedeNumero ? "border border-primary shadow-[0_8px_24px_rgba(0,161,190,0.12)]" : documento.congelata ? "border border-slate-400" : documento.statoMisure === "da_misurare" ? "border border-warning/60 shadow-[0_6px_20px_rgba(245,158,11,0.10)]" : "border border-border"}`}>
+      {richiedeNumero ? <NumeroDaAssegnare documento={documento} onAggiornata={onAggiornata} /> : null}
       <div className="grid gap-4 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(16rem,1.5fr)_minmax(11rem,1fr)_8rem_11rem_auto] lg:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -522,9 +529,27 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
 }
 
 function StatoBadge({ documento }: { documento: BollaDocumento }) {
+  if (daNumerare(documento)) return <span className="rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-white">Da numerare</span>;
   if (documento.congelata) return <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-800"><FileLock2 className="h-3 w-3" />Congelata</span>;
   if (documento.statoMisure === "da_misurare") return <span className="rounded-full bg-warning/15 px-2.5 py-1 text-xs font-semibold text-amber-800">Da misurare</span>;
   return <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary-dark">Misurata</span>;
+}
+
+function NumeroDaAssegnare({ documento, onAggiornata }: { documento: BollaDocumento; onAggiornata: () => Promise<void> }) {
+  const [numeroBolla, setNumeroBolla] = useState("");
+  const [salvataggio, setSalvataggio] = useState(false);
+  const [errore, setErrore] = useState<string | null>(null);
+  const salva = async () => {
+    if (!numeroBolla.trim()) { setErrore("Inserisci il numero della bolla."); return; }
+    setSalvataggio(true); setErrore(null);
+    const draft = draftDaDocumento(documento);
+    try {
+      await inviaComando({ operazione: "aggiorna_bolla", spedizioneId: documento.idSpedizione, ...draft, numeroRiferimento: numeroBolla.trim(), colli: Number(draft.colli), pesoKg: Number(draft.pesoKg) });
+      await onAggiornata();
+    } catch (causa) { setErrore(causa instanceof Error ? causa.message : "Numero non salvato."); }
+    finally { setSalvataggio(false); }
+  };
+  return <div className="flex flex-col gap-3 border-b border-primary/30 bg-primary/10 px-4 py-3 sm:flex-row sm:items-end sm:justify-between sm:px-5"><div><p className="font-tenorite font-bold text-primary-dark">Da numerare</p><p className="mt-0.5 text-xs text-text-muted">La spedizione è stata creata dalla simulazione senza numero: completala qui.</p></div><div className="flex flex-wrap items-end gap-2"><label htmlFor={`numero-da-assegnare-${documento.idSpedizione}`} className="text-xs font-medium text-text-muted">Numero bolla<Input id={`numero-da-assegnare-${documento.idSpedizione}`} value={numeroBolla} onChange={(e) => setNumeroBolla(e.target.value)} className="mt-1 w-48 bg-bg" /></label><Button type="button" size="sm" disabled={salvataggio} onClick={() => void salva()}>{salvataggio ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salva numero</Button>{errore ? <p role="alert" className="w-full text-xs font-medium text-danger">{errore}</p> : null}</div></div>;
 }
 
 function OrigineBadge({ origine }: { origine: BollaDocumento["origine"] }) {

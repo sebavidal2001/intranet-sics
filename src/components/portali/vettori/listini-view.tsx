@@ -7,6 +7,7 @@ import type { ListinoRiepilogo } from "@/lib/portali/vettori/letture";
 import { carburanteVigente } from "@/lib/portali/vettori/carburante";
 import { ListinoEditor } from "./listino-editor";
 import { MailImpostazioni } from "./mail-impostazioni";
+import { RiaddebitoImpostazioni } from "./riaddebito-impostazioni";
 
 /** Tariffe versionate e comunicazioni carburante con continuità temporale. */
 
@@ -231,6 +232,8 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
           </div>
         )}
       </section>
+
+      <RiaddebitoImpostazioni />
 
       {/* ------------------------------ listini ----------------------------- */}
       <div className="space-y-4">
