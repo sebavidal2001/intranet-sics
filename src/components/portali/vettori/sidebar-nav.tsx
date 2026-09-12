@@ -8,6 +8,7 @@ import {
   Calculator,
   FileText,
   PackageSearch,
+  Ruler,
   Settings,
   TriangleAlert,
 } from "lucide-react"
@@ -35,6 +36,10 @@ const VOCI_AMMINISTRAZIONE = [
   { name: "Anomalie", url: "/vettori/anomalie", icon: TriangleAlert },
 ]
 
+const VOCI_BOLLE = [
+  { name: "Bolle", url: "/vettori/bolle", icon: Ruler },
+]
+
 // Registrazione degli arrivi a magazzino: **nascosta dal 9 settembre 2026**.
 // Se le misure verranno inserite a gestionale insieme alle bolle, il dato
 // arriverà dalla pipeline e questa schermata non servirà. Codice, route e
@@ -60,6 +65,7 @@ export function VettoriSidebar({
   // Il magazzino vede solo gli arrivi e la simulazione: non ha motivo di avere
   // sotto gli occhi fatture, anomalie e listini mentre misura un collo.
   const voci = [
+    ...(puoRegistrareArrivi ? VOCI_BOLLE : []),
     ...(puoGestire ? VOCI_AMMINISTRAZIONE : []),
     ...(puoRegistrareArrivi ? VOCI_MAGAZZINO : []),
     ...VOCI_COMUNI,

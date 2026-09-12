@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { datiFisici, MisureFattura } from "@/lib/portali/vettori/misure";
+import {
+  datiFisici,
+  divisoreVolumetricoBolla,
+  MisureFattura,
+  riepilogoMisureBolla,
+} from "@/lib/portali/vettori/misure";
 import { pesoVolumetrico, calcolaCostoAtteso } from "@/lib/portali/vettori/calcolo";
 import type { RigaFattura } from "@/lib/portali/vettori/fatture/tipi";
 import type { Rilevazione } from "@/lib/portali/vettori/letture";
@@ -41,5 +46,37 @@ describe("volume degli Excel collegato al controllo", () => {
     const listino: ListinoRisolto = { vettore: { id: "tp", codice: "trading_post", nome: "TP", modelloTariffa: "quintale", divisoreVolumetrico: 300, pesoMinimoTassabile: 3, arrotondamentoKg: 100, arrotondamentoDaKg: 100 }, zonaCodice: "IT", fasce: [{ pesoDa: 0, pesoA: null, importo: 22.5, tipo: "quintale", scattoKg: null, scattoImporto: null }], supplementi: [], adeguamento: null, carburante: 0 };
     const c = calcolaCostoAtteso({ colli: 1, pesoReale: 10, lunghezzaCm: 120, larghezzaCm: 80, altezzaCm: 50, condizioni: ["non_sovrapponibile"] }, listino);
     expect(c.pesoVolumetrico).toBeCloseTo(518.4); expect(c.pesoTassabile).toBe(600);
+  });
+  it("calcola in tempo reale i gruppi omogenei con il coefficiente del vettore", () => {
+    const vettori = [
+      { codice: "gls", nome: "GLS", divisoreVolumetrico: 300 },
+      { codice: "tnt", nome: "TNT", divisoreVolumetrico: 250 },
+      { codice: "fedex", nome: "FedEx", divisoreVolumetrico: 250 },
+      { codice: "trading_post", nome: "Trading Post", divisoreVolumetrico: 300 },
+    ];
+    const gruppi = [
+      { quantita: 2, lunghezzaCm: 50, larghezzaCm: 30, altezzaCm: 30 },
+      { quantita: 1, lunghezzaCm: 100, larghezzaCm: 50, altezzaCm: 20 },
+    ];
+    expect(divisoreVolumetricoBolla("GLS", null, vettori)).toBe(300);
+    expect(divisoreVolumetricoBolla(null, "TNT/FedEx Italia", vettori)).toBe(250);
+    expect(divisoreVolumetricoBolla(null, "GLS fino a 30 kg - FedEx oltre", vettori)).toBeNull();
+    expect(riepilogoMisureBolla(gruppi, 300, null)).toEqual({
+      volumeM3: 0.19,
+      pesoVolumetricoKg: 57,
+      usaVolumeGestionale: false,
+    });
+  });
+  it("dà precedenza al volume già presente nel gestionale", () => {
+    const riepilogo = riepilogoMisureBolla(
+      [{ quantita: 1, lunghezzaCm: 10, larghezzaCm: 10, altezzaCm: 10 }],
+      250,
+      0.4
+    );
+    expect(riepilogo).toEqual({
+      volumeM3: 0.4,
+      pesoVolumetricoKg: 100,
+      usaVolumeGestionale: true,
+    });
   });
 });

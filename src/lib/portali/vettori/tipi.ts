@@ -107,6 +107,56 @@ export interface DatiSpedizione {
   condizioni?: CondizioneSpedizione[];
 }
 
+export type FonteBollaMisura = "manuale" | "magazzino" | "vettore";
+
+/** Un gruppo di colli omogenei associato a una testata di bolla. */
+export interface BollaMisura {
+  id: string;
+  idDocumento: number;
+  quantita: number;
+  lunghezzaCm: number;
+  larghezzaCm: number;
+  altezzaCm: number;
+  pesoRealeKg: number | null;
+  volumeM3: number;
+  fonte: FonteBollaMisura;
+  inseritoIl: string;
+  modificatoIl: string;
+}
+
+export type StatoMisureBolla =
+  | "da_misurare"
+  | "misurata"
+  | "volume_gestionale";
+
+/** Testata gestionale esposta alla coda operativa delle bolle. */
+export interface BollaDocumento {
+  idDocumento: number;
+  numeroDocumento: string | null;
+  dataDocumento: string | null;
+  dataCreazione: string | null;
+  direzione: string | null;
+  soggetto: string | null;
+  destinazione: string | null;
+  vettoreCodice: string | null;
+  vettore: string | null;
+  numColli: number | null;
+  pesoLordoKg: number | null;
+  pesoNettoKg: number | null;
+  volumeGestionaleM3: number | null;
+  divisoreVolumetrico: number | null;
+  statoMisure: StatoMisureBolla;
+  misure: BollaMisura[];
+}
+
+export interface BolleResponse {
+  documenti: BollaDocumento[];
+  pagina: number;
+  perPagina: number;
+  totale: number;
+  altrePagine: boolean;
+}
+
 export interface VoceCalcolo {
   codice: string;
   descrizione: string;

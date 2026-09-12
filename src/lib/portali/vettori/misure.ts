@@ -3,7 +3,8 @@ import type { RigaFattura } from "./fatture/tipi";
 import type { Rilevazione } from "./letture";
 import { nomiCompatibili, type SpedizioneLogica } from "./abbinamento";
 import { normalizzaRiferimento } from "./fatture/testo";
-import type { DatiSpedizione } from "./tipi";
+import type { BollaMisura, DatiSpedizione, Vettore } from "./tipi";
+import { pesoVolumetrico } from "./calcolo";
 
 export const CONDIZIONI_CONTROLLO = ["bancale", "non_sovrapponibile", "movimentazione_manuale", "oversized", "ztl", "etichetta_manuale", "triangolazione", "fuori_provincia", "giacenza", "assegno"] as const;
 export const MisureRiga = z.object({
@@ -17,6 +18,104 @@ export const MisureRiga = z.object({
 }).refine((m) => !(m.volumeMc && m.colli?.length), "Inserire volume totale oppure misure dei colli, non entrambi.");
 export const MisureFattura = z.array(MisureRiga).max(2000).refine((a) => new Set(a.map((m) => m.riga)).size === a.length, "Misure duplicate per la stessa riga.");
 export type MisuraRiga = z.infer<typeof MisureRiga>;
+
+const ValoriBollaMisura = z.object({
+  quantita: z.number().int().positive().max(999),
+  lunghezzaCm: z.number().finite().min(1).max(2000),
+  larghezzaCm: z.number().finite().min(1).max(2000),
+  altezzaCm: z.number().finite().min(1).max(2000),
+  pesoRealeKg: z.number().finite().positive().max(100000).nullable().optional(),
+});
+
+export const MutazioneBollaMisura = z.discriminatedUnion("operazione", [
+  ValoriBollaMisura.extend({
+    operazione: z.literal("crea"),
+    idDocumento: z.number().int().positive(),
+  }),
+  ValoriBollaMisura.extend({
+    operazione: z.literal("aggiorna"),
+    id: z.string().uuid(),
+    idDocumento: z.number().int().positive(),
+  }),
+  z.object({
+    operazione: z.literal("elimina"),
+    id: z.string().uuid(),
+    idDocumento: z.number().int().positive(),
+  }),
+]);
+
+export type ValoriBollaMisuraInput = z.infer<typeof ValoriBollaMisura>;
+
+export function volumeGruppoM3(misura: ValoriBollaMisuraInput): number {
+  return (
+    misura.quantita *
+    misura.lunghezzaCm *
+    misura.larghezzaCm *
+    misura.altezzaCm
+  ) / 1_000_000;
+}
+
+/** Associa i nomi/codici gestionali ai coefficienti contrattuali noti. */
+export function divisoreVolumetricoBolla(
+  vettoreCodice: string | null,
+  vettoreNome: string | null,
+  vettori: ReadonlyArray<
+    Pick<Vettore, "codice" | "nome" | "divisoreVolumetrico">
+  >
+): number | null {
+  const chiave = `${vettoreCodice ?? ""} ${vettoreNome ?? ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ");
+
+  const corrispondenti = vettori.filter((vettore) => {
+    const codice = vettore.codice.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const nome = vettore.nome.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return (codice.length > 1 && chiave.includes(codice)) ||
+      (nome.length > 1 && chiave.includes(nome));
+  });
+  const divisori = [...new Set(corrispondenti.map((vettore) => vettore.divisoreVolumetrico))];
+  return divisori.length === 1 ? divisori[0] : null;
+}
+
+/**
+ * Riepilogo usato dalla bolla mentre l'operatore digita. Il calcolo del peso
+ * passa dal motore vettori esistente; se il gestionale ha già un volume, quel
+ * valore ha precedenza sulle misure manuali.
+ */
+export function riepilogoMisureBolla(
+  misure: ReadonlyArray<
+    Pick<BollaMisura, "quantita" | "lunghezzaCm" | "larghezzaCm" | "altezzaCm">
+  >,
+  divisoreKgM3: number | null,
+  volumeGestionaleM3: number | null
+): {
+  volumeM3: number;
+  pesoVolumetricoKg: number | null;
+  usaVolumeGestionale: boolean;
+} {
+  const usaVolumeGestionale =
+    volumeGestionaleM3 !== null && volumeGestionaleM3 > 0;
+  const volumeM3 = usaVolumeGestionale
+    ? volumeGestionaleM3
+    : misure.reduce(
+        (totale, misura) =>
+          totale + volumeGruppoM3({ ...misura, pesoRealeKg: null }),
+        0
+      );
+
+  const pesoVolumetricoKg = divisoreKgM3
+    ? pesoVolumetrico(
+        usaVolumeGestionale
+          ? { colli: 1, pesoReale: 0, volumeMc: volumeM3 }
+          : { colli: 1, pesoReale: 0, misureColli: [...misure] },
+        divisoreKgM3
+      )
+    : null;
+
+  return { volumeM3, pesoVolumetricoKg, usaVolumeGestionale };
+}
 
 export function datiFisici(riga: RigaFattura, sped: SpedizioneLogica | null | undefined, misure: MisuraRiga | undefined, rilevazioni: Rilevazione[], divisore: number): { dati: DatiSpedizione; fonte: string; note: string[] } {
   const candidati = riga.direzione === "entrata" ? rilevazioni.filter((r) =>
