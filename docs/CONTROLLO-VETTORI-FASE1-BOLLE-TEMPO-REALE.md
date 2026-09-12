@@ -4,11 +4,18 @@ Data: 12 settembre 2026. Stato: piano approvato da definire con Codex, nessuna m
 
 ## Perché in tempo reale
 
-I campi Lunghezza / Larghezza / Altezza non esistono nel gestionale: vanno inseriti a mano
-sull'intranet per calcolare il peso volumetrico. Se la bolla compare sull'intranet il giorno
-dopo, chi l'ha registrata non è più sul pezzo e i campi restano vuoti per sempre. Il requisito
-non è tecnico, è di adozione: la bolla deve essere lì mentre la persona ha ancora in mano il
-collo.
+I campi Lunghezza / Larghezza / Altezza non sono disponibili dal gestionale: vanno inseriti a
+mano sull'intranet per calcolare il peso volumetrico. Se la bolla compare sull'intranet il
+giorno dopo, chi l'ha registrata non è più sul pezzo e i campi restano vuoti per sempre. Il
+requisito non è tecnico, è di adozione: la bolla deve essere lì mentre la persona ha ancora in
+mano il collo.
+
+> [!warning] Non cercare di pescare le dimensioni dal gestionale
+> Dei campi altezza/larghezza/profondità esistono, ma sono inservibili per due motivi
+> indipendenti: **non vengono compilati**, e **si riferiscono alla riga articolo, non al collo
+> spedito**. Un collo può contenere più articoli e un articolo viaggiare in più colli: le due
+> grandezze non coincidono nemmeno in linea di principio. L'inserimento manuale non è un
+> ripiego in attesa di automatizzare, è l'unica fonte possibile.
 
 Obiettivo dichiarato: **bolla registrata su Impresa → visibile su `/vettori/bolle` entro 90
 secondi**.
