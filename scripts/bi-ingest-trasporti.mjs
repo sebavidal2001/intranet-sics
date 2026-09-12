@@ -14,6 +14,11 @@
  * La directory deve contenere `trasporti_documenti.csv`; `manifest.json` è
  * facoltativo. Il profilo è volutamente obbligatorio: trattare per errore un
  * file live come riconciliazione marcherebbe assenti documenti ancora validi.
+ * Dal manifest sono attesi `completed_at`, `source`, la scheda in `files` e
+ * `mode`, che dichiara `live` o `riconciliazione`: se presente deve coincidere
+ * con `--profilo`, altrimenti il run viene fermato e registrato come fallito.
+ * L'assenza di `mode` resta tollerata e viene segnalata nel log per compatibilità
+ * con i run creati prima dell'introduzione del campo.
  */
 
 import fs from "fs";
@@ -28,6 +33,7 @@ import {
   parseArgomentiTrasporti,
   parseCsv,
   validaIntestazioneTrasporti,
+  verificaModeManifestTrasporti,
 } from "./lib/trasporti-parser.mjs";
 
 // ─── Configurazione ─────────────────────────────────────────────────────────
@@ -123,49 +129,51 @@ async function segnaFallito(messaggio, pulisci = false) {
   console.log(`  captured_at: ${CAPTURED_AT}`);
   if (FINESTRA_DAL) console.log(`  finestra_da: ${FINESTRA_DAL}`);
 
-  const contenuto = fs.readFileSync(FILE);
-  const sha256 = crypto.createHash("sha256").update(contenuto).digest("hex");
-  const dati = parseCsv(contenuto.toString("utf8"), ";");
-  if (dati.length < 2) throw new Error("Il file non contiene righe dati");
-
-  const intestazione = validaIntestazioneTrasporti(dati[0]);
-  if (!intestazione.ok) {
-    throw new Error(
-      `Intestazione non conforme — mancanti: [${intestazione.mancanti.join(", ")}] · ` +
-      `inattese: [${intestazione.inattese.join(", ")}] · ` +
-      `ordine: ${intestazione.ordineDiverso ? "diverso" : "corretto"}`,
-    );
-  }
-  console.log(`  colonne:     ${intestazione.nColonne}/${COLONNE_TRASPORTI.length} conformi e ordinate`);
-
-  const righe = dati.slice(1).map((riga, indice) =>
-    convertiRigaTrasporti(intestazione.headers, riga, RUN_ID, indice + 1));
-  console.log(`  righe:       ${righe.length}`);
-
-  if (fileManifest?.rows !== undefined && Number(fileManifest.rows) !== righe.length) {
-    throw new Error(`manifest dichiara ${fileManifest.rows} righe, il CSV ne contiene ${righe.length}`);
-  }
-  if (typeof fileManifest?.sha256 === "string" && fileManifest.sha256.toLowerCase() !== sha256) {
-    throw new Error("SHA-256 del CSV diverso da quello dichiarato nel manifest");
-  }
-
-  const source = typeof manifest?.source === "string" ? manifest.source : "SRVWOA";
-  const { error: erroreRun } = await rpc.rpc("bi_trasporti_run_start", {
-    p_run_id: RUN_ID,
-    p_profilo: opzioni.profilo,
-    p_source: source,
-    p_captured_at: CAPTURED_AT,
-    p_finestra_dal: FINESTRA_DAL,
-    p_sha256: sha256,
-    p_metadata: {
-      file: path.basename(FILE),
-      bytes: stat.size,
-      directory: path.basename(RUN_DIRECTORY),
-    },
-  });
-  if (erroreRun) throw new Error(`registrazione run: ${erroreRun.message}`);
-
   try {
+    verificaModeManifestTrasporti(manifest, opzioni.profilo);
+
+    const contenuto = fs.readFileSync(FILE);
+    const sha256 = crypto.createHash("sha256").update(contenuto).digest("hex");
+    const dati = parseCsv(contenuto.toString("utf8"), ";");
+    if (dati.length < 2) throw new Error("Il file non contiene righe dati");
+
+    const intestazione = validaIntestazioneTrasporti(dati[0]);
+    if (!intestazione.ok) {
+      throw new Error(
+        `Intestazione non conforme — mancanti: [${intestazione.mancanti.join(", ")}] · ` +
+        `inattese: [${intestazione.inattese.join(", ")}] · ` +
+        `ordine: ${intestazione.ordineDiverso ? "diverso" : "corretto"}`,
+      );
+    }
+    console.log(`  colonne:     ${intestazione.nColonne}/${COLONNE_TRASPORTI.length} conformi e ordinate`);
+
+    const righe = dati.slice(1).map((riga, indice) =>
+      convertiRigaTrasporti(intestazione.headers, riga, RUN_ID, indice + 1));
+    console.log(`  righe:       ${righe.length}`);
+
+    if (fileManifest?.rows !== undefined && Number(fileManifest.rows) !== righe.length) {
+      throw new Error(`manifest dichiara ${fileManifest.rows} righe, il CSV ne contiene ${righe.length}`);
+    }
+    if (typeof fileManifest?.sha256 === "string" && fileManifest.sha256.toLowerCase() !== sha256) {
+      throw new Error("SHA-256 del CSV diverso da quello dichiarato nel manifest");
+    }
+
+    const source = typeof manifest?.source === "string" ? manifest.source : "SRVWOA";
+    const { error: erroreRun } = await rpc.rpc("bi_trasporti_run_start", {
+      p_run_id: RUN_ID,
+      p_profilo: opzioni.profilo,
+      p_source: source,
+      p_captured_at: CAPTURED_AT,
+      p_finestra_dal: FINESTRA_DAL,
+      p_sha256: sha256,
+      p_metadata: {
+        file: path.basename(FILE),
+        bytes: stat.size,
+        directory: path.basename(RUN_DIRECTORY),
+      },
+    });
+    if (erroreRun) throw new Error(`registrazione run: ${erroreRun.message}`);
+
     let caricate = 0;
     const blocchi = creaBlocchi(righe, opzioni.batch);
     for (let indice = 0; indice < blocchi.length; indice++) {

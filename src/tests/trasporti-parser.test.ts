@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   COLONNE_TRASPORTI,
   calcolaFinestraDal,
@@ -10,6 +10,7 @@ import {
   parseTimestampGestionale,
   validaIntestazioneTrasporti,
   validaProfiloTrasporti,
+  verificaModeManifestTrasporti,
 } from "../../scripts/lib/trasporti-parser.mjs";
 
 function rigaValida(): string[] {
@@ -139,6 +140,30 @@ describe("profili e blocchi dell'ingest Trasporti", () => {
       batch: 500,
       dryRun: true,
     });
+  });
+
+  it("tollera un manifest senza mode e ne registra l'assenza nel log", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      expect(verificaModeManifestTrasporti({ completed_at: "2026-09-12T04:15:00" }, "live"))
+        .toBeNull();
+      expect(log).toHaveBeenCalledWith(
+        "  manifest:    mode assente; controllo di coerenza con --profilo non disponibile",
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("accetta un mode del manifest coerente con il profilo", () => {
+    expect(verificaModeManifestTrasporti({ mode: "riconciliazione" }, "riconciliazione"))
+      .toBe("riconciliazione");
+  });
+
+  it("rifiuta un mode del manifest in contraddizione con il profilo", () => {
+    expect(() => verificaModeManifestTrasporti({ mode: "live" }, "riconciliazione"))
+      .toThrow('Profilo incoerente: manifest mode="live", --profilo="riconciliazione"');
   });
 
   it("costruisce blocchi senza perdere o duplicare righe", () => {

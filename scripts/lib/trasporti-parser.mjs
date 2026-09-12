@@ -185,6 +185,21 @@ export function validaProfiloTrasporti(profilo) {
   return normalizzato;
 }
 
+export function verificaModeManifestTrasporti(manifest, profilo) {
+  const haMode = manifest !== null && typeof manifest === "object" &&
+    !Array.isArray(manifest) && Object.prototype.hasOwnProperty.call(manifest, "mode");
+  if (!haMode) {
+    console.log("  manifest:    mode assente; controllo di coerenza con --profilo non disponibile");
+    return null;
+  }
+
+  const mode = String(manifest.mode);
+  if (mode !== profilo) {
+    throw new Error(`Profilo incoerente: manifest mode="${mode}", --profilo="${profilo}"`);
+  }
+  return mode;
+}
+
 export function convertiRigaTrasporti(headers, riga, runId, numeroRiga) {
   if (headers.length !== COLONNE_TRASPORTI.length || riga.length !== COLONNE_TRASPORTI.length) {
     throw new Error(
