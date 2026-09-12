@@ -164,7 +164,7 @@ comandi. `/RU` con `/RP` produce un task con `LogonType=Password`, che e' **obbl
 senza, il logon e' `Interactive` e DPAPI non riesce a decifrare la credenziale del gestionale.
 
     schtasks /Create /TN "IMPRESA_BI_TRASPORTI_LIVE" ^
-      /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1\" -Modo live" ^
+      /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1 -Modo live" ^
       /SC MINUTE /MO 1 ^
       /RU "DMNAIRFLUID\adm.varas" /RP * ^
       /RL HIGHEST /F
@@ -176,7 +176,7 @@ Qui la ripetizione non serve e il trigger giornaliero di PowerShell funziona; si
 delle 02:30, ne' con Prophet delle 03:30 del venerdi'.
 
     schtasks /Create /TN "IMPRESA_BI_TRASPORTI" ^
-      /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1\" -Modo riconciliazione" ^
+      /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1 -Modo riconciliazione" ^
       /SC DAILY /ST 04:15 ^
       /RU "DMNAIRFLUID\adm.varas" /RP * ^
       /RL HIGHEST /F
