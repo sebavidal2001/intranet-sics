@@ -31,7 +31,7 @@ export default async function AnalisiPage({
   const ctx = await getVettoriContext(user.id);
   if (ctx.livello === null) redirect("/");
   // Il magazzino non vede importi: un'analisi di spesa non lo riguarda.
-  if (!vedeImporti(ctx)) redirect("/vettori/arrivi");
+  if (!vedeImporti(ctx)) redirect("/vettori/bolle");
 
   const p = periodo(await searchParams);
   return <AnalisiView dati={await analisi(p.da, p.a)} anno={p.anno} />;

@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { FasciaModificabile } from "./listini-config";
 
 /**
- * Letture del portale per le pagine Anomalie, Arrivi, Analisi e Listini.
+ * Letture del portale per le pagine Anomalie, Analisi e Listini.
  *
  * Sta separata da `listino-service.ts` perché risponde a domande diverse:
  * lì si risolve *un* listino a una data per calcolare un prezzo, qui si

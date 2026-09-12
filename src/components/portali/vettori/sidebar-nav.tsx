@@ -40,13 +40,6 @@ const VOCI_BOLLE = [
   { name: "Bolle", url: "/vettori/bolle", icon: Ruler },
 ]
 
-// Registrazione degli arrivi a magazzino: **nascosta dal 9 settembre 2026**.
-// Se le misure verranno inserite a gestionale insieme alle bolle, il dato
-// arriverà dalla pipeline e questa schermata non servirà. Codice, route e
-// tabella `vettori.rilevazioni` restano in vita: la decisione non è presa, e
-// cancellarli renderebbe costoso tornare indietro.
-const VOCI_MAGAZZINO: Array<{ name: string; url: string; icon: typeof PackageSearch }> = []
-
 const VOCI_COMUNI = [
   { name: "Simulazione", url: "/vettori/simulazione", icon: Calculator },
   { name: "Analisi", url: "/vettori/analisi", icon: BarChart3 },
@@ -62,12 +55,11 @@ export function VettoriSidebar({
 }: VettoriSidebarProps) {
   const pathname = usePathname()
 
-  // Il magazzino vede solo gli arrivi e la simulazione: non ha motivo di avere
+  // Il magazzino vede le bolle e la simulazione: non ha motivo di avere
   // sotto gli occhi fatture, anomalie e listini mentre misura un collo.
   const voci = [
     ...(puoRegistrareArrivi ? VOCI_BOLLE : []),
     ...(puoGestire ? VOCI_AMMINISTRAZIONE : []),
-    ...(puoRegistrareArrivi ? VOCI_MAGAZZINO : []),
     ...VOCI_COMUNI,
     ...(puoGestire ? VOCI_GESTIONE : []),
   ]

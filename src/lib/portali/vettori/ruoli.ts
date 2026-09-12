@@ -51,7 +51,7 @@ export function haRuoloFunzionale(
  * Può vedere gli importi?
  *
  * Il magazzino no: vede pesi, misure e condizioni della merce. È una scelta
- * di riservatezza ma anche pratica — la schermata degli arrivi deve essere
+ * di riservatezza ma anche pratica — la schermata delle bolle deve essere
  * veloce su un banco, e mostrare listini la renderebbe solo più lenta da usare.
  */
 export function vedeImporti(ctx: VettoriContext): boolean {
@@ -67,7 +67,7 @@ export function puoGestire(ctx: VettoriContext): boolean {
   return haRuoloFunzionale(ctx, [VETTORI_RUOLI.amministrazione]);
 }
 
-/** Può registrare gli arrivi a magazzino. */
+/** Può registrare e misurare le bolle a magazzino. */
 export function puoRegistrareArrivi(ctx: VettoriContext): boolean {
   return haRuoloFunzionale(ctx, [
     VETTORI_RUOLI.magazzino,

@@ -30,17 +30,17 @@ const ValoriBollaMisura = z.object({
 export const MutazioneBollaMisura = z.discriminatedUnion("operazione", [
   ValoriBollaMisura.extend({
     operazione: z.literal("crea"),
-    idDocumento: z.number().int().positive(),
+    spedizioneId: z.string().uuid(),
   }),
   ValoriBollaMisura.extend({
     operazione: z.literal("aggiorna"),
     id: z.string().uuid(),
-    idDocumento: z.number().int().positive(),
+    spedizioneId: z.string().uuid(),
   }),
   z.object({
     operazione: z.literal("elimina"),
     id: z.string().uuid(),
-    idDocumento: z.number().int().positive(),
+    spedizioneId: z.string().uuid(),
   }),
 ]);
 

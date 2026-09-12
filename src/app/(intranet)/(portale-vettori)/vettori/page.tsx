@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
-import { getVettoriContext, puoGestire } from "@/lib/portali/vettori/ruoli";
+import {
+  getVettoriContext,
+  puoGestire,
+  puoRegistrareArrivi,
+} from "@/lib/portali/vettori/ruoli";
 
 /**
  * `/vettori` non è una pagina: è la porta d'ingresso, e manda ciascuno dove
@@ -10,8 +14,8 @@ import { getVettoriContext, puoGestire } from "@/lib/portali/vettori/ruoli";
  * per controllare una fattura si trovava davanti un calcolatore di preventivi,
  * e che ogni sessione scaduta riportava lì invece che al punto di partenza.
  *
- * La registrazione degli arrivi è sospesa (vedi `vettori/arrivi/page.tsx`),
- * quindi chi ha solo quel ruolo entra dalla Simulazione.
+ * Chi ha il ruolo magazzino entra in Bolle, dove misura i colli e puo creare
+ * una spedizione prima che il gestionale porti il documento.
  */
 export default async function VettoriRootPage() {
   const user = await getSessionUser();
@@ -21,5 +25,6 @@ export default async function VettoriRootPage() {
   if (ctx.livello === null) redirect("/");
 
   if (puoGestire(ctx)) redirect("/vettori/fatture");
+  if (puoRegistrareArrivi(ctx)) redirect("/vettori/bolle");
   redirect("/vettori/simulazione");
 }

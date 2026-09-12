@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sincronizzaSpedizioniGestionali } from "./bolle";
 import {
   abbina,
   raggruppaInSpedizioni,
@@ -431,6 +432,11 @@ export async function preparaAcquisizione(params: {
 
 /** Scrive il payload chiamando la RPC transazionale. */
 export async function salvaAcquisizione(payload: PayloadAcquisizione) {
+  // La stessa fusione usata dalla pagina Bolle precede l'RPC transazionale.
+  // In questo modo una bolla manuale viene collegata ai documenti prima che il
+  // controllo nasca e la congeli; la normalizzazione resta quella condivisa in
+  // `fatture/testo.ts`, gia applicata da `raggruppaInSpedizioni`.
+  await sincronizzaSpedizioniGestionali(payload.spedizioni);
   const admin = createAdminClient();
   const { data, error } = await admin
     .schema("vettori")

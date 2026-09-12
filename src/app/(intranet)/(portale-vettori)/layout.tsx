@@ -11,7 +11,7 @@ import {
  * Layout del Portale Controllo Vettori.
  *
  * Il livello di portale decide se si entra; i ruoli funzionali decidono cosa si
- * vede. Un addetto di magazzino entra e trova gli arrivi, non le fatture.
+ * vede. Un addetto di magazzino entra e trova le bolle, non le fatture.
  */
 export default async function PortaleVettoriLayout({
   children,

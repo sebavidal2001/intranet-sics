@@ -112,7 +112,7 @@ export type FonteBollaMisura = "manuale" | "magazzino" | "vettore";
 /** Un gruppo di colli omogenei associato a una testata di bolla. */
 export interface BollaMisura {
   id: string;
-  idDocumento: number;
+  spedizioneId: string;
   quantita: number;
   lunghezzaCm: number;
   larghezzaCm: number;
@@ -126,31 +126,80 @@ export interface BollaMisura {
 
 export type StatoMisureBolla =
   | "da_misurare"
-  | "misurata"
-  | "volume_gestionale";
+  | "misurata";
+
+export type CampoBollaForzabile =
+  | "direzione"
+  | "numero_riferimento"
+  | "data_documento"
+  | "controparte_nome"
+  | "vettore_id"
+  | "colli_bolla"
+  | "peso_bolla";
+
+export interface CampoBollaForzato {
+  valorePrecedente: string | number | boolean | null;
+  forzatoDa: string;
+  forzatoIl: string;
+}
+
+export type CampiBollaForzati = Partial<
+  Record<CampoBollaForzabile, CampoBollaForzato>
+>;
+
+export interface BollaFattura {
+  controlloId: string;
+  numero: string;
+  data: string;
+}
+
+export interface BollaScostamento {
+  id: string;
+  idDocumento: number;
+  differenze: Record<
+    string,
+    { spedizione: string | number | boolean | null; gestionale: string | number | boolean | null }
+  >;
+  rilevatoIl: string;
+}
+
+export interface BollaVettoreOpzione {
+  id: string;
+  codice: string;
+  nome: string;
+  divisoreVolumetrico: number;
+}
 
 /** Testata gestionale esposta alla coda operativa delle bolle. */
 export interface BollaDocumento {
-  idDocumento: number;
+  idSpedizione: string;
+  idDocumenti: number[];
   numeroDocumento: string | null;
-  dataDocumento: string | null;
+  dataDocumento: string;
   dataCreazione: string | null;
-  direzione: string | null;
+  direzione: "entrata" | "uscita";
   soggetto: string | null;
   destinazione: string | null;
+  vettoreId: string | null;
   vettoreCodice: string | null;
   vettore: string | null;
   numColli: number | null;
   pesoLordoKg: number | null;
   pesoNettoKg: number | null;
-  volumeGestionaleM3: number | null;
   divisoreVolumetrico: number | null;
   statoMisure: StatoMisureBolla;
+  origine: OrigineSpedizione;
+  campiForzati: CampiBollaForzati;
+  congelata: boolean;
+  fattura: BollaFattura | null;
+  scostamenti: BollaScostamento[];
   misure: BollaMisura[];
 }
 
 export interface BolleResponse {
   documenti: BollaDocumento[];
+  vettori: BollaVettoreOpzione[];
+  puoScongelare: boolean;
   pagina: number;
   perPagina: number;
   totale: number;

@@ -2,18 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireVettori } from "@/lib/portali/vettori/api-guard";
-import { VETTORI_RUOLI } from "@/lib/portali/vettori/ruoli";
 import {
-  divisoreVolumetricoBolla,
+  haRuoloFunzionale,
+  VETTORI_RUOLI,
+} from "@/lib/portali/vettori/ruoli";
+import {
+  aggiornaBolla,
+  campiForzatiDaDb,
+  creaBollaManuale,
+  ErroreBollaCongelata,
+  ErroreBollaDuplicata,
+  MutazioneTestataBolla,
+  ripristinaCampoBolla,
+  sincronizzaBolleGestionali,
+} from "@/lib/portali/vettori/bolle";
+import {
   MutazioneBollaMisura,
   volumeGruppoM3,
 } from "@/lib/portali/vettori/misure";
+import type { BollaGestionale } from "@/lib/portali/vettori/abbinamento";
 import type {
   BollaDocumento,
+  BollaFattura,
   BollaMisura,
+  BollaScostamento,
+  BollaVettoreOpzione,
   BolleResponse,
   FonteBollaMisura,
-  Vettore,
+  OrigineSpedizione,
 } from "@/lib/portali/vettori/tipi";
 import { logError } from "@/lib/logger";
 
@@ -24,26 +40,26 @@ const Query = z.object({
   perPagina: z.coerce.number().int().min(20).max(200).default(80),
 });
 
-interface DocumentoRow {
-  id_documento: number;
-  numero_documento: string | null;
-  data_documento: string | null;
-  data_creazione: string | null;
-  direzione: string | null;
-  soggetto: string | null;
-  destinazione_codificata: string | null;
-  dest_rag_soc: string | null;
-  vettore_codice: string | null;
-  vettore: string | null;
-  num_colli: number | null;
-  peso_lordo: number | null;
-  peso_netto: number | null;
-  volume: number | null;
+interface SpedizioneRow {
+  id: string;
+  direzione: "entrata" | "uscita";
+  vettore_id: string | null;
+  numero_riferimento: string | null;
+  data_documento: string;
+  controparte_nome: string | null;
+  zona_cap: string | null;
+  zona_provincia: string | null;
+  colli_bolla: number | null;
+  peso_bolla: number | null;
+  origine: OrigineSpedizione;
+  campi_forzati: unknown;
+  congelata: boolean;
+  creata_il: string;
 }
 
 interface MisuraRow {
   id: string;
-  id_documento: number;
+  spedizione_id: string;
   quantita: number;
   lunghezza_cm: number;
   larghezza_cm: number;
@@ -56,9 +72,36 @@ interface MisuraRow {
 }
 
 interface VettoreRow {
+  id: string;
   codice: string;
   nome: string;
   divisore_volumetrico: number;
+}
+
+interface ControlloRow {
+  id: string;
+  spedizione_id: string;
+  fattura_riga_id: string;
+  calcolato_il: string;
+}
+
+interface FatturaRigaRow {
+  id: string;
+  fattura_id: string;
+}
+
+interface FatturaRow {
+  id: string;
+  numero: string;
+  data_fattura: string;
+}
+
+interface ScostamentoRow {
+  id: string;
+  spedizione_id: string;
+  id_documento: number;
+  differenze: BollaScostamento["differenze"];
+  rilevato_il: string;
 }
 
 function numeroPositivo(valore: number | null): number | null {
@@ -68,7 +111,7 @@ function numeroPositivo(valore: number | null): number | null {
 function mappaMisura(riga: MisuraRow): BollaMisura {
   return {
     id: riga.id,
-    idDocumento: riga.id_documento,
+    spedizioneId: riga.spedizione_id,
     quantita: Number(riga.quantita),
     lunghezzaCm: Number(riga.lunghezza_cm),
     larghezzaCm: Number(riga.larghezza_cm),
@@ -81,43 +124,34 @@ function mappaMisura(riga: MisuraRow): BollaMisura {
   };
 }
 
-function mappaDocumento(
-  riga: DocumentoRow,
-  misure: BollaMisura[],
-  vettori: ReadonlyArray<
-    Pick<Vettore, "codice" | "nome" | "divisoreVolumetrico">
-  >
-): BollaDocumento {
-  const volumeGestionaleM3 = numeroPositivo(riga.volume);
+function mappaVettore(riga: VettoreRow): BollaVettoreOpzione {
   return {
-    idDocumento: riga.id_documento,
-    numeroDocumento: riga.numero_documento,
-    dataDocumento: riga.data_documento,
-    dataCreazione: riga.data_creazione,
-    direzione: riga.direzione,
-    soggetto: riga.soggetto,
-    destinazione: riga.destinazione_codificata ?? riga.dest_rag_soc,
-    vettoreCodice: riga.vettore_codice,
-    vettore: riga.vettore,
-    numColli: numeroPositivo(riga.num_colli),
-    pesoLordoKg: numeroPositivo(riga.peso_lordo),
-    pesoNettoKg: numeroPositivo(riga.peso_netto),
-    volumeGestionaleM3,
-    divisoreVolumetrico: divisoreVolumetricoBolla(
-      riga.vettore_codice,
-      riga.vettore,
-      vettori
-    ),
-    statoMisure: volumeGestionaleM3
-      ? "volume_gestionale"
-      : misure.length > 0
-        ? "misurata"
-        : "da_misurare",
-    misure,
+    id: riga.id,
+    codice: riga.codice,
+    nome: riga.nome,
+    divisoreVolumetrico: Number(riga.divisore_volumetrico),
   };
 }
 
-/** Elenco paginato, riletto solo quando la pagina viene caricata o aggiornata. */
+async function sincronizzaDocumentiRecenti(): Promise<void> {
+  const admin = createAdminClient();
+  // La pipeline scrive soltanto il grezzo in `bi`. La lettura della coda e'
+  // il punto in cui le testate recenti vengono fuse nelle spedizioni operative;
+  // 500 documenti coprono ampiamente la finestra di lavoro al banco senza
+  // rileggere a ogni apertura l'intero storico.
+  const { data, error } = await admin
+    .schema("bi")
+    .from("trasporti_documenti")
+    .select(
+      "id_documento,codice_profilo,tipo_registro,numero_progressivo,numero_documento,data_documento,data_registrazione,id_sog_commerciale,codice_soggetto,soggetto,zona_cap,zona_provincia,fonte_zona,tipo_trasporto_codice,tipo_trasporto,vettore_codice,vettore,num_colli,peso_netto,peso_lordo,volume"
+    )
+    .order("data_creazione", { ascending: false, nullsFirst: false })
+    .limit(500);
+  if (error) throw new Error(error.message);
+  await sincronizzaBolleGestionali((data ?? []) as unknown as BollaGestionale[]);
+}
+
+/** Elenco paginato delle spedizioni operative, dopo la fusione del grezzo recente. */
 export async function GET(request: NextRequest) {
   try {
     const guard = await requireVettori({
@@ -132,95 +166,241 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Paginazione non valida." }, { status: 400 });
     }
 
+    await sincronizzaDocumentiRecenti();
+
     const { pagina, perPagina } = parsed.data;
     const da = (pagina - 1) * perPagina;
     const admin = createAdminClient();
-    const [documentiResult, vettoriResult] = await Promise.all([
+    const [spedizioniResult, vettoriResult] = await Promise.all([
       admin
-        .schema("bi")
-        .from("trasporti_documenti")
+        .schema("vettori")
+        .from("spedizioni")
         .select(
-          "id_documento,numero_documento,data_documento,data_creazione,direzione,soggetto,destinazione_codificata,dest_rag_soc,vettore_codice,vettore,num_colli,peso_lordo,peso_netto,volume",
+          "id,direzione,vettore_id,numero_riferimento,data_documento,controparte_nome,zona_cap,zona_provincia,colli_bolla,peso_bolla,origine,campi_forzati,congelata,creata_il",
           { count: "exact" }
         )
-        .order("data_creazione", { ascending: false, nullsFirst: false })
+        .order("data_documento", { ascending: false })
+        .order("creata_il", { ascending: false })
         .range(da, da + perPagina - 1),
       admin
         .schema("vettori")
         .from("vettori")
-        .select("codice,nome,divisore_volumetrico")
-        .eq("attivo", true),
+        .select("id,codice,nome,divisore_volumetrico")
+        .eq("attivo", true)
+        .order("nome"),
     ]);
 
-    const { data, count, error } = documentiResult;
-    const { data: vettoriData, error: vettoriError } = vettoriResult;
+    if (spedizioniResult.error) throw new Error(spedizioniResult.error.message);
+    if (vettoriResult.error) throw new Error(vettoriResult.error.message);
+    const spedizioni = (spedizioniResult.data ?? []) as unknown as SpedizioneRow[];
+    const vettori = ((vettoriResult.data ?? []) as unknown as VettoreRow[]).map(mappaVettore);
+    const vettoriPerId = new Map(vettori.map((vettore) => [vettore.id, vettore]));
+    const ids = spedizioni.map((spedizione) => spedizione.id);
 
-    if (error) throw new Error(error.message);
-    if (vettoriError) throw new Error(vettoriError.message);
-    const documenti = (data ?? []) as unknown as DocumentoRow[];
-    const vettori = ((vettoriData ?? []) as unknown as VettoreRow[]).map((vettore) => ({
-      codice: vettore.codice,
-      nome: vettore.nome,
-      divisoreVolumetrico: Number(vettore.divisore_volumetrico),
-    }));
-    const ids = documenti.map((riga) => riga.id_documento);
-    const misurePerDocumento = new Map<number, BollaMisura[]>();
+    const misurePerSpedizione = new Map<string, BollaMisura[]>();
+    const documentiPerSpedizione = new Map<string, number[]>();
+    const fatturePerSpedizione = new Map<string, BollaFattura>();
+    const scostamentiPerSpedizione = new Map<string, BollaScostamento[]>();
 
     if (ids.length > 0) {
-      const { data: misureData, error: misureError } = await admin
-        .schema("vettori")
-        .from("bolla_misure")
-        .select(
-          "id,id_documento,quantita,lunghezza_cm,larghezza_cm,altezza_cm,peso_reale_kg,volume_m3,fonte,inserito_il,modificato_il"
-        )
-        .in("id_documento", ids)
-        .order("inserito_il", { ascending: true });
-      if (misureError) throw new Error(misureError.message);
+      const [misureResult, documentiResult, controlliResult, scostamentiResult] = await Promise.all([
+        admin
+          .schema("vettori")
+          .from("bolla_misure")
+          .select("id,spedizione_id,quantita,lunghezza_cm,larghezza_cm,altezza_cm,peso_reale_kg,volume_m3,fonte,inserito_il,modificato_il")
+          .in("spedizione_id", ids)
+          .order("inserito_il", { ascending: true }),
+        admin
+          .schema("vettori")
+          .from("spedizioni_documenti")
+          .select("spedizione_id,id_documento")
+          .in("spedizione_id", ids),
+        admin
+          .schema("vettori")
+          .from("controlli")
+          .select("id,spedizione_id,fattura_riga_id,calcolato_il")
+          .in("spedizione_id", ids)
+          .order("calcolato_il", { ascending: false }),
+        admin
+          .schema("vettori")
+          .from("spedizioni_scostamenti")
+          .select("id,spedizione_id,id_documento,differenze,rilevato_il")
+          .in("spedizione_id", ids)
+          .order("rilevato_il", { ascending: false }),
+      ]);
+      for (const result of [misureResult, documentiResult, controlliResult, scostamentiResult]) {
+        if (result.error) throw new Error(result.error.message);
+      }
 
-      for (const riga of (misureData ?? []) as unknown as MisuraRow[]) {
-        const elenco = misurePerDocumento.get(riga.id_documento) ?? [];
+      for (const riga of (misureResult.data ?? []) as unknown as MisuraRow[]) {
+        const elenco = misurePerSpedizione.get(riga.spedizione_id) ?? [];
         elenco.push(mappaMisura(riga));
-        misurePerDocumento.set(riga.id_documento, elenco);
+        misurePerSpedizione.set(riga.spedizione_id, elenco);
+      }
+      for (const riga of (documentiResult.data ?? []) as unknown as Array<{ spedizione_id: string; id_documento: number }>) {
+        const elenco = documentiPerSpedizione.get(riga.spedizione_id) ?? [];
+        elenco.push(riga.id_documento);
+        documentiPerSpedizione.set(riga.spedizione_id, elenco);
+      }
+      for (const riga of (scostamentiResult.data ?? []) as unknown as ScostamentoRow[]) {
+        const elenco = scostamentiPerSpedizione.get(riga.spedizione_id) ?? [];
+        elenco.push({
+          id: riga.id,
+          idDocumento: riga.id_documento,
+          differenze: riga.differenze,
+          rilevatoIl: riga.rilevato_il,
+        });
+        scostamentiPerSpedizione.set(riga.spedizione_id, elenco);
+      }
+
+      const controlli = (controlliResult.data ?? []) as unknown as ControlloRow[];
+      const righeIds = controlli.map((controllo) => controllo.fattura_riga_id);
+      if (righeIds.length > 0) {
+        const { data: righeData, error: righeError } = await admin
+          .schema("vettori")
+          .from("fatture_righe")
+          .select("id,fattura_id")
+          .in("id", righeIds);
+        if (righeError) throw new Error(righeError.message);
+        const righe = (righeData ?? []) as unknown as FatturaRigaRow[];
+        const fatturaIds = [...new Set(righe.map((riga) => riga.fattura_id))];
+        const { data: fattureData, error: fattureError } = await admin
+          .schema("vettori")
+          .from("fatture")
+          .select("id,numero,data_fattura")
+          .in("id", fatturaIds);
+        if (fattureError) throw new Error(fattureError.message);
+        const fatture = new Map(
+          ((fattureData ?? []) as unknown as FatturaRow[]).map((fattura) => [fattura.id, fattura])
+        );
+        const righePerId = new Map(righe.map((riga) => [riga.id, riga]));
+        for (const controllo of controlli) {
+          if (fatturePerSpedizione.has(controllo.spedizione_id)) continue;
+          const riga = righePerId.get(controllo.fattura_riga_id);
+          const fattura = riga ? fatture.get(riga.fattura_id) : undefined;
+          if (fattura) {
+            fatturePerSpedizione.set(controllo.spedizione_id, {
+              controlloId: controllo.id,
+              numero: fattura.numero,
+              data: fattura.data_fattura,
+            });
+          }
+        }
       }
     }
 
-    const totale = count ?? documenti.length;
+    const documenti: BollaDocumento[] = spedizioni.map((spedizione) => {
+      const misure = misurePerSpedizione.get(spedizione.id) ?? [];
+      const vettore = spedizione.vettore_id
+        ? vettoriPerId.get(spedizione.vettore_id) ?? null
+        : null;
+      const destinazione = [spedizione.zona_cap, spedizione.zona_provincia]
+        .filter(Boolean)
+        .join(" ") || null;
+      return {
+        idSpedizione: spedizione.id,
+        idDocumenti: documentiPerSpedizione.get(spedizione.id) ?? [],
+        numeroDocumento: spedizione.numero_riferimento,
+        dataDocumento: spedizione.data_documento,
+        dataCreazione: spedizione.creata_il,
+        direzione: spedizione.direzione,
+        soggetto: spedizione.controparte_nome,
+        destinazione,
+        vettoreId: spedizione.vettore_id,
+        vettoreCodice: vettore?.codice ?? null,
+        vettore: vettore?.nome ?? null,
+        numColli: numeroPositivo(spedizione.colli_bolla),
+        pesoLordoKg: numeroPositivo(spedizione.peso_bolla),
+        pesoNettoKg: null,
+        divisoreVolumetrico: vettore?.divisoreVolumetrico ?? null,
+        statoMisure: misure.length > 0 ? "misurata" : "da_misurare",
+        origine: spedizione.origine,
+        campiForzati: campiForzatiDaDb(spedizione.campi_forzati),
+        congelata: spedizione.congelata,
+        fattura: fatturePerSpedizione.get(spedizione.id) ?? null,
+        scostamenti: scostamentiPerSpedizione.get(spedizione.id) ?? [],
+        misure,
+      };
+    });
+
+    const totale = spedizioniResult.count ?? documenti.length;
     const risposta: BolleResponse = {
-      documenti: documenti.map((riga) =>
-        mappaDocumento(riga, misurePerDocumento.get(riga.id_documento) ?? [], vettori)
-      ),
+      documenti,
+      vettori,
+      puoScongelare: haRuoloFunzionale(guard.ctx, [VETTORI_RUOLI.amministrazione]),
       pagina,
       perPagina,
       totale,
       altrePagine: da + documenti.length < totale,
     };
-    return NextResponse.json(risposta, {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return NextResponse.json(risposta, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     logError("vettori.bolle", "lettura bolle fallita", error);
     return NextResponse.json(
-      { error: "Non è stato possibile leggere le bolle." },
+      { error: "Non e stato possibile leggere le bolle." },
       { status: 500 }
     );
   }
 }
 
-async function volumeGestionale(idDocumento: number): Promise<number | null | undefined> {
+async function mutaMisura(
+  comando: z.infer<typeof MutazioneBollaMisura>,
+  utenteId: string
+) {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .schema("bi")
-    .from("trasporti_documenti")
-    .select("id_documento,volume")
-    .eq("id_documento", idDocumento)
+  if (comando.operazione === "elimina") {
+    const { data, error } = await admin
+      .schema("vettori")
+      .from("bolla_misure")
+      .delete()
+      .eq("id", comando.id)
+      .eq("spedizione_id", comando.spedizioneId)
+      .select("id")
+      .maybeSingle();
+    if (error?.code === "55000") throw new ErroreBollaCongelata();
+    if (error) throw new Error(error.message);
+    if (!data) return NextResponse.json({ error: "Gruppo di colli non trovato." }, { status: 404 });
+    return NextResponse.json({ eliminato: comando.id });
+  }
+
+  const adesso = new Date().toISOString();
+  const valori = {
+    quantita: comando.quantita,
+    lunghezza_cm: comando.lunghezzaCm,
+    larghezza_cm: comando.larghezzaCm,
+    altezza_cm: comando.altezzaCm,
+    peso_reale_kg: comando.pesoRealeKg ?? null,
+    volume_m3: Number(volumeGruppoM3(comando).toFixed(6)),
+    fonte: "manuale" as const,
+    modificato_da: utenteId,
+    modificato_il: adesso,
+  };
+  const query = comando.operazione === "crea"
+    ? admin
+        .schema("vettori")
+        .from("bolla_misure")
+        .insert({
+          ...valori,
+          spedizione_id: comando.spedizioneId,
+          inserito_da: utenteId,
+          inserito_il: adesso,
+        })
+    : admin
+        .schema("vettori")
+        .from("bolla_misure")
+        .update(valori)
+        .eq("id", comando.id)
+        .eq("spedizione_id", comando.spedizioneId);
+  const { data, error } = await query
+    .select("id,spedizione_id,quantita,lunghezza_cm,larghezza_cm,altezza_cm,peso_reale_kg,volume_m3,fonte,inserito_il,modificato_il")
     .maybeSingle();
+  if (error?.code === "55000") throw new ErroreBollaCongelata();
   if (error) throw new Error(error.message);
-  if (!data) return undefined;
-  const riga = data as unknown as { volume: number | null };
-  return numeroPositivo(riga.volume);
+  if (!data) return NextResponse.json({ error: "Gruppo di colli non trovato." }, { status: 404 });
+  return NextResponse.json({ misura: mappaMisura(data as unknown as MisuraRow) });
 }
 
-/** Crea, modifica o elimina un singolo gruppo omogeneo di colli. */
+/** Tutte le mutazioni hanno Zod e guard funzionale; lo scongelamento restringe ad amministrazione. */
 export async function POST(request: NextRequest) {
   try {
     const guard = await requireVettori({
@@ -235,88 +415,60 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Corpo della richiesta non valido." }, { status: 400 });
     }
 
-    const parsed = MutazioneBollaMisura.safeParse(corpo);
-    if (!parsed.success) {
+    const testata = MutazioneTestataBolla.safeParse(corpo);
+    if (testata.success) {
+      const comando = testata.data;
+      if (comando.operazione === "crea_bolla") {
+        const id = await creaBollaManuale(comando, guard.user.id);
+        return NextResponse.json({ id }, { status: 201 });
+      }
+      if (comando.operazione === "aggiorna_bolla") {
+        await aggiornaBolla(comando, guard.user.id);
+        return NextResponse.json({ aggiornata: comando.spedizioneId });
+      }
+      if (comando.operazione === "ripristina_campo") {
+        await ripristinaCampoBolla(comando.spedizioneId, comando.campo);
+        return NextResponse.json({ ripristinato: comando.campo });
+      }
+      if (!haRuoloFunzionale(guard.ctx, [VETTORI_RUOLI.amministrazione])) {
+        return NextResponse.json(
+          { error: "Solo amministrazione puo scongelare una bolla." },
+          { status: 403 }
+        );
+      }
+      const admin = createAdminClient();
+      const { data, error } = await admin
+        .schema("vettori")
+        .rpc("scongela_spedizione", {
+          p_spedizione_id: comando.spedizioneId,
+          p_utente_id: guard.user.id,
+          p_motivo: comando.motivo,
+        });
+      if (error) throw new Error(error.message);
+      if (data !== true) {
+        return NextResponse.json({ error: "Bolla non trovata o gia scongelata." }, { status: 404 });
+      }
+      return NextResponse.json({ scongelata: comando.spedizioneId });
+    }
+
+    const misura = MutazioneBollaMisura.safeParse(corpo);
+    if (!misura.success) {
       return NextResponse.json(
-        { error: "Misure non valide.", dettagli: parsed.error.flatten().fieldErrors },
+        { error: "Dati non validi.", dettagli: misura.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
-
-    const comando = parsed.data;
-    const admin = createAdminClient();
-
-    if (comando.operazione === "elimina") {
-      const { data, error } = await admin
-        .schema("vettori")
-        .from("bolla_misure")
-        .delete()
-        .eq("id", comando.id)
-        .eq("id_documento", comando.idDocumento)
-        .select("id")
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      if (!data) {
-        return NextResponse.json({ error: "Gruppo di colli non trovato." }, { status: 404 });
-      }
-      return NextResponse.json({ eliminato: comando.id });
-    }
-
-    const volumeEsistente = await volumeGestionale(comando.idDocumento);
-    if (volumeEsistente === undefined) {
-      return NextResponse.json({ error: "Bolla non trovata." }, { status: 404 });
-    }
-    // Il volume del gestionale NON blocca la misura manuale. È un dato dichiarato,
-    // spesso dal vettore, e non equivale a una verifica: chi ha il collo davanti è
-    // l'unico che può accorgersi che è sbagliato. Si conservano entrambi — quello
-    // grezzo in bi.trasporti_documenti, questo con la sua `fonte` — e la pagina
-    // segnala la differenza invece di impedirla.
-
-    const adesso = new Date().toISOString();
-    const valori = {
-      quantita: comando.quantita,
-      lunghezza_cm: comando.lunghezzaCm,
-      larghezza_cm: comando.larghezzaCm,
-      altezza_cm: comando.altezzaCm,
-      peso_reale_kg: comando.pesoRealeKg ?? null,
-      volume_m3: Number(volumeGruppoM3(comando).toFixed(6)),
-      fonte: "manuale" as const,
-      modificato_da: guard.user.id,
-      modificato_il: adesso,
-    };
-
-    const query = comando.operazione === "crea"
-      ? admin
-          .schema("vettori")
-          .from("bolla_misure")
-          .insert({
-            ...valori,
-            id_documento: comando.idDocumento,
-            inserito_da: guard.user.id,
-            inserito_il: adesso,
-          })
-      : admin
-          .schema("vettori")
-          .from("bolla_misure")
-          .update(valori)
-          .eq("id", comando.id)
-          .eq("id_documento", comando.idDocumento);
-
-    const { data, error } = await query
-      .select(
-        "id,id_documento,quantita,lunghezza_cm,larghezza_cm,altezza_cm,peso_reale_kg,volume_m3,fonte,inserito_il,modificato_il"
-      )
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!data) {
-      return NextResponse.json({ error: "Gruppo di colli non trovato." }, { status: 404 });
-    }
-
-    return NextResponse.json({ misura: mappaMisura(data as unknown as MisuraRow) });
+    return await mutaMisura(misura.data, guard.user.id);
   } catch (error) {
-    logError("vettori.bolle", "salvataggio misure fallito", error);
+    if (error instanceof ErroreBollaDuplicata) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof ErroreBollaCongelata) {
+      return NextResponse.json({ error: error.message }, { status: 423 });
+    }
+    logError("vettori.bolle", "mutazione bolla fallita", error);
     return NextResponse.json(
-      { error: "Non è stato possibile salvare le misure." },
+      { error: error instanceof Error ? error.message : "Non e stato possibile salvare la bolla." },
       { status: 500 }
     );
   }

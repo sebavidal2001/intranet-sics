@@ -7,7 +7,7 @@ import {
 } from "@/lib/portali/vettori/ruoli";
 
 export const metadata = {
-  title: "Bolle da misurare",
+  title: "Bolle e misure",
 };
 
 export default async function BollePage() {
