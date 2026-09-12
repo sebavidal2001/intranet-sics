@@ -143,6 +143,7 @@ function Get-CsvValidation {
     $lineNumber = 0
     $ids = @()
     $maxId = $null
+    $conIntestazione = $false
     try {
         while (-not $parser.EndOfData) {
             $fields = $parser.ReadFields()
@@ -153,10 +154,15 @@ function Get-CsvValidation {
             if ($fields.Count -ne $ExpectedColumns) {
                 throw ("Numero colonne errato in {0} alla riga {1}: attese {2}, trovate {3}" -f $Path, $lineNumber, $ExpectedColumns, $fields.Count)
             }
-            if ($lineNumber -eq 1) {
-                if ([string]$fields[0] -notmatch $HeaderPattern) {
-                    throw ("Intestazione non valida in {0}: '{1}'" -f $Path, $fields[0])
-                }
+            # Il client SQL Anywhere 11 non supporta WITH COLUMN NAMES, quindi
+            # il CSV arriva SENZA intestazione. I CSV prodotti a settembre con
+            # il client 16 invece ce l'hanno. Si accettano entrambi: se la prima
+            # riga e' un'intestazione la si salta, altrimenti e' gia' un dato.
+            # Il contratto vero e' l'ordine delle colonne, verificato per
+            # posizione: un'intestazione fabbricata qui passerebbe sempre il
+            # controllo e non verificherebbe niente.
+            if ($lineNumber -eq 1 -and [string]$fields[0] -match $HeaderPattern) {
+                $conIntestazione = $true
                 continue
             }
 

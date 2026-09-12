@@ -100,4 +100,9 @@ WHERE d.id_documento > {{ULTIMO_ID_SOGLIA}}
   AND d.tipo_registro IN ('DV','DA')
 ORDER BY d.data_registrazione,d.id_documento;
 OUTPUT TO 'C:\Impresa\Viste_BI\Esportazioni\Live\trasporti_documenti_live.csv'
-FORMAT ASCII DELIMITED BY ';' QUOTE '"' ENCODING 'UTF-8' WITH COLUMN NAMES;
+-- Niente WITH COLUMN NAMES: il client SQL Anywhere 11 installato su
+-- SRVWOA non la supporta e risponde "Syntax error: 'WITH' was not
+-- expected here". Il CSV esce quindi SENZA intestazione, come quello
+-- del cruscotto. L'ordine delle 68 colonne resta il contratto, ed e'
+-- verificato per posizione a valle.
+FORMAT ASCII DELIMITED BY ';' QUOTE '"' ENCODING 'UTF-8';

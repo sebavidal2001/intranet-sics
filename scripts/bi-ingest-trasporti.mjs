@@ -135,9 +135,22 @@ async function segnaFallito(messaggio, pulisci = false) {
     const contenuto = fs.readFileSync(FILE);
     const sha256 = crypto.createHash("sha256").update(contenuto).digest("hex");
     const dati = parseCsv(contenuto.toString("utf8"), ";");
-    if (dati.length < 2) throw new Error("Il file non contiene righe dati");
+    if (dati.length < 1) throw new Error("Il file non contiene righe dati");
 
-    const intestazione = validaIntestazioneTrasporti(dati[0]);
+    // Il client SQL Anywhere 11 non supporta WITH COLUMN NAMES: il CSV arriva
+    // senza intestazione. Quelli prodotti a settembre con il client 16 ce
+    // l'hanno. Si accettano entrambi, e in assenza di intestazione il
+    // contratto e' l'ordine delle colonne — che e' comunque l'unica cosa che
+    // conta, perche' i nomi non vengono usati per mappare i valori.
+    const primaRigaEIntestazione =
+      String(dati[0]?.[0] ?? "").trim().toLowerCase() === "id_documento";
+    const intestazione = primaRigaEIntestazione
+      ? validaIntestazioneTrasporti(dati[0])
+      : { ok: true, headers: [...COLONNE_TRASPORTI], nColonne: COLONNE_TRASPORTI.length,
+          mancanti: [], inattese: [], ordineDiverso: false };
+    if (!primaRigaEIntestazione) {
+      console.log("  intestazione: assente nel CSV; si applica l'ordine del contratto");
+    }
     if (!intestazione.ok) {
       throw new Error(
         `Intestazione non conforme — mancanti: [${intestazione.mancanti.join(", ")}] · ` +
@@ -147,7 +160,8 @@ async function segnaFallito(messaggio, pulisci = false) {
     }
     console.log(`  colonne:     ${intestazione.nColonne}/${COLONNE_TRASPORTI.length} conformi e ordinate`);
 
-    const righe = dati.slice(1).map((riga, indice) =>
+    const corpo = primaRigaEIntestazione ? dati.slice(1) : dati;
+    const righe = corpo.map((riga, indice) =>
       convertiRigaTrasporti(intestazione.headers, riga, RUN_ID, indice + 1));
     console.log(`  righe:       ${righe.length}`);
 
