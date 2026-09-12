@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/portali/preventivatore/prodotti/costo?codice=ABC
- * Lookup ESATTO del costo corrente di un codice dall'anagrafica prodotti.
+ * Lookup ESATTO del costo corrente di un codice.
+ * Legge da `v_prodotti_costo` (migration 084): il costo è quello effettivo —
+ * listino fornitore se il codice c'è, altrimenti ultimo costo del Cruscotto.
  * Usato dall'editor template per mostrare il costo "live" mentre si digita il codice.
  * Risposta: { trovato, codice, ult_costo, data_ult_costo } | { trovato:false }
  */
@@ -32,8 +34,8 @@ export async function GET(request: NextRequest) {
       if (codici.length === 0) return NextResponse.json({ items: [] });
       const { data, error } = await admin
         .schema("preventivatore")
-        .from("prodotti")
-        .select("codice, ult_costo, data_ult_costo, attivo")
+        .from("v_prodotti_costo")
+        .select("codice, ult_costo, data_ult_costo, attivo, fonte_costo, fornitore_listino")
         .in("codice", codici);
       if (error) {
         logError("preventivatore.prodotti.costo", "Prodotti costo batch error", error);
@@ -46,8 +48,8 @@ export async function GET(request: NextRequest) {
     if (!codice) return NextResponse.json({ trovato: false });
     const { data, error } = await admin
       .schema("preventivatore")
-      .from("prodotti")
-      .select("codice, ult_costo, data_ult_costo, attivo")
+      .from("v_prodotti_costo")
+      .select("codice, ult_costo, data_ult_costo, attivo, fonte_costo, fornitore_listino")
       .eq("codice", codice)
       .maybeSingle();
     if (error) {
@@ -61,6 +63,8 @@ export async function GET(request: NextRequest) {
       ult_costo: data.ult_costo,
       data_ult_costo: data.data_ult_costo,
       attivo: data.attivo,
+      fonte_costo: data.fonte_costo,
+      fornitore_listino: data.fornitore_listino,
     });
   } catch (error) {
     logError("preventivatore.prodotti.costo", "Prodotti costo route error", error);

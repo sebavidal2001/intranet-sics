@@ -64,7 +64,17 @@ export function InlineCodiceSearch({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-mono font-medium text-[#00a1be] truncate">{p.codice}</span>
-                {p.ult_costo != null && <span className="text-[11px] text-text-muted shrink-0">{fmtEur(p.ult_costo)}</span>}
+                <span className="flex items-center gap-1 shrink-0">
+                  {p.fonte_costo === "listino" && (
+                    <span
+                      title={`Costo dal listino ${p.fornitore_listino ?? "fornitore"}, al posto dell'ultimo costo`}
+                      className="text-[9px] px-1 rounded bg-[#00a1be]/15 text-[#007a91] font-medium"
+                    >
+                      listino
+                    </span>
+                  )}
+                  {p.ult_costo != null && <span className="text-[11px] text-text-muted">{fmtEur(p.ult_costo)}</span>}
+                </span>
               </div>
               <div className="text-[11px] text-text truncate">{capitalizzaDescrizione(p.descrizione)}</div>
             </button>

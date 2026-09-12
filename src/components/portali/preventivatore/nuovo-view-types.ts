@@ -32,6 +32,12 @@ export interface Prodotto {
   prezzo_stale?: boolean
   /** Data dell'ultimo costo (ISO yyyy-mm-dd). Usata per la cella gialla >9 mesi. */
   data_ult_costo?: string | null
+  /** Da dove arriva `ult_costo`: "listino" = listino fornitore caricato in Impostazioni, "anagrafica" = UC del Cruscotto. */
+  fonte_costo?: "listino" | "anagrafica"
+  /** Fornitore del listino che ha fornito il costo (valorizzato solo se fonte_costo = "listino"). */
+  fornitore_listino?: string | null
+  /** false = codice presente solo sul listino fornitore, non nell'anagrafica del gestionale. */
+  in_anagrafica?: boolean
 }
 
 export interface ServizioDB {

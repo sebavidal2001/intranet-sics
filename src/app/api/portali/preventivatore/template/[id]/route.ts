@@ -35,7 +35,8 @@ async function loadTemplateFull(admin: ReturnType<typeof createAdminClient>, idO
   const dataC = new Map<string, string | null>();
   if (codici.length > 0) {
     const { data: prod } = await admin
-      .schema("preventivatore").from("prodotti")
+      // Costo effettivo (migration 084): il listino fornitore prevale sull'UC.
+      .schema("preventivatore").from("v_prodotti_costo")
       .select("codice, ult_costo, data_ult_costo").in("codice", codici);
     for (const p of (prod ?? []) as Array<{ codice: string; ult_costo: number | null; data_ult_costo: string | null }>) {
       if (p.ult_costo != null) costo.set(p.codice, Number(p.ult_costo));

@@ -11,10 +11,15 @@ export const dynamic = "force-dynamic";
  * Cerca articoli nell'anagrafica cruscotto (preventivatore.prodotti) via RPC
  * search_prodotti (match per codice, codice_norm, descrizione con trigram).
  *
+ * Il costo restituito è quello EFFETTIVO (migration 084): se il codice è su un
+ * listino fornitore attivo vince il prezzo di listino, altrimenti resta l'UC.
+ * La ricerca include anche le voci di listino assenti dall'anagrafica.
+ *
  * Risposta: array di Prodotto compatibile col builder.
  *   {
  *     id, codice, descrizione, ult_costo, fornitore, unita_misura, giacenza,
- *     categoria, n_magazzini, prezzo_stale
+ *     categoria, n_magazzini, prezzo_stale, fonte_costo, fornitore_listino,
+ *     in_anagrafica
  *   }
  */
 export async function GET(request: NextRequest) {
@@ -47,6 +52,9 @@ export async function GET(request: NextRequest) {
       disponibilita_totale: number | null;
       n_magazzini: number;
       prezzo_stale: boolean;
+      fonte_costo: string;
+      fornitore_listino: string | null;
+      in_anagrafica: boolean;
       score: number;
     };
 
@@ -64,6 +72,11 @@ export async function GET(request: NextRequest) {
       categoria: r.categoria,
       n_magazzini: r.n_magazzini,
       prezzo_stale: r.prezzo_stale,
+      // Da dove viene il costo: "listino" = listino fornitore caricato in
+      // Impostazioni (prevale sull'UC), "anagrafica" = ultimo costo Cruscotto.
+      fonte_costo: r.fonte_costo,
+      fornitore_listino: r.fornitore_listino,
+      in_anagrafica: r.in_anagrafica,
     }));
 
     return NextResponse.json(mapped);

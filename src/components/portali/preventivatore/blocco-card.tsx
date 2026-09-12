@@ -147,7 +147,17 @@ function SearchArticoli({
                 </div>
                 <div className="text-sm text-text truncate">{p.descrizione}</div>
                 <div className="flex items-center justify-between gap-2 text-xs text-text-muted">
-                  <span className="truncate">{p.categoria || p.fornitore || ""}</span>
+                  <span className="truncate flex items-center gap-1.5">
+                    {p.categoria || p.fornitore || ""}
+                    {p.fonte_costo === "listino" && (
+                      <span
+                        title={`Costo dal listino ${p.fornitore_listino ?? "fornitore"}${p.in_anagrafica === false ? " — codice non presente in anagrafica" : ", al posto dell'ultimo costo"}`}
+                        className="text-[10px] px-1 rounded bg-[#00a1be]/15 text-[#007a91] font-medium shrink-0"
+                      >
+                        listino {p.fornitore_listino ?? ""}
+                      </span>
+                    )}
+                  </span>
                   <span className="shrink-0 flex items-center gap-2">
                     {p.giacenza != null && p.giacenza > 0 && (
                       <span className="text-emerald-600">stock {p.giacenza}</span>

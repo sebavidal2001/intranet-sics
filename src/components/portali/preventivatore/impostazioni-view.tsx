@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ServiziConfig } from "@/components/portali/preventivatore/servizi-config"
+import { ListiniFornitore } from "@/components/portali/preventivatore/listini-fornitore"
 
 interface AIConfig {
   id: string
@@ -356,6 +357,9 @@ export function ImpostazioniView() {
           Template prodotti →
         </a>
       </div>
+
+      {/* Listini fornitore: in cima perché incide sui costi di ogni preventivo */}
+      <ListiniFornitore />
 
       {/* Config section */}
       <div className="border border-border rounded-xl bg-bg overflow-hidden">

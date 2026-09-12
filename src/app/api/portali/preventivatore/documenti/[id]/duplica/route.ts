@@ -116,7 +116,9 @@ export async function GET(
     if (codiciMateriale.length > 0) {
       const { data: prodotti } = await sb
         .schema("preventivatore")
-        .from("prodotti")
+        // Costo effettivo (migration 084): listino fornitore se il codice c'è,
+        // altrimenti ultimo costo del Cruscotto.
+        .from("v_prodotti_costo")
         .select("codice, ult_costo, data_ult_costo")
         .in("codice", codiciMateriale);
       for (const p of (prodotti ?? []) as { codice: string; ult_costo: number | null; data_ult_costo: string | null }[]) {
