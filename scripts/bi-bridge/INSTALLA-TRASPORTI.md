@@ -132,38 +132,59 @@ Un lock occupato produce skipped_lock = true, sempre con codice 0 e senza allarm
 
 ## Registrazione delle due attività
 
-I comandi seguenti sono compatibili con PowerShell 4.0. Usano IgnoreNew anche a livello di
-Task Scheduler; pipeline.lock resta comunque condiviso con tutti gli altri profili. Inserire
-lo stesso account che possiede i segreti DPAPI. La password resta in memoria solo per il tempo
-necessario a Register-ScheduledTask.
+> [!warning] `New-ScheduledTaskTrigger` non sa ripetere, su questa macchina
+> Su Windows Server 2012 R2 con PowerShell 4.0, `New-ScheduledTaskTrigger -Once` **accetta**
+> `-RepetitionInterval` e `-RepetitionDuration` e poi li **scarta in silenzio**: il trigger si
+> costruisce, ma `Repetition.Interval` e `Repetition.Duration` restano vuoti. Verificato sulla
+> macchina il 12 settembre 2026.
+>
+> Registrando il task in quel modo, il live partirebbe **una volta sola** e non si ripeterebbe
+> mai piu'. Nessun errore, nessun avviso: le bolle arriverebbero al primo colpo e poi basta.
+>
+> Non funziona nemmeno assegnare la ripetizione con `New-CimInstance`: su quella versione il
+> trigger `-Once` non espone una proprieta' `Repetition` scrivibile.
+>
+> La strada che funziona e' `schtasks`, che gestisce la ripetizione in modo nativo.
 
-    $TaskUser = Read-Host 'Account del task (DOMINIO\utente)'
-    $TaskPasswordSecure = Read-Host 'Password del task' -AsSecureString
-    $PasswordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($TaskPasswordSecure)
-    try {
-        $TaskPasswordPlain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($PasswordPointer)
+### Il live, ogni minuto
 
-        $PowerShellExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-        $WorkingDirectory = 'C:\Impresa\BI_Bridge'
-        $LiveArguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1" -Modo live'
-        $RiconciliazioneArguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1" -Modo riconciliazione'
+`schtasks /SC MINUTE` accetta da 1 a 999 minuti. Si usa **1 minuto** invece dei 90 secondi
+previsti: non e' esprimibile in secondi, e un minuto e' comunque migliore dell'obiettivo. Con
+la query misurata a 0,85 secondi significa occupare il gestionale per circa l'1% del tempo.
 
-        $LiveAction = New-ScheduledTaskAction -Execute $PowerShellExe -Argument $LiveArguments -WorkingDirectory $WorkingDirectory
-        $LiveTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Seconds 90) -RepetitionDuration (New-TimeSpan -Days 3650)
-        $LiveSettings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
-        Register-ScheduledTask -TaskName 'IMPRESA_BI_TRASPORTI_LIVE' -Description 'Bolle Impresa verso intranet ogni 90 secondi' -Action $LiveAction -Trigger $LiveTrigger -Settings $LiveSettings -User $TaskUser -Password $TaskPasswordPlain -RunLevel Highest -Force
+`/RP *` chiede la password a video: non finisce ne' in un file ne' nella cronologia dei
+comandi. `/RU` con `/RP` produce un task con `LogonType=Password`, che e' **obbligatorio**:
+senza, il logon e' `Interactive` e DPAPI non riesce a decifrare la credenziale del gestionale.
 
-        $RiconciliazioneAction = New-ScheduledTaskAction -Execute $PowerShellExe -Argument $RiconciliazioneArguments -WorkingDirectory $WorkingDirectory
-        $RiconciliazioneTrigger = New-ScheduledTaskTrigger -Daily -At '04:15'
-        $RiconciliazioneSettings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-        Register-ScheduledTask -TaskName 'IMPRESA_BI_TRASPORTI' -Description 'Riconciliazione giornaliera bolle, finestra mobile 90 giorni' -Action $RiconciliazioneAction -Trigger $RiconciliazioneTrigger -Settings $RiconciliazioneSettings -User $TaskUser -Password $TaskPasswordPlain -RunLevel Highest -Force
-    }
-    finally {
-        $TaskPasswordPlain = $null
-        if ($PasswordPointer -ne [IntPtr]::Zero) {
-            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($PasswordPointer)
-        }
-    }
+    schtasks /Create /TN "IMPRESA_BI_TRASPORTI_LIVE" ^
+      /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1\" -Modo live" ^
+      /SC MINUTE /MO 1 ^
+      /RU "DMNAIRFLUID\adm.varas" /RP * ^
+      /RL HIGHEST /F
+
+### La riconciliazione, alle 04:15
+
+Qui la ripetizione non serve e il trigger giornaliero di PowerShell funziona; si usa comunque
+`schtasks` per coerenza. Le 04:15 non collidono con il commerciale dell'01:30, con il cruscotto
+delle 02:30, ne' con Prophet delle 03:30 del venerdi'.
+
+    schtasks /Create /TN "IMPRESA_BI_TRASPORTI" ^
+      /TR "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1\" -Modo riconciliazione" ^
+      /SC DAILY /ST 04:15 ^
+      /RU "DMNAIRFLUID\adm.varas" /RP * ^
+      /RL HIGHEST /F
+
+### Controllare che la ripetizione ci sia davvero
+
+Il punto da verificare non e' che il task esista, ma che si **ripeta**. Se `Interval` esce
+vuoto, il task e' stato creato nel modo sbagliato:
+
+    Get-ScheduledTask -TaskName 'IMPRESA_BI_TRASPORTI_LIVE' |
+        ForEach-Object { $_.Triggers } |
+        Select-Object -Property @{Name='Intervallo';Expression={$_.Repetition.Interval}},
+                                @{Name='Durata';Expression={$_.Repetition.Duration}}
+
+Atteso: `Intervallo = PT1M`. Vuoto significa che la ripetizione non e' stata applicata.
 
 Verificare la configurazione registrata:
 
