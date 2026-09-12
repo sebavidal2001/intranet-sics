@@ -146,6 +146,13 @@ Un lock occupato produce skipped_lock = true, sempre con codice 0 e senza allarm
 >
 > La strada che funziona e' `schtasks`, che gestisce la ripetizione in modo nativo.
 
+> [!warning] Niente virgolette attorno al percorso
+> Da PowerShell, scrivere `-File \"C:\Impresa\...\"` fa chiudere la stringa in anticipo e
+> `schtasks` legge `-Modo` come un proprio argomento, rispondendo
+> `ERROR: Invalid argument/option - '-Modo'`. In `C:\Impresa\BI_Bridge\` non ci sono spazi,
+> quindi le virgolette interne non servono. Verificato su SRVWOA il 12 settembre 2026 con un
+> task di prova: l'azione viene registrata intera e `Repetition.Interval` risulta `PT1M`.
+
 ### Il live, ogni minuto
 
 `schtasks /SC MINUTE` accetta da 1 a 999 minuti. Si usa **1 minuto** invece dei 90 secondi
