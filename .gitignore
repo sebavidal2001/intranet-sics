@@ -50,3 +50,7 @@ supabase/backups/**/riconciliazione-*.csv
 
 # Cluster PostgreSQL usa e getta del collaudo vettori
 scripts/collaudo-vettori/.pg/
+
+# Backup di .env.local (contengono segreti)
+.env.local.bak-*
+.env*.bak*
