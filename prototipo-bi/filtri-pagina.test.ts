@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { fondiFiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
+import {
+  fondiFiltriPagina,
+  fondiFiltriPaginaConEsito,
+} from "@/lib/prototipo-bi/filtri-pagina";
 import type { SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 const BASE: SpecQuery = { metrica: "ordinato", raggruppa: ["cliente"] };
@@ -16,18 +19,23 @@ describe("fusione dei filtri di pagina", () => {
       ...BASE,
       filtri: [{ campo: "agente", op: "eq", valore: "ROSSI" }],
     };
-
     expect(fondiFiltriPagina(spec, { agente: "BIANCHI", bu: "IMPIANTI" }).filtri).toEqual([
       { campo: "agente", op: "eq", valore: "ROSSI" },
       { campo: "bu", op: "eq", valore: "IMPIANTI" },
     ]);
   });
 
-  it("fa sostituire al periodo pagina quello della spec", () => {
-    const spec: SpecQuery = { ...BASE, periodo: { anno: 2025 } };
+  it("riempie dalla pagina il periodo mancante nella spec", () => {
     expect(
-      fondiFiltriPagina(spec, { periodo: { dal: "2026-01-01", al: "2026-06-30" } }).periodo
+      fondiFiltriPagina(BASE, { periodo: { dal: "2026-01-01", al: "2026-06-30" } }).periodo
     ).toEqual({ dal: "2026-01-01", al: "2026-06-30" });
+  });
+
+  it("rispetta il periodo esplicito e segnala quello della pagina ignorato", () => {
+    const spec: SpecQuery = { ...BASE, periodo: { anno: 2025 } };
+    const esito = fondiFiltriPaginaConEsito(spec, { periodo: { anno: 2026 } });
+    expect(esito.spec.periodo).toEqual({ anno: 2025 });
+    expect(esito.periodoIgnorato).toBe(true);
   });
 
   it("lascia la spec intatta quando la pagina non ha filtri", () => {

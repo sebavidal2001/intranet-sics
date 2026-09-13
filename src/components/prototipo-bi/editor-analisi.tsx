@@ -3,10 +3,9 @@
 /**
  * L'EDITOR MANUALE DELLE ANALISI.
  *
- * Quattro scelte — cosa guardo, come lo spezzo, quando, solo dove — e sotto il
- * risultato che si aggiorna da solo. Nessun pulsante "esegui": si cambia una
- * voce e il grafico cambia, con 400 ms di attesa perché altrimenti ogni tasto
- * premuto in un filtro sarebbe una chiamata.
+ * La tipologia viene prima dei parametri perché è il modo in cui le persone
+ * riconoscono il dato; metrica e dimensioni compaiono solo dopo, evitando una
+ * lista piatta che mescola indicatori di natura diversa.
  *
  * L'oggetto che si compone qui è lo stesso `SpecQuery` che produce l'analista
  * AI. Non è un dettaglio implementativo: è la ragione per cui un'analisi
@@ -34,9 +33,11 @@ import type {
   Filtro,
   Granularita,
   Modificatore,
+  Periodo,
   RisultatoQuery,
   SpecQuery,
 } from "@/lib/prototipo-bi/tipi";
+import type { ChiaveTipologia } from "@/lib/prototipo-bi/tassonomia";
 
 interface VoceMetrica {
   chiave: ChiaveMetrica;
@@ -55,9 +56,18 @@ interface VoceModificatore {
   descrizione: string;
 }
 
+interface VoceTipologia {
+  chiave: ChiaveTipologia;
+  etichetta: string;
+  descrizione: string;
+  metriche: ChiaveMetrica[];
+}
+
 interface Vocabolario {
+  tipologie: VoceTipologia[];
   metriche: VoceMetrica[];
   dimensioni: VoceDimensione[];
+  dimensioniPerMetrica: Record<ChiaveMetrica, Dimensione[]>;
   modificatori: VoceModificatore[];
   granularita: Granularita[];
 }
@@ -129,19 +139,34 @@ function formattaTotale(risultato: RisultatoQuery): string {
   return numero(risultato.totale);
 }
 
+function periodoPresente(periodo: Periodo | undefined): periodo is Periodo {
+  return Boolean(periodo && (periodo.anno !== undefined || periodo.dal || periodo.al));
+}
+
+function descriviPeriodo(periodo: Periodo | undefined): string {
+  if (!periodoPresente(periodo)) return "il periodo corrente della dashboard";
+  if (periodo.anno !== undefined) return String(periodo.anno);
+  if (periodo.dal && periodo.al) return `${periodo.dal} – ${periodo.al}`;
+  if (periodo.dal) return `dal ${periodo.dal}`;
+  return `fino al ${periodo.al}`;
+}
+
 export function EditorAnalisi({
   specIniziale,
   titoloIniziale,
   graficoIniziale,
+  periodoEreditato,
   onSalvata,
 }: {
   specIniziale?: SpecQuery;
   titoloIniziale?: string;
   graficoIniziale?: TipoGrafico;
+  periodoEreditato?: Periodo;
   onSalvata?: (id: string) => void;
 }): JSX.Element {
   const [vocabolario, setVocabolario] = useState<Vocabolario | null>(null);
   const [spec, setSpec] = useState<SpecQuery | null>(specIniziale ?? null);
+  const [tipologiaScelta, setTipologiaScelta] = useState<ChiaveTipologia | null>(null);
   const [risultato, setRisultato] = useState<RisultatoQuery | null>(null);
   const [caricamento, setCaricamento] = useState(false);
   const [errore, setErrore] = useState("");
@@ -151,6 +176,7 @@ export function EditorAnalisi({
   const [salvataggio, setSalvataggio] = useState<"pronto" | "in_corso" | "salvata">("pronto");
   const [messaggioSalvataggio, setMessaggioSalvataggio] = useState("");
   const titoloModificato = useRef(Boolean(titoloIniziale));
+  const specInizialeRef = useRef(specIniziale);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -162,13 +188,13 @@ export function EditorAnalisi({
       })
       .then((dati) => {
         setVocabolario(dati);
-        setSpec((corrente) =>
-          corrente ?? {
-            metrica: dati.metriche[0]?.chiave ?? "ordinato",
-            modificatore: "corrente",
-            periodo: { anno: new Date().getFullYear() },
-          }
-        );
+        const iniziale = specInizialeRef.current;
+        if (iniziale) {
+          const tipologia = dati.tipologie.find((voce) =>
+            voce.metriche.includes(iniziale.metrica)
+          );
+          setTipologiaScelta(tipologia?.chiave ?? null);
+        }
       })
       .catch((causa: unknown) => {
         if (causa instanceof DOMException && causa.name === "AbortError") return;
@@ -179,10 +205,17 @@ export function EditorAnalisi({
     return () => controller.abort();
   }, []);
 
-  const chiaveSpec = useMemo(() => (spec ? JSON.stringify(spec) : ""), [spec]);
+  const specAnteprima = useMemo(() => {
+    if (!spec || periodoPresente(spec.periodo) || !periodoPresente(periodoEreditato)) return spec;
+    return { ...spec, periodo: { ...periodoEreditato } };
+  }, [periodoEreditato, spec]);
+  const chiaveSpec = useMemo(
+    () => (specAnteprima ? JSON.stringify(specAnteprima) : ""),
+    [specAnteprima]
+  );
 
   useEffect(() => {
-    if (!vocabolario || !spec) return;
+    if (!vocabolario || !specAnteprima) return;
     const controller = new AbortController();
     setCaricamento(true);
     setErrore("");
@@ -193,7 +226,7 @@ export function EditorAnalisi({
       fetch("/api/bi/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spec }),
+        body: JSON.stringify({ spec: specAnteprima }),
         signal: controller.signal,
       })
         .then(async (risposta) => {
@@ -221,7 +254,7 @@ export function EditorAnalisi({
       window.clearTimeout(attesa);
       controller.abort();
     };
-  }, [chiaveSpec, spec, vocabolario]);
+  }, [chiaveSpec, specAnteprima, vocabolario]);
 
   useEffect(() => {
     if (!spec || !vocabolario || titoloModificato.current) return;
@@ -234,6 +267,18 @@ export function EditorAnalisi({
     graficoScelto && grafici.includes(graficoScelto) ? graficoScelto : proposta?.tipo;
   const dimensioniScelte = spec?.raggruppa ?? [];
   const limiteDimensioniRaggiunto = dimensioniScelte.length >= 2;
+  const tipologiaAttiva = vocabolario?.tipologie.find(
+    (voce) => voce.chiave === tipologiaScelta
+  );
+  const metricheVisibili = (tipologiaAttiva?.metriche ?? [])
+    .map((chiave) => vocabolario?.metriche.find((metrica) => metrica.chiave === chiave))
+    .filter((metrica): metrica is VoceMetrica => Boolean(metrica));
+  const chiaviDimensioniAmmesse = spec
+    ? vocabolario?.dimensioniPerMetrica[spec.metrica] ?? []
+    : [];
+  const dimensioniAmmesse = chiaviDimensioniAmmesse
+    .map((chiave) => vocabolario?.dimensioni.find((dimensione) => dimensione.chiave === chiave))
+    .filter((dimensione): dimensione is VoceDimensione => Boolean(dimensione));
 
   function aggiornaSpec(aggiornamento: (corrente: SpecQuery) => SpecQuery) {
     setSpec((corrente) => (corrente ? aggiornamento(corrente) : corrente));
@@ -251,6 +296,46 @@ export function EditorAnalisi({
           : raggruppa.filter((voce) => voce !== dimensione),
       };
     });
+  }
+
+  function scegliTipologia(chiave: ChiaveTipologia) {
+    const tipologia = vocabolario?.tipologie.find((voce) => voce.chiave === chiave);
+    const metrica = tipologia?.metriche[0];
+    if (!metrica) return;
+    setTipologiaScelta(chiave);
+    setSpec({ metrica, modificatore: "corrente" });
+    setGraficoScelto(undefined);
+    titoloModificato.current = false;
+    setSalvataggio("pronto");
+    setMessaggioSalvataggio("");
+  }
+
+  function cambiaMetrica(metrica: ChiaveMetrica) {
+    const ammesse = new Set(vocabolario?.dimensioniPerMetrica[metrica] ?? []);
+    aggiornaSpec((corrente) => ({
+      ...corrente,
+      metrica,
+      raggruppa: corrente.raggruppa?.filter((dimensione) => ammesse.has(dimensione)),
+      filtri: corrente.filtri?.filter((filtro) => ammesse.has(filtro.campo)),
+    }));
+    setGraficoScelto(undefined);
+  }
+
+  function ereditaPeriodo() {
+    aggiornaSpec((corrente) => {
+      const copia = { ...corrente };
+      delete copia.periodo;
+      return copia;
+    });
+  }
+
+  function fissaPeriodo() {
+    aggiornaSpec((corrente) => ({
+      ...corrente,
+      periodo: periodoPresente(periodoEreditato)
+        ? { ...periodoEreditato }
+        : { anno: new Date().getFullYear() },
+    }));
   }
 
   function aggiornaFiltro(indice: number, filtro: Filtro) {
@@ -312,7 +397,7 @@ export function EditorAnalisi({
     );
   }
 
-  if (!vocabolario || !spec) {
+  if (!vocabolario) {
     return (
       <main className="mx-auto w-full max-w-7xl px-4 py-8">
         <Scheletro altezza={520} />
@@ -320,7 +405,9 @@ export function EditorAnalisi({
     );
   }
 
-  const metricaScelta = vocabolario.metriche.find((voce) => voce.chiave === spec.metrica);
+  const metricaScelta = spec
+    ? vocabolario.metriche.find((voce) => voce.chiave === spec.metrica)
+    : undefined;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6">
@@ -332,9 +419,46 @@ export function EditorAnalisi({
         </p>
       </header>
 
+      <section aria-labelledby="titolo-tipologia" className="mb-6">
+        <div className="mb-3">
+          <h2 id="titolo-tipologia" className="font-tenorite text-xl font-semibold">
+            Cosa vuoi analizzare?
+          </h2>
+          <p className="mt-1 text-sm text-text-muted">Scegli l’area con cui parlate dei dati in azienda.</p>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-2" aria-label="Tipologie di analisi">
+          {vocabolario.tipologie.map((tipologia) => {
+            const selezionata = tipologia.chiave === tipologiaScelta;
+            return (
+              <button
+                key={tipologia.chiave}
+                type="button"
+                aria-pressed={selezionata}
+                onClick={() => scegliTipologia(tipologia.chiave)}
+                className={`min-h-24 min-w-44 rounded-xl border p-4 text-left outline-none transition-colors focus:ring-2 focus:ring-primary ${
+                  selezionata
+                    ? "border-primary bg-bg-page text-primary"
+                    : "border-border bg-bg-page hover:text-primary"
+                }`}
+              >
+                <span className="font-tenorite text-lg font-semibold">{tipologia.etichetta}</span>
+                <span className="mt-1 block text-xs leading-relaxed text-text-muted">
+                  {tipologia.descrizione}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {!spec ? (
+        <p className="rounded-xl border border-border bg-bg-page p-5 text-sm text-text-muted">
+          Scegli una tipologia per vedere le metriche e i raggruppamenti disponibili.
+        </p>
+      ) : (
       <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.5fr)] xl:items-start">
         <div className="space-y-4">
-          <Scheda titolo="Cosa guardo" sottotitolo="Scegli la misura certificata">
+          <Scheda titolo="Metrica" sottotitolo={`Solo le misure di ${tipologiaAttiva?.etichetta ?? "questa tipologia"}`}>
             <label className="text-sm font-medium" htmlFor="editor-metrica">
               Metrica
             </label>
@@ -342,15 +466,10 @@ export function EditorAnalisi({
               id="editor-metrica"
               aria-label="Metrica"
               value={spec.metrica}
-              onChange={(evento) =>
-                aggiornaSpec((corrente) => ({
-                  ...corrente,
-                  metrica: evento.target.value as ChiaveMetrica,
-                }))
-              }
+              onChange={(evento) => cambiaMetrica(evento.target.value as ChiaveMetrica)}
               className={`${CLASSE_CAMPO} mt-2`}
             >
-              {vocabolario.metriche.map((metrica) => (
+              {metricheVisibili.map((metrica) => (
                 <option key={metrica.chiave} value={metrica.chiave}>
                   {metrica.etichetta}
                 </option>
@@ -363,11 +482,11 @@ export function EditorAnalisi({
             )}
           </Scheda>
 
-          <Scheda titolo="Come lo spezzo" sottotitolo="Fino a due dimensioni">
+          <Scheda titolo="Raggruppa per" sottotitolo="Fino a due dimensioni">
             <fieldset>
               <legend className="sr-only">Dimensioni</legend>
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                {vocabolario.dimensioni.map((dimensione) => {
+                {dimensioniAmmesse.map((dimensione) => {
                   const selezionata = dimensioniScelte.includes(dimensione.chiave);
                   const disabilitata = limiteDimensioniRaggiunto && !selezionata;
                   return (
@@ -397,64 +516,97 @@ export function EditorAnalisi({
             </fieldset>
           </Scheda>
 
-          <Scheda titolo="Quando" sottotitolo="Periodo, dettaglio temporale e confronto">
-            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-              <label className="text-xs text-text-muted">
-                Anno
-                <input
-                  aria-label="Anno"
-                  type="number"
-                  min={2000}
-                  max={2100}
-                  value={spec.periodo?.anno ?? ""}
-                  placeholder="Tutti"
-                  onChange={(evento) => {
-                    const anno = evento.target.value ? Number(evento.target.value) : undefined;
-                    aggiornaSpec((corrente) => ({
-                      ...corrente,
-                      periodo: anno ? { anno } : {},
-                    }));
-                  }}
-                  className={`${CLASSE_CAMPO} mt-1`}
-                />
-              </label>
-              <label className="text-xs text-text-muted">
-                Dal
-                <input
-                  aria-label="Dal"
-                  type="date"
-                  value={spec.periodo?.dal ?? ""}
-                  onChange={(evento) =>
-                    aggiornaSpec((corrente) => ({
-                      ...corrente,
-                      periodo: {
-                        dal: evento.target.value || undefined,
-                        al: corrente.periodo?.al,
-                      },
-                    }))
-                  }
-                  className={`${CLASSE_CAMPO} mt-1`}
-                />
-              </label>
-              <label className="text-xs text-text-muted">
-                Al
-                <input
-                  aria-label="Al"
-                  type="date"
-                  value={spec.periodo?.al ?? ""}
-                  onChange={(evento) =>
-                    aggiornaSpec((corrente) => ({
-                      ...corrente,
-                      periodo: {
-                        dal: corrente.periodo?.dal,
-                        al: evento.target.value || undefined,
-                      },
-                    }))
-                  }
-                  className={`${CLASSE_CAMPO} mt-1`}
-                />
-              </label>
-            </div>
+          <Scheda titolo="Quando" sottotitolo="Segui la dashboard oppure mantieni un confronto fisso">
+            <fieldset>
+              <legend className="sr-only">Modalità del periodo</legend>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <label className="flex min-h-14 cursor-pointer items-start gap-3 rounded-lg border border-border bg-bg-page p-3 text-sm">
+                  <input
+                    type="radio"
+                    name="modalita-periodo"
+                    checked={!periodoPresente(spec.periodo)}
+                    onChange={ereditaPeriodo}
+                    className="mt-0.5 h-4 w-4 accent-primary"
+                  />
+                  <span>
+                    <span className="block font-medium">Eredita dalla dashboard</span>
+                    <span className="mt-1 block text-xs text-text-muted">Segue il periodo scelto nella pagina.</span>
+                  </span>
+                </label>
+                <label className="flex min-h-14 cursor-pointer items-start gap-3 rounded-lg border border-border bg-bg-page p-3 text-sm">
+                  <input
+                    type="radio"
+                    name="modalita-periodo"
+                    checked={periodoPresente(spec.periodo)}
+                    onChange={fissaPeriodo}
+                    className="mt-0.5 h-4 w-4 accent-primary"
+                  />
+                  <span>
+                    <span className="block font-medium">Fissa un periodo</span>
+                    <span className="mt-1 block text-xs text-text-muted">Resta fermo quando cambia la pagina.</span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+
+            {periodoPresente(spec.periodo) && (
+              <div className="mt-3">
+                <p className="mb-2 text-xs leading-relaxed text-text-muted">
+                  Questo riquadro resterà sul periodo fissato anche quando la dashboard cambia periodo.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+                  <label className="text-xs text-text-muted">
+                    Anno
+                    <input
+                      aria-label="Anno"
+                      type="number"
+                      min={2000}
+                      max={2100}
+                      value={spec.periodo.anno ?? ""}
+                      placeholder="Tutti"
+                      onChange={(evento) => {
+                        const anno = evento.target.value ? Number(evento.target.value) : undefined;
+                        aggiornaSpec((corrente) => ({
+                          ...corrente,
+                          periodo: anno ? { anno } : { dal: corrente.periodo?.dal, al: corrente.periodo?.al },
+                        }));
+                      }}
+                      className={`${CLASSE_CAMPO} mt-1`}
+                    />
+                  </label>
+                  <label className="text-xs text-text-muted">
+                    Dal
+                    <input
+                      aria-label="Dal"
+                      type="date"
+                      value={spec.periodo.dal ?? ""}
+                      onChange={(evento) =>
+                        aggiornaSpec((corrente) => ({
+                          ...corrente,
+                          periodo: { dal: evento.target.value || undefined, al: corrente.periodo?.al },
+                        }))
+                      }
+                      className={`${CLASSE_CAMPO} mt-1`}
+                    />
+                  </label>
+                  <label className="text-xs text-text-muted">
+                    Al
+                    <input
+                      aria-label="Al"
+                      type="date"
+                      value={spec.periodo.al ?? ""}
+                      onChange={(evento) =>
+                        aggiornaSpec((corrente) => ({
+                          ...corrente,
+                          periodo: { dal: corrente.periodo?.dal, al: evento.target.value || undefined },
+                        }))
+                      }
+                      className={`${CLASSE_CAMPO} mt-1`}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
             <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <label className="text-xs text-text-muted">
                 Granularità
@@ -511,7 +663,7 @@ export function EditorAnalisi({
                     ...corrente,
                     filtri: [
                       ...(corrente.filtri ?? []),
-                      { campo: vocabolario.dimensioni[0]?.chiave ?? "bu", op: "eq", valore: "" },
+                      { campo: dimensioniAmmesse[0]?.chiave ?? "bu", op: "eq", valore: "" },
                     ],
                   }))
                 }
@@ -539,7 +691,7 @@ export function EditorAnalisi({
                       }
                       className={CLASSE_CAMPO}
                     >
-                      {vocabolario.dimensioni.map((dimensione) => (
+                      {dimensioniAmmesse.map((dimensione) => (
                         <option key={dimensione.chiave} value={dimensione.chiave}>
                           {dimensione.etichetta}
                         </option>
@@ -638,6 +790,12 @@ export function EditorAnalisi({
               )}
             </div>
 
+            {!periodoPresente(spec.periodo) && (
+              <p className="mt-3 text-xs leading-relaxed text-text-muted">
+                Anteprima con il periodo ereditato: {descriviPeriodo(periodoEreditato)}. La spec salvata non fissa il periodo.
+              </p>
+            )}
+
             {risultato && proposta && tipoGrafico && (
               <div className="mt-4 border-t border-border pt-4">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-end">
@@ -714,6 +872,7 @@ export function EditorAnalisi({
           </Scheda>
         </section>
       </div>
+      )}
     </main>
   );
 }

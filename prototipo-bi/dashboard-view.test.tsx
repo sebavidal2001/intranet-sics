@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   DashboardView,
+  type AnalisiDashboard,
   type DashboardCompleta,
 } from "@/components/prototipo-bi/dashboard-view";
 
@@ -144,5 +145,75 @@ describe("Dashboard a pagine", () => {
       specs: unknown[];
     };
     expect(secondoBody.specs).toHaveLength(1);
+  });
+
+  it("offre i tre modi di aggiunta e collega dalla libreria una volta sola", async () => {
+    const analisiLibreria: AnalisiDashboard = {
+      id: "analisi-libreria",
+      titolo: "Ordini dalla libreria",
+      descrizione: "Una domanda già pronta",
+      spec: { metrica: "n_ordini" },
+      grafico: "kpi",
+      autore_id: "utente-1",
+      visibilita: "privata",
+    };
+    const spiaFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/bi/analisi") {
+        return { ok: true, json: async () => ({ analisi: [analisiLibreria] }) };
+      }
+      if (url.endsWith("/riquadri") && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            riquadro: {
+              id: "riquadro-nuovo",
+              pagina_id: "pagina-1",
+              analisi_id: analisiLibreria.id,
+              titolo: null,
+              posizione: 2,
+              larghezza: 6,
+              altezza: 4,
+              grafico: null,
+            },
+          }),
+        };
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        specs?: Array<{ id: string }>;
+      };
+      return {
+        ok: true,
+        json: async () => ({
+          risultati: (body.specs ?? []).map(({ id }) => ({
+            id,
+            risultato: {
+              spec: {}, metrica: "ordinato", unita: "euro", righe: [],
+              totale: 10, certificata: true, avvisi: [],
+            },
+          })),
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", spiaFetch);
+
+    render(
+      <DashboardView
+        dashboardIniziale={{ ...DASHBOARD, modificabile: true }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
+    expect(screen.getByRole("tab", { name: "Dalla libreria" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Costruisci" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Chiedi all'AI" })).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Aggiungi alla pagina" }));
+    await waitFor(() => {
+      const chiamate = spiaFetch.mock.calls.filter(([input, init]) =>
+        String(input).endsWith("/riquadri") && init?.method === "POST"
+      );
+      expect(chiamate).toHaveLength(1);
+    });
   });
 });

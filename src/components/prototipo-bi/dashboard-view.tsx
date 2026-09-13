@@ -24,12 +24,18 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Filter,
   LoaderCircle,
   Plus,
   Trash2,
   X,
 } from "lucide-react";
+import {
+  AggiungiRiquadro,
+  type AnalisiAggiungibile,
+  type RiquadroCreato,
+} from "./aggiungi-riquadro";
 import { GraficoDaRisultato } from "./grafico-da-risultato";
 import {
   fondiFiltriPaginaConEsito,
@@ -76,6 +82,7 @@ export interface DashboardCompleta {
   autore_id: string;
   visibilita: "privata" | "condivisa";
   modificabile?: boolean;
+  di_sistema?: boolean;
   pagine: PaginaDashboard[];
 }
 
@@ -135,8 +142,8 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
   const [nuovaPagina, setNuovaPagina] = useState(false);
   const [titoloPagina, setTitoloPagina] = useState("");
   const [pannelloAnalisi, setPannelloAnalisi] = useState(false);
-  const [analisiDisponibili, setAnalisiDisponibili] = useState<AnalisiDashboard[]>([]);
   const [azioneInCorso, setAzioneInCorso] = useState(false);
+  const [duplicazioneInCorso, setDuplicazioneInCorso] = useState(false);
 
   const caricaDashboard = useCallback(async () => {
     if (!dashboardId) return;
@@ -262,34 +269,30 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     setAzioneInCorso(false);
   }
 
-  async function apriAnalisi() {
-    setPannelloAnalisi(true);
-    if (analisiDisponibili.length > 0) return;
-    const risposta = await fetch("/api/bi/analisi");
-    const corpo = (await risposta.json()) as { analisi?: AnalisiDashboard[]; error?: string };
-    if (risposta.ok) setAnalisiDisponibili(corpo.analisi ?? []);
-    else setErrore(messaggioErrore(corpo, "Impossibile leggere le analisi."));
+  function registraRiquadro(analisi: AnalisiAggiungibile, riquadro: RiquadroCreato) {
+    if (!paginaAttiva) return;
+    sostituisciPagina({
+      ...paginaAttiva,
+      riquadri: [...paginaAttiva.riquadri, { ...riquadro, analisi }],
+    });
+    setPannelloAnalisi(false);
   }
 
-  async function aggiungiAnalisi(analisi: AnalisiDashboard) {
-    if (!paginaAttiva) return;
-    setAzioneInCorso(true);
-    const risposta = await fetch(`/api/bi/dashboard/pagine/${paginaAttiva.id}/riquadri`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analisi_id: analisi.id }),
-    });
-    const corpo = (await risposta.json()) as { riquadro?: Omit<RiquadroDashboard, "analisi">; error?: string };
-    if (risposta.ok && corpo.riquadro) {
-      sostituisciPagina({
-        ...paginaAttiva,
-        riquadri: [...paginaAttiva.riquadri, { ...corpo.riquadro, analisi }],
-      });
-      setPannelloAnalisi(false);
-    } else {
-      setErrore(messaggioErrore(corpo, "Impossibile aggiungere l'analisi."));
+  async function duplicaDashboard() {
+    if (!dashboard || duplicazioneInCorso) return;
+    setDuplicazioneInCorso(true);
+    setErrore(null);
+    try {
+      const risposta = await fetch(`/api/bi/dashboard/${dashboard.id}/duplica`, { method: "POST" });
+      const corpo = (await risposta.json()) as { dashboard?: { id: string }; error?: string };
+      if (!risposta.ok || !corpo.dashboard) {
+        throw new Error(messaggioErrore(corpo, "Impossibile duplicare la dashboard."));
+      }
+      window.location.assign(`/bi/dashboard/${corpo.dashboard.id}`);
+    } catch (causa) {
+      setErrore(causa instanceof Error ? causa.message : "Impossibile duplicare la dashboard.");
+      setDuplicazioneInCorso(false);
     }
-    setAzioneInCorso(false);
   }
 
   async function aggiornaRiquadri(riquadri: RiquadroDashboard[], modifiche: Array<Record<string, unknown>>) {
@@ -337,6 +340,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
   }
 
   const filtri = filtriPuliti(paginaAttiva?.filtri);
+  const filtriModificabili = modificabile || dashboard.di_sistema === true;
   const modalitaPeriodo = filtri.periodo?.anno !== undefined ? "anno" : "intervallo";
 
   return (
@@ -347,8 +351,12 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
             <h1 className="font-tenorite text-3xl font-bold tracking-[-0.02em]">{dashboard.titolo}</h1>
             {dashboard.descrizione && <p className="mt-1 max-w-3xl text-sm text-text-muted">{dashboard.descrizione}</p>}
           </div>
-          <div className="flex items-center gap-2 text-xs text-text-muted">
+          <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-text-muted">
             <span className="rounded-full border border-border bg-bg px-2.5 py-1">{dashboard.visibilita === "condivisa" ? "Condivisa" : "Privata"}</span>
+            <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm font-semibold text-text hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">
+              {duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+              Duplica
+            </button>
             {queryInCorso && <span className="inline-flex items-center gap-1.5"><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden />Aggiornamento</span>}
           </div>
         </header>
@@ -387,7 +395,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                 <span className="mb-1 block">Periodo</span>
                 <select
                   value={modalitaPeriodo}
-                  disabled={!modificabile}
+                  disabled={!filtriModificabili}
                   onChange={(evento) => aggiornaFiltri({ ...filtri, periodo: evento.target.value === "anno" ? { anno: new Date().getFullYear() } : {} })}
                   onBlur={() => void salvaFiltriPagina()}
                   className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
@@ -396,34 +404,32 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                 </select>
               </label>
               {modalitaPeriodo === "anno" ? (
-                <label className="text-xs text-text-muted"><span className="mb-1 block">Anno</span><input type="number" value={filtri.periodo?.anno ?? new Date().getFullYear()} disabled={!modificabile} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { anno: Number(e.target.value) } })} onBlur={() => void salvaFiltriPagina()} className="h-9 w-24 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+                <label className="text-xs text-text-muted"><span className="mb-1 block">Anno</span><input type="number" value={filtri.periodo?.anno ?? new Date().getFullYear()} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { anno: Number(e.target.value) } })} onBlur={() => void salvaFiltriPagina()} className="h-9 w-24 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
               ) : (
                 <>
-                  <label className="text-xs text-text-muted"><span className="mb-1 block">Dal</span><input type="date" value={filtri.periodo?.dal ?? ""} disabled={!modificabile} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { ...filtri.periodo, anno: undefined, dal: e.target.value || undefined } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
-                  <label className="text-xs text-text-muted"><span className="mb-1 block">Al</span><input type="date" value={filtri.periodo?.al ?? ""} disabled={!modificabile} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { ...filtri.periodo, anno: undefined, al: e.target.value || undefined } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+                  <label className="text-xs text-text-muted"><span className="mb-1 block">Dal</span><input type="date" value={filtri.periodo?.dal ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { ...filtri.periodo, anno: undefined, dal: e.target.value || undefined } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+                  <label className="text-xs text-text-muted"><span className="mb-1 block">Al</span><input type="date" value={filtri.periodo?.al ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { ...filtri.periodo, anno: undefined, al: e.target.value || undefined } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
                 </>
               )}
-              <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Business unit</span><input value={filtri.bu ?? ""} disabled={!modificabile} onChange={(e) => aggiornaFiltri({ ...filtri, bu: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutte" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
-              <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Agente</span><input value={filtri.agente ?? ""} disabled={!modificabile} onChange={(e) => aggiornaFiltri({ ...filtri, agente: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutti" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
-              {modificabile && <button type="button" onClick={() => void apriAnalisi()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Aggiungi analisi</button>}
+              <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Business unit</span><input value={filtri.bu ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, bu: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutte" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+              <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Agente</span><input value={filtri.agente ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, agente: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutti" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+              {modificabile && <button type="button" onClick={() => setPannelloAnalisi(true)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button>}
             </section>
 
             {errore && <div role="alert" className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger"><span>{errore}</span><button type="button" onClick={() => setErrore(null)} aria-label="Chiudi avviso"><X className="h-4 w-4" /></button></div>}
 
             {pannelloAnalisi && (
-              <section className="mb-5 border-y border-border bg-bg py-4" aria-label="Analisi disponibili">
-                <div className="mb-3 flex items-center justify-between"><div><h2 className="font-tenorite text-lg font-bold">Scegli un’analisi</h2><p className="text-xs text-text-muted">Le analisi già presenti nella pagina non possono essere aggiunte due volte.</p></div><button type="button" onClick={() => setPannelloAnalisi(false)} className="rounded-lg p-2 text-text-muted hover:bg-bg-page" aria-label="Chiudi elenco"><X className="h-4 w-4" /></button></div>
-                <div className="divide-y divide-border border-y border-border">
-                  {analisiDisponibili.length === 0 ? <p className="py-6 text-center text-sm text-text-muted">Nessuna analisi disponibile.</p> : analisiDisponibili.map((analisi) => {
-                    const presente = paginaAttiva.riquadri.some((riquadro) => riquadro.analisi_id === analisi.id);
-                    return <div key={analisi.id} className="flex items-center justify-between gap-4 py-3"><div><p className="text-sm font-semibold">{analisi.titolo}</p>{analisi.descrizione && <p className="mt-0.5 text-xs text-text-muted">{analisi.descrizione}</p>}</div><button type="button" disabled={presente || azioneInCorso} onClick={() => void aggiungiAnalisi(analisi)} className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-primary hover:bg-bg-page disabled:cursor-not-allowed disabled:opacity-45">{presente ? "Già presente" : "Aggiungi"}</button></div>;
-                  })}
-                </div>
-              </section>
+              <AggiungiRiquadro
+                paginaId={paginaAttiva.id}
+                filtriPagina={paginaAttiva.filtri}
+                analisiPresenti={paginaAttiva.riquadri.map((riquadro) => riquadro.analisi_id)}
+                onAggiunta={registraRiquadro}
+                onChiudi={() => setPannelloAnalisi(false)}
+              />
             )}
 
             {paginaAttiva.riquadri.length === 0 ? (
-              <div className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-12 text-center"><BarChart3 className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Questa pagina è pronta per la prima analisi</h2><p className="mt-1 max-w-md text-sm text-text-muted">Aggiungi una domanda salvata: verrà eseguita con questi filtri e con il tuo perimetro dati.</p>{modificabile && <button type="button" onClick={() => void apriAnalisi()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white"><Plus className="h-4 w-4" />Aggiungi analisi</button>}</div>
+              <div className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-12 text-center"><BarChart3 className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Questa pagina è pronta per la prima analisi</h2><p className="mt-1 max-w-md text-sm text-text-muted">Aggiungi una domanda salvata: verrà eseguita con questi filtri e con il tuo perimetro dati.</p>{modificabile && <button type="button" onClick={() => setPannelloAnalisi(true)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white"><Plus className="h-4 w-4" />Aggiungi</button>}</div>
             ) : (
               <div className="grid grid-cols-12 gap-4">
                 {paginaAttiva.riquadri.map((riquadro, indice) => {

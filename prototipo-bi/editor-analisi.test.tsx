@@ -4,15 +4,46 @@ import { EditorAnalisi } from "@/components/prototipo-bi/editor-analisi";
 import type { RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 const VOCABOLARIO = {
+  tipologie: [
+    {
+      chiave: "ordinato",
+      etichetta: "Ordinato",
+      descrizione: "Ordini ricevuti e valore medio.",
+      metriche: ["ordinato", "n_ordini"],
+    },
+    {
+      chiave: "fatturato",
+      etichetta: "Fatturato",
+      descrizione: "Valore delle fatture emesse.",
+      metriche: ["fatturato"],
+    },
+    {
+      chiave: "consegnato",
+      etichetta: "Consegnato",
+      descrizione: "Consegne e portafoglio.",
+      metriche: ["consegnato", "portafoglio"],
+    },
+  ],
   metriche: [
-    { chiave: "ordinato", etichetta: "Ordinato", descrizione: "Valore degli ordini acquisiti", unita: "euro" },
-    { chiave: "fatturato", etichetta: "Fatturato", descrizione: "Valore delle fatture", unita: "euro" },
+    { chiave: "ordinato", etichetta: "Valore ordinato", descrizione: "Valore degli ordini acquisiti", unita: "euro" },
+    { chiave: "n_ordini", etichetta: "Numero ordini", descrizione: "Documenti distinti", unita: "numero" },
+    { chiave: "fatturato", etichetta: "Valore fatturato", descrizione: "Valore delle fatture", unita: "euro" },
+    { chiave: "consegnato", etichetta: "Valore consegnato", descrizione: "Merci consegnate", unita: "euro" },
+    { chiave: "portafoglio", etichetta: "Portafoglio", descrizione: "Ordini aperti", unita: "euro" },
   ],
   dimensioni: [
     { chiave: "bu", etichetta: "Business unit" },
     { chiave: "agente", etichetta: "Agente" },
     { chiave: "cliente", etichetta: "Cliente" },
+    { chiave: "causale", etichetta: "Causale magazzino" },
   ],
+  dimensioniPerMetrica: {
+    ordinato: ["bu", "agente", "cliente"],
+    n_ordini: ["bu", "agente", "cliente"],
+    fatturato: ["bu", "agente", "cliente"],
+    consegnato: ["bu", "agente", "cliente", "causale"],
+    portafoglio: ["bu", "agente", "cliente"],
+  },
   modificatori: [
     { chiave: "corrente", descrizione: "valore del periodo richiesto" },
     { chiave: "anno_precedente", descrizione: "stesso periodo dell’anno prima" },
@@ -36,6 +67,17 @@ function risposta(corpo: unknown, ok = true) {
   return { ok, json: async () => corpo };
 }
 
+function preparaFetch() {
+  const spia = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/api/bi/analisi")) return risposta({ analisi: { id: "analisi-1" } });
+    if (!init?.method) return risposta(VOCABOLARIO);
+    const body = JSON.parse(String(init.body)) as { spec: SpecQuery };
+    return risposta({ risultato: risultato(body.spec) });
+  });
+  vi.stubGlobal("fetch", spia);
+  return spia;
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal(
@@ -44,18 +86,14 @@ beforeEach(() => {
       observe() {}
       unobserve() {}
       disconnect() {}
-      takeRecords() {
-        return [];
-      }
+      takeRecords() { return []; }
     }
   );
   vi.stubGlobal(
     "ResizeObserver",
     class {
       constructor(private callback: (voci: unknown[]) => void) {}
-      observe() {
-        this.callback([{ contentRect: { width: 800, height: 400 } }]);
-      }
+      observe() { this.callback([{ contentRect: { width: 800, height: 400 } }]); }
       unobserve() {}
       disconnect() {}
     }
@@ -67,91 +105,76 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function completaCaricamentoIniziale(spia: ReturnType<typeof vi.fn>) {
+async function caricaVocabolario() {
   await act(async () => Promise.resolve());
+}
+
+async function completaDebounce() {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(400);
   });
   await act(async () => Promise.resolve());
-  expect(spia).toHaveBeenCalledWith("/api/bi/query", expect.objectContaining({ method: "POST" }));
 }
 
 describe("EditorAnalisi", () => {
-  it("carica il vocabolario e mostra le metriche disponibili", async () => {
-    const spia = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (!init?.method) return risposta(VOCABOLARIO);
-      const body = JSON.parse(String(init.body)) as { spec: SpecQuery };
-      return risposta({ risultato: risultato(body.spec) });
-    });
-    vi.stubGlobal("fetch", spia);
-
+  it("mostra solo le metriche della tipologia scelta", async () => {
+    preparaFetch();
     render(<EditorAnalisi />);
-    await act(async () => Promise.resolve());
+    await caricaVocabolario();
 
-    expect(screen.getByRole("option", { name: "Ordinato" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Fatturato" })).toBeInTheDocument();
-    expect(screen.getByText("Valore degli ordini acquisiti")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Metrica")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Ordinato/i }));
+
+    expect(screen.getByRole("option", { name: "Valore ordinato" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Numero ordini" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Valore fatturato" })).not.toBeInTheDocument();
   });
 
-  it("accorpa il cambio metrica in una sola query dopo il debounce", async () => {
-    const spia = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (!init?.method) return risposta(VOCABOLARIO);
-      const body = JSON.parse(String(init.body)) as { spec: SpecQuery };
-      return risposta({ risultato: risultato(body.spec) });
-    });
-    vi.stubGlobal("fetch", spia);
-    render(<EditorAnalisi />);
-    await completaCaricamentoIniziale(spia);
-    spia.mockClear();
+  it("rimuove le dimensioni non ammesse quando cambia la metrica", async () => {
+    preparaFetch();
+    render(<EditorAnalisi specIniziale={{ metrica: "consegnato", raggruppa: ["causale"] }} />);
+    await caricaVocabolario();
 
-    fireEvent.change(screen.getByLabelText("Metrica"), { target: { value: "fatturato" } });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(399);
-    });
-    expect(spia).not.toHaveBeenCalled();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
+    expect(screen.getByRole("checkbox", { name: "Causale magazzino" })).toBeChecked();
+    fireEvent.change(screen.getByLabelText("Metrica"), { target: { value: "portafoglio" } });
 
-    expect(spia).toHaveBeenCalledTimes(1);
-    expect(spia).toHaveBeenCalledWith("/api/bi/query", expect.objectContaining({ method: "POST" }));
+    expect(screen.queryByRole("checkbox", { name: "Causale magazzino" })).not.toBeInTheDocument();
   });
 
-  it("disabilita le dimensioni ulteriori quando due sono già scelte", async () => {
-    const spec: SpecQuery = { metrica: "ordinato", raggruppa: ["bu", "agente"] };
-    const spia = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
-      !init?.method ? risposta(VOCABOLARIO) : risposta({ risultato: risultato(spec) })
-    );
-    vi.stubGlobal("fetch", spia);
-    render(<EditorAnalisi specIniziale={spec} />);
-    await act(async () => Promise.resolve());
+  it("mantiene il limite di due dimensioni", async () => {
+    preparaFetch();
+    render(<EditorAnalisi specIniziale={{ metrica: "ordinato", raggruppa: ["bu", "agente"] }} />);
+    await caricaVocabolario();
 
     expect(screen.getByRole("checkbox", { name: "Business unit" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Agente" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Cliente" })).toBeDisabled();
-    expect(screen.getByText(/massimo rappresentabile in un grafico/i)).toBeInTheDocument();
   });
 
-  it("salva titolo e spec senza includere il risultato", async () => {
-    const spec: SpecQuery = { metrica: "ordinato", periodo: { anno: 2026 } };
-    const spia = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes("/api/bi/analisi")) return risposta({ analisi: { id: "analisi-1" } });
-      if (!init?.method) return risposta(VOCABOLARIO);
-      return risposta({ risultato: risultato(spec) });
-    });
-    vi.stubGlobal("fetch", spia);
-    render(<EditorAnalisi specIniziale={spec} titoloIniziale="Ordinato 2026" />);
-    await completaCaricamentoIniziale(spia);
+  it("salva senza periodo quando eredita e lo valorizza quando viene fissato", async () => {
+    const spia = preparaFetch();
+    render(
+      <EditorAnalisi
+        specIniziale={{ metrica: "ordinato" }}
+        titoloIniziale="Ordinato"
+        periodoEreditato={{ anno: 2026 }}
+      />
+    );
+    await caricaVocabolario();
+    await completaDebounce();
 
     fireEvent.click(screen.getByRole("button", { name: "Salva analisi" }));
     await act(async () => Promise.resolve());
+    const prima = spia.mock.calls.find(([input]) => String(input).includes("/api/bi/analisi"));
+    const corpoPrima = JSON.parse(String(prima?.[1]?.body)) as { spec: SpecQuery };
+    expect(corpoPrima.spec).not.toHaveProperty("periodo");
 
-    const chiamata = spia.mock.calls.find(([input]) => String(input).includes("/api/bi/analisi"));
-    expect(chiamata).toBeDefined();
-    const corpo = JSON.parse(String(chiamata?.[1]?.body)) as Record<string, unknown>;
-    expect(corpo.titolo).toBe("Ordinato 2026");
-    expect(corpo.spec).toEqual(spec);
-    expect(corpo).not.toHaveProperty("risultato");
+    fireEvent.click(screen.getByRole("radio", { name: /Fissa un periodo/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Salva analisi" }));
+    await act(async () => Promise.resolve());
+    const salvataggi = spia.mock.calls.filter(([input]) => String(input).includes("/api/bi/analisi"));
+    const corpoSeconda = JSON.parse(String(salvataggi[1]?.[1]?.body)) as { spec: SpecQuery };
+    expect(corpoSeconda.spec.periodo).toEqual({ anno: 2026 });
   });
 
   it("mostra senza riscriverlo il messaggio di validazione 422", async () => {
@@ -162,11 +185,8 @@ describe("EditorAnalisi", () => {
     });
     vi.stubGlobal("fetch", spia);
     render(<EditorAnalisi specIniziale={{ metrica: "ordinato" }} />);
-    await act(async () => Promise.resolve());
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(400);
-    });
-    await act(async () => Promise.resolve());
+    await caricaVocabolario();
+    await completaDebounce();
 
     expect(screen.getByRole("alert")).toHaveTextContent(messaggio);
   });

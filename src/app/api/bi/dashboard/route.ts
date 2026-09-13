@@ -21,6 +21,8 @@ interface DashboardElencoDb {
   visibilita: "privata" | "condivisa";
   creato_il: string;
   aggiornato_il: string;
+  chiave: string | null;
+  di_sistema: boolean;
   dashboard_pagine?: Array<{ count: number }>;
 }
 
@@ -31,7 +33,7 @@ export async function GET() {
   const { data, error: erroreDb } = await createAdminClient()
     .schema("bi_direzionale")
     .from("dashboard")
-    .select("id,titolo,descrizione,autore_id,visibilita,creato_il,aggiornato_il,dashboard_pagine(count)")
+    .select("id,titolo,descrizione,autore_id,visibilita,creato_il,aggiornato_il,chiave,di_sistema,dashboard_pagine(count)")
     .or(`autore_id.eq.${pre.accesso.userId},visibilita.eq.condivisa`)
     .order("aggiornato_il", { ascending: false });
 

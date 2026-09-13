@@ -11,14 +11,17 @@ async function proprietarioPagina(paginaId: string) {
   return createAdminClient()
     .schema("bi_direzionale")
     .from("dashboard_pagine")
-    .select("id,dashboard_id,dashboard!inner(autore_id)")
+    .select("id,dashboard_id,dashboard!inner(autore_id,di_sistema)")
     .eq("id", paginaId)
     .maybeSingle();
 }
 
-function autoreDellaDashboard(valore: unknown): string | null {
-  if (!oggettoJson(valore)) return null;
-  return typeof valore.autore_id === "string" ? valore.autore_id : null;
+function statoDashboard(valore: unknown): { autoreId: string | null; diSistema: boolean } {
+  if (!oggettoJson(valore)) return { autoreId: null, diSistema: false };
+  return {
+    autoreId: typeof valore.autore_id === "string" ? valore.autore_id : null,
+    diSistema: valore.di_sistema === true,
+  };
 }
 
 export async function POST(request: NextRequest, { params }: Contesto) {
@@ -54,7 +57,11 @@ export async function POST(request: NextRequest, { params }: Contesto) {
   const { data: paginaDb, error: errorePagina } = await proprietarioPagina(pagina);
   if (errorePagina) return errore("Impossibile verificare la pagina.", 500);
   if (!paginaDb) return errore("Pagina non trovata", 404);
-  if (autoreDellaDashboard(paginaDb.dashboard) !== pre.accesso.userId) {
+  const dashboard = statoDashboard(paginaDb.dashboard);
+  if (dashboard.diSistema) {
+    return negato("Il Cruscotto di sistema non si modifica: duplicalo per creare la tua versione.");
+  }
+  if (dashboard.autoreId !== pre.accesso.userId) {
     await registraOperazione(pre.accesso, "negato", { errore: "Aggiunta riquadro consentita solo all'autore." });
     return negato("Puoi aggiungere riquadri soltanto alle tue dashboard.");
   }
@@ -131,7 +138,11 @@ export async function PATCH(request: NextRequest, { params }: Contesto) {
   const { data: paginaDb, error: errorePagina } = await proprietarioPagina(pagina);
   if (errorePagina) return errore("Impossibile verificare la pagina.", 500);
   if (!paginaDb) return errore("Pagina non trovata", 404);
-  if (autoreDellaDashboard(paginaDb.dashboard) !== pre.accesso.userId) {
+  const dashboard = statoDashboard(paginaDb.dashboard);
+  if (dashboard.diSistema) {
+    return negato("Il Cruscotto di sistema non si modifica: duplicalo per creare la tua versione.");
+  }
+  if (dashboard.autoreId !== pre.accesso.userId) {
     await registraOperazione(pre.accesso, "negato", { errore: "Modifica riquadri consentita solo all'autore." });
     return negato("Puoi modificare riquadri soltanto nelle tue dashboard.");
   }
@@ -176,7 +187,11 @@ export async function DELETE(request: NextRequest, { params }: Contesto) {
   const { data: paginaDb, error: errorePagina } = await proprietarioPagina(pagina);
   if (errorePagina) return errore("Impossibile verificare la pagina.", 500);
   if (!paginaDb) return errore("Pagina non trovata", 404);
-  if (autoreDellaDashboard(paginaDb.dashboard) !== pre.accesso.userId) {
+  const dashboard = statoDashboard(paginaDb.dashboard);
+  if (dashboard.diSistema) {
+    return negato("Il Cruscotto di sistema non si modifica: duplicalo per creare la tua versione.");
+  }
+  if (dashboard.autoreId !== pre.accesso.userId) {
     await registraOperazione(pre.accesso, "negato", { errore: "Rimozione riquadro consentita solo all'autore." });
     return negato("Puoi togliere riquadri soltanto dalle tue dashboard.");
   }

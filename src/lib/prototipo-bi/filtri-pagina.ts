@@ -14,10 +14,9 @@
  *     pagina è filtrata su IMPIANTI. Il filtro di pagina scartato viene
  *     restituito in `filtriPaginaIgnorati`, così il riquadro può dirlo invece
  *     di mentire in silenzio;
- *   - sul PERIODO vince la pagina, perché è la cosa che si cambia di
- *     continuo. Se un riquadro lo ignorasse, il selettore in alto mostrerebbe
- *     un periodo che parte dei grafici non rispetta — e nessuno se ne
- *     accorgerebbe guardando lo schermo.
+ *   - sul PERIODO la pagina completa una spec che non ne ha uno. Un periodo
+ *     esplicito resta invece fermo per consentire confronti storici, e l'esito
+ *     segnala che il periodo della pagina non è stato applicato.
  */
 
 import type { Dimensione, Filtro, Periodo, SpecQuery } from "./tipi";
@@ -31,6 +30,7 @@ export interface FiltriPagina {
 export interface EsitoFusioneFiltriPagina {
   spec: SpecQuery;
   filtriPaginaIgnorati: Dimensione[];
+  periodoIgnorato: boolean;
 }
 
 function periodoPresente(periodo: Periodo | undefined): periodo is Periodo {
@@ -47,9 +47,8 @@ function filtriDellaPagina(filtri: FiltriPagina): Filtro[] {
 }
 
 /**
- * Mantiene la domanda originale piu specifica sui filtri dimensionali, ma fa
- * governare il periodo alla pagina: senza questa eccezione il selettore comune
- * mostrerebbe un periodo che alcuni riquadri ignorano silenziosamente.
+ * Mantiene la domanda originale più specifica e usa i filtri della pagina
+ * soltanto per completarla; l'esito rende visibili gli eventuali conflitti.
  */
 export function fondiFiltriPaginaConEsito(
   spec: SpecQuery,
@@ -62,19 +61,23 @@ export function fondiFiltriPaginaConEsito(
     .filter((filtro) => dimensioniSpec.has(filtro.campo))
     .map((filtro) => filtro.campo);
   const aggiunti = proposti.filter((filtro) => !dimensioniSpec.has(filtro.campo));
-  const haPeriodo = periodoPresente(filtriPagina.periodo);
+  const haPeriodoPagina = periodoPresente(filtriPagina.periodo);
+  const haPeriodoSpec = periodoPresente(spec.periodo);
+  const periodoIgnorato = haPeriodoPagina && haPeriodoSpec;
+  const applicaPeriodoPagina = haPeriodoPagina && !haPeriodoSpec;
 
-  if (aggiunti.length === 0 && !haPeriodo) {
-    return { spec, filtriPaginaIgnorati };
+  if (aggiunti.length === 0 && !applicaPeriodoPagina) {
+    return { spec, filtriPaginaIgnorati, periodoIgnorato };
   }
 
   return {
     spec: {
       ...spec,
       ...(aggiunti.length > 0 ? { filtri: [...esistenti, ...aggiunti] } : {}),
-      ...(haPeriodo ? { periodo: { ...filtriPagina.periodo } } : {}),
+      ...(applicaPeriodoPagina ? { periodo: { ...filtriPagina.periodo } } : {}),
     },
     filtriPaginaIgnorati,
+    periodoIgnorato,
   };
 }
 

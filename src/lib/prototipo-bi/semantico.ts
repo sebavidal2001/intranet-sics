@@ -33,6 +33,7 @@ import type {
   UnitaMisura,
 } from "./tipi";
 import { dataDaIso, settimanaIso } from "./calendario";
+import { dimensioniPerMetrica, TIPOLOGIE } from "./tassonomia";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Catalogo delle metriche
@@ -325,7 +326,15 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
 
 /** Descrizione del vocabolario, da passare all'AI come contesto. */
 export function vocabolario() {
+  const dimensioniAmmesse = Object.fromEntries(
+    Object.keys(CATALOGO).map((chiave) => [
+      chiave,
+      dimensioniPerMetrica(chiave as ChiaveMetrica),
+    ])
+  ) as Record<ChiaveMetrica, Dimensione[]>;
+
   return {
+    tipologie: TIPOLOGIE,
     metriche: Object.values(CATALOGO).map((m) => ({
       chiave: m.chiave,
       etichetta: m.etichetta,
@@ -342,6 +351,7 @@ export function vocabolario() {
       chiave: k,
       etichetta: v.etichetta,
     })),
+    dimensioniPerMetrica: dimensioniAmmesse,
     granularita: ["giorno", "settimana", "mese", "anno"],
   };
 }

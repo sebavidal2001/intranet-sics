@@ -11,7 +11,7 @@ async function dashboardAutore(id: string) {
   return createAdminClient()
     .schema("bi_direzionale")
     .from("dashboard")
-    .select("id,autore_id")
+    .select("id,autore_id,di_sistema")
     .eq("id", id)
     .maybeSingle();
 }
@@ -43,7 +43,10 @@ export async function GET(_request: NextRequest, { params }: Contesto) {
 
   await registraOperazione(pre.accesso, "ok", { righe: 1 });
   return NextResponse.json({
-    dashboard: { ...data, modificabile: data.autore_id === pre.accesso.userId },
+    dashboard: {
+      ...data,
+      modificabile: data.autore_id === pre.accesso.userId && data.di_sistema !== true,
+    },
   });
 }
 
@@ -63,6 +66,9 @@ export async function PATCH(request: NextRequest, { params }: Contesto) {
   const { data: esistente, error: erroreLettura } = await dashboardAutore(id);
   if (erroreLettura) return errore("Impossibile verificare la dashboard.", 500);
   if (!esistente) return errore("Dashboard non trovata", 404);
+  if (esistente.di_sistema) {
+    return negato("Il Cruscotto di sistema non si modifica: duplicalo per creare la tua versione.");
+  }
   if (esistente.autore_id !== pre.accesso.userId) {
     await registraOperazione(pre.accesso, "negato", { errore: "Modifica consentita solo all'autore." });
     return negato("Puoi modificare soltanto le tue dashboard.");
@@ -113,6 +119,9 @@ export async function DELETE(_request: NextRequest, { params }: Contesto) {
   const { data: esistente, error: erroreLettura } = await dashboardAutore(id);
   if (erroreLettura) return errore("Impossibile verificare la dashboard.", 500);
   if (!esistente) return errore("Dashboard non trovata", 404);
+  if (esistente.di_sistema) {
+    return negato("Il Cruscotto di sistema non si elimina: duplicalo per creare la tua versione.");
+  }
   if (esistente.autore_id !== pre.accesso.userId) {
     await registraOperazione(pre.accesso, "negato", { errore: "Eliminazione consentita solo all'autore." });
     return negato("Puoi eliminare soltanto le tue dashboard.");

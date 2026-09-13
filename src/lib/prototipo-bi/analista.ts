@@ -26,6 +26,7 @@ import { instrada, calcolaCosto, MODELLI, type Complessita, type Consumo } from 
 import { leggiConfigurazione } from "./archivio";
 import { eseguiSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
 import { graficiPossibili, scegliGrafico, type TipoGrafico } from "./scelta-grafico";
+import { calcolaPunteggi, costruisciContesto, rilevaTutto } from "./rilevatori";
 import {
   verificaNumeri,
   type EsitoVerifica,
@@ -33,12 +34,17 @@ import {
 } from "./verifica-numeri";
 import type {
   Briefing,
+  ConfigurazioneAnno,
+  Dimensione,
+  FamigliaRilevatore,
+  Periodo,
   RuoloBriefing,
   Segnale,
   Snapshot,
   SpecQuery,
   RisultatoQuery,
   VoceBriefing,
+  UnitaMisura,
 } from "./tipi";
 
 function haChiave() {
@@ -263,8 +269,89 @@ function strumentiPer(sqlLibero: boolean) {
 }
 
 const STRUMENTI_SQL = new Set(["descrivi_schema_sql", "esegui_sql_bi"]);
+const NOMI_STRUMENTI_ANALISI = new Set<NomeStrumentoAnalisi>([
+  "rileva_anomalie",
+  "confronta_periodi",
+  "scomponi_variazione",
+  "classifica",
+]);
 
 const STRUMENTI_TUTTI = [
+  {
+    type: "function",
+    function: {
+      name: "rileva_anomalie",
+      description:
+        "Trova anomalie, rotture di serie, concentrazioni e altri segnali già calcolati " +
+        "dai rilevatori deterministici. È il primo strumento per andamenti strani o cali.",
+      parameters: {
+        type: "object",
+        properties: {
+          famiglie: { type: "array", items: { type: "string" } },
+          periodo: {
+            type: "object",
+            properties: { dal: { type: "string" }, al: { type: "string" }, anno: { type: "number" } },
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "confronta_periodi",
+      description:
+        "Confronta la stessa metrica fra due periodi e mette in cima i gruppi con la maggiore variazione assoluta.",
+      parameters: {
+        type: "object",
+        properties: {
+          metrica: { type: "string" },
+          periodoA: { type: "object" },
+          periodoB: { type: "object" },
+          raggruppa: { type: "string" },
+        },
+        required: ["metrica", "periodoA", "periodoB"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "scomponi_variazione",
+      description:
+        "Scompone la variazione fra due periodi nei contributi per dimensione. Dice DOVE nasce " +
+        "la differenza, non PERCHÉ: non aggiungere cause speculative.",
+      parameters: {
+        type: "object",
+        properties: {
+          metrica: { type: "string" },
+          da: { type: "object" },
+          a: { type: "object" },
+          dimensione: { type: "string" },
+        },
+        required: ["metrica", "da", "a", "dimensione"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "classifica",
+      description:
+        "Calcola top o bottom N per una dimensione, con quota sul totale e quota cumulata Pareto.",
+      parameters: {
+        type: "object",
+        properties: {
+          metrica: { type: "string" },
+          dimensione: { type: "string" },
+          verso: { type: "string", enum: ["alto", "basso"] },
+          quanti: { type: "number", minimum: 1, maximum: 50 },
+          periodo: { type: "object" },
+        },
+        required: ["metrica", "dimensione", "verso"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -479,6 +566,10 @@ INTERPRETAZIONE: <una riga: metrica, periodo, taglio>
 Non anteporre titoli, saluti o altro testo a questa riga.
 
 STRUMENTI
+- rileva_anomalie: usalo per primo davanti ad anomalie, andamenti strani o cali.
+- confronta_periodi: per affiancare due periodi e vedere chi si è mosso di più.
+- scomponi_variazione: per localizzare DOVE nasce una variazione, senza inventarne le cause.
+- classifica: per top, bottom e analisi Pareto con quote cumulative.
 - proponi_analisi: usalo ogni volta che la risposta si capisce meglio con un
   grafico: confronti, andamenti nel tempo, classifiche e composizioni.
 - interroga_metrica: usalo quando serve solo un numero dentro una frase.
@@ -595,6 +686,259 @@ function aggiungiValoriRisultato(
       fonte: `${spec.metrica} per ${riga.etichetta}`,
       unita: risultato.unita,
     });
+  }
+}
+
+export type NomeStrumentoAnalisi =
+  | "rileva_anomalie"
+  | "confronta_periodi"
+  | "scomponi_variazione"
+  | "classifica";
+
+interface DestinazioneStrumentoAnalisi {
+  valoriNoti?: ValoreNoto[];
+  interrogazioni?: RispostaAnalista["interrogazioni"];
+  passi?: PassoAnalista[];
+  configurazione?: ConfigurazioneAnno | null;
+}
+
+const FAMIGLIE_RILEVATORI: FamigliaRilevatore[] = [
+  "scostamento_budget",
+  "rottura_serie",
+  "clienti_dormienti",
+  "concentrazione",
+  "pipeline",
+  "portafoglio",
+  "qualita_dato",
+];
+
+function argomentiOggetto(argomento: unknown): Record<string, unknown> {
+  const valore: unknown = typeof argomento === "string" ? JSON.parse(argomento || "{}") : argomento;
+  if (!valore || typeof valore !== "object" || Array.isArray(valore)) {
+    throw new Error("Gli argomenti devono essere un oggetto JSON.");
+  }
+  return valore as Record<string, unknown>;
+}
+
+function validaPeriodoAnalisi(valore: unknown, nome: string, obbligatorio = true): Periodo | undefined {
+  if (valore === undefined && !obbligatorio) return undefined;
+  if (!valore || typeof valore !== "object" || Array.isArray(valore)) {
+    throw new Error(`${nome} deve essere un periodo con dal/al oppure anno.`);
+  }
+  const grezzo = valore as Record<string, unknown>;
+  const dal = grezzo.dal === undefined ? undefined : String(grezzo.dal);
+  const al = grezzo.al === undefined ? undefined : String(grezzo.al);
+  const anno = grezzo.anno === undefined ? undefined : Number(grezzo.anno);
+  const dataValida = (data: string) => /^\d{4}-\d{2}-\d{2}$/u.test(data);
+  if ((dal && !dataValida(dal)) || (al && !dataValida(al))) {
+    throw new Error(`${nome} contiene una data non valida: usare yyyy-mm-dd.`);
+  }
+  if (anno !== undefined && (!Number.isInteger(anno) || anno < 1900 || anno > 2200)) {
+    throw new Error(`${nome} contiene un anno non valido.`);
+  }
+  if (!dal && !al && anno === undefined) throw new Error(`${nome} è vuoto.`);
+  if (dal && al && dal > al) throw new Error(`${nome}: la data iniziale supera quella finale.`);
+  return { dal, al, anno };
+}
+
+function specRaggruppata(
+  arg: Record<string, unknown>,
+  periodo: Periodo,
+  campoDimensione: "raggruppa" | "dimensione"
+): SpecQuery {
+  const dimensione = String(arg[campoDimensione] ?? "") as Dimensione;
+  return validaSpec({ metrica: arg.metrica, raggruppa: [dimensione], periodo });
+}
+
+function registraRisultato(
+  spec: SpecQuery,
+  risultato: RisultatoQuery,
+  destinazione?: DestinazioneStrumentoAnalisi
+) {
+  if (destinazione?.valoriNoti) aggiungiValoriRisultato(spec, risultato, destinazione.valoriNoti);
+  destinazione?.interrogazioni?.push({ spec, totale: risultato.totale, righe: risultato.righe.length });
+}
+
+function aggiungiValore(
+  destinazione: DestinazioneStrumentoAnalisi | undefined,
+  valore: number | null,
+  fonte: string,
+  unita: UnitaMisura
+) {
+  if (valore !== null && Number.isFinite(valore)) {
+    destinazione?.valoriNoti?.push({ valore, fonte, unita });
+  }
+}
+
+function snapshotNelPeriodo(snapshot: Snapshot, periodo?: Periodo): Snapshot {
+  if (!periodo) return snapshot;
+  const dentro = (data: string) => {
+    if (periodo.anno !== undefined && Number(data.slice(0, 4)) !== periodo.anno) return false;
+    if (periodo.dal && data < periodo.dal) return false;
+    if (periodo.al && data > periodo.al) return false;
+    return true;
+  };
+  const dataset = { ...snapshot.dataset };
+  for (const chiave of Object.keys(dataset) as Array<keyof Snapshot["dataset"]>) {
+    dataset[chiave] = snapshot.dataset[chiave].filter((riga) => dentro(riga.data));
+  }
+  const date = Object.values(dataset).flat().map((riga) => riga.data).filter(Boolean).sort();
+  return {
+    ...snapshot,
+    dataset,
+    dataMinima: date[0] ?? null,
+    dataMassima: date.at(-1) ?? periodo.al ?? (periodo.anno ? `${periodo.anno}-12-31` : null),
+  };
+}
+
+/**
+ * Espone i calcoli analitici senza modello né database: gli stessi risultati
+ * usati in chat possono così essere verificati con snapshot costruiti a mano.
+ */
+export function eseguiStrumentoAnalisi(
+  nome: NomeStrumentoAnalisi,
+  argomento: unknown,
+  snapshot: Snapshot,
+  destinazione?: DestinazioneStrumentoAnalisi
+): string {
+  try {
+    const arg = argomentiOggetto(argomento);
+
+    if (nome === "rileva_anomalie") {
+      const periodo = validaPeriodoAnalisi(arg.periodo, "periodo", false);
+      const famiglieGrezze = arg.famiglie === undefined ? FAMIGLIE_RILEVATORI : arg.famiglie;
+      if (!Array.isArray(famiglieGrezze)) throw new Error("famiglie deve essere un elenco.");
+      const famiglie = famiglieGrezze.map(String) as FamigliaRilevatore[];
+      const nonValide = famiglie.filter((famiglia) => !FAMIGLIE_RILEVATORI.includes(famiglia));
+      if (nonValide.length) throw new Error(`Famiglie non valide: ${nonValide.join(", ")}.`);
+      const contesto = costruisciContesto(
+        snapshotNelPeriodo(snapshot, periodo),
+        destinazione?.configurazione ?? null
+      );
+      const segnali = calcolaPunteggi(rilevaTutto(contesto))
+        .filter((segnale) => famiglie.includes(segnale.famiglia))
+        .map((segnale) => ({
+          famiglia: segnale.famiglia,
+          titolo: segnale.titolo,
+          descrizione: segnale.descrizione,
+          magnitudineEuro: segnale.magnitudineEuro,
+          direzione: segnale.direzione,
+          punteggio: segnale.punteggio,
+        }));
+      for (const segnale of segnali) {
+        aggiungiValore(destinazione, segnale.magnitudineEuro, segnale.titolo, "euro");
+        aggiungiValore(destinazione, segnale.punteggio, `punteggio ${segnale.titolo}`, "numero");
+      }
+      destinazione?.passi?.push({
+        tipo: "interrogazione",
+        descrizione: `Rilevate ${segnali.length} anomalie e segnali deterministici`,
+        righe: segnali.length,
+      });
+      return JSON.stringify({ segnali });
+    }
+
+    if (nome === "confronta_periodi") {
+      const periodoA = validaPeriodoAnalisi(arg.periodoA, "periodoA")!;
+      const periodoB = validaPeriodoAnalisi(arg.periodoB, "periodoB")!;
+      const dimensione = arg.raggruppa === undefined ? undefined : String(arg.raggruppa);
+      const base = { metrica: arg.metrica, raggruppa: dimensione ? [dimensione] : [] };
+      const specA = validaSpec({ ...base, periodo: periodoA });
+      const specB = validaSpec({ ...base, periodo: periodoB });
+      const risultatoA = esegui(specA, snapshot);
+      const risultatoB = esegui(specB, snapshot);
+      registraRisultato(specA, risultatoA, destinazione);
+      registraRisultato(specB, risultatoB, destinazione);
+      const valoriA = new Map(risultatoA.righe.map((riga) => [riga.etichetta, riga.valore]));
+      const valoriB = new Map(risultatoB.righe.map((riga) => [riga.etichetta, riga.valore]));
+      const etichette = new Set([...valoriA.keys(), ...valoriB.keys()]);
+      const righe = [...etichette].map((etichetta) => {
+        const valoreA = valoriA.get(etichetta) ?? 0;
+        const valoreB = valoriB.get(etichetta) ?? 0;
+        const delta = valoreB - valoreA;
+        const deltaPct = valoreA === 0 ? null : (delta / Math.abs(valoreA)) * 100;
+        aggiungiValore(destinazione, delta, `variazione ${etichetta}`, risultatoA.unita);
+        aggiungiValore(destinazione, deltaPct, `variazione percentuale ${etichetta}`, "percentuale");
+        return { etichetta, valoreA, valoreB, delta, deltaPct };
+      }).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+      destinazione?.passi?.push({
+        tipo: "interrogazione",
+        descrizione: `Confronto ${String(arg.metrica)} fra due periodi${dimensione ? ` per ${dimensione}` : ""}`,
+        righe: righe.length,
+      });
+      return JSON.stringify({ metrica: risultatoA.metrica, unita: risultatoA.unita, righe });
+    }
+
+    if (nome === "scomponi_variazione") {
+      const da = validaPeriodoAnalisi(arg.da, "da")!;
+      const a = validaPeriodoAnalisi(arg.a, "a")!;
+      const specDa = specRaggruppata(arg, da, "dimensione");
+      const specA = specRaggruppata(arg, a, "dimensione");
+      const risultatoDa = esegui(specDa, snapshot);
+      const risultatoA = esegui(specA, snapshot);
+      registraRisultato(specDa, risultatoDa, destinazione);
+      registraRisultato(specA, risultatoA, destinazione);
+      const valoriDa = new Map(risultatoDa.righe.map((riga) => [riga.etichetta, riga.valore]));
+      const valoriA = new Map(risultatoA.righe.map((riga) => [riga.etichetta, riga.valore]));
+      const etichette = new Set([...valoriDa.keys(), ...valoriA.keys()]);
+      const contributi = [...etichette].map((etichetta) => ({
+        etichetta,
+        valoreDa: valoriDa.get(etichetta) ?? 0,
+        valoreA: valoriA.get(etichetta) ?? 0,
+        contributo: (valoriA.get(etichetta) ?? 0) - (valoriDa.get(etichetta) ?? 0),
+      })).sort((x, y) => Math.abs(y.contributo) - Math.abs(x.contributo));
+      const variazioneTotale = risultatoA.totale - risultatoDa.totale;
+      const sommaContributi = contributi.reduce((somma, voce) => somma + voce.contributo, 0);
+      for (const voce of contributi) {
+        aggiungiValore(destinazione, voce.contributo, `contributo ${voce.etichetta}`, risultatoA.unita);
+      }
+      aggiungiValore(destinazione, variazioneTotale, "variazione totale", risultatoA.unita);
+      destinazione?.passi?.push({
+        tipo: "interrogazione",
+        descrizione: `Scomposta la variazione di ${String(arg.metrica)} per ${String(arg.dimensione)}`,
+        righe: contributi.length,
+        totale: variazioneTotale,
+      });
+      return JSON.stringify({
+        metrica: risultatoA.metrica,
+        unita: risultatoA.unita,
+        variazioneTotale,
+        sommaContributi,
+        verifica: sommaContributi === variazioneTotale,
+        contributi,
+      });
+    }
+
+    const periodo = validaPeriodoAnalisi(arg.periodo, "periodo", false);
+    if (arg.verso !== "alto" && arg.verso !== "basso") throw new Error('verso deve essere "alto" o "basso".');
+    const quanti = arg.quanti === undefined ? 10 : Number(arg.quanti);
+    if (!Number.isInteger(quanti) || quanti < 1 || quanti > 50) throw new Error("quanti deve essere fra 1 e 50.");
+    const spec = specRaggruppata(arg, periodo ?? {}, "dimensione");
+    const risultato = esegui(spec, snapshot);
+    registraRisultato(spec, risultato, destinazione);
+    const ordinate = [...risultato.righe].sort((a, b) =>
+      arg.verso === "alto" ? b.valore - a.valore : a.valore - b.valore
+    );
+    let cumulato = 0;
+    const selezionate = ordinate.slice(0, quanti);
+    const righe = selezionate.map((riga, indice) => {
+      const quota = risultato.totale === 0 ? 0 : (riga.valore / risultato.totale) * 100;
+      cumulato += quota;
+      const quotaCumulata = selezionate.length === ordinate.length && indice === selezionate.length - 1 ? 100 : cumulato;
+      aggiungiValore(destinazione, quota, `quota ${riga.etichetta}`, "percentuale");
+      aggiungiValore(destinazione, quotaCumulata, `quota cumulata ${riga.etichetta}`, "percentuale");
+      return { etichetta: riga.etichetta, valore: riga.valore, quota, quotaCumulata };
+    });
+    destinazione?.passi?.push({
+      tipo: "interrogazione",
+      descrizione: `${arg.verso === "alto" ? "Top" : "Bottom"} ${quanti} ${String(arg.metrica)} per ${String(arg.dimensione)}`,
+      righe: righe.length,
+      totale: risultato.totale,
+    });
+    return JSON.stringify({ metrica: risultato.metrica, unita: risultato.unita, totale: risultato.totale, righe });
+  } catch (errore) {
+    const messaggio = errore instanceof Error ? errore.message : String(errore);
+    destinazione?.passi?.push({ tipo: "errore", descrizione: messaggio });
+    return JSON.stringify({ errore: messaggio });
   }
 }
 
@@ -733,6 +1077,27 @@ export async function chiediAnalista(opzioni: {
 
   // ── Esecuzione degli strumenti ──────────────────────────────────────────
   async function eseguiStrumento(nome: string, argomenti: string): Promise<string> {
+    if (NOMI_STRUMENTI_ANALISI.has(nome as NomeStrumentoAnalisi)) {
+      let configurazione: ConfigurazioneAnno | null = null;
+      if (nome === "rileva_anomalie") {
+        const anno = Number((snapshot.dataMassima ?? "").slice(0, 4));
+        if (Number.isInteger(anno)) {
+          try {
+            configurazione = await leggiConfigurazione(anno);
+          } catch {
+            // Budget e chiusure affinano alcuni segnali, ma la loro assenza non
+            // deve togliere all'analista i rilevatori basati sullo snapshot.
+            configurazione = null;
+          }
+        }
+      }
+      return eseguiStrumentoAnalisi(nome as NomeStrumentoAnalisi, argomenti, snapshot, {
+        valoriNoti,
+        interrogazioni,
+        passi,
+        configurazione,
+      });
+    }
     const arg = JSON.parse(argomenti || "{}");
 
     if (nome === "proponi_analisi") {
@@ -991,17 +1356,29 @@ export async function chiediAnalista(opzioni: {
   }
 
   for (let passo = 0; passo < rotta.massimoPassi; passo++) {
+    const ultimoPasso = passo === rotta.massimoPassi - 1;
+    if (ultimoPasso) {
+      messaggi.push({
+        role: "user",
+        content:
+          "Rispondi ora con quello che hai raccolto, dichiarando chiaramente cosa non hai " +
+          "potuto verificare. Non chiamare altri strumenti.",
+      });
+    }
     const esito = await chiamaModello(rotta.modello.id, messaggi, {
-      strumenti: strumentiPer(sqlLibero),
+      ...(ultimoPasso ? {} : { strumenti: strumentiPer(sqlLibero) }),
       temperatura: 0.2,
       maxToken: 1800,
     });
     ingresso += esito.ingresso;
     uscita += esito.uscita;
 
-    if (esito.toolCalls.length === 0) {
+    if (esito.toolCalls.length === 0 || ultimoPasso) {
       passi.push({ tipo: "risposta", descrizione: "Risposta finale" });
-      const risposta = await verificaECorreggi(esito.testo);
+      const testoFinale = esito.testo.trim() ||
+        "Non sono riuscito a completare tutte le verifiche richieste, ma i dati raccolti " +
+        "nei passaggi precedenti restano disponibili qui sotto.";
+      const risposta = await verificaECorreggi(testoFinale);
       return {
         testo: risposta.testo,
         interpretazione: risposta.interpretazione,
@@ -1041,9 +1418,11 @@ export async function chiediAnalista(opzioni: {
   }
 
   return {
-    testo:
-      "Ho raggiunto il numero massimo di interrogazioni senza arrivare a una risposta " +
-      "conclusiva. Prova a restringere la domanda a un periodo, una business unit o un agente.",
+    testo: interrogazioni.length
+      ? "Ho raccolto questi dati ma non sono arrivato a una conclusione:\n" +
+        interrogazioni.map((voce) => `- ${voce.spec.metrica}: ${voce.righe} righe`).join("\n")
+      : "Non sono riuscito ad arrivare a una conclusione con i dati disponibili. " +
+        "Prova a indicare un periodo o una dimensione più precisa.",
     interpretazione: null,
     verifica: { numeri: [], nonVerificati: 0 },
     correzioneApplicata: false,

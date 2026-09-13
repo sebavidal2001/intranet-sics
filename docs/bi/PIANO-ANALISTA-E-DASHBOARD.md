@@ -135,6 +135,11 @@ con *un'analisi* — una `SpecQuery` più il grafico giusto. Sotto la risposta c
 "aggiungi alla dashboard", e il riquadro finisce in una pagina. Da lì l'utente lo
 modifica a mano nell'editor, perché è lo stesso oggetto.
 
+> [!info] Metà strada è fatta (13/09/2026)
+> `proponi_analisi` produce già l'oggetto giusto, e `/api/prototipo-bi/analisi` lo
+> salva. Alla dashboard mancano il livello `pagina` e l'editor manuale: il pulsante
+> "Salva" c'è, "aggiungi alla pagina" arriverà con la tabella `dashboard_pagine`.
+
 Questo chiude il cerchio delle tre richieste: **manuale e AI producono la stessa
 cosa**, e quella cosa è verificabile, salvabile, condivisibile e stampabile in un
 report.
@@ -147,7 +152,7 @@ report.
 |---|---|---|
 | 1 | ✅ Troncamento dichiarato | Fatto: era la causa degli errori veri |
 | 2 | Interpretazione in chiaro + verifica numerica | Rende gli altri errori **visibili**. Senza, ogni miglioria è a occhio |
-| 3 | L'analista restituisce analisi (spec + grafico), non solo testo | È il pezzo che abilita sia la dashboard sia i report |
+| 3 | ✅ **Fatto il 13/09** — `scegliGrafico` + `<GraficoDaRisultato>` + strumento `proponi_analisi` + API `/analisi` | È il pezzo che abilita sia la dashboard sia i report |
 | 4 | Dashboard a pagine + editor manuale | Il grosso del valore per l'utente |
 | 5 | Report Word/Excel con grafici e sintesi | Poggia sul 3: senza analisi strutturate resterebbe un dump più bello |
 | 6 | Strumenti nuovi per l'analista (confronti, scomposizioni, coorti) | Ha senso quando le risposte sono già verificabili |

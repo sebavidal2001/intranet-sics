@@ -59,14 +59,69 @@ export interface Instradamento {
   massimoPassi: number;
 }
 
-/** Segnali che la domanda richiede ragionamento, non solo lettura. */
-const SEGNALI_ANALITICI = [
-  "perché", "perche", "come mai", "spiega", "analizza", "analisi",
-  "confronta", "confronto", "rispetto a", "differenza", "scostamento",
-  "trend", "andamento", "evoluzione",
-  "chi", "quali clienti", "quali agenti",
-  "problema", "anomalia", "strano", "preoccupa",
+/**
+ * Le radici coprono flessioni e plurali senza trasformare il routing in un
+ * dizionario fragile: "andamenti" deve valere quanto "andamento".
+ *
+ * Si confrontano a INIZIO PAROLA, non ovunque nel testo. Con un semplice
+ * `includes` la radice "cal" scattava dentro "fiscale", "locale" e
+ * "calendario": non sbagliava le risposte — nel dubbio si sale — ma faceva
+ * pagare il modello grande per domande che chiedono un numero solo. Le forme
+ * di "calare" sono quindi elencate per esteso, che è meno elegante e più
+ * onesto.
+ */
+const RADICI_ANALITICHE = [
+  "andament",
+  "anomal",
+  "confront",
+  "scostament",
+  "variazion",
+  "concentr",
+  "evoluz",
+  "trend",
+  "crescit",
+  "calo",
+  "cali",
+  "calat",
+  "calan",
+  "perdit",
+  "perdend",
+  "spieg",
+  "analizz",
+  "differenz",
+  "rispetto a",
+  "come mai",
+  "perch",
 ];
+
+const MESI = [
+  "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+  "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+];
+
+function almenoDueCorrispondenze(testo: string, espressione: RegExp): boolean {
+  return (testo.match(espressione) ?? []).length >= 2;
+}
+
+function haSegnaleStrutturale(domanda: string): boolean {
+  const dueAnni = almenoDueCorrispondenze(domanda, /\b(?:19|20)\d{2}\b/gu);
+  const dueMesi = MESI.filter((mese) => domanda.includes(mese)).length >= 2;
+  const negazioneConAcquisto =
+    /\b(?:non|senza|mai)\b/u.test(domanda) &&
+    /\b(?:acquist\w*|compr\w*|ordin(?:ano|ava|avano|ato|ati|are|ato))\b/u.test(domanda);
+  const superlativo =
+    /(?:^|\s)(?:più|meno)(?=\s|$|[,.?!])/u.test(domanda) ||
+    /\b(?:peggior\w*|miglior\w*|top|primi?\w*|ultimi?\w*)\b/u.test(domanda);
+  const dimensioniNominate = [
+    /\bclient\w*/u,
+    /\bagent\w*/u,
+    /\b(?:business unit|bu)\b/u,
+    /\barticol\w*/u,
+    /\bmes[ei]\b/u,
+  ].filter((segnale) => segnale.test(domanda)).length;
+
+  return dueAnni || dueMesi || negazioneConAcquisto || superlativo || dimensioniNominate > 1;
+}
 
 const SEGNALI_PROFONDI = [
   "previsione", "prevedi", "previsto", "stima", "stimi", "proiezione",
@@ -89,7 +144,14 @@ export function instrada(domanda: string, forzato?: Complessita): Instradamento 
   const d = domanda.toLowerCase();
 
   let complessita: Complessita = "semplice";
-  if (SEGNALI_ANALITICI.some((s) => d.includes(s))) complessita = "analitica";
+  // Confine di parola davanti alla radice: le espressioni con lo spazio
+  // ("rispetto a", "come mai") restano cercate come sono.
+  const colpita = (radice: string) =>
+    radice.includes(" ") ? d.includes(radice) : new RegExp(`\\b${radice}`, "u").test(d);
+
+  if (RADICI_ANALITICHE.some(colpita) || haSegnaleStrutturale(d)) {
+    complessita = "analitica";
+  }
   if (SEGNALI_PROFONDI.some((s) => d.includes(s))) complessita = "profonda";
 
   // Una domanda lunga contiene quasi sempre più richieste insieme.

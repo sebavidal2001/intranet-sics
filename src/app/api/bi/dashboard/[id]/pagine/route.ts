@@ -11,10 +11,15 @@ async function verificaAutoreDashboard(id: string, utenteId: string) {
   const { data, error: erroreDb } = await createAdminClient()
     .schema("bi_direzionale")
     .from("dashboard")
-    .select("id,autore_id")
+    .select("id,autore_id,di_sistema")
     .eq("id", id)
     .maybeSingle();
-  return { autorizzato: data?.autore_id === utenteId, esiste: Boolean(data), erroreDb };
+  return {
+    autorizzato: data?.autore_id === utenteId && data.di_sistema !== true,
+    diSistema: data?.di_sistema === true,
+    esiste: Boolean(data),
+    erroreDb,
+  };
 }
 
 export async function POST(request: NextRequest, { params }: Contesto) {
@@ -36,6 +41,9 @@ export async function POST(request: NextRequest, { params }: Contesto) {
   const verifica = await verificaAutoreDashboard(id, pre.accesso.userId);
   if (verifica.erroreDb) return errore("Impossibile verificare la dashboard.", 500);
   if (!verifica.esiste) return errore("Dashboard non trovata", 404);
+  if (verifica.diSistema) {
+    return negato("Il Cruscotto di sistema non si modifica: duplicalo per creare la tua versione.");
+  }
   if (!verifica.autorizzato) {
     await registraOperazione(pre.accesso, "negato", { errore: "Aggiunta pagina consentita solo all'autore." });
     return negato("Puoi aggiungere pagine soltanto alle tue dashboard.");
@@ -98,6 +106,9 @@ export async function PATCH(request: NextRequest, { params }: Contesto) {
   const verifica = await verificaAutoreDashboard(id, pre.accesso.userId);
   if (verifica.erroreDb) return errore("Impossibile verificare la dashboard.", 500);
   if (!verifica.esiste) return errore("Dashboard non trovata", 404);
+  if (verifica.diSistema) {
+    return negato("Il Cruscotto di sistema non si modifica: duplicalo per creare la tua versione.");
+  }
   if (!verifica.autorizzato) {
     await registraOperazione(pre.accesso, "negato", { errore: "Modifica pagine consentita solo all'autore." });
     return negato("Puoi modificare pagine soltanto nelle tue dashboard.");

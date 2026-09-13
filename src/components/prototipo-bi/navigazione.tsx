@@ -8,17 +8,19 @@ import {
   Settings2,
   MessageSquareText,
   ShoppingCart,
-  Compass,
   LayoutGrid,
 } from "lucide-react";
 
+// "Esplora" non compare piu' come voce: comporre un'analisi non e' una
+// destinazione, e' il modo in cui si aggiunge un riquadro a una pagina. La
+// route resta raggiungibile per i link diretti (`/bi/esplora?analisi=<id>`),
+// che è come si apre un'analisi salvata per modificarla.
 const VOCI = [
   { href: "/bi", etichetta: "Briefing", icona: Sunrise },
   { href: "/bi/cruscotto", etichetta: "Cruscotto", icona: LayoutDashboard },
+  { href: "/bi/dashboard", etichetta: "Dashboard", icona: LayoutGrid },
   { href: "/bi/articoli", etichetta: "Articoli & Acquisti", icona: ShoppingCart },
   { href: "/bi/analista", etichetta: "Analista", icona: MessageSquareText },
-  { href: "/bi/esplora", etichetta: "Esplora", icona: Compass },
-  { href: "/bi/dashboard", etichetta: "Dashboard", icona: LayoutGrid },
   { href: "/bi/configurazione", etichetta: "Budget & BEP", icona: Settings2 },
 ];
 
