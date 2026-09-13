@@ -23,6 +23,7 @@ import { esegui, validaSpec, vocabolario, formattaEuro } from "./semantico";
 import { calcolaPrevisione, type Previsione } from "./previsione";
 import { instrada, calcolaCosto, MODELLI, type Complessita, type Consumo } from "./modelli";
 import { leggiConfigurazione } from "./archivio";
+import { chiusureEffettive } from "./chiusure-dedotte";
 import { eseguiSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
 import { graficiPossibili, scegliGrafico, type TipoGrafico } from "./scelta-grafico";
 import { validaSerieAnalisi } from "./analisi-composita";
@@ -1274,7 +1275,10 @@ export async function chiediAnalista(opzioni: {
         precedenteAlGiorno: precAlGiorno.totale,
         precedenteIntero: precIntero.totale,
         serieMensile: serie.righe,
-        chiusure: config?.chiusure ?? [],
+        // Come per i rilevatori: senza calendario compilato le chiusure si
+        // deducono, altrimenti la proiezione estrapola agosto come se fosse
+        // un mese di lavoro normale e la stima di fine anno esce bassa.
+        chiusure: chiusureEffettive(config?.chiusure, snapshot, anno).chiusure,
         escludiWeekend: config?.escludiWeekend ?? true,
       });
 

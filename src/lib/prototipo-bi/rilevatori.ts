@@ -25,6 +25,7 @@ import {
   distribuisci,
 } from "./budget";
 import { costruisciCalendario, dataDaIso, iso, settimanaIso } from "./calendario";
+import { chiusureEffettive } from "./chiusure-dedotte";
 import type {
   ConfigurazioneAnno,
   DistribuzioneBudget,
@@ -212,7 +213,10 @@ function serieSettimanale(
   for (const a of [anno - 1, anno]) {
     const cal = costruisciCalendario(
       a,
-      ctx.config?.chiusure ?? [],
+      // Se il calendario aziendale non e' compilato, le chiusure si deducono
+      // dai dati: senza, le due settimane di agosto senza un solo documento
+      // diventerebbero una rottura di serie da annunciare in briefing.
+      chiusureEffettive(ctx.config?.chiusure, ctx.snapshot, a).chiusure,
       ctx.config?.escludiWeekend ?? true
     );
     for (const g of cal) {
