@@ -25,6 +25,7 @@ import { calcolaPrevisione, type Previsione } from "./previsione";
 import { instrada, calcolaCosto, MODELLI, type Complessita, type Consumo } from "./modelli";
 import { leggiConfigurazione } from "./archivio";
 import { eseguiSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
+import { graficiPossibili, scegliGrafico, type TipoGrafico } from "./scelta-grafico";
 import {
   verificaNumeri,
   type EsitoVerifica,
@@ -36,6 +37,7 @@ import type {
   Segnale,
   Snapshot,
   SpecQuery,
+  RisultatoQuery,
   VoceBriefing,
 } from "./tipi";
 
@@ -316,6 +318,50 @@ const STRUMENTI_TUTTI = [
   {
     type: "function",
     function: {
+      name: "proponi_analisi",
+      description:
+        "Crea un'analisi visuale certificata, già eseguita, con il grafico più adatto. " +
+        "Usalo per confronti, andamenti nel tempo, classifiche e composizioni.",
+      parameters: {
+        type: "object",
+        properties: {
+          titolo: {
+            type: "string",
+            description: "Titolo breve dell'analisi, per esempio Ordinato per business unit, 2026",
+          },
+          spec: { type: "object", description: "SpecQuery certificata da eseguire" },
+          grafico: {
+            type: "string",
+            enum: [
+              "linee",
+              "barre",
+              "combo",
+              "torta",
+              "anelli",
+              "areeImpilate",
+              "pareto",
+              "bullet",
+              "heatmap",
+              "quadranti",
+              "imbuto",
+              "treemap",
+              "sparkline",
+              "kpi",
+              "tabella",
+            ],
+          },
+          commento: {
+            type: "string",
+            description: "Una riga che spiega cosa mostra l'analisi",
+          },
+        },
+        required: ["titolo", "spec"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "descrivi_schema_sql",
       description:
         "Restituisce viste e colonne autorizzate prima di comporre una query SQL. " +
@@ -433,7 +479,9 @@ INTERPRETAZIONE: <una riga: metrica, periodo, taglio>
 Non anteporre titoli, saluti o altro testo a questa riga.
 
 STRUMENTI
-- interroga_metrica: per KPI, confronti ricorrenti e misure certificate.
+- proponi_analisi: usalo ogni volta che la risposta si capisce meglio con un
+  grafico: confronti, andamenti nel tempo, classifiche e composizioni.
+- interroga_metrica: usalo quando serve solo un numero dentro una frase.
 ${strumentiSql}- prevedi_chiusura_anno: per ogni stima di fine anno. NON calcolare proiezioni
   a mente: sbaglieresti e nessuno potrebbe rifare il conto.
 - prepara_documento: quando serve un file Excel o Word.
@@ -498,6 +546,15 @@ export interface DocumentoProposto {
   blocchi: Array<{ titolo: string; spec?: SpecQuery; sql?: string }>;
 }
 
+export interface AnalisiProposta {
+  titolo: string;
+  spec: SpecQuery;
+  grafico: TipoGrafico;
+  motivoGrafico: string;
+  commento?: string;
+  risultato: RisultatoQuery;
+}
+
 export interface RispostaAnalista {
   testo: string;
   interpretazione: string | null;
@@ -505,6 +562,7 @@ export interface RispostaAnalista {
   correzioneApplicata: boolean;
   passi: PassoAnalista[];
   interrogazioni: { spec: SpecQuery; totale: number; righe: number }[];
+  analisi: AnalisiProposta[];
   previsioni: Previsione[];
   documenti: DocumentoProposto[];
   motore: "openrouter" | "non_disponibile";
@@ -512,6 +570,105 @@ export interface RispostaAnalista {
   complessita: Complessita;
   motivoModello: string;
   consumo: Consumo | null;
+}
+
+interface DestinazioneAnalisi {
+  analisi: AnalisiProposta[];
+  valoriNoti: ValoreNoto[];
+  interrogazioni?: RispostaAnalista["interrogazioni"];
+  passi?: PassoAnalista[];
+}
+
+function aggiungiValoriRisultato(
+  spec: SpecQuery,
+  risultato: RisultatoQuery,
+  valoriNoti: ValoreNoto[]
+) {
+  valoriNoti.push({
+    valore: risultato.totale,
+    fonte: `totale di ${spec.metrica}`,
+    unita: risultato.unita,
+  });
+  for (const riga of risultato.righe) {
+    valoriNoti.push({
+      valore: riga.valore,
+      fonte: `${spec.metrica} per ${riga.etichetta}`,
+      unita: risultato.unita,
+    });
+  }
+}
+
+/**
+ * Isola il solo strumento visuale per poter verificare validazione e numeri
+ * senza coinvolgere il modello: una risposta tool fallita deve consumare un
+ * passo, non interrompere l'intera conversazione.
+ */
+export function eseguiPropostaAnalisi(
+  argomento: unknown,
+  snapshot: Snapshot,
+  destinazione: DestinazioneAnalisi
+): string {
+  try {
+    if (!argomento || typeof argomento !== "object" || Array.isArray(argomento)) {
+      throw new Error("Argomenti di proponi_analisi non validi.");
+    }
+    const arg = argomento as Record<string, unknown>;
+    const titolo = typeof arg.titolo === "string" ? arg.titolo.trim() : "";
+    if (!titolo) throw new Error("Titolo dell'analisi obbligatorio.");
+
+    const spec = validaSpec(arg.spec);
+    const risultato = esegui(spec, snapshot);
+    const proposta = scegliGrafico(risultato);
+    let grafico = proposta.tipo;
+    let motivoGrafico = proposta.motivo;
+
+    if (arg.grafico !== undefined) {
+      const richiesto = String(arg.grafico) as TipoGrafico;
+      if (!graficiPossibili(risultato).includes(richiesto)) {
+        throw new Error(`Il grafico ${richiesto} non è applicabile a questo risultato.`);
+      }
+      grafico = richiesto;
+      if (grafico !== proposta.tipo) {
+        motivoGrafico = "Grafico scelto dall'analista fra quelli applicabili a questo risultato.";
+      }
+    }
+
+    const commento = typeof arg.commento === "string" ? arg.commento.trim() : "";
+    const analisi: AnalisiProposta = {
+      titolo,
+      spec,
+      grafico,
+      motivoGrafico,
+      ...(commento ? { commento } : {}),
+      risultato,
+    };
+    destinazione.analisi.push(analisi);
+    aggiungiValoriRisultato(spec, risultato, destinazione.valoriNoti);
+    destinazione.interrogazioni?.push({
+      spec,
+      totale: risultato.totale,
+      righe: risultato.righe.length,
+    });
+    destinazione.passi?.push({
+      tipo: "interrogazione",
+      descrizione: titolo,
+      spec,
+      righe: risultato.righe.length,
+      totale: risultato.totale,
+    });
+
+    return JSON.stringify({
+      titolo,
+      grafico,
+      totale: risultato.totale,
+      righe: risultato.righe.length,
+      istruzione: "Non ripetere i numeri nel testo: il grafico li mostra già.",
+    });
+  } catch (errore) {
+    const messaggio = errore instanceof Error ? errore.message : String(errore);
+    destinazione.passi?.push({ tipo: "errore", descrizione: messaggio });
+    return JSON.stringify({ errore: messaggio });
+  }
 }
 
 export async function chiediAnalista(opzioni: {
@@ -534,6 +691,7 @@ export async function chiediAnalista(opzioni: {
   const passi: PassoAnalista[] = [];
   const interrogazioni: RispostaAnalista["interrogazioni"] = [];
   const valoriNoti: ValoreNoto[] = [];
+  const analisi: AnalisiProposta[] = [];
   const previsioni: Previsione[] = [];
   const documenti: DocumentoProposto[] = [];
   let ingresso = 0;
@@ -546,6 +704,7 @@ export async function chiediAnalista(opzioni: {
     correzioneApplicata: false,
     passi,
     interrogazioni,
+    analisi,
     previsioni,
     documenti,
     motore: "non_disponibile",
@@ -576,24 +735,22 @@ export async function chiediAnalista(opzioni: {
   async function eseguiStrumento(nome: string, argomenti: string): Promise<string> {
     const arg = JSON.parse(argomenti || "{}");
 
+    if (nome === "proponi_analisi") {
+      return eseguiPropostaAnalisi(arg, snapshot, {
+        analisi,
+        valoriNoti,
+        interrogazioni,
+        passi,
+      });
+    }
+
     if (nome === "interroga_metrica") {
       const spec = validaSpec(arg);
       const res = esegui(spec, snapshot);
       // L'unita' viaggia col valore: senza, una percentuale citata nel testo
       // verrebbe confrontata anche con importi e conteggi, e con centinaia di
       // righe fra i noti troverebbe quasi sempre un riscontro casuale.
-      valoriNoti.push({
-        valore: res.totale,
-        fonte: `totale di ${spec.metrica}`,
-        unita: res.unita,
-      });
-      for (const riga of res.righe) {
-        valoriNoti.push({
-          valore: riga.valore,
-          fonte: `${spec.metrica} per ${riga.etichetta}`,
-          unita: res.unita,
-        });
-      }
+      aggiungiValoriRisultato(spec, res, valoriNoti);
       interrogazioni.push({ spec, totale: res.totale, righe: res.righe.length });
       passi.push({
         tipo: "interrogazione",
@@ -852,6 +1009,7 @@ export async function chiediAnalista(opzioni: {
         correzioneApplicata: risposta.correzioneApplicata,
         passi,
         interrogazioni,
+        analisi,
         previsioni,
         documenti,
         motore: "openrouter",
@@ -891,6 +1049,7 @@ export async function chiediAnalista(opzioni: {
     correzioneApplicata: false,
     passi,
     interrogazioni,
+    analisi,
     previsioni,
     documenti,
     motore: "openrouter",

@@ -20,6 +20,7 @@ import {
   FileSpreadsheet,
   FileText,
   Loader2,
+  Save,
   Search,
   Send,
   Sparkles,
@@ -28,7 +29,9 @@ import {
 } from "lucide-react";
 import { BadgeCertificata, euro } from "./primitivi";
 import { Markdown } from "./markdown";
-import type { SpecQuery } from "@/lib/prototipo-bi/tipi";
+import { GraficoDaRisultato } from "./grafico-da-risultato";
+import { graficiPossibili, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
+import type { RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 interface Passo {
   tipo: "interrogazione" | "sql" | "previsione" | "documento" | "risposta" | "errore";
@@ -66,6 +69,15 @@ interface DocumentoProposto {
   blocchi: Array<{ titolo: string; spec?: SpecQuery; sql?: string }>;
 }
 
+interface AnalisiProposta {
+  titolo: string;
+  spec: SpecQuery;
+  grafico: TipoGrafico;
+  motivoGrafico: string;
+  commento?: string;
+  risultato: RisultatoQuery;
+}
+
 interface NumeroCitato {
   testo: string;
   valore: number;
@@ -88,6 +100,7 @@ interface Messaggio {
   passi?: Passo[];
   previsioni?: Previsione[];
   documenti?: DocumentoProposto[];
+  analisi?: AnalisiProposta[];
   modello?: string;
   complessita?: string;
   motivoModello?: string;
@@ -109,6 +122,24 @@ const LIVELLI = [
   { chiave: "analitica", nome: "Analisi", nota: "confronti e scomposizioni" },
   { chiave: "profonda", nome: "Approfondita", nota: "previsioni, scenari, documenti" },
 ] as const;
+
+const NOMI_GRAFICI: Record<TipoGrafico, string> = {
+  linee: "Linee",
+  barre: "Barre",
+  combo: "Combinato",
+  torta: "Torta",
+  anelli: "Anelli",
+  areeImpilate: "Aree impilate",
+  pareto: "Pareto",
+  bullet: "Bullet",
+  heatmap: "Mappa di calore",
+  quadranti: "Quadranti",
+  imbuto: "Imbuto",
+  treemap: "Mappa ad albero",
+  sparkline: "Sparkline",
+  kpi: "KPI",
+  tabella: "Tabella",
+};
 
 function BloccoPrevisione({ p }: { p: Previsione }) {
   const validi = p.metodi.filter((m) => !m.nonApplicabile);
@@ -228,6 +259,113 @@ function BottoneDocumento({ doc }: { doc: DocumentoProposto }) {
   );
 }
 
+function BloccoAnalisi({ analisi }: { analisi: AnalisiProposta }) {
+  const [tipoScelto, setTipoScelto] = useState<TipoGrafico>(analisi.grafico);
+  const [salvataggio, setSalvataggio] = useState<"pronto" | "in_corso" | "salvata" | "errore">(
+    "pronto"
+  );
+  const [messaggio, setMessaggio] = useState("");
+
+  async function salva() {
+    if (salvataggio === "in_corso") return;
+    setSalvataggio("in_corso");
+    setMessaggio("");
+    try {
+      const risposta = await fetch("/api/prototipo-bi/analisi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titolo: analisi.titolo,
+          descrizione: analisi.commento,
+          spec: analisi.spec,
+          grafico: tipoScelto,
+        }),
+      });
+      const corpo: unknown = await risposta.json();
+      if (!risposta.ok) {
+        const errore =
+          corpo && typeof corpo === "object" && "error" in corpo
+            ? String(corpo.error)
+            : "Salvataggio non riuscito.";
+        throw new Error(errore);
+      }
+      setSalvataggio("salvata");
+      setMessaggio("Analisi salvata.");
+    } catch (errore) {
+      setSalvataggio("errore");
+      setMessaggio(errore instanceof Error ? errore.message : "Salvataggio non riuscito.");
+    }
+  }
+
+  return (
+    <section className="mt-4 min-w-0 overflow-hidden rounded-xl border border-border bg-bg-page">
+      <header className="px-4 pt-4">
+        <h2 className="font-tenorite text-base font-semibold leading-snug break-words">
+          {analisi.titolo}
+        </h2>
+        {analisi.commento && (
+          <p className="mt-1 text-sm leading-relaxed text-text-muted break-words">
+            {analisi.commento}
+          </p>
+        )}
+      </header>
+
+      <div className="min-w-0 px-2 py-3 sm:px-4">
+        <GraficoDaRisultato risultato={analisi.risultato} tipo={tipoScelto} />
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-end sm:justify-between">
+        <label className="min-w-0 text-xs text-text-muted">
+          Tipo di grafico
+          <select
+            value={tipoScelto}
+            onChange={(evento) => {
+              setTipoScelto(evento.target.value as TipoGrafico);
+              if (salvataggio === "salvata") {
+                setSalvataggio("pronto");
+                setMessaggio("");
+              }
+            }}
+            title={analisi.motivoGrafico}
+            className="mt-1 block min-h-10 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary sm:w-auto"
+          >
+            {graficiPossibili(analisi.risultato).map((tipo) => (
+              <option key={tipo} value={tipo}>
+                {NOMI_GRAFICI[tipo]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void salva()}
+            disabled={salvataggio === "in_corso" || salvataggio === "salvata"}
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm font-medium text-text transition-colors hover:bg-bg-page focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {salvataggio === "in_corso" ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Save className="h-4 w-4" aria-hidden />
+            )}
+            {salvataggio === "in_corso" ? "Salvataggio…" : "Salva"}
+          </button>
+          <p
+            aria-live="polite"
+            className={`text-xs ${salvataggio === "errore" ? "text-warning" : "text-text-muted"}`}
+          >
+            {messaggio}
+          </p>
+        </div>
+      </div>
+      <p className="px-4 pb-3 text-[11px] leading-relaxed text-text-muted">
+        {analisi.motivoGrafico}
+      </p>
+    </section>
+  );
+}
+
 export function AnalistaView({
   dataMinima,
   dataMassima,
@@ -273,6 +411,7 @@ export function AnalistaView({
           passi: j.passi,
           previsioni: j.previsioni,
           documenti: j.documenti,
+          analisi: j.analisi,
           modello: j.modello,
           complessita: j.complessita,
           motivoModello: j.motivoModello,
@@ -366,6 +505,9 @@ export function AnalistaView({
                         </div>
                       )}
                       <Markdown testo={m.testo} />
+                      {m.analisi?.map((analisi, indice) => (
+                        <BloccoAnalisi key={`${analisi.titolo}-${indice}`} analisi={analisi} />
+                      ))}
                       {m.verifica && m.verifica.nonVerificati > 0 && (
                         <div
                           role="alert"
