@@ -170,6 +170,13 @@ export interface BollaVettoreOpzione {
   divisoreVolumetrico: number;
 }
 
+export type VettoreEsito =
+  | "assegnato"
+  | "regola"
+  | "esterno"
+  | "da_classificare"
+  | "assente";
+
 /** Testata gestionale esposta alla coda operativa delle bolle. */
 export interface BollaDocumento {
   idSpedizione: string;
@@ -183,6 +190,9 @@ export interface BollaDocumento {
   vettoreId: string | null;
   vettoreCodice: string | null;
   vettore: string | null;
+  vettoreCodiceGestionale: string | null;
+  vettoreEsito: VettoreEsito;
+  vettoreRegola: string | null;
   numColli: number | null;
   pesoLordoKg: number | null;
   pesoNettoKg: number | null;

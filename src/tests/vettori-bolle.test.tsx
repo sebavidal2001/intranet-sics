@@ -23,6 +23,9 @@ const incompleta: BollaDocumento = {
   vettoreId,
   vettoreCodice: "GLS",
   vettore: "GLS Italy",
+  vettoreCodiceGestionale: "VT000015",
+  vettoreEsito: "assegnato",
+  vettoreRegola: null,
   numColli: 1,
   pesoLordoKg: 4,
   pesoNettoKg: null,
@@ -53,6 +56,62 @@ function risposta(documenti: BollaDocumento[], puoScongelare = false): BolleResp
 }
 
 describe("bolle manuali e congelamento", () => {
+  it("spiega perche il vettore manca e quale azione serve", async () => {
+    const regola: BollaDocumento = {
+      ...incompleta,
+      idSpedizione: "00000000-0000-4000-8000-000000000111",
+      numeroDocumento: "DV-REGOLA",
+      vettoreId: null,
+      vettoreCodice: null,
+      vettore: "GLS fino a 30 Kg-FEDEX oltre",
+      vettoreCodiceGestionale: "VT010015",
+      vettoreEsito: "regola",
+      vettoreRegola: "GLS fino a 30 kg, FedEx oltre",
+      divisoreVolumetrico: null,
+    };
+    const esterna: BollaDocumento = {
+      ...regola,
+      idSpedizione: "00000000-0000-4000-8000-000000000112",
+      numeroDocumento: "DV-ESTERNA",
+      vettoreCodiceGestionale: "VT000099",
+      vettoreEsito: "esterno",
+      vettoreRegola: null,
+    };
+    const daClassificare: BollaDocumento = {
+      ...regola,
+      idSpedizione: "00000000-0000-4000-8000-000000000113",
+      numeroDocumento: "DV-CLASSIFICARE",
+      vettore: "BRT spa",
+      vettoreCodiceGestionale: "VT000013",
+      vettoreEsito: "da_classificare",
+      vettoreRegola: null,
+    };
+    const assente: BollaDocumento = {
+      ...regola,
+      idSpedizione: "00000000-0000-4000-8000-000000000114",
+      numeroDocumento: "DV-ASSENTE",
+      vettore: null,
+      vettoreCodiceGestionale: null,
+      vettoreEsito: "assente",
+      vettoreRegola: null,
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => risposta([incompleta, regola, esterna, daClassificare, assente]),
+    }));
+    render(<BolleView />);
+
+    const assegnata = await screen.findByRole("article", { name: "Bolla DV-101" });
+    expect(within(assegnata).getByText("GLS Italy")).toBeTruthy();
+    expect(within(assegnata).getByText("300 kg/m³")).toBeTruthy();
+    const conRegola = screen.getByRole("article", { name: "Bolla DV-REGOLA" });
+    expect(within(conRegola).getByText("Regola gestionale: «GLS fino a 30 kg, FedEx oltre»")).toBeTruthy();
+    expect(within(conRegola).getByText("Scegli il vettore in base al peso o al tipo di collo")).toBeTruthy();
+    expect(within(screen.getByRole("article", { name: "Bolla DV-ESTERNA" })).getByText("Vettore esterno, non a nostro carico")).toBeTruthy();
+    expect(within(screen.getByRole("article", { name: "Bolla DV-CLASSIFICARE" })).getByText("Codice VT000013 (BRT spa) da classificare nelle impostazioni")).toBeTruthy();
+    expect(within(screen.getByRole("article", { name: "Bolla DV-ASSENTE" })).getByText("Il gestionale non ha indicato il vettore")).toBeTruthy();
+  });
+
   it("evidenzia le bolle incomplete e ricalcola il peso mentre si digitano le misure", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => risposta([incompleta]) }));
     render(<BolleView />);

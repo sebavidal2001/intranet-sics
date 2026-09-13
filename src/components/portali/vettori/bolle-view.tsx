@@ -107,6 +107,43 @@ function mostraData(valore: string | null, conOra = false): string {
     : (conOra ? dataOra : dataBreve).format(data);
 }
 
+function descrizioneVettore(documento: BollaDocumento): string {
+  switch (documento.vettoreEsito) {
+    case "assegnato":
+      return documento.vettore ?? "Vettore assegnato";
+    case "regola":
+      return documento.vettoreRegola
+        ? `Regola gestionale: «${documento.vettoreRegola}»`
+        : "Il gestionale ha indicato una regola di scelta";
+    case "esterno":
+      return "Vettore esterno, non a nostro carico";
+    case "da_classificare": {
+      const codice = documento.vettoreCodiceGestionale ?? "sconosciuto";
+      const ragioneSociale = documento.vettore ? ` (${documento.vettore})` : "";
+      return `Codice ${codice}${ragioneSociale} da classificare nelle impostazioni`;
+    }
+    case "assente":
+      return "Il gestionale non ha indicato il vettore";
+  }
+}
+
+function motivoPesoNonCalcolabile(documento: BollaDocumento): string {
+  switch (documento.vettoreEsito) {
+    case "regola":
+      return "Scegli il vettore in base al peso o al tipo di collo";
+    case "esterno":
+      return "Trasporto esterno: non serve correggere la bolla";
+    case "da_classificare":
+      return "Classifica il codice nelle impostazioni per assegnare il divisore";
+    case "assente":
+      return "Serve indicare il vettore per applicare il divisore";
+    case "assegnato":
+      return documento.divisoreVolumetrico
+        ? `${documento.divisoreVolumetrico} kg/m³`
+        : "Il vettore assegnato non ha un divisore configurato";
+  }
+}
+
 function daMisura(misura: BollaMisura): GruppoDraft {
   return {
     chiave: misura.id,
@@ -477,6 +514,12 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
   const colliMisurati = misureValide.reduce((somma, misura) => somma + misura.quantita, 0);
   const numeroBolla = documento.numeroDocumento ?? `spedizione ${documento.idSpedizione.slice(0, 8)}`;
   const richiedeNumero = daNumerare(documento);
+  const vettoreDescrizione = descrizioneVettore(documento);
+  const pesoVolumetrico = riepilogo.pesoVolumetricoKg === null
+    ? "Non calcolabile"
+    : riepilogo.volumeM3 > 0
+      ? `${numero.format(riepilogo.pesoVolumetricoKg)} kg`
+      : "Da calcolare";
 
   return (
     <article aria-label={richiedeNumero ? "Bolla da numerare" : `Bolla ${numeroBolla}`} className={`overflow-hidden rounded-xl bg-bg ${richiedeNumero ? "border border-primary shadow-[0_8px_24px_rgba(0,161,190,0.12)]" : documento.congelata ? "border border-slate-400" : documento.statoMisure === "da_misurare" ? "border border-warning/60 shadow-[0_6px_20px_rgba(245,158,11,0.10)]" : "border border-border"}`}>
@@ -492,11 +535,11 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
           <p className="mt-0.5 text-xs text-text-muted">{documento.direzione === "entrata" ? "Entrata" : "Uscita"} · {mostraData(documento.dataDocumento)}</p>
         </div>
         <dl className="grid grid-cols-2 gap-x-5 gap-y-1 text-sm lg:block">
-          <div className="min-w-0"><dt className="text-xs text-text-muted">Vettore</dt><dd className="break-words font-medium text-text">{documento.vettore ?? "Non indicato"}</dd></div>
+          <div className="min-w-0"><dt className="text-xs text-text-muted">Vettore</dt><dd className="break-words font-medium text-text">{vettoreDescrizione}</dd></div>
           <div className="min-w-0 lg:mt-1"><dt className="text-xs text-text-muted">Documenti collegati</dt><dd className="text-text">{documento.idDocumenti.length || "Nessuno"}</dd></div>
         </dl>
         <div><p className="text-xs text-text-muted">Colli</p><p className="font-tenorite text-xl font-bold tabular-nums text-text">{documento.numColli === null ? "—" : numero.format(documento.numColli)}</p></div>
-        <div><p className="text-xs text-text-muted">Peso volumetrico</p><p className="font-tenorite text-xl font-bold tabular-nums text-primary-dark">{riepilogo.pesoVolumetricoKg === null ? "Coeff. assente" : riepilogo.volumeM3 > 0 ? `${numero.format(riepilogo.pesoVolumetricoKg)} kg` : "Da calcolare"}</p><p className="text-xs text-text-muted">{documento.divisoreVolumetrico ? `${documento.divisoreVolumetrico} kg/m³` : "Vettore da scegliere"}</p></div>
+        <div><p className="text-xs text-text-muted">Peso volumetrico</p><p className="font-tenorite text-xl font-bold tabular-nums text-primary-dark">{pesoVolumetrico}</p><p className="text-xs text-text-muted">{motivoPesoNonCalcolabile(documento)}</p></div>
         <Button type="button" size="sm" variant="outline" aria-expanded={aperta} onClick={() => setAperta((valore) => !valore)} className="justify-self-start lg:justify-self-end">
           <Ruler className="h-4 w-4" aria-hidden="true" />Dettagli e misure{aperta ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </Button>
@@ -594,7 +637,7 @@ function RiepilogoTestata({ documento, vettori }: { documento: BollaDocumento; v
     { campo: "numero_riferimento", valore: documento.numeroDocumento ?? "—" },
     { campo: "data_documento", valore: mostraData(documento.dataDocumento) },
     { campo: "controparte_nome", valore: documento.soggetto ?? "—" },
-    { campo: "vettore_id", valore: documento.vettore ?? "—" },
+    { campo: "vettore_id", valore: descrizioneVettore(documento) },
     { campo: "colli_bolla", valore: documento.numColli === null ? "—" : numero.format(documento.numColli) },
     { campo: "peso_bolla", valore: documento.pesoLordoKg === null ? "—" : `${numero.format(documento.pesoLordoKg)} kg` },
   ];

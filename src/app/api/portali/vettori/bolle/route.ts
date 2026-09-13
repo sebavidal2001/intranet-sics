@@ -14,8 +14,10 @@ import {
   ErroreBollaDuplicata,
   MutazioneTestataBolla,
   ripristinaCampoBolla,
+  risolviVettoreGestionale,
   sincronizzaBolleGestionali,
 } from "@/lib/portali/vettori/bolle";
+import type { CodiceGestionaleVettore } from "@/lib/portali/vettori/bolle";
 import {
   MutazioneBollaMisura,
   volumeGruppoM3,
@@ -76,6 +78,20 @@ interface VettoreRow {
   codice: string;
   nome: string;
   divisore_volumetrico: number;
+}
+
+interface CodiceGestionaleRow {
+  codice_gestionale: string;
+  ragione_sociale: string;
+  vettore_id: string | null;
+  tipo: CodiceGestionaleVettore["tipo"];
+  regola_testo: string | null;
+}
+
+interface DocumentoGestionaleRow {
+  id_documento: number;
+  vettore_codice: string | null;
+  vettore: string | null;
 }
 
 interface ControlloRow {
@@ -171,7 +187,7 @@ export async function GET(request: NextRequest) {
     const { pagina, perPagina } = parsed.data;
     const da = (pagina - 1) * perPagina;
     const admin = createAdminClient();
-    const [spedizioniResult, vettoriResult] = await Promise.all([
+    const [spedizioniResult, vettoriResult, codiciGestionaliResult] = await Promise.all([
       admin
         .schema("vettori")
         .from("spedizioni")
@@ -188,19 +204,39 @@ export async function GET(request: NextRequest) {
         .select("id,codice,nome,divisore_volumetrico")
         .eq("attivo", true)
         .order("nome"),
+      admin
+        .schema("vettori")
+        .from("codici_gestionale")
+        .select("codice_gestionale,ragione_sociale,vettore_id,tipo,regola_testo"),
     ]);
 
     if (spedizioniResult.error) throw new Error(spedizioniResult.error.message);
     if (vettoriResult.error) throw new Error(vettoriResult.error.message);
+    if (codiciGestionaliResult.error) throw new Error(codiciGestionaliResult.error.message);
     const spedizioni = (spedizioniResult.data ?? []) as unknown as SpedizioneRow[];
     const vettori = ((vettoriResult.data ?? []) as unknown as VettoreRow[]).map(mappaVettore);
     const vettoriPerId = new Map(vettori.map((vettore) => [vettore.id, vettore]));
+    const codiciGestionali = new Map(
+      ((codiciGestionaliResult.data ?? []) as unknown as CodiceGestionaleRow[]).map(
+        (riga): [string, CodiceGestionaleVettore] => [
+          riga.codice_gestionale.trim().toUpperCase(),
+          {
+            codiceGestionale: riga.codice_gestionale,
+            ragioneSociale: riga.ragione_sociale,
+            vettoreId: riga.vettore_id,
+            tipo: riga.tipo,
+            regolaTesto: riga.regola_testo,
+          },
+        ]
+      )
+    );
     const ids = spedizioni.map((spedizione) => spedizione.id);
 
     const misurePerSpedizione = new Map<string, BollaMisura[]>();
     const documentiPerSpedizione = new Map<string, number[]>();
     const fatturePerSpedizione = new Map<string, BollaFattura>();
     const scostamentiPerSpedizione = new Map<string, BollaScostamento[]>();
+    const gestionalePerDocumento = new Map<number, DocumentoGestionaleRow>();
 
     if (ids.length > 0) {
       const [misureResult, documentiResult, controlliResult, scostamentiResult] = await Promise.all([
@@ -241,6 +277,18 @@ export async function GET(request: NextRequest) {
         const elenco = documentiPerSpedizione.get(riga.spedizione_id) ?? [];
         elenco.push(riga.id_documento);
         documentiPerSpedizione.set(riga.spedizione_id, elenco);
+      }
+      const documentiIds = [...new Set([...documentiPerSpedizione.values()].flat())];
+      if (documentiIds.length > 0) {
+        const { data: gestionaliData, error: gestionaliError } = await admin
+          .schema("bi")
+          .from("trasporti_documenti")
+          .select("id_documento,vettore_codice,vettore")
+          .in("id_documento", documentiIds);
+        if (gestionaliError) throw new Error(gestionaliError.message);
+        for (const riga of (gestionaliData ?? []) as unknown as DocumentoGestionaleRow[]) {
+          gestionalePerDocumento.set(riga.id_documento, riga);
+        }
       }
       for (const riga of (scostamentiResult.data ?? []) as unknown as ScostamentoRow[]) {
         const elenco = scostamentiPerSpedizione.get(riga.spedizione_id) ?? [];
@@ -294,6 +342,14 @@ export async function GET(request: NextRequest) {
       const vettore = spedizione.vettore_id
         ? vettoriPerId.get(spedizione.vettore_id) ?? null
         : null;
+      const documentoGestionale = (documentiPerSpedizione.get(spedizione.id) ?? [])
+        .map((idDocumento) => gestionalePerDocumento.get(idDocumento))
+        .find((documento) => documento?.vettore_codice?.trim());
+      const risoluzioneGestionale = risolviVettoreGestionale(
+        documentoGestionale?.vettore_codice ?? null,
+        codiciGestionali
+      );
+      const vettoreEsito = vettore ? "assegnato" : risoluzioneGestionale.esito;
       const destinazione = [spedizione.zona_cap, spedizione.zona_provincia]
         .filter(Boolean)
         .join(" ") || null;
@@ -308,7 +364,14 @@ export async function GET(request: NextRequest) {
         destinazione,
         vettoreId: spedizione.vettore_id,
         vettoreCodice: vettore?.codice ?? null,
-        vettore: vettore?.nome ?? null,
+        vettore:
+          vettore?.nome ??
+          risoluzioneGestionale.ragioneSociale ??
+          documentoGestionale?.vettore ??
+          null,
+        vettoreCodiceGestionale: risoluzioneGestionale.codiceGestionale,
+        vettoreEsito,
+        vettoreRegola: risoluzioneGestionale.regola,
         numColli: numeroPositivo(spedizione.colli_bolla),
         pesoLordoKg: numeroPositivo(spedizione.peso_bolla),
         pesoNettoKg: null,

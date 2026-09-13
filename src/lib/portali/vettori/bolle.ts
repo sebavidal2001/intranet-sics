@@ -7,6 +7,7 @@ import { volumeGruppoM3 } from "./misure";
 import type {
   CampiBollaForzati,
   CampoBollaForzabile,
+  VettoreEsito,
 } from "./tipi";
 
 export const CAMPI_BOLLA_FORZABILI = [
@@ -90,6 +91,93 @@ interface DettaglioDocumento {
   tipoRegistro: string | null;
   numeroProgressivo: string | null;
   numeroDocumento: string | null;
+}
+
+export interface CodiceGestionaleVettore {
+  codiceGestionale: string;
+  ragioneSociale: string;
+  vettoreId: string | null;
+  tipo: "vettore" | "regola" | "non_nostro" | "da_mappare";
+  regolaTesto: string | null;
+}
+
+export interface RisoluzioneVettoreGestionale {
+  codiceGestionale: string | null;
+  vettoreId: string | null;
+  esito: VettoreEsito;
+  regola: string | null;
+  ragioneSociale: string | null;
+}
+
+/**
+ * Traduce il codice del gestionale senza indovinare il vettore.
+ *
+ * Il confronto diretto con gli slug lasciava 734 spedizioni su 1.210 senza
+ * vettore. I 17 codici reali hanno invece significati diversi: 478 documenti
+ * assegnano un vettore, 120 esprimono una regola e 166 richiedono una
+ * classificazione umana. Tenere distinti gli esiti evita di presentare tutti
+ * questi casi come un generico dato mancante.
+ */
+export function risolviVettoreGestionale(
+  codice: string | null,
+  codici: ReadonlyMap<string, CodiceGestionaleVettore>
+): RisoluzioneVettoreGestionale {
+  const codiceGestionale = codice?.trim().toUpperCase() || null;
+  if (!codiceGestionale) {
+    return {
+      codiceGestionale: null,
+      vettoreId: null,
+      esito: "assente",
+      regola: null,
+      ragioneSociale: null,
+    };
+  }
+
+  const configurazione = codici.get(codiceGestionale);
+  if (!configurazione) {
+    return {
+      codiceGestionale,
+      vettoreId: null,
+      esito: "da_classificare",
+      regola: null,
+      ragioneSociale: null,
+    };
+  }
+
+  if (configurazione.tipo === "vettore" && configurazione.vettoreId) {
+    return {
+      codiceGestionale,
+      vettoreId: configurazione.vettoreId,
+      esito: "assegnato",
+      regola: null,
+      ragioneSociale: configurazione.ragioneSociale,
+    };
+  }
+  if (configurazione.tipo === "regola") {
+    return {
+      codiceGestionale,
+      vettoreId: null,
+      esito: "regola",
+      regola: configurazione.regolaTesto,
+      ragioneSociale: configurazione.ragioneSociale,
+    };
+  }
+  if (configurazione.tipo === "non_nostro") {
+    return {
+      codiceGestionale,
+      vettoreId: null,
+      esito: "esterno",
+      regola: null,
+      ragioneSociale: configurazione.ragioneSociale,
+    };
+  }
+  return {
+    codiceGestionale,
+    vettoreId: null,
+    esito: "da_classificare",
+    regola: null,
+    ragioneSociale: configurazione.ragioneSociale,
+  };
 }
 
 type ValoreCampo = string | number | boolean | null;
@@ -413,15 +501,27 @@ export async function sincronizzaSpedizioniGestionali(
   if (valide.length === 0) return;
 
   const admin = createAdminClient();
-  const { data: vettoriData, error: vettoriError } = await admin
+  const { data: codiciData, error: codiciError } = await admin
     .schema("vettori")
-    .from("vettori")
-    .select("id,codice");
-  if (vettoriError) throw new Error(vettoriError.message);
-  const vettori = new Map(
-    ((vettoriData ?? []) as unknown as Array<{ id: string; codice: string }>).map((riga) => [
-      riga.codice.toLowerCase(),
-      riga.id,
+    .from("codici_gestionale")
+    .select("codice_gestionale,ragione_sociale,vettore_id,tipo,regola_testo");
+  if (codiciError) throw new Error(codiciError.message);
+  const codiciGestionali = new Map(
+    ((codiciData ?? []) as unknown as Array<{
+      codice_gestionale: string;
+      ragione_sociale: string;
+      vettore_id: string | null;
+      tipo: CodiceGestionaleVettore["tipo"];
+      regola_testo: string | null;
+    }>).map((riga): [string, CodiceGestionaleVettore] => [
+      riga.codice_gestionale.trim().toUpperCase(),
+      {
+        codiceGestionale: riga.codice_gestionale,
+        ragioneSociale: riga.ragione_sociale,
+        vettoreId: riga.vettore_id,
+        tipo: riga.tipo,
+        regolaTesto: riga.regola_testo,
+      },
     ])
   );
 
@@ -452,10 +552,11 @@ export async function sincronizzaSpedizioniGestionali(
       }
     }
 
-    const vettoreId = spedizione.vettoreCodice
-      ? vettori.get(spedizione.vettoreCodice.toLowerCase()) ?? null
-      : null;
-    const valori = valoriGestionali(spedizione, vettoreId);
+    const risoluzioneVettore = risolviVettoreGestionale(
+      spedizione.vettoreCodice,
+      codiciGestionali
+    );
+    const valori = valoriGestionali(spedizione, risoluzioneVettore.vettoreId);
 
     if (!spedizioneId) {
       const { data: nuova, error: insertError } = await admin
