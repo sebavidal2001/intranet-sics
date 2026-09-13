@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { preliminari, errore } from "../_comune";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assicuraCruscottoDiSistema } from "./_predefinito";
 import { registraOperazione } from "./_utili";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,19 @@ interface DashboardElencoDb {
 export async function GET() {
   const pre = await preliminari();
   if (!pre.ok) return pre.risposta;
+
+  // La dashboard di sistema si semina qui, aprendo l'elenco.
+  //
+  // Stava attaccata al redirect da /bi/cruscotto, che in revisione e' stato
+  // tolto: senza questa riga nessuno l'avrebbe piu' creata e l'elenco sarebbe
+  // rimasto vuoto per sempre. La funzione e' idempotente, quindi chiamarla a
+  // ogni apertura non duplica niente; se fallisce non si porta giu' l'elenco,
+  // perche' le dashboard personali devono restare raggiungibili comunque.
+  try {
+    await assicuraCruscottoDiSistema();
+  } catch (e) {
+    console.error("[bi] semina del Cruscotto non riuscita:", e instanceof Error ? e.message : e);
+  }
 
   const { data, error: erroreDb } = await createAdminClient()
     .schema("bi_direzionale")
