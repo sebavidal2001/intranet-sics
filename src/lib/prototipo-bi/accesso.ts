@@ -20,9 +20,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PERIMETRO_TUTTO, risolviPerimetro, type Perimetro } from "./perimetro";
 import type { RuoloBriefing } from "./tipi";
 
-const RUOLI_DIREZIONE = new Set(["superadmin", "amministratore"]);
-const RUOLI_RESPONSABILE = new Set(["responsabile", "responsabile_intermedio"]);
-
 export type LivelloBi = "direzione" | "responsabile" | "operativo";
 
 export interface AccessoBi {
@@ -52,12 +49,6 @@ export class AccessoNegato extends Error {}
 // Asse 1 — livello
 // ─────────────────────────────────────────────────────────────────────────────
 
-function livelloDaRuolo(ruolo: string): LivelloBi | null {
-  if (RUOLI_DIREZIONE.has(ruolo)) return "direzione";
-  if (RUOLI_RESPONSABILE.has(ruolo)) return "responsabile";
-  return null;
-}
-
 function livelloDaPortale(livelloPortale: string | null): LivelloBi | null {
   switch (livelloPortale) {
     case "superadmin":
@@ -73,39 +64,33 @@ function livelloDaPortale(livelloPortale: string | null): LivelloBi | null {
 }
 
 /**
- * Il livello dell'utente sul BI.
+ * Il livello dell'utente sul BI. **Unica fonte: il portale.**
  *
- * Fonte primaria: il portale `bi` (migration 103). Ripiego: i ruoli cablati,
- * che è il comportamento in vigore fino a oggi.
+ * `get_portale_livello(utente, 'bi')`, come ogni altro portale. Non c'è
+ * ripiego sui ruoli: un ripiego renderebbe il BI l'unico portale in cui
+ * l'accesso si ottiene *anche* per ruolo, scavalcando in silenzio le
+ * abilitazioni decise dal superadmin — cioè esattamente ciò che il modello
+ * `permessi_utente` serve a evitare.
  *
- * Il ripiego serve perché il portale **nasce spento** (`is_attivo = false`):
- * il rollout è per gruppi e si apre alla Fase 5, dopo il confronto con il
- * PBIX. Ma `get_portale_livello` richiede `is_attivo = true`, quindi finché il
- * portale resta spento risponde `null` a chiunque — e senza ripiego nessuno
- * entrerebbe più, sviluppo compreso.
- *
- * Non è un buco: il ripiego concede esattamente gli stessi livelli che
- * concederanno i `permessi_portale` della 103 (direzione a superadmin e
- * amministratore, responsabile agli altri due). Quando il portale verrà
- * acceso, la fonte primaria risponderà e il ripiego smetterà da solo di
- * servire.
+ * Chi entra lo decide il superadmin da `/superadmin/portali/[id]/permessi`.
+ * Il superadmin di piattaforma bypassa sempre, per il primo CASE della
+ * funzione.
  */
 async function risolviLivello(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  ruoloUtente: string
+  userId: string
 ): Promise<LivelloBi | null> {
-  try {
-    const { data } = await supabase.rpc("get_portale_livello", {
-      p_user_id: userId,
-      p_slug: "bi",
-    });
-    const daPortale = livelloDaPortale(typeof data === "string" ? data : null);
-    if (daPortale) return daPortale;
-  } catch {
-    // Portale non ancora creato: si ripiega sui ruoli.
+  const { data, error } = await supabase.rpc("get_portale_livello", {
+    p_user_id: userId,
+    p_slug: "bi",
+  });
+  if (error) {
+    // Meglio negare che aprire: se la funzione non risponde non si sa chi sia
+    // l'utente, e non saperlo non è una ragione per farlo entrare.
+    console.error("[bi] get_portale_livello non disponibile:", error.message);
+    return null;
   }
-  return livelloDaRuolo(ruoloUtente);
+  return livelloDaPortale(typeof data === "string" ? data : null);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,12 +197,12 @@ export async function verificaAccesso(): Promise<AccessoBi> {
 
   const ruoloUtente = String(profilo.ruolo ?? "");
   const nome = [profilo.nome, profilo.cognome].filter(Boolean).join(" ") || "Utente";
-  const livello = await risolviLivello(supabase, user.id, ruoloUtente);
+  const livello = await risolviLivello(supabase, user.id);
 
   if (!livello) {
     throw new AccessoNegato(
-      "Il BI è riservato ai ruoli abilitati. " +
-        `Ruolo attuale: "${ruoloUtente || "non impostato"}".`
+      "Non sei abilitato al portale BI. L'accesso si richiede a un amministratore, " +
+        "che lo concede dalla gestione permessi del portale."
     );
   }
 

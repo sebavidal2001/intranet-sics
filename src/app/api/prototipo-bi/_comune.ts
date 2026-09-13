@@ -3,7 +3,6 @@
  */
 
 import { NextResponse } from "next/server";
-import { prototipoConsentito, rispostaBloccata } from "@/lib/prototipo-bi/guardia";
 import { verificaAccesso, AccessoNegato, type AccessoBi } from "@/lib/prototipo-bi/accesso";
 import { ottieniSnapshot } from "@/lib/prototipo-bi/sorgente";
 import { applicaPerimetro } from "@/lib/prototipo-bi/perimetro";
@@ -13,11 +12,15 @@ export type EsitoPreliminare =
   | { ok: true; accesso: AccessoBi }
   | { ok: false; risposta: Response };
 
-/** Guardia di ambiente + autenticazione, in un colpo solo. */
+/**
+ * Autenticazione e livello sul portale `bi`.
+ *
+ * Non c'è più una guardia d'ambiente: l'accesso è quello del portale, deciso
+ * dal superadmin utente per utente. Una barriera in più sarebbe una barriera
+ * in più da ricordarsi di togliere, e intanto bloccherebbe anche chi è
+ * legittimamente abilitato.
+ */
 export async function preliminari(): Promise<EsitoPreliminare> {
-  if (!prototipoConsentito()) {
-    return { ok: false, risposta: rispostaBloccata() };
-  }
   try {
     const accesso = await verificaAccesso();
     return { ok: true, accesso };
