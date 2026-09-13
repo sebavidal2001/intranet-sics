@@ -25,6 +25,11 @@ import { calcolaPrevisione, type Previsione } from "./previsione";
 import { instrada, calcolaCosto, MODELLI, type Complessita, type Consumo } from "./modelli";
 import { leggiConfigurazione } from "./archivio";
 import { eseguiSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
+import {
+  verificaNumeri,
+  type EsitoVerifica,
+  type ValoreNoto,
+} from "./verifica-numeri";
 import type {
   Briefing,
   RuoloBriefing,
@@ -423,6 +428,10 @@ posso rispondere con i dati certificati".
 
   return `Sei l'analista dati di SICS.
 
+La prima riga di ogni risposta finale deve avere esattamente questo formato:
+INTERPRETAZIONE: <una riga: metrica, periodo, taglio>
+Non anteporre titoli, saluti o altro testo a questa riga.
+
 STRUMENTI
 - interroga_metrica: per KPI, confronti ricorrenti e misure certificate.
 ${strumentiSql}- prevedi_chiusura_anno: per ogni stima di fine anno. NON calcolare proiezioni
@@ -491,6 +500,9 @@ export interface DocumentoProposto {
 
 export interface RispostaAnalista {
   testo: string;
+  interpretazione: string | null;
+  verifica: EsitoVerifica | null;
+  correzioneApplicata: boolean;
   passi: PassoAnalista[];
   interrogazioni: { spec: SpecQuery; totale: number; righe: number }[];
   previsioni: Previsione[];
@@ -521,6 +533,7 @@ export async function chiediAnalista(opzioni: {
 
   const passi: PassoAnalista[] = [];
   const interrogazioni: RispostaAnalista["interrogazioni"] = [];
+  const valoriNoti: ValoreNoto[] = [];
   const previsioni: Previsione[] = [];
   const documenti: DocumentoProposto[] = [];
   let ingresso = 0;
@@ -528,6 +541,9 @@ export async function chiediAnalista(opzioni: {
 
   const vuota = (testo: string): RispostaAnalista => ({
     testo,
+    interpretazione: null,
+    verifica: null,
+    correzioneApplicata: false,
     passi,
     interrogazioni,
     previsioni,
@@ -563,6 +579,21 @@ export async function chiediAnalista(opzioni: {
     if (nome === "interroga_metrica") {
       const spec = validaSpec(arg);
       const res = esegui(spec, snapshot);
+      // L'unita' viaggia col valore: senza, una percentuale citata nel testo
+      // verrebbe confrontata anche con importi e conteggi, e con centinaia di
+      // righe fra i noti troverebbe quasi sempre un riscontro casuale.
+      valoriNoti.push({
+        valore: res.totale,
+        fonte: `totale di ${spec.metrica}`,
+        unita: res.unita,
+      });
+      for (const riga of res.righe) {
+        valoriNoti.push({
+          valore: riga.valore,
+          fonte: `${spec.metrica} per ${riga.etichetta}`,
+          unita: res.unita,
+        });
+      }
       interrogazioni.push({ spec, totale: res.totale, righe: res.righe.length });
       passi.push({
         tipo: "interrogazione",
@@ -624,6 +655,20 @@ export async function chiediAnalista(opzioni: {
 
     if (nome === "esegui_sql_bi") {
       const res = await eseguiSqlBi(arg.sql, arg.limite);
+      for (const riga of res.righe) {
+        for (const [colonna, valore] of Object.entries(riga)) {
+          if (typeof valore === "number" && Number.isFinite(valore)) {
+            // In SQL libero l'unita' non e' dichiarata da nessuna parte: la si
+            // deduce dal nome della colonna, che per convenzione la contiene
+            // ("Margine %", "quota_pct"). Nel dubbio si lascia indefinita, e
+            // il valore resta confrontabile con tutto: meglio un riscontro in
+            // piu' che marcare come inventata una cifra che c'e' davvero.
+            const nome = colonna.toLowerCase();
+            const unita = /%|pct|percentual/u.test(nome) ? "percentuale" : undefined;
+            valoriNoti.push({ valore, fonte: `SQL: ${colonna}`, unita });
+          }
+        }
+      }
       passi.push({
         tipo: "sql",
         descrizione: String(arg.scopo ?? "Query SQL esplorativa").slice(0, 180),
@@ -676,6 +721,11 @@ export async function chiediAnalista(opzioni: {
       });
 
       previsioni.push(previsione);
+      valoriNoti.push(
+        { valore: previsione.stimaCentrale, fonte: `stima centrale ${metrica} ${anno}`, unita: "euro" },
+        { valore: previsione.minimo, fonte: `estremo minimo ${metrica} ${anno}`, unita: "euro" },
+        { valore: previsione.massimo, fonte: `estremo massimo ${metrica} ${anno}`, unita: "euro" }
+      );
       passi.push({
         tipo: "previsione",
         descrizione: `Previsione ${metrica} ${anno}: ${formattaEuro(previsione.stimaCentrale)}`,
@@ -723,6 +773,66 @@ export async function chiediAnalista(opzioni: {
   }
 
   // ── Ciclo ───────────────────────────────────────────────────────────────
+  function separaInterpretazione(testo: string): {
+    testo: string;
+    interpretazione: string | null;
+  } {
+    const righe = testo.split(/\r?\n/u);
+    const prima = righe[0]?.match(/^INTERPRETAZIONE:\s*(.+?)\s*$/u);
+    if (!prima) return { testo, interpretazione: null };
+    return {
+      testo: righe.slice(1).join("\n").replace(/^\s+/, ""),
+      interpretazione: prima[1],
+    };
+  }
+
+  async function verificaECorreggi(testoOriginale: string): Promise<{
+    testo: string;
+    interpretazione: string | null;
+    verifica: EsitoVerifica;
+    correzioneApplicata: boolean;
+  }> {
+    let risposta = separaInterpretazione(testoOriginale);
+    let verifica = verificaNumeri(risposta.testo, valoriNoti);
+    if (verifica.nonVerificati === 0) {
+      return { ...risposta, verifica, correzioneApplicata: false };
+    }
+
+    const nonRiscontrati = verifica.numeri
+      .filter((numero) => !numero.verificato)
+      .map((numero) => numero.testo);
+    messaggi.push({ role: "assistant", content: testoOriginale });
+    messaggi.push({
+      role: "user",
+      content:
+        `Correggi la risposta completa: queste cifre non risultano dai dati interrogati: ` +
+        `${JSON.stringify(nonRiscontrati)}. Correggile o toglile usando esclusivamente i valori ` +
+        `ottenuti dagli strumenti. Mantieni come prima riga ` +
+        `"INTERPRETAZIONE: <una riga: metrica, periodo, taglio>". Non chiamare strumenti.`,
+    });
+    try {
+      const correzione = await chiamaModello(rotta.modello.id, messaggi, {
+        temperatura: 0.1,
+        maxToken: 1800,
+      });
+      ingresso += correzione.ingresso;
+      uscita += correzione.uscita;
+      if (!correzione.testo.trim()) {
+        return { ...risposta, verifica, correzioneApplicata: false };
+      }
+      risposta = separaInterpretazione(correzione.testo);
+      verifica = verificaNumeri(risposta.testo, valoriNoti);
+      return { ...risposta, verifica, correzioneApplicata: true };
+    } catch (errore) {
+      const messaggio = errore instanceof Error ? errore.message : String(errore);
+      passi.push({
+        tipo: "errore",
+        descrizione: `Correzione automatica non disponibile: ${messaggio}`,
+      });
+      return { ...risposta, verifica, correzioneApplicata: false };
+    }
+  }
+
   for (let passo = 0; passo < rotta.massimoPassi; passo++) {
     const esito = await chiamaModello(rotta.modello.id, messaggi, {
       strumenti: strumentiPer(sqlLibero),
@@ -734,8 +844,12 @@ export async function chiediAnalista(opzioni: {
 
     if (esito.toolCalls.length === 0) {
       passi.push({ tipo: "risposta", descrizione: "Risposta finale" });
+      const risposta = await verificaECorreggi(esito.testo);
       return {
-        testo: esito.testo,
+        testo: risposta.testo,
+        interpretazione: risposta.interpretazione,
+        verifica: risposta.verifica,
+        correzioneApplicata: risposta.correzioneApplicata,
         passi,
         interrogazioni,
         previsioni,
@@ -772,6 +886,9 @@ export async function chiediAnalista(opzioni: {
     testo:
       "Ho raggiunto il numero massimo di interrogazioni senza arrivare a una risposta " +
       "conclusiva. Prova a restringere la domanda a un periodo, una business unit o un agente.",
+    interpretazione: null,
+    verifica: { numeri: [], nonVerificati: 0 },
+    correzioneApplicata: false,
     passi,
     interrogazioni,
     previsioni,

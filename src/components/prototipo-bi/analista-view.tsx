@@ -66,9 +66,25 @@ interface DocumentoProposto {
   blocchi: Array<{ titolo: string; spec?: SpecQuery; sql?: string }>;
 }
 
+interface NumeroCitato {
+  testo: string;
+  valore: number;
+  posizione: number;
+  verificato: boolean;
+  fonte?: string;
+}
+
+interface EsitoVerifica {
+  numeri: NumeroCitato[];
+  nonVerificati: number;
+}
+
 interface Messaggio {
   ruolo: "utente" | "analista";
   testo: string;
+  interpretazione?: string | null;
+  verifica?: EsitoVerifica | null;
+  correzioneApplicata?: boolean;
   passi?: Passo[];
   previsioni?: Previsione[];
   documenti?: DocumentoProposto[];
@@ -251,6 +267,9 @@ export function AnalistaView({
         {
           ruolo: "analista",
           testo: j.testo,
+          interpretazione: j.interpretazione,
+          verifica: j.verifica,
+          correzioneApplicata: j.correzioneApplicata,
           passi: j.passi,
           previsioni: j.previsioni,
           documenti: j.documenti,
@@ -336,7 +355,37 @@ export function AnalistaView({
                       : "bg-bg border border-border"
                   }`}
                 >
-                  {m.errore ? <p>{m.testo}</p> : <Markdown testo={m.testo} />}
+                  {m.errore ? (
+                    <p>{m.testo}</p>
+                  ) : (
+                    <>
+                      {m.interpretazione && (
+                        <div className="mb-3 rounded-lg bg-bg-page px-3 py-2 text-xs leading-relaxed text-text-muted break-words">
+                          <span className="font-medium">Ho letto la domanda così:</span>{" "}
+                          {m.interpretazione}
+                        </div>
+                      )}
+                      <Markdown testo={m.testo} />
+                      {m.verifica && m.verifica.nonVerificati > 0 && (
+                        <div
+                          role="alert"
+                          className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning break-words"
+                        >
+                          {m.verifica.nonVerificati === 1
+                            ? "1 cifra non risulta"
+                            : `${m.verifica.nonVerificati} cifre non risultano`}{" "}
+                          dai dati interrogati:{" "}
+                          <span className="font-tenorite font-semibold">
+                            {m.verifica.numeri
+                              .filter((numero) => !numero.verificato)
+                              .map((numero) => numero.testo)
+                              .join(", ")}
+                          </span>{" "}
+                          — verificale prima di usarle.
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   {m.previsioni?.map((p, k) => (
                     <BloccoPrevisione key={k} p={p} />
