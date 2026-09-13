@@ -1,16 +1,24 @@
 "use client";
 
-/** ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE */
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sunrise, LayoutDashboard, Settings2, MessageSquareText, ShoppingCart } from "lucide-react";
+import {
+  Sunrise,
+  LayoutDashboard,
+  Settings2,
+  MessageSquareText,
+  ShoppingCart,
+  Compass,
+  LayoutGrid,
+} from "lucide-react";
 
 const VOCI = [
   { href: "/bi", etichetta: "Briefing", icona: Sunrise },
   { href: "/bi/cruscotto", etichetta: "Cruscotto", icona: LayoutDashboard },
   { href: "/bi/articoli", etichetta: "Articoli & Acquisti", icona: ShoppingCart },
   { href: "/bi/analista", etichetta: "Analista", icona: MessageSquareText },
+  { href: "/bi/esplora", etichetta: "Esplora", icona: Compass },
+  { href: "/bi/dashboard", etichetta: "Dashboard", icona: LayoutGrid },
   { href: "/bi/configurazione", etichetta: "Budget & BEP", icona: Settings2 },
 ];
 
@@ -21,7 +29,11 @@ export function NavigazionePrototipo() {
     <nav className="border-b border-border bg-bg/80 backdrop-blur-sm sticky top-0 z-20">
       <div className="max-w-[1600px] mx-auto px-4 flex items-center gap-1 overflow-x-auto">
         {VOCI.map((v) => {
-          const attivo = percorso === v.href;
+          // Le sottopagine (/bi/dashboard/<id>) devono tenere accesa la voce
+          // del loro ramo, altrimenti aprendo una dashboard la barra non
+          // segnala piu' dove ci si trova.
+          const attivo =
+            percorso === v.href || (v.href !== "/bi" && percorso.startsWith(`${v.href}/`));
           const Icona = v.icona;
           return (
             <Link
