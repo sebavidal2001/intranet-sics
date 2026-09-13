@@ -136,7 +136,7 @@ export function ArticoliAcquistiView() {
       if (filtri.magazzino) p.set("magazzino", filtri.magazzino);
       if (filtri.critici) p.set("critici", "1");
       try {
-        const r = await fetch(`/api/prototipo-bi/articoli?${p}`, { signal: controller.signal });
+        const r = await fetch(`/api/bi/articoli?${p}`, { signal: controller.signal });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error ?? "Errore");
         setDati(j);

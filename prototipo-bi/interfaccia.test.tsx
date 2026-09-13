@@ -120,7 +120,7 @@ const BRIEFING_FINTO = {
 
 describe("Briefing", () => {
   it("mostra le voci, il destinatario e la freschezza del dato", async () => {
-    vi.stubGlobal("fetch", mockFetch({ "/api/prototipo-bi/briefing": BRIEFING_FINTO }));
+    vi.stubGlobal("fetch", mockFetch({ "/api/bi/briefing": BRIEFING_FINTO }));
     render(<BriefingView />);
 
     await waitFor(() => {
@@ -137,7 +137,7 @@ describe("Briefing", () => {
     vi.stubGlobal(
       "fetch",
       mockFetch({
-        "/api/prototipo-bi/briefing": {
+        "/api/bi/briefing": {
           briefing: { ...BRIEFING_FINTO.briefing, voci: [], segnaliValutati: 12 },
           configurazioneBudget: true,
           segnali: [],
@@ -156,7 +156,7 @@ describe("Briefing", () => {
     vi.stubGlobal(
       "fetch",
       mockFetch({
-        "/api/prototipo-bi/briefing": { ...BRIEFING_FINTO, configurazioneBudget: false },
+        "/api/bi/briefing": { ...BRIEFING_FINTO, configurazioneBudget: false },
       })
     );
     render(<BriefingView />);
@@ -177,7 +177,7 @@ describe("Cruscotto", () => {
         { id: "fatturatoTot", risultato: { spec: {}, metrica: "fatturato", unita: "euro", righe: [], totale: 3_100_000, certificata: true, avvisi: [] } },
       ],
     };
-    const spia = mockFetch({ "/api/prototipo-bi/query": risposta });
+    const spia = mockFetch({ "/api/bi/query": risposta });
     vi.stubGlobal("fetch", spia);
 
     render(
@@ -210,7 +210,7 @@ describe("Configurazione Budget & BEP", () => {
     vi.stubGlobal(
       "fetch",
       mockFetch({
-        "/api/prototipo-bi/configurazione": {
+        "/api/bi/configurazione": {
           config: {
             anno: 2026,
             budgetAnnuo: 7_500_000,

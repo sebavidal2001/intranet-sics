@@ -43,7 +43,7 @@ export function ImportaBudgetView({ onImportato }: { onImportato?: () => void })
   const carica = useCallback(async () => {
     setCaricamento(true);
     try {
-      const r = await fetch("/api/prototipo-bi/importa-budget");
+      const r = await fetch("/api/bi/importa-budget");
       const j = await r.json();
       if (r.ok) setSerie(j.serie ?? []);
     } finally {
@@ -66,7 +66,7 @@ export function ImportaBudgetView({ onImportato }: { onImportato?: () => void })
       try {
         const form = new FormData();
         for (const f of lista) form.append("file", f);
-        const r = await fetch("/api/prototipo-bi/importa-budget", {
+        const r = await fetch("/api/bi/importa-budget", {
           method: "POST",
           body: form,
         });
@@ -86,7 +86,7 @@ export function ImportaBudgetView({ onImportato }: { onImportato?: () => void })
   );
 
   async function elimina(anno: number) {
-    await fetch(`/api/prototipo-bi/importa-budget?anno=${anno}`, { method: "DELETE" });
+    await fetch(`/api/bi/importa-budget?anno=${anno}`, { method: "DELETE" });
     await carica();
     onImportato?.();
   }

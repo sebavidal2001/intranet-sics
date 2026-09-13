@@ -161,7 +161,7 @@ export function useQueryBi(specs: Record<string, SpecQuery | null>): EsitoQuery 
     }
 
     setCaricamento(true);
-    fetch("/api/prototipo-bi/query", {
+    fetch("/api/bi/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ specs: attive }),

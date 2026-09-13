@@ -59,7 +59,7 @@ export function ConfigurazioneView({ annoIniziale }: { annoIniziale: number }) {
     setCaricamento(true);
     setErrore(null);
     try {
-      const r = await fetch(`/api/prototipo-bi/configurazione?anno=${a}`);
+      const r = await fetch(`/api/bi/configurazione?anno=${a}`);
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Errore");
       setConfig(j.config);
@@ -87,7 +87,7 @@ export function ConfigurazioneView({ annoIniziale }: { annoIniziale: number }) {
     setSalvataggio(true);
     setErrore(null);
     try {
-      const r = await fetch("/api/prototipo-bi/configurazione", {
+      const r = await fetch("/api/bi/configurazione", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
@@ -107,7 +107,7 @@ export function ConfigurazioneView({ annoIniziale }: { annoIniziale: number }) {
   }
 
   async function esporta() {
-    const r = await fetch("/api/prototipo-bi/esporta", {
+    const r = await fetch("/api/bi/esporta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tipo: "budget-excel", anno }),

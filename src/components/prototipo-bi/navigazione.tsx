@@ -7,11 +7,11 @@ import { usePathname } from "next/navigation";
 import { Sunrise, LayoutDashboard, Settings2, MessageSquareText, ShoppingCart } from "lucide-react";
 
 const VOCI = [
-  { href: "/prototipo-bi", etichetta: "Briefing", icona: Sunrise },
-  { href: "/prototipo-bi/cruscotto", etichetta: "Cruscotto", icona: LayoutDashboard },
-  { href: "/prototipo-bi/articoli", etichetta: "Articoli & Acquisti", icona: ShoppingCart },
-  { href: "/prototipo-bi/analista", etichetta: "Analista", icona: MessageSquareText },
-  { href: "/prototipo-bi/configurazione", etichetta: "Budget & BEP", icona: Settings2 },
+  { href: "/bi", etichetta: "Briefing", icona: Sunrise },
+  { href: "/bi/cruscotto", etichetta: "Cruscotto", icona: LayoutDashboard },
+  { href: "/bi/articoli", etichetta: "Articoli & Acquisti", icona: ShoppingCart },
+  { href: "/bi/analista", etichetta: "Analista", icona: MessageSquareText },
+  { href: "/bi/configurazione", etichetta: "Budget & BEP", icona: Settings2 },
 ];
 
 export function NavigazionePrototipo() {

@@ -95,7 +95,7 @@ export function PannelloDettaglio({
       setCaricamento(true);
       setErrore(null);
       try {
-        const r = await fetch("/api/prototipo-bi/dettaglio", {
+        const r = await fetch("/api/bi/dettaglio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

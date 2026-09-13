@@ -202,7 +202,7 @@ function BottoneDocumento({ doc }: { doc: DocumentoProposto }) {
     setInCorso(true);
     setErrore(null);
     try {
-      const r = await fetch("/api/prototipo-bi/esporta", {
+      const r = await fetch("/api/bi/esporta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -271,7 +271,7 @@ function BloccoAnalisi({ analisi }: { analisi: AnalisiProposta }) {
     setSalvataggio("in_corso");
     setMessaggio("");
     try {
-      const risposta = await fetch("/api/prototipo-bi/analisi", {
+      const risposta = await fetch("/api/bi/analisi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -389,7 +389,7 @@ export function AnalistaView({
     setInCorso(true);
 
     try {
-      const r = await fetch("/api/prototipo-bi/analista", {
+      const r = await fetch("/api/bi/analista", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

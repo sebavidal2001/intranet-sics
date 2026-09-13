@@ -518,7 +518,7 @@ export function CruscottoView({
         .filter(([, s]) => s !== null)
         .slice(0, 12)
         .map(([id, s]) => ({ titolo: id, spec: s }));
-      const res = await fetch("/api/prototipo-bi/esporta", {
+      const res = await fetch("/api/bi/esporta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo: "query-excel", blocchi }),
@@ -737,7 +737,7 @@ export function CruscottoView({
         {budgetMancante && (
           <div className="mb-4 p-3 rounded-lg bg-warning/10 border border-warning/30 text-sm">
             Budget e BEP non disponibili per il {anno}:{" "}
-            <a href="/prototipo-bi/configurazione" className="text-primary underline">
+            <a href="/bi/configurazione" className="text-primary underline">
               importa il file Excel
             </a>{" "}
             per vedere scostamenti e raggiungimento.

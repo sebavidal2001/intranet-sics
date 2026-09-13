@@ -192,7 +192,7 @@ describe("La cache non fa trapelare i dati fra utenti", () => {
 
   it("la route delle query mette il perimetro nella chiave", () => {
     const sorgente = readFileSync(
-      resolve(process.cwd(), "src/app/api/prototipo-bi/query/route.ts"),
+      resolve(process.cwd(), "src/app/api/bi/query/route.ts"),
       "utf8"
     );
     expect(sorgente).toContain("chiaveStabile(pre.accesso.perimetro)");
@@ -231,7 +231,7 @@ describe("In assenza di configurazione il perimetro è chiuso, non aperto", () =
 describe("SQL libero e perimetro non coesistono mai", () => {
   it("la route SQL rifiuta chi non ha sqlLibero, e lo registra", () => {
     const sorgente = readFileSync(
-      resolve(process.cwd(), "src/app/api/prototipo-bi/sql/route.ts"),
+      resolve(process.cwd(), "src/app/api/bi/sql/route.ts"),
       "utf8"
     );
     expect(sorgente).toContain("if (!accesso.sqlLibero)");
@@ -264,7 +264,7 @@ describe("SQL libero e perimetro non coesistono mai", () => {
 
 describe("Nessuna route legge lo snapshot scavalcando il perimetro", () => {
   it("le route che leggono dati passano da snapshotPerimetrato", () => {
-    const base = resolve(process.cwd(), "src/app/api/prototipo-bi");
+    const base = resolve(process.cwd(), "src/app/api/bi");
     const conDati = ["query", "dettaglio", "briefing", "esporta", "configurazione", "snapshot", "analista"];
 
     for (const nome of conDati) {

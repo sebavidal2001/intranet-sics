@@ -60,7 +60,7 @@ export function BriefingView() {
     setCaricamento(true);
     setErrore(null);
     try {
-      const r = await fetch("/api/prototipo-bi/briefing?grezzo=1");
+      const r = await fetch("/api/bi/briefing?grezzo=1");
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Errore");
       setBriefing(j.briefing);
@@ -79,7 +79,7 @@ export function BriefingView() {
 
   async function inviaRiscontro(segnaleId: string, famiglia: string, utile: boolean) {
     setRiscontri((r) => ({ ...r, [segnaleId]: utile }));
-    await fetch("/api/prototipo-bi/briefing", {
+    await fetch("/api/bi/briefing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ segnaleId, famiglia, utile }),
@@ -89,7 +89,7 @@ export function BriefingView() {
   async function scaricaReport() {
     setEsportando(true);
     try {
-      const r = await fetch("/api/prototipo-bi/esporta", {
+      const r = await fetch("/api/bi/esporta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -181,7 +181,7 @@ export function BriefingView() {
           <span>
             Budget e BEP non ancora configurati per l&apos;anno corrente: i rilevatori di
             scostamento non possono girare.{" "}
-            <a href="/prototipo-bi/configurazione" className="text-primary underline">
+            <a href="/bi/configurazione" className="text-primary underline">
               Configurali qui
             </a>
             .
