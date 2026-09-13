@@ -21,8 +21,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
-import { GraficoDaRisultato } from "@/components/prototipo-bi/grafico-da-risultato";
+import { GraficoDaAnalisi } from "@/components/prototipo-bi/grafico-da-risultato";
 import { Scheda, Scheletro, euro, numero } from "@/components/prototipo-bi/primitivi";
+import {
+  ammetteConfrontoBudget,
+  eseguiAnalisiComposita,
+  motivoBudgetNonDisponibile,
+} from "@/lib/prototipo-bi/analisi-composita";
 import {
   graficiPossibili,
   scegliGrafico,
@@ -36,6 +41,9 @@ import type {
   Modificatore,
   Periodo,
   RisultatoQuery,
+  RuoloSerie,
+  SerieAnalisi,
+  SerieAnalisiEseguita,
   SpecQuery,
 } from "@/lib/prototipo-bi/tipi";
 import type { ChiaveTipologia } from "@/lib/prototipo-bi/tassonomia";
@@ -101,6 +109,29 @@ const NOMI_OPERATORI: Record<Filtro["op"], string> = {
 const CLASSE_CAMPO =
   "min-h-10 w-full rounded-lg border border-border bg-bg-page px-3 text-sm outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50";
 
+type ScorciatoiaConfronto = "anno_precedente" | "budget" | "bep" | "progressivo";
+
+interface SerieEditor extends SerieAnalisi {
+  scorciatoia?: ScorciatoiaConfronto;
+}
+
+const NOMI_RUOLI: Record<RuoloSerie, string> = {
+  principale: "Principale",
+  confronto: "Confronto",
+  obiettivo: "Obiettivo",
+  soglia: "Soglia",
+};
+
+function specDaScorciatoia(spec: SpecQuery, scorciatoia: ScorciatoiaConfronto): SpecQuery {
+  if (scorciatoia === "anno_precedente") {
+    return { ...spec, modificatore: "anno_precedente" };
+  }
+  if (scorciatoia === "progressivo") {
+    return { ...spec, modificatore: "progressivo" };
+  }
+  return { ...spec, metrica: scorciatoia };
+}
+
 function eOggetto(valore: unknown): valore is Record<string, unknown> {
   return typeof valore === "object" && valore !== null;
 }
@@ -155,6 +186,7 @@ function descriviPeriodo(periodo: Periodo | undefined): string {
 export function EditorAnalisi({
   idAnalisi,
   specIniziale,
+  serieIniziali,
   titoloIniziale,
   graficoIniziale,
   modificabile = true,
@@ -163,6 +195,7 @@ export function EditorAnalisi({
 }: {
   idAnalisi?: string;
   specIniziale?: SpecQuery;
+  serieIniziali?: SerieAnalisi[] | null;
   titoloIniziale?: string;
   graficoIniziale?: TipoGrafico;
   modificabile?: boolean;
@@ -171,8 +204,15 @@ export function EditorAnalisi({
 }): JSX.Element {
   const [vocabolario, setVocabolario] = useState<Vocabolario | null>(null);
   const [spec, setSpec] = useState<SpecQuery | null>(specIniziale ?? null);
+  const [serieAggiuntive, setSerieAggiuntive] = useState<SerieEditor[]>(
+    () => serieIniziali?.filter((voce) => voce.ruolo !== "principale") ?? []
+  );
   const [tipologiaScelta, setTipologiaScelta] = useState<ChiaveTipologia | null>(null);
   const [risultato, setRisultato] = useState<RisultatoQuery | null>(null);
+  const [serieEseguite, setSerieEseguite] = useState<SerieAnalisiEseguita[]>([]);
+  const [altraMetricaAperta, setAltraMetricaAperta] = useState(false);
+  const [tipologiaConfronto, setTipologiaConfronto] = useState<ChiaveTipologia | null>(null);
+  const [metricaConfronto, setMetricaConfronto] = useState<ChiaveMetrica | null>(null);
   const [caricamento, setCaricamento] = useState(false);
   const [errore, setErrore] = useState("");
   const [erroreVocabolario, setErroreVocabolario] = useState("");
@@ -211,17 +251,28 @@ export function EditorAnalisi({
     return () => controller.abort();
   }, []);
 
-  const specAnteprima = useMemo(() => {
-    if (!spec || periodoPresente(spec.periodo) || !periodoPresente(periodoEreditato)) return spec;
-    return { ...spec, periodo: { ...periodoEreditato } };
-  }, [periodoEreditato, spec]);
+  const serieAnalisi = useMemo<SerieAnalisi[]>(() => {
+    if (!spec) return [];
+    const nomePrincipale = serieIniziali?.find((voce) => voce.ruolo === "principale")?.nome
+      ?? vocabolario?.metriche.find((voce) => voce.chiave === spec.metrica)?.etichetta
+      ?? spec.metrica;
+    return [{ ruolo: "principale", nome: nomePrincipale, spec }, ...serieAggiuntive];
+  }, [serieAggiuntive, serieIniziali, spec, vocabolario]);
+  const seriePersistita = serieAggiuntive.length > 0 ? serieAnalisi : null;
   const chiaveSpec = useMemo(
-    () => (specAnteprima ? JSON.stringify(specAnteprima) : ""),
-    [specAnteprima]
+    () => spec ? JSON.stringify({ spec, serie: seriePersistita, periodoEreditato }) : "",
+    [periodoEreditato, seriePersistita, spec]
   );
 
   useEffect(() => {
-    if (!vocabolario || !specAnteprima) return;
+    if (!spec) return;
+    setSerieAggiuntive((correnti) => correnti.map((voce) =>
+      voce.scorciatoia ? { ...voce, spec: specDaScorciatoia(spec, voce.scorciatoia) } : voce
+    ));
+  }, [spec]);
+
+  useEffect(() => {
+    if (!vocabolario || !spec) return;
     const controller = new AbortController();
     setCaricamento(true);
     setErrore("");
@@ -229,22 +280,16 @@ export function EditorAnalisi({
     // Il ritardo accorpa anche la digitazione libera dei filtri, che altrimenti
     // trasformerebbe ogni carattere in una query certificata completa.
     const attesa = window.setTimeout(() => {
-      fetch("/api/bi/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spec: specAnteprima }),
-        signal: controller.signal,
-      })
-        .then(async (risposta) => {
-          const corpo: unknown = await risposta.json();
-          if (!risposta.ok) throw new Error(messaggioErrore(corpo, "Analisi non eseguibile."));
-          if (!eOggetto(corpo) || !eOggetto(corpo.risultato)) {
-            throw new Error("Il motore ha restituito una risposta incompleta.");
-          }
-          return corpo.risultato as unknown as RisultatoQuery;
-        })
-        .then((nuovoRisultato) => {
-          setRisultato(nuovoRisultato);
+      eseguiAnalisiComposita(
+        { spec, serie: seriePersistita },
+        { periodo: periodoEreditato },
+        { signal: controller.signal }
+      )
+        .then((esito) => {
+          const principale = esito.serie.find((voce) => voce.ruolo === "principale");
+          if (!principale) throw new Error("Il motore non ha restituito la serie principale.");
+          setRisultato(principale.risultato);
+          setSerieEseguite(esito.serie);
           setErrore("");
         })
         .catch((causa: unknown) => {
@@ -260,23 +305,37 @@ export function EditorAnalisi({
       window.clearTimeout(attesa);
       controller.abort();
     };
-  }, [chiaveSpec, specAnteprima, vocabolario]);
+  }, [chiaveSpec, periodoEreditato, seriePersistita, spec, vocabolario]);
 
   useEffect(() => {
     if (!spec || !vocabolario || titoloModificato.current) return;
     setTitolo(costruisciTitolo(spec, vocabolario));
   }, [chiaveSpec, spec, vocabolario]);
 
-  const proposta = risultato ? scegliGrafico(risultato) : null;
-  const grafici = risultato ? graficiPossibili(risultato) : [];
+  const risultatoGrafico = serieEseguite.length > 1 ? serieEseguite : risultato;
+  const proposta = risultatoGrafico ? scegliGrafico(risultatoGrafico) : null;
+  const grafici = risultatoGrafico ? graficiPossibili(risultatoGrafico) : [];
   const tipoGrafico =
     graficoScelto && grafici.includes(graficoScelto) ? graficoScelto : proposta?.tipo;
   const dimensioniScelte = spec?.raggruppa ?? [];
   const limiteDimensioniRaggiunto = dimensioniScelte.length >= 2;
+
+  // Budget e BEP esistono solo per business unit e agente: con altri
+  // raggruppamenti la serie collasserebbe sul totale e il confronto mentirebbe.
+  // `spec` è null finché non si sceglie una metrica: senza spec non c'è niente
+  // da confrontare, quindi il pulsante resta spento ma senza spiegazione —
+  // non c'è ancora nulla da spiegare.
+  const budgetDisponibile = spec !== null && ammetteConfrontoBudget(spec);
+  const motivoBudget = spec === null ? null : motivoBudgetNonDisponibile(spec);
   const tipologiaAttiva = vocabolario?.tipologie.find(
     (voce) => voce.chiave === tipologiaScelta
   );
   const metricheVisibili = (tipologiaAttiva?.metriche ?? [])
+    .map((chiave) => vocabolario?.metriche.find((metrica) => metrica.chiave === chiave))
+    .filter((metrica): metrica is VoceMetrica => Boolean(metrica));
+  const metricheConfrontoVisibili = (vocabolario?.tipologie.find(
+    (voce) => voce.chiave === tipologiaConfronto
+  )?.metriche ?? [])
     .map((chiave) => vocabolario?.metriche.find((metrica) => metrica.chiave === chiave))
     .filter((metrica): metrica is VoceMetrica => Boolean(metrica));
   const chiaviDimensioniAmmesse = spec
@@ -310,6 +369,7 @@ export function EditorAnalisi({
     if (!metrica) return;
     setTipologiaScelta(chiave);
     setSpec({ metrica, modificatore: "corrente" });
+    setSerieAggiuntive([]);
     setGraficoScelto(undefined);
     titoloModificato.current = false;
     setSalvataggio("pronto");
@@ -325,6 +385,50 @@ export function EditorAnalisi({
       filtri: corrente.filtri?.filter((filtro) => ammesse.has(filtro.campo)),
     }));
     setGraficoScelto(undefined);
+  }
+
+  function aggiungiScorciatoia(
+    scorciatoia: ScorciatoiaConfronto,
+    nome: string,
+    ruolo: RuoloSerie
+  ) {
+    if (!spec) return;
+    setSerieAggiuntive((correnti) => [
+      ...correnti,
+      { ruolo, nome, spec: specDaScorciatoia(spec, scorciatoia), scorciatoia },
+    ]);
+    setGraficoScelto(undefined);
+    setSalvataggio("pronto");
+    setMessaggioSalvataggio("");
+  }
+
+  function apriAltraMetrica() {
+    const tipologia = tipologiaScelta ?? vocabolario?.tipologie[0]?.chiave ?? null;
+    const primaMetrica = vocabolario?.tipologie.find((voce) => voce.chiave === tipologia)?.metriche[0] ?? null;
+    setTipologiaConfronto(tipologia);
+    setMetricaConfronto(primaMetrica);
+    setAltraMetricaAperta(true);
+  }
+
+  function aggiungiAltraMetrica() {
+    if (!spec || !metricaConfronto) return;
+    const ammesse = new Set(vocabolario?.dimensioniPerMetrica[metricaConfronto] ?? []);
+    const nuovaSpec: SpecQuery = {
+      ...spec,
+      metrica: metricaConfronto,
+      raggruppa: spec.raggruppa?.filter((dimensione) => ammesse.has(dimensione)),
+      filtri: spec.filtri?.filter((filtro) => ammesse.has(filtro.campo)),
+    };
+    const nome = vocabolario?.metriche.find((voce) => voce.chiave === metricaConfronto)?.etichetta
+      ?? metricaConfronto;
+    setSerieAggiuntive((correnti) => [
+      ...correnti,
+      { ruolo: "confronto", nome, spec: nuovaSpec },
+    ]);
+    setAltraMetricaAperta(false);
+    setGraficoScelto(undefined);
+    setSalvataggio("pronto");
+    setMessaggioSalvataggio("");
   }
 
   function ereditaPeriodo() {
@@ -372,6 +476,7 @@ export function EditorAnalisi({
         body: JSON.stringify({
           titolo: titoloPulito,
           spec,
+          serie: seriePersistita,
           ...(tipoGrafico ? { grafico: tipoGrafico } : {}),
         }),
       });
@@ -668,6 +773,149 @@ export function EditorAnalisi({
           </Scheda>
 
           <Scheda
+            titolo="Confronta con…"
+            sottotitolo="Aggiungi una misura allo stesso riquadro"
+          >
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => aggiungiScorciatoia("anno_precedente", "Anno precedente", "confronto")}
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                Anno precedente
+              </button>
+              <button
+                type="button"
+                disabled={!budgetDisponibile}
+                title={motivoBudget ?? undefined}
+                onClick={() => aggiungiScorciatoia("budget", "Budget", "obiettivo")}
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
+              >
+                Budget
+              </button>
+              <button
+                type="button"
+                disabled={!budgetDisponibile}
+                title={motivoBudget ?? undefined}
+                onClick={() => aggiungiScorciatoia("bep", "BEP", "soglia")}
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
+              >
+                BEP
+              </button>
+              <button
+                type="button"
+                onClick={() => aggiungiScorciatoia("progressivo", "Progressivo", "confronto")}
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                Progressivo
+              </button>
+              {motivoBudget && (
+                <p className="text-xs leading-relaxed text-text-muted sm:col-span-2 xl:col-span-1 2xl:col-span-2">
+                  {motivoBudget}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={apriAltraMetrica}
+                className="min-h-10 rounded-lg border border-primary bg-bg-page px-3 text-left text-sm font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary sm:col-span-2 xl:col-span-1 2xl:col-span-2"
+              >
+                Un’altra metrica…
+              </button>
+            </div>
+
+            {altraMetricaAperta && (
+              <div className="mt-3 space-y-3 border-t border-border pt-3">
+                <label className="block text-xs text-text-muted">
+                  Tipologia
+                  <select
+                    aria-label="Tipologia della metrica di confronto"
+                    value={tipologiaConfronto ?? ""}
+                    onChange={(evento) => {
+                      const chiave = evento.target.value as ChiaveTipologia;
+                      const prima = vocabolario.tipologie.find((voce) => voce.chiave === chiave)?.metriche[0] ?? null;
+                      setTipologiaConfronto(chiave);
+                      setMetricaConfronto(prima);
+                    }}
+                    className={`${CLASSE_CAMPO} mt-1`}
+                  >
+                    {vocabolario.tipologie.map((tipologia) => (
+                      <option key={tipologia.chiave} value={tipologia.chiave}>{tipologia.etichetta}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs text-text-muted">
+                  Metrica
+                  <select
+                    aria-label="Metrica di confronto"
+                    value={metricaConfronto ?? ""}
+                    onChange={(evento) => setMetricaConfronto(evento.target.value as ChiaveMetrica)}
+                    className={`${CLASSE_CAMPO} mt-1`}
+                  >
+                    {metricheConfrontoVisibili.map((metrica) => (
+                      <option key={metrica.chiave} value={metrica.chiave}>{metrica.etichetta}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={aggiungiAltraMetrica}
+                    disabled={!metricaConfronto}
+                    className="min-h-10 rounded-lg bg-primary px-3 text-sm font-semibold text-bg focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                  >
+                    Aggiungi confronto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAltraMetricaAperta(false)}
+                    className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    Annulla
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {serieAggiuntive.length > 0 && (
+              <div className="mt-4 space-y-2 border-t border-border pt-4" aria-label="Serie aggiunte">
+                {serieAggiuntive.map((voce, indice) => (
+                  <div key={`${voce.ruolo}-${indice}`} className="grid gap-2 rounded-lg bg-bg-page p-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+                    <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
+                      {NOMI_RUOLI[voce.ruolo]}
+                    </span>
+                    <input
+                      aria-label={`Nome serie ${indice + 1}`}
+                      value={voce.nome}
+                      onChange={(evento) => {
+                        const nome = evento.target.value;
+                        setSerieAggiuntive((correnti) => correnti.map((serie, posizione) =>
+                          posizione === indice ? { ...serie, nome } : serie
+                        ));
+                        setSalvataggio("pronto");
+                        setMessaggioSalvataggio("");
+                      }}
+                      className={CLASSE_CAMPO}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Rimuovi serie ${voce.nome}`}
+                      onClick={() => {
+                        setSerieAggiuntive((correnti) => correnti.filter((_, posizione) => posizione !== indice));
+                        setGraficoScelto(undefined);
+                        setSalvataggio("pronto");
+                        setMessaggioSalvataggio("");
+                      }}
+                      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-border text-danger focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Scheda>
+
+          <Scheda
             titolo="Solo dove"
             sottotitolo="Restringi l’analisi con filtri espliciti"
             azione={
@@ -791,9 +1039,9 @@ export function EditorAnalisi({
             )}
 
             <div className="relative min-h-[340px]" aria-busy={caricamento}>
-              {risultato && tipoGrafico ? (
+              {risultato && tipoGrafico && serieEseguite.length > 0 ? (
                 <div className={caricamento ? "opacity-50" : undefined}>
-                  <GraficoDaRisultato risultato={risultato} tipo={tipoGrafico} altezza={340} />
+                  <GraficoDaAnalisi serie={serieEseguite} tipo={tipoGrafico} altezza={340} />
                 </div>
               ) : (
                 <Scheletro altezza={340} />

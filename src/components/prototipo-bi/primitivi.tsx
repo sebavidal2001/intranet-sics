@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Primitivi del cruscotto. Il principio: un grafico è una SPEC, mai codice.
  * I componenti qui sotto ricevono una `SpecQuery`, la mandano all'API e la

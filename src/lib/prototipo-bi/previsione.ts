@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * PREVISIONE — la matematica la fa il codice, non il modello.
  *

@@ -40,19 +40,23 @@ import {
   type AnalisiAggiungibile,
   type RiquadroCreato,
 } from "./aggiungi-riquadro";
-import { GraficoDaRisultato } from "./grafico-da-risultato";
-import {
-  fondiFiltriPaginaConEsito,
-  type FiltriPagina,
-} from "@/lib/prototipo-bi/filtri-pagina";
+import { GraficoDaAnalisi } from "./grafico-da-risultato";
+import { preparaEsecuzioneAnalisi } from "@/lib/prototipo-bi/analisi-composita";
+import type { FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
-import type { RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type {
+  RisultatoQuery,
+  SerieAnalisi,
+  SerieAnalisiEseguita,
+  SpecQuery,
+} from "@/lib/prototipo-bi/tipi";
 
 export interface AnalisiDashboard {
   id: string;
   titolo: string;
   descrizione: string | null;
   spec: SpecQuery;
+  serie?: SerieAnalisi[] | null;
   grafico: TipoGrafico | null;
   autore_id: string;
   visibilita: "privata" | "condivisa";
@@ -108,6 +112,7 @@ const GRAFICI: Array<{ valore: TipoGrafico; etichetta: string }> = [
   { valore: "anelli", etichetta: "Anelli" },
   { valore: "areeImpilate", etichetta: "Aree impilate" },
   { valore: "pareto", etichetta: "Pareto" },
+  { valore: "bullet", etichetta: "Bullet" },
   { valore: "heatmap", etichetta: "Mappa di calore" },
   { valore: "quadranti", etichetta: "Quadranti" },
   { valore: "imbuto", etichetta: "Imbuto" },
@@ -181,10 +186,19 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
 
   const specsBatch = useMemo(() => {
     if (!paginaAttiva) return [];
-    return paginaAttiva.riquadri.map((riquadro) => {
-      const fusione = fondiFiltriPaginaConEsito(riquadro.analisi.spec, filtriPuliti(paginaAttiva.filtri));
-      return { id: riquadro.id, spec: fusione.spec, ignorati: fusione.filtriPaginaIgnorati };
-    });
+    return paginaAttiva.riquadri.flatMap((riquadro) =>
+      preparaEsecuzioneAnalisi(
+        { spec: riquadro.analisi.spec, serie: riquadro.analisi.serie },
+        filtriPuliti(paginaAttiva.filtri),
+        riquadro.id
+      ).map((voce) => ({
+        id: voce.id,
+        spec: voce.spec,
+        ruolo: voce.ruolo,
+        nome: voce.nome,
+        ignorati: voce.filtriPaginaIgnorati,
+      }))
+    );
   }, [paginaAttiva]);
 
   useEffect(() => {
@@ -475,12 +489,23 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
             ) : (
               <div className="grid grid-cols-12 gap-4">
                 {paginaAttiva.riquadri.map((riquadro, indice) => {
-                  const batch = specsBatch.find((voce) => voce.id === riquadro.id);
-                  const risultato = risultati[riquadro.id];
+                  const batchRiquadro = specsBatch.filter(
+                    (voce) => voce.id === riquadro.id || voce.id.startsWith(`${riquadro.id}:`)
+                  );
+                  const ignorati = [...new Set(batchRiquadro.flatMap((voce) => voce.ignorati))];
+                  const serieEseguite = batchRiquadro.flatMap((voce): SerieAnalisiEseguita[] => {
+                    const risultato = risultati[voce.id];
+                    return risultato
+                      ? [{ ruolo: voce.ruolo, nome: voce.nome, spec: voce.spec, risultato }]
+                      : [];
+                  });
+                  const erroreRiquadro = batchRiquadro
+                    .map((voce) => erroriRiquadri[voce.id])
+                    .find(Boolean);
                   return (
                     <article key={riquadro.id} className={`col-span-12 min-w-0 rounded-xl border border-border bg-bg ${COLONNE[riquadro.larghezza] ?? "lg:col-span-6"}`}>
                       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-                        <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{batch && batch.ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {batch.ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} definito dall’analisi</p>}</div>
+                        <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} definito dall’analisi</p>}</div>
                         {modificabile && <div className="flex items-center gap-1">
                           <button type="button" onClick={() => spostaRiquadro(indice, -1)} disabled={indice === 0} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta prima"><ChevronLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => spostaRiquadro(indice, 1)} disabled={indice === paginaAttiva.riquadri.length - 1} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta dopo"><ChevronRight className="h-4 w-4" /></button>
@@ -490,7 +515,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                         </div>}
                       </header>
                       <div className="min-h-48 p-4">
-                        {erroriRiquadri[riquadro.id] ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroriRiquadri[riquadro.id]}</div> : risultato ? <GraficoDaRisultato risultato={risultato} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
+                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
                       </div>
                     </article>
                   );

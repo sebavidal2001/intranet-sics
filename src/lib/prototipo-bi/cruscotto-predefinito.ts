@@ -1,17 +1,18 @@
 /**
  * Il cruscotto storico diventa dati seminabili senza duplicare la logica delle
- * query nelle route: qui entrano soltanto pannelli esprimibili da una singola
- * SpecQuery, così la migrazione non cambia mai il significato dei numeri.
+ * query nelle route: ogni pannello conserva le SpecQuery che producono i suoi
+ * numeri, così la migrazione non cambia mai il significato dei dati mostrati.
  */
 
 import type { TipoGrafico } from "./scelta-grafico";
-import type { SpecQuery } from "./tipi";
+import type { SerieAnalisi, SpecQuery } from "./tipi";
 
 export interface AnalisiPredefinita {
   chiave: string;
   titolo: string;
   descrizione?: string;
   spec: SpecQuery;
+  serie?: SerieAnalisi[];
   grafico?: TipoGrafico;
   larghezza?: number;
 }
@@ -33,6 +34,113 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
     ordine: 0,
     analisi: [
       {
+        chiave: "sintesi.ordinato-confronto",
+        titolo: "Ordinato rispetto all'anno precedente",
+        spec: { metrica: "ordinato" },
+        serie: [
+          { ruolo: "principale", nome: "Ordinato", spec: { metrica: "ordinato" } },
+          {
+            ruolo: "confronto",
+            nome: "Anno precedente",
+            spec: { metrica: "ordinato", modificatore: "anno_precedente" },
+          },
+        ],
+        grafico: "kpi",
+        larghezza: 6,
+      },
+      {
+        chiave: "sintesi.fatturato-confronto",
+        titolo: "Fatturato rispetto all'anno precedente",
+        spec: { metrica: "fatturato" },
+        serie: [
+          { ruolo: "principale", nome: "Fatturato", spec: { metrica: "fatturato" } },
+          {
+            ruolo: "confronto",
+            nome: "Anno precedente",
+            spec: { metrica: "fatturato", modificatore: "anno_precedente" },
+          },
+        ],
+        grafico: "kpi",
+        larghezza: 6,
+      },
+      {
+        chiave: "sintesi.raggiungimento-per-bu",
+        titolo: "Raggiungimento per business unit",
+        descrizione: "Consuntivo contro budget e BEP, allo stesso periodo.",
+        spec: { metrica: "ordinato", raggruppa: ["bu"], ordina: "valore_desc" },
+        serie: [
+          {
+            ruolo: "principale",
+            nome: "Ordinato",
+            spec: { metrica: "ordinato", raggruppa: ["bu"], ordina: "valore_desc" },
+          },
+          {
+            ruolo: "obiettivo",
+            nome: "Budget",
+            spec: { metrica: "budget", raggruppa: ["bu"], ordina: "valore_desc" },
+          },
+          {
+            ruolo: "soglia",
+            nome: "BEP",
+            spec: { metrica: "bep", raggruppa: ["bu"], ordina: "valore_desc" },
+          },
+        ],
+        grafico: "bullet",
+      },
+      {
+        chiave: "sintesi.ordinato-budget-bep-mese",
+        titolo: "Ordinato, budget e BEP per mese",
+        spec: { metrica: "ordinato", granularita: "mese", ordina: "etichetta" },
+        serie: [
+          {
+            ruolo: "principale",
+            nome: "Ordinato",
+            spec: { metrica: "ordinato", granularita: "mese", ordina: "etichetta" },
+          },
+          {
+            ruolo: "obiettivo",
+            nome: "Budget",
+            spec: { metrica: "budget", granularita: "mese", ordina: "etichetta" },
+          },
+          {
+            ruolo: "soglia",
+            nome: "BEP",
+            spec: { metrica: "bep", granularita: "mese", ordina: "etichetta" },
+          },
+        ],
+        grafico: "combo",
+        larghezza: 12,
+      },
+      {
+        chiave: "sintesi.visione-progressiva",
+        titolo: "Visione progressiva annua",
+        spec: {
+          metrica: "ordinato",
+          modificatore: "progressivo",
+          granularita: "settimana",
+          ordina: "etichetta",
+        },
+        serie: [
+          {
+            ruolo: "principale",
+            nome: "Ordinato",
+            spec: { metrica: "ordinato", modificatore: "progressivo", granularita: "settimana", ordina: "etichetta" },
+          },
+          {
+            ruolo: "obiettivo",
+            nome: "Budget",
+            spec: { metrica: "budget", modificatore: "progressivo", granularita: "settimana", ordina: "etichetta" },
+          },
+          {
+            ruolo: "soglia",
+            nome: "BEP",
+            spec: { metrica: "bep", modificatore: "progressivo", granularita: "settimana", ordina: "etichetta" },
+          },
+        ],
+        grafico: "linee",
+        larghezza: 12,
+      },
+      {
         chiave: "sintesi.quota-per-bu",
         titolo: "Quota per business unit",
         spec: { metrica: "ordinato", raggruppa: ["bu"], ordina: "valore_desc" },
@@ -44,13 +152,92 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
     chiave: "scostamenti",
     titolo: "Scostamenti",
     ordine: 1,
-    analisi: [],
+    analisi: [
+      {
+        chiave: "scostamenti.bu-anno-precedente",
+        titolo: "Scostamento per business unit",
+        spec: { metrica: "ordinato", raggruppa: ["bu"], ordina: "valore_desc" },
+        serie: [
+          { ruolo: "principale", nome: "Ordinato", spec: { metrica: "ordinato", raggruppa: ["bu"], ordina: "valore_desc" } },
+          { ruolo: "confronto", nome: "Anno precedente", spec: { metrica: "ordinato", modificatore: "anno_precedente", raggruppa: ["bu"], ordina: "valore_desc" } },
+        ],
+        grafico: "barre",
+      },
+      {
+        chiave: "scostamenti.agente-budget",
+        titolo: "Scostamento dal budget per agente",
+        spec: { metrica: "ordinato", raggruppa: ["agente"], ordina: "valore_desc" },
+        serie: [
+          { ruolo: "principale", nome: "Ordinato", spec: { metrica: "ordinato", raggruppa: ["agente"], ordina: "valore_desc" } },
+          { ruolo: "obiettivo", nome: "Budget", spec: { metrica: "budget", raggruppa: ["agente"], ordina: "valore_desc" } },
+        ],
+        grafico: "barre",
+      },
+      {
+        chiave: "scostamenti.dove-e-quando",
+        titolo: "Dove e quando",
+        descrizione: "Scostamento percentuale dal budget per business unit e mese.",
+        spec: { metrica: "ordinato", granularita: "mese", raggruppa: ["bu"], ordina: "etichetta" },
+        serie: [
+          { ruolo: "principale", nome: "Ordinato", spec: { metrica: "ordinato", granularita: "mese", raggruppa: ["bu"], ordina: "etichetta" } },
+          { ruolo: "obiettivo", nome: "Budget", spec: { metrica: "budget", granularita: "mese", raggruppa: ["bu"], ordina: "etichetta" } },
+        ],
+        grafico: "heatmap",
+        larghezza: 12,
+      },
+      {
+        chiave: "scostamenti.bu-completo",
+        titolo: "Business unit — analisi completa",
+        spec: { metrica: "ordinato", raggruppa: ["bu"], ordina: "valore_desc" },
+        serie: [
+          { ruolo: "principale", nome: "Ordinato", spec: { metrica: "ordinato", raggruppa: ["bu"], ordina: "valore_desc" } },
+          { ruolo: "confronto", nome: "Anno precedente", spec: { metrica: "ordinato", modificatore: "anno_precedente", raggruppa: ["bu"], ordina: "valore_desc" } },
+          { ruolo: "obiettivo", nome: "Budget", spec: { metrica: "budget", raggruppa: ["bu"], ordina: "valore_desc" } },
+        ],
+        grafico: "tabella",
+        larghezza: 12,
+      },
+      {
+        chiave: "scostamenti.agenti-completo",
+        titolo: "Agenti — analisi completa",
+        spec: { metrica: "ordinato", raggruppa: ["agente"], ordina: "valore_desc" },
+        serie: [
+          { ruolo: "principale", nome: "Ordinato", spec: { metrica: "ordinato", raggruppa: ["agente"], ordina: "valore_desc" } },
+          { ruolo: "confronto", nome: "Anno precedente", spec: { metrica: "ordinato", modificatore: "anno_precedente", raggruppa: ["agente"], ordina: "valore_desc" } },
+          { ruolo: "obiettivo", nome: "Budget", spec: { metrica: "budget", raggruppa: ["agente"], ordina: "valore_desc" } },
+        ],
+        grafico: "tabella",
+        larghezza: 12,
+      },
+    ],
   },
   {
     chiave: "clienti",
     titolo: "Clienti",
     ordine: 2,
     analisi: [
+      {
+        chiave: "clienti.chi-si-sta-muovendo",
+        titolo: "Chi si sta muovendo",
+        spec: { metrica: "ordinato", raggruppa: ["cliente"], ordina: "valore_desc", limite: 200 },
+        serie: [
+          { ruolo: "principale", nome: "Anno corrente", spec: { metrica: "ordinato", raggruppa: ["cliente"], ordina: "valore_desc", limite: 200 } },
+          { ruolo: "confronto", nome: "Anno precedente", spec: { metrica: "ordinato", modificatore: "anno_precedente", raggruppa: ["cliente"], ordina: "valore_desc", limite: 400 } },
+        ],
+        grafico: "quadranti",
+      },
+      {
+        chiave: "clienti.analisi-completa",
+        titolo: "Clienti — analisi completa",
+        spec: { metrica: "ordinato", raggruppa: ["cliente"], ordina: "valore_desc", limite: 200 },
+        serie: [
+          { ruolo: "principale", nome: "Anno corrente", spec: { metrica: "ordinato", raggruppa: ["cliente"], ordina: "valore_desc", limite: 200 } },
+          { ruolo: "confronto", nome: "Anno precedente", spec: { metrica: "ordinato", modificatore: "anno_precedente", raggruppa: ["cliente"], ordina: "valore_desc", limite: 400 } },
+          { ruolo: "confronto", nome: "Andamento mensile", spec: { metrica: "ordinato", granularita: "mese", raggruppa: ["cliente"], ordina: "etichetta" } },
+        ],
+        grafico: "tabella",
+        larghezza: 12,
+      },
       {
         chiave: "clienti.concentrazione-fatturato",
         titolo: "Concentrazione del fatturato",
@@ -88,6 +275,16 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
     titolo: "Conversione",
     ordine: 4,
     analisi: [
+      {
+        chiave: "conversione.dal-preventivo-all-ordine",
+        titolo: "Dal preventivo all'ordine",
+        spec: { metrica: "preventivi_valore" },
+        serie: [
+          { ruolo: "principale", nome: "Preventivato", spec: { metrica: "preventivi_valore" } },
+          { ruolo: "confronto", nome: "Convertito in ordine", spec: { metrica: "preventivi_convertito" } },
+        ],
+        grafico: "imbuto",
+      },
       {
         chiave: "conversione.per-agente",
         titolo: "Conversione per agente",
@@ -207,17 +404,16 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
 ];
 
 // NON MIGRATI:
-// - Fascia KPI globale: confronti, note e rapporti combinano più query; il portafoglio
-//   ignora volutamente l'anno, comportamento non rappresentabile col periodo ereditato.
-// - Sintesi: raggiungimento BU, ordinato/budget/BEP mensile e progressivo combinano tre
-//   query; l'andamento BU usa serie e totale della BU.
-// - Scostamenti: tutti i pannelli calcolano differenze o tabelle da almeno due query.
-// - Clienti: "Chi si sta muovendo" e la tabella completa confrontano anno corrente,
-//   anno precedente e, per la tabella, andamento mensile.
+// - Fascia KPI globale: portafoglio e preventivi aperti ignorano volutamente il periodo
+//   della pagina; ordini/ordine medio mescola unità e richiede un rapporto derivato.
+// - Sintesi: l'andamento per BU usa piccoli multipli con un totale per riquadro, una forma
+//   che i ruoli delle serie non descrivono ancora.
 // - Preventivi: "Preventivi aperti" unisce due KPI e una ripartizione per BU;
 //   tutti gli altri pannelli fotografano l'aperto di tutti gli anni. Il periodo
 //   ereditato li restringerebbe e cambierebbe i numeri.
-// - Conversione: imbuto, composizione per esito e tabelle complete combinano più query.
+// - Conversione: composizione per esito e tabelle complete includono quote e rapporti
+//   derivati che non corrispondono a una serie grezza.
 //   I pannelli di anzianità ignorano volutamente il periodo perché fotografano l'aperto
 //   attuale: ereditarlo dalla pagina cambierebbe i numeri.
-// - Back office: volume, reattività e quadro completo combinano KPI e rapporti derivati.
+// - Back office: volume, reattività e quadro completo richiedono rapporti, medie pesate
+//   e più unità nello stesso pannello; affiancare le serie grezze cambierebbe il significato.

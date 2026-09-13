@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Grafici ad alto impatto visivo. Nessuno è decorativo: ognuno esiste perché
  * risponde a una domanda che gli altri non riescono a mostrare bene.

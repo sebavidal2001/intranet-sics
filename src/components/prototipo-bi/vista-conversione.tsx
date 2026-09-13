@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Vista "Conversione": che fine fanno i preventivi, e da quanto sono fermi.
  *

@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Import degli Excel Budget/BEP aziendali. Riconosce da solo i tre formati
  * in uso (settimanale per area, giornaliero per area, giornaliero per

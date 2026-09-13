@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * BUSINESS UNIT — presentazione e controllo.
  *

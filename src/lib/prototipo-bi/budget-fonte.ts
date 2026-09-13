@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Risoluzione delle metriche `budget` e `bep`.
  *

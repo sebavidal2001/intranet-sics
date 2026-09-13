@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Vista "Back office": quanto lavorano gli addetti e con che tempi.
  *

@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Import dei file Excel Budget/BEP realmente in uso in azienda.
  *

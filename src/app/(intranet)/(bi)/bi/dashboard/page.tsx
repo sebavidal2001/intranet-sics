@@ -3,7 +3,7 @@ import { DashboardList } from "@/components/prototipo-bi/dashboard-list";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Dashboard — Prototipo BI (non in produzione)",
+  title: "Dashboard — BI Direzionale",
 };
 
 export default function PaginaDashboard() {

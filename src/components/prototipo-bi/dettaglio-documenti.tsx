@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Pannello di dettaglio: dall'aggregato al documento, dal documento alla riga.
  *

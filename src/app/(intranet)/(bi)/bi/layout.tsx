@@ -1,4 +1,3 @@
-import { BannerPrototipo } from "@/components/prototipo-bi/banner";
 import { NavigazionePrototipo } from "@/components/prototipo-bi/navigazione";
 import { ImpostazioniProvider } from "@/components/prototipo-bi/impostazioni";
 import { verificaAccessoSicuro } from "@/lib/prototipo-bi/accesso";
@@ -16,7 +15,6 @@ export default async function LayoutPrototipoBi({
   return (
     <ImpostazioniProvider>
       <div className="min-h-screen flex flex-col">
-        <BannerPrototipo />
         <NavigazionePrototipo />
         {esito.ok ? (
           children

@@ -18,7 +18,7 @@
  * riceve un `RisultatoQuery` e restituisce un tipo con il suo motivo.
  */
 
-import type { RisultatoQuery } from "./tipi";
+import type { RisultatoQuery, SerieAnalisiEseguita } from "./tipi";
 
 export type TipoGrafico =
   | "linee"
@@ -170,15 +170,93 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
   return [...new Set(possibili)];
 }
 
-export function graficiPossibili(risultato: RisultatoQuery): TipoGrafico[] {
+function determinaSceltaAnalisi(serie: SerieAnalisiEseguita[]): SceltaBase {
+  const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
+  if (!principale) {
+    return { tipo: "tabella", motivo: "Nessuna serie disponibile: la tabella rende esplicito lo stato vuoto." };
+  }
+  const risultato = principale.risultato;
+  const haObiettivo = serie.some((voce) => voce.ruolo === "obiettivo");
+  const haConfronto = serie.some((voce) => voce.ruolo === "confronto");
+  const temporale = serie.some((voce) => voce.risultato.spec.granularita !== undefined);
+  const senzaDimensioni = (risultato.spec.raggruppa?.length ?? 0) === 0;
+
+  if (haObiettivo) {
+    return {
+      tipo: "bullet",
+      motivo: "Consuntivo e obiettivo: il bullet mostra distanza dal traguardo e dall'eventuale soglia.",
+    };
+  }
+  if (temporale) {
+    return {
+      tipo: "linee",
+      motivo: "Più serie nel tempo: le linee consentono di confrontarne ritmo e scostamenti sullo stesso asse.",
+    };
+  }
+  if (haConfronto && senzaDimensioni) {
+    return {
+      tipo: "kpi",
+      motivo: "Un valore complessivo e il suo confronto: la KPI rende subito visibili valore e variazione.",
+    };
+  }
+  if (haConfronto) {
+    return {
+      tipo: "barre",
+      motivo: "Categorie confrontate sulla stessa misura: le barre di scostamento evidenziano chi sale e chi scende.",
+    };
+  }
+  return determinaScelta(risultato);
+}
+
+function graficiApplicabiliAnalisi(serie: SerieAnalisiEseguita[]): TipoGrafico[] {
+  const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
+  if (!principale) return ["tabella"];
+  const risultato = principale.risultato;
+  const temporale = serie.some((voce) => voce.risultato.spec.granularita !== undefined);
+  const haObiettivo = serie.some((voce) => voce.ruolo === "obiettivo");
+  const haConfronto = serie.some((voce) => voce.ruolo === "confronto");
+  const stessaUnita = serie.every((voce) => voce.risultato.unita === risultato.unita);
+  const tuttiNonNegativi = serie.every((voce) =>
+    voce.risultato.righe.every((riga) => riga.valore >= 0)
+  );
+  const possibili: TipoGrafico[] = [];
+
+  if (haObiettivo) possibili.push("bullet");
+  if (temporale) possibili.push("linee", "combo");
+  if (haConfronto || (risultato.spec.raggruppa?.length ?? 0) > 0) {
+    possibili.push("barre", "quadranti");
+  }
+  if ((risultato.spec.raggruppa?.length ?? 0) === 0) possibili.push("kpi");
+  if (stessaUnita && tuttiNonNegativi) possibili.push("imbuto", "treemap");
+  if (temporale && (risultato.spec.raggruppa?.length ?? 0) > 0) {
+    possibili.push("heatmap", "areeImpilate");
+  }
+  possibili.push("tabella");
+  return [...new Set(possibili)];
+}
+
+export function graficiPossibili(
+  risultato: RisultatoQuery | SerieAnalisiEseguita[]
+): TipoGrafico[] {
+  if (Array.isArray(risultato)) {
+    const applicabili = graficiApplicabiliAnalisi(risultato);
+    const principale = determinaSceltaAnalisi(risultato).tipo;
+    return [principale, ...applicabili.filter((tipo) => tipo !== principale)];
+  }
   const applicabili = graficiApplicabili(risultato);
   const principale = determinaScelta(risultato).tipo;
   return [principale, ...applicabili.filter((tipo) => tipo !== principale)];
 }
 
-export function scegliGrafico(risultato: RisultatoQuery): PropostaGrafico {
-  const scelta = determinaScelta(risultato);
-  const applicabili = graficiApplicabili(risultato);
+export function scegliGrafico(
+  risultato: RisultatoQuery | SerieAnalisiEseguita[]
+): PropostaGrafico {
+  const scelta = Array.isArray(risultato)
+    ? determinaSceltaAnalisi(risultato)
+    : determinaScelta(risultato);
+  const applicabili = Array.isArray(risultato)
+    ? graficiApplicabiliAnalisi(risultato)
+    : graficiApplicabili(risultato);
   return {
     ...scelta,
     alternative: applicabili.filter((tipo) => tipo !== scelta.tipo),

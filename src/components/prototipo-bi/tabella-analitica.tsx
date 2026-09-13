@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Tabella analitica. Una tabella che mostra solo "nome e valore" costringe
  * chi legge a fare i conti a mente: qui ogni riga porta con sé il confronto

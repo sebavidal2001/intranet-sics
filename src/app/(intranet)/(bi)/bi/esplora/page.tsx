@@ -1,21 +1,21 @@
-/** ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE */
 
 import { headers } from "next/headers";
 import Link from "next/link";
 import { EditorAnalisi } from "@/components/prototipo-bi/editor-analisi";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
-import type { SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type { SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Esplora — Prototipo BI (non in produzione)",
+  title: "Esplora — BI Direzionale",
 };
 
 interface AnalisiSalvata {
   id: string;
   titolo: string;
   spec: SpecQuery;
+  serie: SerieAnalisi[] | null;
   grafico?: TipoGrafico;
   modificabile: boolean;
 }
@@ -34,6 +34,7 @@ function leggiAnalisi(corpo: unknown, id: string): AnalisiSalvata | undefined {
     id: String(trovata.id),
     titolo: String(trovata.titolo),
     spec: trovata.spec as unknown as SpecQuery,
+    serie: Array.isArray(trovata.serie) ? (trovata.serie as SerieAnalisi[]) : null,
     grafico: typeof trovata.grafico === "string" ? (trovata.grafico as TipoGrafico) : undefined,
     modificabile: trovata.modificabile === true,
   };
@@ -81,6 +82,7 @@ export default async function PaginaEsplora({
     <EditorAnalisi
       idAnalisi={analisi?.id}
       specIniziale={analisi?.spec}
+      serieIniziali={analisi?.serie}
       titoloIniziale={analisi?.titolo}
       graficoIniziale={analisi?.grafico}
       modificabile={analisi?.modificabile ?? true}

@@ -1,6 +1,11 @@
 "use client";
 
-import type { RisultatoQuery, RigaRisultato } from "@/lib/prototipo-bi/tipi";
+import type {
+  RisultatoQuery,
+  RigaRisultato,
+  SerieAnalisiEseguita,
+  UnitaMisura,
+} from "@/lib/prototipo-bi/tipi";
 import {
   graficiPossibili,
   scegliGrafico,
@@ -15,12 +20,31 @@ import {
   PALETTE,
   Tabella,
 } from "./primitivi";
-import { Bullet, Heatmap, Pareto, Quadranti, Sparkline } from "./grafici-avanzati";
+import {
+  BarreScostamento,
+  Bullet,
+  Heatmap,
+  Pareto,
+  Quadranti,
+  Sparkline,
+} from "./grafici-avanzati";
 import { Anelli, AreeImpilate, Composizione, Imbuto } from "./grafici-spettacolari";
 import { useImpostazioni } from "./impostazioni";
+import {
+  TabellaAnalitica,
+  type ColonnaAnalitica,
+  type RigaAnalitica,
+} from "./tabella-analitica";
 
 interface ProprietaGraficoDaRisultato {
   risultato: RisultatoQuery;
+  tipo?: TipoGrafico;
+  altezza?: number;
+  onClickEtichetta?: (etichetta: string) => void;
+}
+
+interface ProprietaGraficoDaAnalisi {
+  serie: SerieAnalisiEseguita[];
   tipo?: TipoGrafico;
   altezza?: number;
   onClickEtichetta?: (etichetta: string) => void;
@@ -101,6 +125,164 @@ function aree(risultato: RisultatoQuery) {
     return { nome: categoria, valori };
   });
   return { periodi, serie };
+}
+
+function valorePerEtichetta(risultato: RisultatoQuery): Map<string, number> {
+  return new Map(risultato.righe.map((riga) => [riga.etichetta, riga.valore]));
+}
+
+function risultatoAllineatoNelTempo(voce: SerieAnalisiEseguita): RisultatoQuery {
+  if (voce.spec.modificatore !== "anno_precedente" && voce.spec.modificatore !== "progressivo_ap") {
+    return voce.risultato;
+  }
+  return {
+    ...voce.risultato,
+    righe: voce.risultato.righe.map((riga) => {
+      const periodo = riga.chiavi.periodo;
+      if (!/^\d{4}(?:-|$)/u.test(periodo ?? "")) return riga;
+      const allineato = `${Number(periodo.slice(0, 4)) + 1}${periodo.slice(4)}`;
+      return {
+        ...riga,
+        etichetta: riga.etichetta.replace(periodo, allineato),
+        chiavi: { ...riga.chiavi, periodo: allineato },
+      };
+    }),
+  };
+}
+
+function righeBullet(serie: SerieAnalisiEseguita[]) {
+  const principale = serie.find((voce) => voce.ruolo === "principale");
+  const obiettivo = serie.find((voce) => voce.ruolo === "obiettivo");
+  const soglia = serie.find((voce) => voce.ruolo === "soglia");
+  if (!principale || !obiettivo) return [];
+
+  if (
+    principale.risultato.righe.length === 1 &&
+    (principale.risultato.spec.raggruppa?.length ?? 0) === 0
+  ) {
+    return [{
+      etichetta: principale.nome,
+      valore: principale.risultato.totale,
+      obiettivo: obiettivo.risultato.totale,
+      soglia: soglia?.risultato.totale,
+    }];
+  }
+
+  const obiettivi = valorePerEtichetta(obiettivo.risultato);
+  const soglie = soglia ? valorePerEtichetta(soglia.risultato) : new Map<string, number>();
+  return principale.risultato.righe.map((riga) => ({
+    etichetta: riga.etichetta,
+    valore: riga.valore,
+    obiettivo: obiettivi.get(riga.etichetta) ?? 0,
+    soglia: soglie.get(riga.etichetta),
+  }));
+}
+
+function tipoColonna(unita: UnitaMisura): ColonnaAnalitica["tipo"] {
+  if (unita === "percentuale") return "percentuale";
+  if (unita === "euro") return "euro";
+  return "numero";
+}
+
+function chiaveCategoria(serie: SerieAnalisiEseguita, riga: RigaRisultato): string {
+  const dimensione = serie.spec.raggruppa?.[0];
+  return dimensione ? riga.chiavi[dimensione] ?? riga.etichetta : riga.etichetta;
+}
+
+function tabellaComposita(serie: SerieAnalisiEseguita[]) {
+  const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
+  if (!principale) return { colonne: [], righe: [] };
+  const nonTemporali = serie.filter((voce) => voce.spec.granularita === undefined);
+  const fontiRighe = nonTemporali.length > 0 ? nonTemporali : [principale];
+  const chiavi = new Set<string>();
+  for (const voce of fontiRighe) {
+    for (const riga of voce.risultato.righe) chiavi.add(chiaveCategoria(voce, riga));
+  }
+
+  const colonne: ColonnaAnalitica[] = nonTemporali.map((voce, indice) => ({
+    chiave: `serie_${indice}`,
+    etichetta: voce.nome,
+    tipo: indice === 0 ? "barra" : tipoColonna(voce.risultato.unita),
+    unita: voce.risultato.unita,
+  }));
+  const confronto = nonTemporali.find((voce) => voce.ruolo === "confronto");
+  const obiettivo = nonTemporali.find((voce) => voce.ruolo === "obiettivo");
+  if (confronto) {
+    colonne.push({
+      chiave: "delta_confronto",
+      etichetta: "Delta",
+      tipo: principale.risultato.unita === "euro" ? "delta_euro" : "numero",
+      unita: principale.risultato.unita,
+    });
+  }
+  if (obiettivo) {
+    colonne.push({
+      chiave: "raggiungimento",
+      etichetta: "Raggiungimento",
+      tipo: "raggiungimento",
+    });
+  }
+  const temporale = serie.find(
+    (voce) => voce.spec.granularita !== undefined && (voce.spec.raggruppa?.length ?? 0) > 0
+  );
+  if (temporale) {
+    colonne.push({ chiave: "andamento", etichetta: "Andamento", tipo: "sparkline" });
+  }
+
+  const mappe = new Map<SerieAnalisiEseguita, Map<string, number>>();
+  for (const voce of nonTemporali) {
+    mappe.set(
+      voce,
+      new Map(voce.risultato.righe.map((riga) => [chiaveCategoria(voce, riga), riga.valore]))
+    );
+  }
+  const righe: RigaAnalitica[] = [...chiavi].map((chiave) => {
+    const celle: RigaAnalitica["celle"] = {};
+    nonTemporali.forEach((voce, indice) => {
+      celle[`serie_${indice}`] = mappe.get(voce)?.get(chiave) ?? 0;
+    });
+    const valorePrincipale = mappe.get(principale)?.get(chiave) ?? 0;
+    if (confronto) {
+      celle.delta_confronto = valorePrincipale - (mappe.get(confronto)?.get(chiave) ?? 0);
+    }
+    if (obiettivo) {
+      const valoreObiettivo = mappe.get(obiettivo)?.get(chiave) ?? 0;
+      celle.raggiungimento = valoreObiettivo === 0 ? null : (valorePrincipale / valoreObiettivo) * 100;
+    }
+    if (temporale) {
+      celle.andamento = temporale.risultato.righe
+        .filter((riga) => chiaveCategoria(temporale, riga) === chiave)
+        .sort((a, b) => (a.chiavi.periodo ?? "").localeCompare(b.chiavi.periodo ?? ""))
+        .map((riga) => riga.valore);
+    }
+    return { chiave, celle };
+  });
+  return { colonne, righe };
+}
+
+function matriceScostamento(serie: SerieAnalisiEseguita[]) {
+  const principale = serie.find((voce) => voce.ruolo === "principale");
+  const riferimento = serie.find((voce) => voce.ruolo === "obiettivo" || voce.ruolo === "confronto");
+  if (!principale || !riferimento) return null;
+  const dimensione = principale.spec.raggruppa?.[0];
+  if (!dimensione || !principale.spec.granularita) return null;
+  const righe = [...new Set(principale.risultato.righe.map((riga) => riga.chiavi[dimensione]))];
+  const colonne = [...new Set(principale.risultato.righe.map((riga) => riga.chiavi.periodo))].sort();
+  const mappaRiferimento = new Map(
+    riferimento.risultato.righe.map((riga) => [
+      `${riga.chiavi[dimensione]}|${riga.chiavi.periodo}`,
+      riga.valore,
+    ])
+  );
+  const valori: Record<string, Record<string, number>> = {};
+  for (const nomeRiga of righe) valori[nomeRiga] = {};
+  for (const riga of principale.risultato.righe) {
+    const nomeRiga = riga.chiavi[dimensione];
+    const colonna = riga.chiavi.periodo;
+    const atteso = mappaRiferimento.get(`${nomeRiga}|${colonna}`) ?? 0;
+    valori[nomeRiga][colonna] = atteso === 0 ? 0 : ((riga.valore - atteso) / Math.abs(atteso)) * 100;
+  }
+  return { righe, colonne, valori };
 }
 
 function Ripiego({ risultato, tipo }: { risultato: RisultatoQuery; tipo: TipoGrafico }) {
@@ -248,5 +430,188 @@ export function GraficoDaRisultato({
       // RisultatoQuery non contiene un obiettivo: inventarne uno renderebbe il confronto ingannevole.
       void Bullet;
       return <Ripiego risultato={risultato} tipo={tipoScelto} />;
+  }
+}
+
+/** Distribuisce ruoli e risultati sulle firme già usate dai grafici del Cruscotto. */
+export function GraficoDaAnalisi({
+  serie,
+  tipo,
+  altezza = 300,
+  onClickEtichetta,
+}: ProprietaGraficoDaAnalisi): JSX.Element {
+  const { colore } = useImpostazioni();
+  const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
+  if (!principale) {
+    return <p role="status" className="text-sm text-text-muted">Nessuna serie disponibile.</p>;
+  }
+  if (serie.length === 1) {
+    return (
+      <GraficoDaRisultato
+        risultato={principale.risultato}
+        tipo={tipo}
+        altezza={altezza}
+        onClickEtichetta={onClickEtichetta}
+      />
+    );
+  }
+
+  const tipoScelto = tipo ?? scegliGrafico(serie).tipo;
+  if (!graficiPossibili(serie).includes(tipoScelto)) {
+    const dati = tabellaComposita(serie);
+    return <TabellaAnalitica {...dati} colonnaDimensione="Voce" />;
+  }
+
+  switch (tipoScelto) {
+    case "linee":
+      return (
+        <GraficoLinee
+          serie={serie.map((voce, indice) => ({
+            nome: voce.nome,
+            risultato: risultatoAllineatoNelTempo(voce),
+            colore: colore(indice) || PALETTE[indice % PALETTE.length],
+            tratteggiata: voce.ruolo !== "principale",
+          }))}
+          altezza={altezza}
+        />
+      );
+    case "combo":
+      return (
+        <GraficoCombo
+          barre={{
+            nome: principale.nome,
+            risultato: principale.risultato,
+            colore: colore(0) || PALETTE[0],
+          }}
+          linee={serie
+            .filter((voce) => voce !== principale)
+            .map((voce, indice) => ({
+              nome: voce.nome,
+              risultato: risultatoAllineatoNelTempo(voce),
+              colore: colore(indice + 1) || PALETTE[(indice + 1) % PALETTE.length],
+              tratteggiata: voce.ruolo !== "principale",
+            }))}
+          altezza={altezza}
+        />
+      );
+    case "bullet":
+      return <Bullet righe={righeBullet(serie)} onClick={onClickEtichetta} />;
+    case "barre": {
+      const riferimento = serie.find(
+        (voce) => voce.ruolo === "confronto" || voce.ruolo === "obiettivo"
+      );
+      if (!riferimento) {
+        return <GraficoDaRisultato risultato={principale.risultato} tipo="barre" altezza={altezza} />;
+      }
+      const attesi = valorePerEtichetta(riferimento.risultato);
+      return (
+        <BarreScostamento
+          dati={principale.risultato.righe.map((riga) => ({
+            etichetta: riga.etichetta,
+            valore: riga.valore - (attesi.get(riga.etichetta) ?? 0),
+          }))}
+          altezza={altezza}
+          formato={principale.risultato.unita === "percentuale" ? "percentuale" : "euro"}
+          onClick={onClickEtichetta}
+        />
+      );
+    }
+    case "kpi": {
+      const confronto = serie.find((voce) => voce.ruolo === "confronto");
+      const obiettivo = serie.find((voce) => voce.ruolo === "obiettivo");
+      return (
+        <KpiEroe
+          etichetta={principale.nome}
+          valore={principale.risultato.totale}
+          unita={principale.risultato.unita}
+          confronto={confronto ? { valore: confronto.risultato.totale, etichetta: confronto.nome } : null}
+          nota={obiettivo ? `Obiettivo: ${obiettivo.nome}` : undefined}
+        />
+      );
+    }
+    case "quadranti": {
+      const confronto = serie.find((voce) => voce.ruolo === "confronto");
+      if (!confronto) return <GraficoDaRisultato risultato={principale.risultato} tipo="quadranti" />;
+      const precedenti = valorePerEtichetta(confronto.risultato);
+      return (
+        <Quadranti
+          punti={principale.risultato.righe.map((riga) => {
+            const precedente = precedenti.get(riga.etichetta) ?? 0;
+            return {
+              nome: riga.etichetta,
+              x: precedente,
+              y: precedente === 0 ? 0 : ((riga.valore - precedente) / Math.abs(precedente)) * 100,
+              dimensione: Math.abs(riga.valore),
+            };
+          })}
+          etichettaX={confronto.nome}
+          etichettaY="Variazione %"
+          altezza={altezza}
+          onClick={onClickEtichetta}
+        />
+      );
+    }
+    case "heatmap": {
+      const dati = matriceScostamento(serie);
+      if (!dati) return <GraficoDaRisultato risultato={principale.risultato} tipo="heatmap" />;
+      return (
+        <Heatmap
+          {...dati}
+          formato="percentuale"
+          divergente
+          onClick={(riga) => onClickEtichetta?.(riga)}
+        />
+      );
+    }
+    case "imbuto":
+      return (
+        <Imbuto
+          fasi={serie.map((voce) => ({ etichetta: voce.nome, valore: voce.risultato.totale }))}
+          unita={principale.risultato.unita}
+          altezza={altezza}
+          onClick={onClickEtichetta}
+        />
+      );
+    case "treemap":
+      return (
+        <Composizione
+          dati={serie.map((voce) => ({ etichetta: voce.nome, valore: voce.risultato.totale }))}
+          unita={principale.risultato.unita}
+          altezza={altezza}
+          onClick={onClickEtichetta}
+        />
+      );
+    case "areeImpilate": {
+      const periodi = [...new Set(serie.flatMap((voce) =>
+        voce.risultato.righe.map((riga) => riga.chiavi.periodo ?? riga.etichetta)
+      ))].sort();
+      return (
+        <AreeImpilate
+          periodi={periodi}
+          serie={serie.map((voce) => ({
+            nome: voce.nome,
+            valori: Object.fromEntries(
+              voce.risultato.righe.map((riga) => [riga.chiavi.periodo ?? riga.etichetta, riga.valore])
+            ),
+          }))}
+          unita={principale.risultato.unita}
+          altezza={altezza}
+          onClick={onClickEtichetta}
+        />
+      );
+    }
+    case "tabella": {
+      const dati = tabellaComposita(serie);
+      return <TabellaAnalitica {...dati} colonnaDimensione="Voce" onClickRiga={onClickEtichetta} />;
+    }
+    default:
+      return (
+        <GraficoDaRisultato
+          risultato={principale.risultato}
+          tipo={tipoScelto}
+          altezza={altezza}
+          onClickEtichetta={onClickEtichetta}
+        />
+      );
   }
 }

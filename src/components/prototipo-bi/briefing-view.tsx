@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * L'analista mattutino. Tre voci, novanta secondi di lettura.
  * Il silenzio è un risultato valido: se non c'è niente di rilevante, lo dice.
@@ -111,7 +110,7 @@ export function BriefingView() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `PROTOTIPO_Report_Direzionale_${new Date().toISOString().slice(0, 10)}.docx`;
+      a.download = `BI_Report_Direzionale_${new Date().toISOString().slice(0, 10)}.docx`;
       document.body.appendChild(a);
       a.click();
       a.remove();

@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Calendario aziendale: giorni lavorativi, chiusure, settimane ISO.
  *

@@ -3,8 +3,9 @@ import { preliminari, errore, negato } from "../_comune";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { registraAccesso } from "@/lib/prototipo-bi/registro";
 import { SpecNonValida, validaSpec } from "@/lib/prototipo-bi/semantico";
+import { validaSerieAnalisi } from "@/lib/prototipo-bi/analisi-composita";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
-import type { SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type { SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +55,7 @@ export async function GET() {
   const database = createAdminClient().schema("bi_direzionale");
   const { data, error: erroreDb } = await database
     .from("analisi")
-    .select("id,titolo,descrizione,spec,grafico,autore_id,visibilita,creato_il,aggiornato_il,chiave")
+    .select("id,titolo,descrizione,spec,serie,grafico,autore_id,visibilita,creato_il,aggiornato_il,chiave")
     .or(`autore_id.eq.${pre.accesso.userId},visibilita.eq.condivisa`)
     .order("aggiornato_il", { ascending: false });
 
@@ -122,6 +123,7 @@ export async function POST(request: NextRequest) {
     titolo?: unknown;
     descrizione?: unknown;
     spec?: unknown;
+    serie?: unknown;
     grafico?: unknown;
     visibilita?: unknown;
   };
@@ -146,8 +148,15 @@ export async function POST(request: NextRequest) {
   }
 
   let spec: SpecQuery;
+  let serie: SerieAnalisi[] | null;
   try {
-    spec = validaSpec(body.spec);
+    if (body.serie === undefined || body.serie === null) {
+      spec = validaSpec(body.spec);
+      serie = null;
+    } else {
+      serie = validaSerieAnalisi(body.serie);
+      spec = serie.find((voce) => voce.ruolo === "principale")!.spec;
+    }
   } catch (causa) {
     if (causa instanceof SpecNonValida) return errore(causa.message, 422);
     return errore("Spec non valida", 422);
@@ -162,11 +171,12 @@ export async function POST(request: NextRequest) {
       titolo,
       descrizione,
       spec,
+      serie,
       grafico: body.grafico ?? null,
       autore_id: pre.accesso.userId,
       visibilita,
     })
-    .select("id,titolo,descrizione,spec,grafico,autore_id,visibilita,creato_il,aggiornato_il")
+    .select("id,titolo,descrizione,spec,serie,grafico,autore_id,visibilita,creato_il,aggiornato_il")
     .single();
 
   if (erroreDb) {
@@ -207,6 +217,7 @@ export async function PATCH(request: NextRequest) {
     titolo?: unknown;
     descrizione?: unknown;
     spec?: unknown;
+    serie?: unknown;
     grafico?: unknown;
     visibilita?: unknown;
   };
@@ -226,8 +237,15 @@ export async function PATCH(request: NextRequest) {
   }
 
   let spec: SpecQuery;
+  let serie: SerieAnalisi[] | null;
   try {
-    spec = validaSpec(body.spec);
+    if (body.serie === undefined || body.serie === null) {
+      spec = validaSpec(body.spec);
+      serie = null;
+    } else {
+      serie = validaSerieAnalisi(body.serie);
+      spec = serie.find((voce) => voce.ruolo === "principale")!.spec;
+    }
   } catch (causa) {
     if (causa instanceof SpecNonValida) return errore(causa.message, 422);
     return errore("Spec non valida", 422);
@@ -259,13 +277,14 @@ export async function PATCH(request: NextRequest) {
       titolo,
       descrizione,
       spec,
+      serie,
       grafico: body.grafico ?? null,
       visibilita: body.visibilita ?? esistente.visibilita,
       aggiornato_il: new Date().toISOString(),
     })
     .eq("id", id)
     .eq("autore_id", pre.accesso.userId)
-    .select("id,titolo,descrizione,spec,grafico,autore_id,visibilita,creato_il,aggiornato_il")
+    .select("id,titolo,descrizione,spec,serie,grafico,autore_id,visibilita,creato_il,aggiornato_il")
     .single();
   if (erroreDb) return errore("Impossibile aggiornare l'analisi.", 500);
 

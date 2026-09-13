@@ -46,6 +46,28 @@ function destinazione() {
 }
 
 describe("proponi_analisi", () => {
+  it("propone un solo grafico con più serie e registra i valori di tutte", () => {
+    const raccolta = destinazione();
+    const esito = eseguiPropostaAnalisi(
+      {
+        titolo: "Ordinato rispetto all'anno precedente",
+        spec: { metrica: "ordinato", raggruppa: ["bu"], periodo: { anno: 2026 } },
+        serie: [
+          { ruolo: "principale", nome: "2026", spec: { metrica: "ordinato", raggruppa: ["bu"], periodo: { anno: 2026 } } },
+          { ruolo: "confronto", nome: "2025", spec: { metrica: "ordinato", modificatore: "anno_precedente", raggruppa: ["bu"], periodo: { anno: 2026 } } },
+        ],
+      },
+      SNAPSHOT,
+      raccolta
+    );
+
+    expect(JSON.parse(esito)).toMatchObject({ serie: 2 });
+    expect(raccolta.analisi).toHaveLength(1);
+    expect(raccolta.analisi[0]?.serie).toHaveLength(2);
+    expect(raccolta.analisi[0]?.risultatiSerie).toHaveLength(2);
+    expect(raccolta.valoriNoti.filter((voce) => voce.fonte.startsWith("totale di ordinato"))).toHaveLength(2);
+  });
+
   it("produce un'analisi eseguita con grafico scelto e motivo", () => {
     const raccolta = destinazione();
     const esito = eseguiPropostaAnalisi(

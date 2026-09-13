@@ -9,16 +9,22 @@
 import { useEffect, useRef, useState } from "react";
 import { Bot, Library, LoaderCircle, Plus, Wrench, X } from "lucide-react";
 import { EditorAnalisi } from "./editor-analisi";
-import { GraficoDaRisultato } from "./grafico-da-risultato";
+import { GraficoDaAnalisi } from "./grafico-da-risultato";
 import type { FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
-import type { RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type {
+  RisultatoQuery,
+  SerieAnalisi,
+  SerieAnalisiEseguita,
+  SpecQuery,
+} from "@/lib/prototipo-bi/tipi";
 
 export interface AnalisiAggiungibile {
   id: string;
   titolo: string;
   descrizione: string | null;
   spec: SpecQuery;
+  serie?: SerieAnalisi[] | null;
   grafico: TipoGrafico | null;
   autore_id: string;
   visibilita: "privata" | "condivisa";
@@ -38,8 +44,10 @@ export interface RiquadroCreato {
 interface AnalisiProposta {
   titolo: string;
   spec: SpecQuery;
+  serie?: SerieAnalisi[];
   grafico: TipoGrafico;
   risultato: RisultatoQuery;
+  risultatiSerie?: SerieAnalisiEseguita[];
   commento?: string;
 }
 
@@ -171,6 +179,7 @@ export function AggiungiRiquadro({
           titolo: proposta.titolo,
           descrizione: proposta.commento,
           spec: proposta.spec,
+          serie: proposta.serie ?? null,
           grafico: proposta.grafico,
         }),
       });
@@ -244,7 +253,7 @@ export function AggiungiRiquadro({
               {proposte.map((proposta, indice) => (
                 <article key={`${proposta.titolo}-${indice}`} className="overflow-hidden rounded-xl border border-border bg-bg-page">
                   <header className="px-4 pt-4"><h3 className="font-tenorite text-lg font-semibold">{proposta.titolo}</h3>{proposta.commento && <p className="mt-1 text-sm text-text-muted">{proposta.commento}</p>}</header>
-                  <div className="min-h-48 p-4"><GraficoDaRisultato risultato={proposta.risultato} tipo={proposta.grafico} altezza={220} /></div>
+                  <div className="min-h-48 p-4"><GraficoDaAnalisi serie={proposta.risultatiSerie ?? [{ ruolo: "principale", nome: proposta.spec.metrica, spec: proposta.spec, risultato: proposta.risultato }]} tipo={proposta.grafico} altezza={220} /></div>
                   <div className="border-t border-border p-3"><button type="button" disabled={azioneInCorso !== null} onClick={() => void salvaEaggancia(proposta, indice)} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{azioneInCorso === `ai-${indice}` ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}Aggiungi alla pagina</button></div>
                 </article>
               ))}

@@ -1,4 +1,3 @@
-/** ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE */
 
 import { createAdminClient } from "@/lib/supabase/admin";
 

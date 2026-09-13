@@ -6,6 +6,7 @@ import {
 import type {
   Dimensione,
   RisultatoQuery,
+  SerieAnalisiEseguita,
   UnitaMisura,
 } from "@/lib/prototipo-bi/tipi";
 
@@ -52,6 +53,26 @@ function creaRisultato({
 }
 
 describe("scegliGrafico", () => {
+  it("usa il bullet per una serie principale con obiettivo", () => {
+    const principale = creaRisultato({ numeroRighe: 2, raggruppa: ["bu"] });
+    const obiettivo = creaRisultato({ numeroRighe: 2, raggruppa: ["bu"] });
+    const serie: SerieAnalisiEseguita[] = [
+      { ruolo: "principale", nome: "Ordinato", spec: principale.spec, risultato: principale },
+      { ruolo: "obiettivo", nome: "Budget", spec: obiettivo.spec, risultato: obiettivo },
+    ];
+    expect(scegliGrafico(serie).tipo).toBe("bullet");
+  });
+
+  it("usa linee o combo per due serie temporali", () => {
+    const corrente = creaRisultato({ numeroRighe: 3, granularita: "mese" });
+    const precedente = creaRisultato({ numeroRighe: 3, granularita: "mese" });
+    const serie: SerieAnalisiEseguita[] = [
+      { ruolo: "principale", nome: "2026", spec: corrente.spec, risultato: corrente },
+      { ruolo: "confronto", nome: "2025", spec: precedente.spec, risultato: precedente },
+    ];
+    expect(["linee", "combo"]).toContain(scegliGrafico(serie).tipo);
+  });
+
   it("usa la tabella con zero righe", () => {
     expect(scegliGrafico(creaRisultato({ numeroRighe: 0 })).tipo).toBe("tabella");
   });

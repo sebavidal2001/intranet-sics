@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Budget & BEP: due numeri, le chiusure, l'incidenza delle business unit e le
  * quote dei commerciali. Da qui vengono generate le migliaia di righe
@@ -120,7 +119,7 @@ export function ConfigurazioneView({ annoIniziale }: { annoIniziale: number }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `PROTOTIPO_Budget_BEP_${anno}.xlsx`;
+    a.download = `BI_Budget_BEP_${anno}.xlsx`;
     document.body.appendChild(a);
     a.click();
     a.remove();

@@ -21,6 +21,9 @@ describe("Cruscotto predefinito", () => {
     for (const pagina of CRUSCOTTO_PREDEFINITO) {
       for (const analisi of pagina.analisi) {
         expect(() => validaSpec(analisi.spec), analisi.chiave).not.toThrow();
+        for (const serie of analisi.serie ?? []) {
+          expect(() => validaSpec(serie.spec), `${analisi.chiave}: ${serie.nome}`).not.toThrow();
+        }
       }
     }
   });

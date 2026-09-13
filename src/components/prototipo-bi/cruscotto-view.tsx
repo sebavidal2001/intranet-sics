@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Il cruscotto. Rispetto al PBIX cambia soprattutto una cosa: qui si clicca.
  * Ogni barra, fetta, cella o riga aggiunge un filtro che si propaga a tutta
@@ -529,7 +528,7 @@ export function CruscottoView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `PROTOTIPO_Cruscotto_${vista}_${anno}.xlsx`;
+      a.download = `BI_Cruscotto_${vista}_${anno}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();

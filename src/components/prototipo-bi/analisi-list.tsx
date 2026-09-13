@@ -19,7 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
-import type { SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type { SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 interface UtilizzoAnalisi {
   dashboard_id: string;
@@ -33,6 +33,7 @@ interface AnalisiElenco {
   titolo: string;
   descrizione: string | null;
   spec: SpecQuery;
+  serie?: SerieAnalisi[] | null;
   grafico: TipoGrafico | null;
   autore_id: string;
   visibilita: "privata" | "condivisa";
@@ -92,6 +93,7 @@ export function AnalisiList() {
           titolo: `${voce.titolo} — copia`,
           descrizione: voce.descrizione ?? undefined,
           spec: voce.spec,
+          serie: voce.serie,
           grafico: voce.grafico ?? undefined,
           visibilita: "privata",
         }),

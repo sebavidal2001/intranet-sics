@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * STRATO SEMANTICO — il pezzo che decide tutto il resto.
  *

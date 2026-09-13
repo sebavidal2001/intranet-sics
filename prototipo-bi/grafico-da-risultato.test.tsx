@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { GraficoDaRisultato } from "@/components/prototipo-bi/grafico-da-risultato";
+import {
+  GraficoDaAnalisi,
+  GraficoDaRisultato,
+} from "@/components/prototipo-bi/grafico-da-risultato";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type { RisultatoQuery } from "@/lib/prototipo-bi/tipi";
 
@@ -110,6 +113,25 @@ const casi: { tipo: TipoGrafico; risultato: () => RisultatoQuery }[] = [
 ];
 
 describe("GraficoDaRisultato", () => {
+  it("compone una principale e un obiettivo in un bullet", () => {
+    const principale = risultatoCategorie();
+    const obiettivo = {
+      ...risultatoCategorie(),
+      metrica: "budget" as const,
+      spec: { metrica: "budget" as const, raggruppa: ["bu" as const] },
+    };
+    const { container } = render(
+      <GraficoDaAnalisi
+        tipo="bullet"
+        serie={[
+          { ruolo: "principale", nome: "Ordinato", spec: principale.spec, risultato: principale },
+          { ruolo: "obiettivo", nome: "Budget", spec: obiettivo.spec, risultato: obiettivo },
+        ]}
+      />
+    );
+    expect(container).not.toBeEmptyDOMElement();
+  });
+
   for (const caso of casi) {
     it(`monta il tipo ${caso.tipo} senza errori`, () => {
       const { container } = render(

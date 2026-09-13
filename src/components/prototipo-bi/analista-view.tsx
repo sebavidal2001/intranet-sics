@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * L'analista conversazionale.
  *
@@ -29,9 +28,14 @@ import {
 } from "lucide-react";
 import { BadgeCertificata, euro } from "./primitivi";
 import { Markdown } from "./markdown";
-import { GraficoDaRisultato } from "./grafico-da-risultato";
+import { GraficoDaAnalisi } from "./grafico-da-risultato";
 import { graficiPossibili, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
-import type { RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type {
+  RisultatoQuery,
+  SerieAnalisi,
+  SerieAnalisiEseguita,
+  SpecQuery,
+} from "@/lib/prototipo-bi/tipi";
 
 interface Passo {
   tipo: "interrogazione" | "sql" | "previsione" | "documento" | "risposta" | "errore";
@@ -72,10 +76,12 @@ interface DocumentoProposto {
 interface AnalisiProposta {
   titolo: string;
   spec: SpecQuery;
+  serie?: SerieAnalisi[];
   grafico: TipoGrafico;
   motivoGrafico: string;
   commento?: string;
   risultato: RisultatoQuery;
+  risultatiSerie?: SerieAnalisiEseguita[];
 }
 
 interface NumeroCitato {
@@ -221,7 +227,7 @@ function BottoneDocumento({ doc }: { doc: DocumentoProposto }) {
       const a = document.createElement("a");
       a.href = url;
       const est = doc.formato === "excel" ? "xlsx" : "docx";
-      a.download = `PROTOTIPO_${doc.titolo.replace(/[^\w\s-]/g, "").slice(0, 50)}.${est}`;
+      a.download = `BI_${doc.titolo.replace(/[^\w\s-]/g, "").slice(0, 50)}.${est}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -278,6 +284,7 @@ function BloccoAnalisi({ analisi }: { analisi: AnalisiProposta }) {
           titolo: analisi.titolo,
           descrizione: analisi.commento,
           spec: analisi.spec,
+          serie: analisi.serie ?? null,
           grafico: tipoScelto,
         }),
       });
@@ -311,7 +318,10 @@ function BloccoAnalisi({ analisi }: { analisi: AnalisiProposta }) {
       </header>
 
       <div className="min-w-0 px-2 py-3 sm:px-4">
-        <GraficoDaRisultato risultato={analisi.risultato} tipo={tipoScelto} />
+        <GraficoDaAnalisi
+          serie={analisi.risultatiSerie ?? [{ ruolo: "principale", nome: analisi.spec.metrica, spec: analisi.spec, risultato: analisi.risultato }]}
+          tipo={tipoScelto}
+        />
       </div>
 
       <div className="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-end sm:justify-between">
@@ -329,7 +339,7 @@ function BloccoAnalisi({ analisi }: { analisi: AnalisiProposta }) {
             title={analisi.motivoGrafico}
             className="mt-1 block min-h-10 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary sm:w-auto"
           >
-            {graficiPossibili(analisi.risultato).map((tipo) => (
+            {graficiPossibili(analisi.risultatiSerie ?? analisi.risultato).map((tipo) => (
               <option key={tipo} value={tipo}>
                 {NOMI_GRAFICI[tipo]}
               </option>

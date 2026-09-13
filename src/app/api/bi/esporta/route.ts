@@ -1,4 +1,3 @@
-/** ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE */
 
 import { NextRequest, NextResponse } from "next/server";
 import { preliminari, errore, snapshotPerimetrato } from "../_comune";
@@ -24,7 +23,7 @@ export const maxDuration = 180;
 
 function nomeFile(base: string, estensione: string) {
   const oggi = new Date().toISOString().slice(0, 10);
-  return `PROTOTIPO_${base}_${oggi}.${estensione}`;
+  return `BI_${base}_${oggi}.${estensione}`;
 }
 
 function rispostaFile(buffer: Buffer, nome: string, tipo: string) {

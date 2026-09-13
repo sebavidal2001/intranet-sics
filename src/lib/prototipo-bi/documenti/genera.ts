@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Produzione di documenti: l'analista non risponde solo a schermo, consegna
  * file. Usa le librerie già presenti nel progetto (xlsx, docx) — nessuna
@@ -29,8 +28,8 @@ import type {
   SpecQuery,
 } from "../tipi";
 
-const INTESTAZIONE_PROTOTIPO =
-  "PROTOTIPO — NON IN PRODUZIONE · documento generato dal BI Direzionale SICS in fase di valutazione";
+const INTESTAZIONE_DOCUMENTO =
+  "Documento generato dal BI Direzionale SICS";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Excel
@@ -60,7 +59,7 @@ export function esportaQueryExcel(
   const wb = XLSX.utils.book_new();
 
   const copertina = XLSX.utils.aoa_to_sheet([
-    [INTESTAZIONE_PROTOTIPO],
+    [INTESTAZIONE_DOCUMENTO],
     [],
     ["Generato il", new Date().toLocaleString("it-IT")],
     ["Dati aggiornati al", snapshot.dataMassima ?? "n/d"],
@@ -94,7 +93,7 @@ export function esportaTabelleExcel(
 ): Buffer {
   const wb = XLSX.utils.book_new();
   const copertina = XLSX.utils.aoa_to_sheet([
-    [INTESTAZIONE_PROTOTIPO],
+    [INTESTAZIONE_DOCUMENTO],
     [],
     ["Generato il", new Date().toLocaleString("it-IT")],
     ["Dati commerciali aggiornati al", snapshot.dataMassima ?? "n/d"],
@@ -127,7 +126,7 @@ export function esportaBudgetExcel(
   const wb = XLSX.utils.book_new();
 
   const riepilogo = XLSX.utils.aoa_to_sheet([
-    [INTESTAZIONE_PROTOTIPO],
+    [INTESTAZIONE_DOCUMENTO],
     [],
     ["Anno", config.anno],
     ["Budget annuo (€)", config.budgetAnnuo],
@@ -246,7 +245,7 @@ export async function generaReportWord(opzioni: {
     new Paragraph({
       children: [
         new TextRun({
-          text: INTESTAZIONE_PROTOTIPO,
+          text: INTESTAZIONE_DOCUMENTO,
           bold: true,
           size: 16,
           color: "B91C1C",

@@ -1,4 +1,3 @@
-/** ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE */
 
 import { AnalistaView } from "@/components/prototipo-bi/analista-view";
 import { ottieniSnapshot } from "@/lib/prototipo-bi/sorgente";
@@ -6,7 +5,7 @@ import { ottieniSnapshot } from "@/lib/prototipo-bi/sorgente";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Analista — Prototipo BI (non in produzione)",
+  title: "Analista — BI Direzionale",
 };
 
 export default async function PaginaAnalista() {

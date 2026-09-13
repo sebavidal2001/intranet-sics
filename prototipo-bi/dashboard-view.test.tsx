@@ -10,6 +10,9 @@ vi.mock("@/components/prototipo-bi/grafico-da-risultato", () => ({
   GraficoDaRisultato: ({ risultato }: { risultato: { totale: number } }) => (
     <div>Risultato {risultato.totale}</div>
   ),
+  GraficoDaAnalisi: ({ serie }: { serie: Array<{ risultato: { totale: number } }> }) => (
+    <div>Risultato {serie[0]?.risultato.totale}</div>
+  ),
 }));
 
 const DASHBOARD: DashboardCompleta = {

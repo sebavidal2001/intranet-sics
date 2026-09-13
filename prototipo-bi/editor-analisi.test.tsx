@@ -71,8 +71,16 @@ function preparaFetch() {
   const spia = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     if (String(input).includes("/api/bi/analisi")) return risposta({ analisi: { id: "analisi-1" } });
     if (!init?.method) return risposta(VOCABOLARIO);
-    const body = JSON.parse(String(init.body)) as { spec: SpecQuery };
-    return risposta({ risultato: risultato(body.spec) });
+    const body = JSON.parse(String(init.body)) as {
+      spec?: SpecQuery;
+      specs?: Array<{ id: string; spec: SpecQuery }>;
+    };
+    if (body.specs) {
+      return risposta({
+        risultati: body.specs.map((voce) => ({ id: voce.id, risultato: risultato(voce.spec) })),
+      });
+    }
+    return risposta({ risultato: risultato(body.spec!) });
   });
   vi.stubGlobal("fetch", spia);
   return spia;
@@ -117,6 +125,27 @@ async function completaDebounce() {
 }
 
 describe("EditorAnalisi", () => {
+  it("aggiunge budget e BEP in un click e li salva nella stessa analisi", async () => {
+    const spia = preparaFetch();
+    render(<EditorAnalisi specIniziale={{ metrica: "ordinato", raggruppa: ["bu"] }} titoloIniziale="Ordinato per BU" />);
+    await caricaVocabolario();
+
+    fireEvent.click(screen.getByRole("button", { name: "Budget" }));
+    fireEvent.click(screen.getByRole("button", { name: "BEP" }));
+    await completaDebounce();
+
+    const batch = spia.mock.calls
+      .map(([, init]) => init?.body ? JSON.parse(String(init.body)) as { specs?: unknown[] } : null)
+      .find((corpo) => corpo?.specs?.length === 3);
+    expect(batch?.specs).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Salva analisi" }));
+    await act(async () => Promise.resolve());
+    const salvataggio = spia.mock.calls.find(([input]) => String(input).includes("/api/bi/analisi"));
+    const corpo = JSON.parse(String(salvataggio?.[1]?.body)) as { serie: Array<{ ruolo: string }> };
+    expect(corpo.serie.map((voce) => voce.ruolo)).toEqual(["principale", "obiettivo", "soglia"]);
+  });
+
   it("mostra solo le metriche della tipologia scelta", async () => {
     preparaFetch();
     render(<EditorAnalisi />);

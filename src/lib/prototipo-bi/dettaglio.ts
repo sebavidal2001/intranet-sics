@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * DETTAGLIO DOCUMENTI — la risalita dal numero alla riga.
  *

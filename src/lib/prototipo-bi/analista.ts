@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * L'ANALISTA.
  *
@@ -26,6 +25,7 @@ import { instrada, calcolaCosto, MODELLI, type Complessita, type Consumo } from 
 import { leggiConfigurazione } from "./archivio";
 import { eseguiSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
 import { graficiPossibili, scegliGrafico, type TipoGrafico } from "./scelta-grafico";
+import { validaSerieAnalisi } from "./analisi-composita";
 import { calcolaPunteggi, costruisciContesto, rilevaTutto } from "./rilevatori";
 import {
   verificaNumeri,
@@ -39,6 +39,8 @@ import type {
   FamigliaRilevatore,
   Periodo,
   RuoloBriefing,
+  SerieAnalisi,
+  SerieAnalisiEseguita,
   Segnale,
   Snapshot,
   SpecQuery,
@@ -417,6 +419,23 @@ const STRUMENTI_TUTTI = [
             description: "Titolo breve dell'analisi, per esempio Ordinato per business unit, 2026",
           },
           spec: { type: "object", description: "SpecQuery certificata da eseguire" },
+          serie: {
+            type: "array",
+            description:
+              "Serie della stessa analisi. Usale per confronti, obiettivi e soglie invece di creare grafici separati.",
+            items: {
+              type: "object",
+              properties: {
+                ruolo: {
+                  type: "string",
+                  enum: ["principale", "confronto", "obiettivo", "soglia"],
+                },
+                nome: { type: "string", description: "Etichetta breve mostrata in legenda" },
+                spec: { type: "object", description: "SpecQuery certificata della serie" },
+              },
+              required: ["ruolo", "nome", "spec"],
+            },
+          },
           grafico: {
             type: "string",
             enum: [
@@ -572,6 +591,9 @@ STRUMENTI
 - classifica: per top, bottom e analisi Pareto con quote cumulative.
 - proponi_analisi: usalo ogni volta che la risposta si capisce meglio con un
   grafico: confronti, andamenti nel tempo, classifiche e composizioni.
+  Per domande come "rispetto all'anno scorso", "contro budget" o "chi è sotto
+  obiettivo" proponi UNA sola analisi con più serie e ruoli, mai analisi separate
+  che costringano chi legge a confrontare grafici diversi a mente.
 - interroga_metrica: usalo quando serve solo un numero dentro una frase.
 ${strumentiSql}- prevedi_chiusura_anno: per ogni stima di fine anno. NON calcolare proiezioni
   a mente: sbaglieresti e nessuno potrebbe rifare il conto.
@@ -640,10 +662,12 @@ export interface DocumentoProposto {
 export interface AnalisiProposta {
   titolo: string;
   spec: SpecQuery;
+  serie?: SerieAnalisi[];
   grafico: TipoGrafico;
   motivoGrafico: string;
   commento?: string;
   risultato: RisultatoQuery;
+  risultatiSerie?: SerieAnalisiEseguita[];
 }
 
 export interface RispostaAnalista {
@@ -960,15 +984,22 @@ export function eseguiPropostaAnalisi(
     const titolo = typeof arg.titolo === "string" ? arg.titolo.trim() : "";
     if (!titolo) throw new Error("Titolo dell'analisi obbligatorio.");
 
-    const spec = validaSpec(arg.spec);
-    const risultato = esegui(spec, snapshot);
-    const proposta = scegliGrafico(risultato);
+    const serie = arg.serie === undefined ? null : validaSerieAnalisi(arg.serie);
+    const spec = serie?.find((voce) => voce.ruolo === "principale")?.spec ?? validaSpec(arg.spec);
+    const risultatiSerie = (serie ?? [{ ruolo: "principale" as const, nome: spec.metrica, spec }])
+      .map((voce): SerieAnalisiEseguita => ({
+        ...voce,
+        risultato: esegui(voce.spec, snapshot),
+      }));
+    const risultato = risultatiSerie.find((voce) => voce.ruolo === "principale")!.risultato;
+    const risultatoGrafico = serie ? risultatiSerie : risultato;
+    const proposta = scegliGrafico(risultatoGrafico);
     let grafico = proposta.tipo;
     let motivoGrafico = proposta.motivo;
 
     if (arg.grafico !== undefined) {
       const richiesto = String(arg.grafico) as TipoGrafico;
-      if (!graficiPossibili(risultato).includes(richiesto)) {
+      if (!graficiPossibili(risultatoGrafico).includes(richiesto)) {
         throw new Error(`Il grafico ${richiesto} non è applicabile a questo risultato.`);
       }
       grafico = richiesto;
@@ -981,31 +1012,36 @@ export function eseguiPropostaAnalisi(
     const analisi: AnalisiProposta = {
       titolo,
       spec,
+      ...(serie ? { serie } : {}),
       grafico,
       motivoGrafico,
       ...(commento ? { commento } : {}),
       risultato,
+      ...(serie ? { risultatiSerie } : {}),
     };
     destinazione.analisi.push(analisi);
-    aggiungiValoriRisultato(spec, risultato, destinazione.valoriNoti);
-    destinazione.interrogazioni?.push({
-      spec,
-      totale: risultato.totale,
-      righe: risultato.righe.length,
-    });
-    destinazione.passi?.push({
-      tipo: "interrogazione",
-      descrizione: titolo,
-      spec,
-      righe: risultato.righe.length,
-      totale: risultato.totale,
-    });
+    for (const voce of risultatiSerie) {
+      aggiungiValoriRisultato(voce.spec, voce.risultato, destinazione.valoriNoti);
+      destinazione.interrogazioni?.push({
+        spec: voce.spec,
+        totale: voce.risultato.totale,
+        righe: voce.risultato.righe.length,
+      });
+      destinazione.passi?.push({
+        tipo: "interrogazione",
+        descrizione: serie ? `${titolo} — ${voce.nome}` : titolo,
+        spec: voce.spec,
+        righe: voce.risultato.righe.length,
+        totale: voce.risultato.totale,
+      });
+    }
 
     return JSON.stringify({
       titolo,
       grafico,
       totale: risultato.totale,
       righe: risultato.righe.length,
+      serie: risultatiSerie.length,
       istruzione: "Non ripetere i numeri nel testo: il grafico li mostra già.",
     });
   } catch (errore) {

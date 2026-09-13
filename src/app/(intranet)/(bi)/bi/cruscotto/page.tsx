@@ -23,7 +23,7 @@ import { ottieniSnapshot } from "@/lib/prototipo-bi/sorgente";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Cruscotto — Prototipo BI (non in produzione)",
+  title: "Cruscotto — BI Direzionale",
 };
 
 export default async function PaginaCruscotto() {

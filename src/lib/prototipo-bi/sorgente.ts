@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Sorgente dati: legge IN SOLA LETTURA le viste `public.bi_*` già esistenti
  * (le stesse che Power BI legge oggi) e ne costruisce uno snapshot locale.

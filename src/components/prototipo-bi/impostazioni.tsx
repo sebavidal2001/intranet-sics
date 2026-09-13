@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Impostazioni dei grafici: palette, tema, densità, animazioni, formato dei
  * numeri, elementi visibili. Vivono in un contesto React e si conservano nel

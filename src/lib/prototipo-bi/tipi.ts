@@ -1,5 +1,4 @@
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  * Tipi condivisi del prototipo.
  */
 
@@ -269,6 +268,16 @@ export interface SpecQuery {
   limite?: number;
 }
 
+export type RuoloSerie = "principale" | "confronto" | "obiettivo" | "soglia";
+
+/** Una misura conserva la propria domanda perché confronti e obiettivi possono avere periodi diversi. */
+export interface SerieAnalisi {
+  ruolo: RuoloSerie;
+  /** Etichetta mostrata in legenda, per esempio "Ordinato", "2025" o "Budget". */
+  nome: string;
+  spec: SpecQuery;
+}
+
 export interface RigaRisultato {
   etichetta: string;
   chiavi: Record<string, string>;
@@ -286,6 +295,11 @@ export interface RisultatoQuery {
   totale: number;
   certificata: true;
   avvisi: string[];
+}
+
+/** Serie e risultato viaggiano insieme fino al componente che compone il riquadro. */
+export interface SerieAnalisiEseguita extends SerieAnalisi {
+  risultato: RisultatoQuery;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

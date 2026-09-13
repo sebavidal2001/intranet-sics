@@ -1,4 +1,3 @@
-/** ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE */
 
 import { NextRequest, NextResponse } from "next/server";
 import { preliminari, errore } from "../_comune";

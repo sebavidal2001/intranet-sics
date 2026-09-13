@@ -1,7 +1,6 @@
 "use client";
 
 /**
- * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * Grafici analitici — quelli che il PBIX non ha e che servono per ragionare,
  * non solo per guardare.
