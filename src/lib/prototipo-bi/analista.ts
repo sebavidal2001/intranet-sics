@@ -571,12 +571,40 @@ export async function chiediAnalista(opzioni: {
         righe: res.righe.length,
         totale: res.totale,
       });
+      // Il troncamento va DICHIARATO, non subito.
+      //
+      // Il modello riceveva le prime 60 righe senza sapere che fossero le
+      // prime 60: su una query che ne restituisce 300 vedeva un quinto dei
+      // dati e ne parlava come se fossero tutti. Da qui affermazioni false su
+      // classifiche e concentrazioni — "nessun altro cliente supera X" quando
+      // il 61esimo lo superava — con numeri singolarmente corretti.
+      //
+      // Le righe restano 60 (il contesto costa), ma ora il modello sa cosa
+      // non ha visto e quanto pesa: puo' chiedere un raggruppamento diverso o
+      // dirlo, invece di generalizzare al buio.
+      const MOSTRATE = 60;
+      const mostrate = res.righe.slice(0, MOSTRATE);
+      const troncato = res.righe.length > MOSTRATE;
+      const sommaMostrate = mostrate.reduce((t, r) => t + r.valore, 0);
+
       return JSON.stringify({
         metrica: res.metrica,
         unita: res.unita,
         totale: res.totale,
         avvisi: res.avvisi,
-        righe: res.righe.slice(0, 60),
+        righe_totali: res.righe.length,
+        righe_mostrate: mostrate.length,
+        troncato,
+        ...(troncato
+          ? {
+              attenzione:
+                `Vedi solo le prime ${mostrate.length} righe di ${res.righe.length}, ` +
+                `che coprono ${Math.round((sommaMostrate / (res.totale || 1)) * 100)}% del totale. ` +
+                "NON trarre conclusioni su classifiche complete, minimi, o \"nessun altro\": " +
+                "per quelle rifai la domanda con un limite o un raggruppamento piu' stretto.",
+            }
+          : {}),
+        righe: mostrate,
       });
     }
 
