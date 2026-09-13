@@ -9,16 +9,16 @@ import {
   MessageSquareText,
   ShoppingCart,
   LayoutGrid,
+  Library,
 } from "lucide-react";
 
-// "Esplora" non compare piu' come voce: comporre un'analisi non e' una
-// destinazione, e' il modo in cui si aggiunge un riquadro a una pagina. La
-// route resta raggiungibile per i link diretti (`/bi/esplora?analisi=<id>`),
-// che è come si apre un'analisi salvata per modificarla.
+// L'editor resta un'azione, mentre la libreria è una destinazione: separare i
+// due concetti evita di nascondere di nuovo gli oggetti già salvati.
 const VOCI = [
   { href: "/bi", etichetta: "Briefing", icona: Sunrise },
   { href: "/bi/cruscotto", etichetta: "Cruscotto", icona: LayoutDashboard },
   { href: "/bi/dashboard", etichetta: "Dashboard", icona: LayoutGrid },
+  { href: "/bi/analisi", etichetta: "Analisi", icona: Library },
   { href: "/bi/articoli", etichetta: "Articoli & Acquisti", icona: ShoppingCart },
   { href: "/bi/analista", etichetta: "Analista", icona: MessageSquareText },
   { href: "/bi/configurazione", etichetta: "Budget & BEP", icona: Settings2 },
@@ -35,7 +35,9 @@ export function NavigazionePrototipo() {
           // del loro ramo, altrimenti aprendo una dashboard la barra non
           // segnala piu' dove ci si trova.
           const attivo =
-            percorso === v.href || (v.href !== "/bi" && percorso.startsWith(`${v.href}/`));
+            percorso === v.href ||
+            (v.href !== "/bi" && percorso.startsWith(`${v.href}/`)) ||
+            (v.href === "/bi/analisi" && percorso.startsWith("/bi/esplora"));
           const Icona = v.icona;
           return (
             <Link

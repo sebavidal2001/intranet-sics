@@ -19,7 +19,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowLeft,
   BarChart3,
   Check,
   ChevronLeft,
@@ -27,7 +29,9 @@ import {
   Copy,
   Filter,
   LoaderCircle,
+  Pencil,
   Plus,
+  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -269,6 +273,39 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     setAzioneInCorso(false);
   }
 
+  async function rinominaPagina() {
+    if (!dashboard || !paginaAttiva || !modificabile) return;
+    const titolo = window.prompt("Nuovo titolo della pagina", paginaAttiva.titolo)?.trim();
+    if (!titolo || titolo === paginaAttiva.titolo) return;
+    setAzioneInCorso(true);
+    const risposta = await fetch(`/api/bi/dashboard/${dashboard.id}/pagine`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pagine: [{ id: paginaAttiva.id, titolo }] }),
+    });
+    if (risposta.ok) sostituisciPagina({ ...paginaAttiva, titolo });
+    else setErrore(messaggioErrore(await risposta.json(), "Impossibile rinominare la pagina."));
+    setAzioneInCorso(false);
+  }
+
+  async function eliminaPagina() {
+    if (!dashboard || !paginaAttiva || !modificabile || dashboard.pagine.length <= 1) return;
+    if (!window.confirm(`Eliminare la pagina “${paginaAttiva.titolo}” e tutti i suoi riquadri?`)) return;
+    setAzioneInCorso(true);
+    const risposta = await fetch(
+      `/api/bi/dashboard/${dashboard.id}/pagine?pagina=${encodeURIComponent(paginaAttiva.id)}`,
+      { method: "DELETE" }
+    );
+    if (risposta.ok) {
+      const pagine = dashboard.pagine.filter((pagina) => pagina.id !== paginaAttiva.id);
+      setDashboard({ ...dashboard, pagine });
+      setPaginaAttivaId(pagine[0]?.id ?? "");
+    } else {
+      setErrore(messaggioErrore(await risposta.json(), "Impossibile eliminare la pagina."));
+    }
+    setAzioneInCorso(false);
+  }
+
   function registraRiquadro(analisi: AnalisiAggiungibile, riquadro: RiquadroCreato) {
     if (!paginaAttiva) return;
     sostituisciPagina({
@@ -321,6 +358,9 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
 
   async function togliRiquadro(riquadroId: string) {
     if (!paginaAttiva) return;
+    const riquadro = paginaAttiva.riquadri.find((voce) => voce.id === riquadroId);
+    const titolo = riquadro?.titolo || riquadro?.analisi.titolo || "questo riquadro";
+    if (!window.confirm(`Togliere “${titolo}” da questa pagina? L'analisi resterà nella libreria.`)) return;
     const risposta = await fetch(
       `/api/bi/dashboard/pagine/${paginaAttiva.id}/riquadri?riquadro=${riquadroId}`,
       { method: "DELETE" }
@@ -336,7 +376,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     return <main className="flex flex-1 items-center justify-center bg-bg-page p-8 text-text-muted"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" aria-hidden />Apro la dashboard…</main>;
   }
   if (!dashboard) {
-    return <main className="flex-1 bg-bg-page p-6"><div className="mx-auto max-w-3xl rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">{errore ?? "Dashboard non disponibile."}</div></main>;
+    return <main className="flex-1 bg-bg-page p-6 text-text"><div className="mx-auto max-w-3xl border-y border-border py-10"><h1 className="font-tenorite text-2xl font-semibold">Dashboard non disponibile</h1><p role="alert" className="mt-2 text-sm text-danger">{errore ?? "Non è stato possibile aprire la dashboard."}</p><div className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={() => void caricaDashboard()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><RefreshCw className="h-4 w-4" aria-hidden />Riprova</button><Link href="/bi/dashboard" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-bg px-4 text-sm font-semibold text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ArrowLeft className="h-4 w-4" aria-hidden />Torna alle dashboard</Link></div></div></main>;
   }
 
   const filtri = filtriPuliti(paginaAttiva?.filtri);
@@ -353,10 +393,10 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-text-muted">
             <span className="rounded-full border border-border bg-bg px-2.5 py-1">{dashboard.visibilita === "condivisa" ? "Condivisa" : "Privata"}</span>
-            <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm font-semibold text-text hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">
+            {modificabile && <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm font-semibold text-text hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">
               {duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
               Duplica
-            </button>
+            </button>}
             {queryInCorso && <span className="inline-flex items-center gap-1.5"><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden />Aggiornamento</span>}
           </div>
         </header>
@@ -374,6 +414,8 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
               {pagina.titolo}
             </button>
           ))}
+          {modificabile && paginaAttiva && <button type="button" onClick={() => void rinominaPagina()} disabled={azioneInCorso} className="mb-1 shrink-0 rounded-lg p-2 text-text-muted hover:bg-bg hover:text-primary disabled:opacity-50" aria-label={`Rinomina pagina ${paginaAttiva.titolo}`}><Pencil className="h-4 w-4" aria-hidden /></button>}
+          {modificabile && paginaAttiva && dashboard.pagine.length > 1 && <button type="button" onClick={() => void eliminaPagina()} disabled={azioneInCorso} className="mb-1 shrink-0 rounded-lg p-2 text-text-muted hover:bg-bg hover:text-danger disabled:opacity-50" aria-label={`Elimina pagina ${paginaAttiva.titolo}`}><Trash2 className="h-4 w-4" aria-hidden /></button>}
           {modificabile && (
             nuovaPagina ? (
               <form className="mb-1 flex shrink-0 items-center gap-1" onSubmit={(evento) => { evento.preventDefault(); void creaPagina(); }}>
@@ -413,7 +455,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
               )}
               <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Business unit</span><input value={filtri.bu ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, bu: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutte" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
               <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Agente</span><input value={filtri.agente ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, agente: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutti" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
-              {modificabile && <button type="button" onClick={() => setPannelloAnalisi(true)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button>}
+              {modificabile ? <button type="button" onClick={() => setPannelloAnalisi(true)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button> : paginaAttiva.riquadri.length > 0 ? <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">{duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}Duplica per modificare</button> : null}
             </section>
 
             {errore && <div role="alert" className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger"><span>{errore}</span><button type="button" onClick={() => setErrore(null)} aria-label="Chiudi avviso"><X className="h-4 w-4" /></button></div>}
@@ -429,7 +471,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
             )}
 
             {paginaAttiva.riquadri.length === 0 ? (
-              <div className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-12 text-center"><BarChart3 className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Questa pagina è pronta per la prima analisi</h2><p className="mt-1 max-w-md text-sm text-text-muted">Aggiungi una domanda salvata: verrà eseguita con questi filtri e con il tuo perimetro dati.</p>{modificabile && <button type="button" onClick={() => setPannelloAnalisi(true)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white"><Plus className="h-4 w-4" />Aggiungi</button>}</div>
+              <div className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-12 text-center"><BarChart3 className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Questa pagina è pronta per la prima analisi</h2><p className="mt-1 max-w-md text-sm text-text-muted">{modificabile ? "Aggiungi una domanda salvata: verrà eseguita con questi filtri e con il tuo perimetro dati." : "Questa dashboard è condivisa e non si modifica direttamente. Crea una copia personale per aggiungere la tua prima analisi."}</p>{modificabile ? <button type="button" onClick={() => setPannelloAnalisi(true)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-bg"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button> : <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-bg disabled:opacity-50">{duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}Duplica per modificare</button>}</div>
             ) : (
               <div className="grid grid-cols-12 gap-4">
                 {paginaAttiva.riquadri.map((riquadro, indice) => {

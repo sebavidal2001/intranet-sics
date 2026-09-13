@@ -30,6 +30,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
+import { RaccordoCruscottoDashboard } from "./raccordo-cruscotto-dashboard";
 import {
   GraficoCombo,
   GraficoLinee,
@@ -567,6 +568,7 @@ export function CruscottoView({
           imp.densita === "compatta" ? "py-3" : "py-6"
         }`}
       >
+        <RaccordoCruscottoDashboard />
         {presentazione && (
           <div className="mb-3 flex items-center gap-2 text-xs text-primary">
             <span className="relative flex h-2 w-2">

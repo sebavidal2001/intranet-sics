@@ -8,11 +8,12 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BriefingView } from "@/components/prototipo-bi/briefing-view";
 import { CruscottoView } from "@/components/prototipo-bi/cruscotto-view";
 import { ConfigurazioneView } from "@/components/prototipo-bi/configurazione-view";
 import { AnalistaView } from "@/components/prototipo-bi/analista-view";
+import { AnalisiList } from "@/components/prototipo-bi/analisi-list";
 
 // Recharts misura il contenitore: in jsdom ha dimensione zero e non disegna.
 // Si forza una dimensione, altrimenti i grafici restano vuoti e i test non
@@ -275,5 +276,56 @@ describe("Analista", () => {
     expect(screen.getByText("2025-01-07")).toBeInTheDocument();
     expect(screen.getByText(/non scrive SQL/)).toBeInTheDocument();
     expect(screen.getByText(/Prova a chiedere/)).toBeInTheDocument();
+  });
+});
+
+describe("Libreria analisi", () => {
+  it("mostra gli utilizzi ed elimina tramite l'endpoint dedicato", async () => {
+    const spiaFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "DELETE") return { ok: true, json: async () => ({ eliminata: true }) };
+      return {
+        ok: true,
+        json: async () => ({
+          analisi: [{
+            id: "analisi-prova",
+            titolo: "Prova",
+            descrizione: "Analisi salvata dall'utente",
+            spec: { metrica: "ordinato" },
+            grafico: "kpi",
+            autore_id: "utente-1",
+            visibilita: "privata",
+            aggiornato_il: "2026-09-13T10:00:00Z",
+            chiave: null,
+            modificabile: true,
+            utilizzi: [{
+              dashboard_id: "dashboard-1",
+              dashboard_titolo: "Commerciale",
+              pagina_id: "pagina-1",
+              pagina_titolo: "Sintesi",
+            }],
+          }],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", spiaFetch);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<AnalisiList />);
+
+    expect(await screen.findByText("Prova")).toBeInTheDocument();
+    expect(screen.getByText("Commerciale / Sintesi")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Elimina" }));
+
+    await waitFor(() => {
+      expect(spiaFetch).toHaveBeenCalledWith("/api/bi/analisi?id=analisi-prova", { method: "DELETE" });
+    });
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Commerciale / Sintesi"));
+  });
+
+  it("nello stato vuoto offre subito la creazione", async () => {
+    vi.stubGlobal("fetch", mockFetch({ "/api/bi/analisi": { analisi: [] } }));
+    render(<AnalisiList />);
+
+    expect(await screen.findByRole("link", { name: /Crea la prima analisi/i })).toHaveAttribute("href", "/bi/esplora");
   });
 });

@@ -1,6 +1,7 @@
 /** ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE */
 
 import { headers } from "next/headers";
+import Link from "next/link";
 import { EditorAnalisi } from "@/components/prototipo-bi/editor-analisi";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type { SpecQuery } from "@/lib/prototipo-bi/tipi";
@@ -16,6 +17,7 @@ interface AnalisiSalvata {
   titolo: string;
   spec: SpecQuery;
   grafico?: TipoGrafico;
+  modificabile: boolean;
 }
 
 function eOggetto(valore: unknown): valore is Record<string, unknown> {
@@ -33,6 +35,7 @@ function leggiAnalisi(corpo: unknown, id: string): AnalisiSalvata | undefined {
     titolo: String(trovata.titolo),
     spec: trovata.spec as unknown as SpecQuery,
     grafico: typeof trovata.grafico === "string" ? (trovata.grafico as TipoGrafico) : undefined,
+    modificabile: trovata.modificabile === true,
   };
 }
 
@@ -60,11 +63,27 @@ export default async function PaginaEsplora({
   const id = Array.isArray(parametri.analisi) ? parametri.analisi[0] : parametri.analisi;
   const analisi = id ? await caricaAnalisi(id) : undefined;
 
+  if (id && !analisi) {
+    return (
+      <main className="flex-1 bg-bg-page px-4 py-10 text-text sm:px-6">
+        <div className="mx-auto max-w-2xl border-y border-border py-10">
+          <h1 className="font-tenorite text-2xl font-semibold">Analisi non disponibile</h1>
+          <p className="mt-2 text-sm text-text-muted">Potrebbe essere stata eliminata oppure non essere condivisa con te.</p>
+          <Link href="/bi/analisi" className="mt-5 inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            Torna alle analisi
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <EditorAnalisi
+      idAnalisi={analisi?.id}
       specIniziale={analisi?.spec}
       titoloIniziale={analisi?.titolo}
       graficoIniziale={analisi?.grafico}
+      modificabile={analisi?.modificabile ?? true}
     />
   );
 }

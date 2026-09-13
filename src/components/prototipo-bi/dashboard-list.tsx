@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, LayoutDashboard, LoaderCircle, Plus, Users, X } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  LayoutDashboard,
+  LoaderCircle,
+  Pencil,
+  Plus,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 
 interface DashboardElenco {
   id: string;
@@ -11,6 +21,8 @@ interface DashboardElenco {
   visibilita: "privata" | "condivisa";
   conteggio_pagine: number;
   aggiornato_il: string;
+  di_sistema: boolean;
+  modificabile: boolean;
 }
 
 function erroreDa(valore: unknown, ripiego: string): string {
@@ -29,6 +41,9 @@ export function DashboardList() {
   const [titolo, setTitolo] = useState("");
   const [descrizione, setDescrizione] = useState("");
   const [visibilita, setVisibilita] = useState<"privata" | "condivisa">("privata");
+  const [modificaId, setModificaId] = useState<string | null>(null);
+  const [titoloModifica, setTitoloModifica] = useState("");
+  const [azioneInCorso, setAzioneInCorso] = useState<string | null>(null);
 
   useEffect(() => {
     void fetch("/api/bi/dashboard")
@@ -60,6 +75,47 @@ export function DashboardList() {
     setSalvataggio(false);
   }
 
+  async function rinominaDashboard(evento: React.FormEvent<HTMLFormElement>, voce: DashboardElenco) {
+    evento.preventDefault();
+    const nuovoTitolo = titoloModifica.trim();
+    if (!nuovoTitolo || azioneInCorso) return;
+    setAzioneInCorso(`rinomina-${voce.id}`);
+    setErrore(null);
+    try {
+      const risposta = await fetch(`/api/bi/dashboard/${voce.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ titolo: nuovoTitolo }),
+      });
+      const corpo: unknown = await risposta.json();
+      if (!risposta.ok) throw new Error(erroreDa(corpo, "Impossibile rinominare la dashboard."));
+      setDashboard((correnti) => correnti.map((dashboardCorrente) =>
+        dashboardCorrente.id === voce.id ? { ...dashboardCorrente, titolo: nuovoTitolo } : dashboardCorrente
+      ));
+      setModificaId(null);
+    } catch (causa) {
+      setErrore(causa instanceof Error ? causa.message : "Impossibile rinominare la dashboard.");
+    } finally {
+      setAzioneInCorso(null);
+    }
+  }
+
+  async function eliminaDashboard(voce: DashboardElenco) {
+    if (!window.confirm(`Eliminare definitivamente la dashboard “${voce.titolo}” e tutte le sue pagine?`)) return;
+    setAzioneInCorso(`elimina-${voce.id}`);
+    setErrore(null);
+    try {
+      const risposta = await fetch(`/api/bi/dashboard/${voce.id}`, { method: "DELETE" });
+      const corpo: unknown = await risposta.json();
+      if (!risposta.ok) throw new Error(erroreDa(corpo, "Impossibile eliminare la dashboard."));
+      setDashboard((correnti) => correnti.filter((dashboardCorrente) => dashboardCorrente.id !== voce.id));
+    } catch (causa) {
+      setErrore(causa instanceof Error ? causa.message : "Impossibile eliminare la dashboard.");
+    } finally {
+      setAzioneInCorso(null);
+    }
+  }
+
   return (
     <main className="flex-1 bg-bg-page px-4 py-8 text-text sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
@@ -68,7 +124,7 @@ export function DashboardList() {
             <h1 className="font-tenorite text-3xl font-bold tracking-[-0.02em]">Dashboard</h1>
             <p className="mt-1 max-w-2xl text-sm text-text-muted">Pagine operative che combinano analisi salvate e le ricalcolano sul perimetro di chi le apre.</p>
           </div>
-          <button type="button" onClick={() => setCreazione(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Nuova dashboard</button>
+          <button type="button" onClick={() => setCreazione(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Nuova dashboard</button>
         </header>
 
         {errore && <div role="alert" className="mb-5 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{errore}</div>}
@@ -88,14 +144,34 @@ export function DashboardList() {
         {caricamento ? (
           <div className="flex min-h-48 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Carico le dashboard…</div>
         ) : dashboard.length === 0 ? (
-          <section className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border text-center"><LayoutDashboard className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Ancora nessuna dashboard</h2><p className="mt-1 max-w-md text-sm text-text-muted">Crea uno spazio per riunire le analisi che consulti insieme.</p></section>
+          <section className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-10 text-center"><LayoutDashboard className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Ancora nessuna dashboard</h2><p className="mt-1 max-w-md text-sm text-text-muted">Crea uno spazio per riunire le analisi che consulti insieme.</p><button type="button" onClick={() => setCreazione(true)} className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Crea la prima dashboard</button></section>
         ) : (
           <div className="divide-y divide-border border-y border-border bg-bg">
             {dashboard.map((voce) => (
-              <Link key={voce.id} href={`/bi/dashboard/${voce.id}`} className="group grid gap-3 px-4 py-5 transition-colors hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:grid-cols-[1fr_auto] sm:items-center">
-                <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate font-tenorite text-lg font-bold group-hover:text-primary">{voce.titolo}</h2>{voce.visibilita === "condivisa" && <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted"><Users className="h-3 w-3" aria-hidden />Condivisa</span>}</div>{voce.descrizione && <p className="mt-1 truncate text-sm text-text-muted">{voce.descrizione}</p>}</div>
-                <div className="flex items-center gap-4 text-xs text-text-muted"><span>{voce.conteggio_pagine} {voce.conteggio_pagine === 1 ? "pagina" : "pagine"}</span><span>{new Date(voce.aggiornato_il).toLocaleDateString("it-IT")}</span><ArrowRight className="h-4 w-4 text-primary transition-transform group-hover:translate-x-1" aria-hidden /></div>
-              </Link>
+              <article key={voce.id} className="grid gap-4 px-4 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <div className="min-w-0">
+                  {modificaId === voce.id ? (
+                    <form onSubmit={(evento) => void rinominaDashboard(evento, voce)} className="flex max-w-xl items-center gap-2">
+                      <input autoFocus aria-label={`Nuovo titolo di ${voce.titolo}`} value={titoloModifica} onChange={(evento) => setTitoloModifica(evento.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg-page px-3 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                      <button type="submit" disabled={!titoloModifica.trim() || azioneInCorso !== null} className="rounded-lg p-2 text-primary hover:bg-bg-page disabled:opacity-50" aria-label="Salva titolo">{azioneInCorso === `rinomina-${voce.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}</button>
+                      <button type="button" onClick={() => setModificaId(null)} className="rounded-lg p-2 text-text-muted hover:bg-bg-page" aria-label="Annulla rinomina"><X className="h-4 w-4" aria-hidden /></button>
+                    </form>
+                  ) : (
+                    <Link href={`/bi/dashboard/${voce.id}`} className="group block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                      <div className="flex flex-wrap items-center gap-2"><h2 className="truncate font-tenorite text-lg font-bold group-hover:text-primary">{voce.titolo}</h2>{voce.di_sistema ? <span className="inline-flex items-center gap-1 rounded-full border border-primary px-2 py-0.5 text-[11px] font-semibold text-primary"><LayoutDashboard className="h-3 w-3" aria-hidden />Cruscotto di sistema</span> : voce.visibilita === "condivisa" ? <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted"><Users className="h-3 w-3" aria-hidden />Condivisa</span> : null}</div>
+                      {voce.descrizione && <p className="mt-1 text-sm text-text-muted">{voce.descrizione}</p>}
+                      {voce.di_sistema && <p className="mt-2 text-xs text-text-muted">È la versione a dashboard del Cruscotto storico: aprila per consultarla o duplicarla.</p>}
+                    </Link>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-text-muted">
+                  <span>{voce.conteggio_pagine} {voce.conteggio_pagine === 1 ? "pagina" : "pagine"}</span>
+                  <span>{new Date(voce.aggiornato_il).toLocaleDateString("it-IT")}</span>
+                  {voce.modificabile && <button type="button" onClick={() => { setModificaId(voce.id); setTitoloModifica(voce.titolo); }} className="rounded-lg p-2 text-text-muted hover:bg-bg-page hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={`Rinomina ${voce.titolo}`}><Pencil className="h-4 w-4" aria-hidden /></button>}
+                  {voce.modificabile && <button type="button" onClick={() => void eliminaDashboard(voce)} disabled={azioneInCorso !== null} className="rounded-lg p-2 text-text-muted hover:bg-bg-page hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50" aria-label={`Elimina ${voce.titolo}`}>{azioneInCorso === `elimina-${voce.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}</button>}
+                  <Link href={`/bi/dashboard/${voce.id}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 font-semibold text-primary hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Apri<ArrowRight className="h-4 w-4" aria-hidden /></Link>
+                </div>
+              </article>
             ))}
           </div>
         )}

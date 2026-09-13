@@ -216,4 +216,26 @@ describe("Dashboard a pagine", () => {
       expect(chiamate).toHaveLength(1);
     });
   });
+
+  it("sul Cruscotto di sistema sostituisce Aggiungi con la duplicazione", async () => {
+    const spiaFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { specs?: Array<{ id: string }> };
+      return {
+        ok: true,
+        json: async () => ({ risultati: (body.specs ?? []).map(({ id }) => ({
+          id,
+          risultato: {
+            spec: {}, metrica: "ordinato", unita: "euro", righe: [],
+            totale: 10, certificata: true, avvisi: [],
+          },
+        })) }),
+      };
+    });
+    vi.stubGlobal("fetch", spiaFetch);
+
+    render(<DashboardView dashboardIniziale={{ ...DASHBOARD, di_sistema: true, modificabile: false }} />);
+
+    expect(screen.queryByRole("button", { name: "Aggiungi" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Duplica per modificare" })).toBeInTheDocument();
+  });
 });

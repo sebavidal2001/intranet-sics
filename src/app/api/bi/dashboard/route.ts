@@ -59,6 +59,7 @@ export async function GET() {
   const dashboard = ((data ?? []) as DashboardElencoDb[]).map(({ dashboard_pagine, ...voce }) => ({
     ...voce,
     conteggio_pagine: dashboard_pagine?.[0]?.count ?? 0,
+    modificabile: voce.autore_id === pre.accesso.userId && voce.di_sistema !== true,
   }));
   await registraOperazione(pre.accesso, "ok", { righe: dashboard.length });
   return NextResponse.json({ dashboard });

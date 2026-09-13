@@ -151,6 +151,21 @@ describe("EditorAnalisi", () => {
     expect(screen.getByRole("checkbox", { name: "Cliente" })).toBeDisabled();
   });
 
+  it("aggiorna l'analisi riaperta senza crearne una nuova", async () => {
+    const spia = preparaFetch();
+    render(<EditorAnalisi idAnalisi="analisi-1" specIniziale={{ metrica: "ordinato" }} titoloIniziale="Ordinato" />);
+    await caricaVocabolario();
+    await completaDebounce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Salva modifiche" }));
+    await act(async () => Promise.resolve());
+
+    expect(spia).toHaveBeenCalledWith(
+      "/api/bi/analisi?id=analisi-1",
+      expect.objectContaining({ method: "PATCH" })
+    );
+  });
+
   it("salva senza periodo quando eredita e lo valorizza quando viene fissato", async () => {
     const spia = preparaFetch();
     render(

@@ -138,3 +138,41 @@ export async function PATCH(request: NextRequest, { params }: Contesto) {
   await registraOperazione(pre.accesso, "ok", { righe: pagine.length });
   return NextResponse.json({ aggiornate: pagine.length });
 }
+
+export async function DELETE(request: NextRequest, { params }: Contesto) {
+  const pre = await preliminari();
+  if (!pre.ok) return pre.risposta;
+  const { id } = await params;
+  const pagina = request.nextUrl.searchParams.get("pagina")?.trim() ?? "";
+  if (!UUID_VALIDO.test(id)) return errore("Identificativo dashboard non valido");
+  if (!UUID_VALIDO.test(pagina)) return errore("Identificativo pagina non valido");
+
+  const verifica = await verificaAutoreDashboard(id, pre.accesso.userId);
+  if (verifica.erroreDb) return errore("Impossibile verificare la dashboard.", 500);
+  if (!verifica.esiste) return errore("Dashboard non trovata", 404);
+  if (verifica.diSistema) {
+    return negato("Il Cruscotto di sistema non si modifica: duplicalo per creare la tua versione.");
+  }
+  if (!verifica.autorizzato) return negato("Puoi eliminare pagine soltanto nelle tue dashboard.");
+
+  const database = createAdminClient().schema("bi_direzionale");
+  const { count, error: erroreConteggio } = await database
+    .from("dashboard_pagine")
+    .select("id", { count: "exact", head: true })
+    .eq("dashboard_id", id);
+  if (erroreConteggio) return errore("Impossibile verificare le pagine.", 500);
+  if ((count ?? 0) <= 1) return errore("Una dashboard deve mantenere almeno una pagina.", 409);
+
+  const { data, error: erroreDb } = await database
+    .from("dashboard_pagine")
+    .delete()
+    .eq("id", pagina)
+    .eq("dashboard_id", id)
+    .select("id")
+    .maybeSingle();
+  if (erroreDb) return errore("Impossibile eliminare la pagina.", 500);
+  if (!data) return errore("Pagina non trovata", 404);
+
+  await registraOperazione(pre.accesso, "ok", { righe: 1 });
+  return NextResponse.json({ eliminata: true });
+}

@@ -86,6 +86,7 @@ export function ImportaBudgetView({ onImportato }: { onImportato?: () => void })
   );
 
   async function elimina(anno: number) {
+    if (!window.confirm(`Rimuovere il budget importato per il ${anno}? Tornerà attiva la generazione da configurazione.`)) return;
     await fetch(`/api/bi/importa-budget?anno=${anno}`, { method: "DELETE" });
     await carica();
     onImportato?.();

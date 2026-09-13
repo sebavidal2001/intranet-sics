@@ -19,7 +19,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Save, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
 import { GraficoDaRisultato } from "@/components/prototipo-bi/grafico-da-risultato";
 import { Scheda, Scheletro, euro, numero } from "@/components/prototipo-bi/primitivi";
 import {
@@ -152,15 +153,19 @@ function descriviPeriodo(periodo: Periodo | undefined): string {
 }
 
 export function EditorAnalisi({
+  idAnalisi,
   specIniziale,
   titoloIniziale,
   graficoIniziale,
+  modificabile = true,
   periodoEreditato,
   onSalvata,
 }: {
+  idAnalisi?: string;
   specIniziale?: SpecQuery;
   titoloIniziale?: string;
   graficoIniziale?: TipoGrafico;
+  modificabile?: boolean;
   periodoEreditato?: Periodo;
   onSalvata?: (id: string) => void;
 }): JSX.Element {
@@ -177,6 +182,7 @@ export function EditorAnalisi({
   const [messaggioSalvataggio, setMessaggioSalvataggio] = useState("");
   const titoloModificato = useRef(Boolean(titoloIniziale));
   const specInizialeRef = useRef(specIniziale);
+  const aggiornaEsistente = Boolean(idAnalisi && modificabile);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -358,8 +364,10 @@ export function EditorAnalisi({
     setSalvataggio("in_corso");
     setMessaggioSalvataggio("");
     try {
-      const risposta = await fetch("/api/bi/analisi", {
-        method: "POST",
+      const risposta = await fetch(
+        aggiornaEsistente ? `/api/bi/analisi?id=${encodeURIComponent(idAnalisi ?? "")}` : "/api/bi/analisi",
+        {
+        method: aggiornaEsistente ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           titolo: titoloPulito,
@@ -377,7 +385,7 @@ export function EditorAnalisi({
           : null;
       if (!id) throw new Error("Il salvataggio non ha restituito un identificativo.");
       setSalvataggio("salvata");
-      setMessaggioSalvataggio("Analisi salvata.");
+      setMessaggioSalvataggio(aggiornaEsistente ? "Modifiche salvate." : "Analisi salvata.");
       onSalvata?.(id);
     } catch (causa) {
       setSalvataggio("pronto");
@@ -412,10 +420,17 @@ export function EditorAnalisi({
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6">
       <header className="mb-6 max-w-3xl">
-        <h1 className="font-tenorite text-3xl font-semibold">Componi un’analisi</h1>
+        <Link href="/bi/analisi" className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Torna alle analisi
+        </Link>
+        <h1 className="font-tenorite text-3xl font-semibold">
+          {aggiornaEsistente ? "Modifica l’analisi" : modificabile ? "Componi un’analisi" : "Crea una copia modificabile"}
+        </h1>
         <p className="mt-2 text-sm leading-relaxed text-text-muted">
-          Costruisci la stessa domanda certificata che usa l’Analista AI. Ogni scelta aggiorna
-          subito il risultato e può essere riaperta, modificata o condivisa.
+          {modificabile
+            ? "Costruisci la stessa domanda certificata che usa l’Analista AI. Ogni scelta aggiorna subito il risultato e può essere riaperta, modificata o condivisa."
+            : "Questa analisi è condivisa o appartiene al Cruscotto di sistema: le modifiche verranno salvate in una nuova analisi privata."}
         </p>
       </header>
 
@@ -808,7 +823,11 @@ export function EditorAnalisi({
                     <select
                       aria-label="Visualizzazione"
                       value={tipoGrafico}
-                      onChange={(evento) => setGraficoScelto(evento.target.value as TipoGrafico)}
+                      onChange={(evento) => {
+                        setGraficoScelto(evento.target.value as TipoGrafico);
+                        setSalvataggio("pronto");
+                        setMessaggioSalvataggio("");
+                      }}
                       className={`${CLASSE_CAMPO} mt-1`}
                     >
                       {grafici.map((tipo) => (
@@ -857,7 +876,15 @@ export function EditorAnalisi({
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-bg-page px-4 text-sm font-medium text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save className="h-4 w-4" aria-hidden />
-                  {salvataggio === "in_corso" ? "Salvataggio…" : salvataggio === "salvata" ? "Salvata" : "Salva analisi"}
+                  {salvataggio === "in_corso"
+                    ? "Salvataggio…"
+                    : salvataggio === "salvata"
+                      ? "Salvata"
+                      : aggiornaEsistente
+                        ? "Salva modifiche"
+                        : modificabile
+                          ? "Salva analisi"
+                          : "Salva una copia"}
                 </button>
               </div>
               {messaggioSalvataggio && (
