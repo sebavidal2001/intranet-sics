@@ -958,7 +958,7 @@ export function CruscottoView({
               </Scheda>
             )}
 
-            <Scheda titolo="Business unit — analisi completa" className="lg:col-span-2">
+            <Scheda titolo="Business unit — quadro completo" className="lg:col-span-2">
               <TabellaAnalitica
                 colonnaDimensione="Business unit"
                 colonne={colonneConfronto({ annoCorrente: anno, conBudget: true })}
@@ -968,7 +968,7 @@ export function CruscottoView({
               />
             </Scheda>
 
-            <Scheda titolo="Agenti — analisi completa" className="lg:col-span-2">
+            <Scheda titolo="Agenti — quadro completo" className="lg:col-span-2">
               <TabellaAnalitica
                 colonnaDimensione="Agente"
                 colonne={colonneConfronto({ annoCorrente: anno, conBudget: true })}
@@ -1030,7 +1030,7 @@ export function CruscottoView({
             </Scheda>
 
             <Scheda
-              titolo="Clienti — analisi completa"
+              titolo="Clienti — quadro completo"
               className="lg:col-span-2"
               sottotitolo="ordinabile per qualsiasi colonna; l'andamento è mensile"
             >

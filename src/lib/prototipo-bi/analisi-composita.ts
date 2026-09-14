@@ -185,7 +185,7 @@ export async function eseguiAnalisiComposita(
   if (!risposta.ok) {
     const messaggio = eOggetto(corpo) && typeof corpo.error === "string"
       ? corpo.error
-      : "Analisi non eseguibile.";
+      : "Non riesco a calcolare questo riquadro.";
     throw new Error(messaggio);
   }
   if (!eOggetto(corpo) || !Array.isArray(corpo.risultati)) {

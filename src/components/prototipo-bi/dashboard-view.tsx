@@ -150,7 +150,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
   const [queryInCorso, setQueryInCorso] = useState(false);
   const [nuovaPagina, setNuovaPagina] = useState(false);
   const [titoloPagina, setTitoloPagina] = useState("");
-  const [pannelloAnalisi, setPannelloAnalisi] = useState(false);
+  const [pannelloAggiungi, setPannelloAggiungi] = useState(false);
   const [azioneInCorso, setAzioneInCorso] = useState(false);
   const [duplicazioneInCorso, setDuplicazioneInCorso] = useState(false);
 
@@ -326,7 +326,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
       ...paginaAttiva,
       riquadri: [...paginaAttiva.riquadri, { ...riquadro, analisi }],
     });
-    setPannelloAnalisi(false);
+    setPannelloAggiungi(false);
   }
 
   async function duplicaDashboard() {
@@ -469,23 +469,23 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
               )}
               <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Business unit</span><input value={filtri.bu ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, bu: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutte" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
               <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Agente</span><input value={filtri.agente ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, agente: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutti" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
-              {modificabile ? <button type="button" onClick={() => setPannelloAnalisi(true)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button> : paginaAttiva.riquadri.length > 0 ? <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">{duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}Duplica per modificare</button> : null}
+              {modificabile ? <button type="button" onClick={() => setPannelloAggiungi(true)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button> : paginaAttiva.riquadri.length > 0 ? <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">{duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}Duplica per modificare</button> : null}
             </section>
 
             {errore && <div role="alert" className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger"><span>{errore}</span><button type="button" onClick={() => setErrore(null)} aria-label="Chiudi avviso"><X className="h-4 w-4" /></button></div>}
 
-            {pannelloAnalisi && (
+            {pannelloAggiungi && (
               <AggiungiRiquadro
                 paginaId={paginaAttiva.id}
                 filtriPagina={paginaAttiva.filtri}
                 analisiPresenti={paginaAttiva.riquadri.map((riquadro) => riquadro.analisi_id)}
                 onAggiunta={registraRiquadro}
-                onChiudi={() => setPannelloAnalisi(false)}
+                onChiudi={() => setPannelloAggiungi(false)}
               />
             )}
 
             {paginaAttiva.riquadri.length === 0 ? (
-              <div className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-12 text-center"><BarChart3 className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Questa pagina è pronta per la prima analisi</h2><p className="mt-1 max-w-md text-sm text-text-muted">{modificabile ? "Aggiungi una domanda salvata: verrà eseguita con questi filtri e con il tuo perimetro dati." : "Questa dashboard è condivisa e non si modifica direttamente. Crea una copia personale per aggiungere la tua prima analisi."}</p>{modificabile ? <button type="button" onClick={() => setPannelloAnalisi(true)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-bg"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button> : <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-bg disabled:opacity-50">{duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}Duplica per modificare</button>}</div>
+              <div className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-12 text-center"><BarChart3 className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Questa pagina è ancora vuota</h2><p className="mt-1 max-w-md text-sm text-text-muted">{modificabile ? "Descrivi a parole cosa vuoi vedere, oppure spunta le misure che ti servono: il grafico compare qui, con questi filtri e con i dati che puoi vedere tu." : "Questa dashboard è condivisa e non si modifica direttamente. Fanne una copia tua per aggiungere il primo grafico."}</p>{modificabile ? <button type="button" onClick={() => setPannelloAggiungi(true)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-bg"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button> : <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-bg disabled:opacity-50">{duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}Duplica per modificare</button>}</div>
             ) : (
               <div className="grid grid-cols-12 gap-4">
                 {paginaAttiva.riquadri.map((riquadro, indice) => {
@@ -505,7 +505,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                   return (
                     <article key={riquadro.id} className={`col-span-12 min-w-0 rounded-xl border border-border bg-bg ${COLONNE[riquadro.larghezza] ?? "lg:col-span-6"}`}>
                       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-                        <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} definito dall’analisi</p>}</div>
+                        <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} fissato dentro il riquadro</p>}</div>
                         {modificabile && <div className="flex items-center gap-1">
                           <button type="button" onClick={() => spostaRiquadro(indice, -1)} disabled={indice === 0} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta prima"><ChevronLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => spostaRiquadro(indice, 1)} disabled={indice === paginaAttiva.riquadri.length - 1} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta dopo"><ChevronRight className="h-4 w-4" /></button>

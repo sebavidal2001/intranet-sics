@@ -207,10 +207,13 @@ describe("Dashboard a pagine", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
-    expect(screen.getByRole("tab", { name: "Dalla libreria" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Costruisci" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Chiedi all'AI" })).toBeInTheDocument();
+    // L'ordine conta: descrivere a parole e' il gesto che riesce a tutti e apre
+    // per primo. Chi cerca qualcosa di gia' fatto sa cosa sta cercando.
+    expect(screen.getByRole("tab", { name: "Dillo a parole" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Scegli i campi" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Già pronti" })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("tab", { name: "Già pronti" }));
     fireEvent.click(await screen.findByRole("button", { name: "Aggiungi alla pagina" }));
     await waitFor(() => {
       const chiamate = spiaFetch.mock.calls.filter(([input, init]) =>

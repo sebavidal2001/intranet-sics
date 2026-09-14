@@ -125,7 +125,7 @@ const ESEMPI = [
 
 const LIVELLI = [
   { chiave: "semplice", nome: "Veloce", nota: "lettura diretta, modello economico" },
-  { chiave: "analitica", nome: "Analisi", nota: "confronti e scomposizioni" },
+  { chiave: "analitica", nome: "Ragionata", nota: "confronti e scomposizioni" },
   { chiave: "profonda", nome: "Approfondita", nota: "previsioni, scenari, documenti" },
 ] as const;
 
@@ -279,7 +279,7 @@ function BloccoAnalisi({ analisi }: { analisi: AnalisiProposta }) {
         throw new Error(errore);
       }
       setSalvataggio("salvata");
-      setMessaggio("Analisi salvata.");
+      setMessaggio("Riquadro salvato.");
     } catch (errore) {
       setSalvataggio("errore");
       setMessaggio(errore instanceof Error ? errore.message : "Salvataggio non riuscito.");

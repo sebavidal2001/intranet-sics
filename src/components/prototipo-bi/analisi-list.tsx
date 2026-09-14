@@ -147,14 +147,14 @@ export function AnalisiList() {
               <ArrowLeft className="h-4 w-4" aria-hidden />
               Dashboard
             </Link>
-            <h1 className="font-tenorite text-3xl font-bold tracking-[-0.02em]">Analisi</h1>
+            <h1 className="font-tenorite text-3xl font-bold tracking-[-0.02em]">Riquadri salvati</h1>
             <p className="mt-1 max-w-2xl text-sm text-text-muted">
-              Le domande certificate che hai creato e quelle condivise con te. Da qui puoi riaprirle o usarle nelle dashboard.
+              I grafici che hai già costruito e quelli condivisi con te. Da qui li riapri, li correggi, o elimini quelli che non usi più.
             </p>
           </div>
           <Link href="/bi/esplora" className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <Plus className="h-4 w-4" aria-hidden />
-            Nuova analisi
+            Nuovo riquadro
           </Link>
         </header>
 
@@ -176,13 +176,13 @@ export function AnalisiList() {
         ) : analisi.length === 0 ? (
           <section className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-10 text-center">
             <BarChart3 className="mb-3 h-9 w-9 text-primary" aria-hidden />
-            <h2 className="font-tenorite text-xl font-bold">Ancora nessuna analisi</h2>
+            <h2 className="font-tenorite text-xl font-bold">Non hai ancora salvato niente</h2>
             <p className="mt-1 max-w-md text-sm text-text-muted">
-              Crea una domanda certificata: resterà qui e potrai aggiungerla a qualsiasi dashboard.
+              I riquadri si costruiscono dentro una pagina, con il pulsante «Aggiungi». Quelli che crei restano qui e puoi rimetterli in qualsiasi dashboard.
             </p>
-            <Link href="/bi/esplora" className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              <Plus className="h-4 w-4" aria-hidden />
-              Crea la prima analisi
+            <Link href="/bi/dashboard" className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              Vai alle dashboard
             </Link>
           </section>
         ) : (

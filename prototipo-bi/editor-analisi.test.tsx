@@ -139,7 +139,7 @@ describe("EditorAnalisi", () => {
       .find((corpo) => corpo?.specs?.length === 3);
     expect(batch?.specs).toHaveLength(3);
 
-    fireEvent.click(screen.getByRole("button", { name: "Salva analisi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salva il riquadro" }));
     await act(async () => Promise.resolve());
     const salvataggio = spia.mock.calls.find(([input]) => String(input).includes("/api/bi/analisi"));
     const corpo = JSON.parse(String(salvataggio?.[1]?.body)) as { serie: Array<{ ruolo: string }> };
@@ -207,14 +207,14 @@ describe("EditorAnalisi", () => {
     await caricaVocabolario();
     await completaDebounce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Salva analisi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salva il riquadro" }));
     await act(async () => Promise.resolve());
     const prima = spia.mock.calls.find(([input]) => String(input).includes("/api/bi/analisi"));
     const corpoPrima = JSON.parse(String(prima?.[1]?.body)) as { spec: SpecQuery };
     expect(corpoPrima.spec).not.toHaveProperty("periodo");
 
     fireEvent.click(screen.getByRole("radio", { name: /Fissa un periodo/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Salva analisi" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salva il riquadro" }));
     await act(async () => Promise.resolve());
     const salvataggi = spia.mock.calls.filter(([input]) => String(input).includes("/api/bi/analisi"));
     const corpoSeconda = JSON.parse(String(salvataggi[1]?.[1]?.body)) as { spec: SpecQuery };

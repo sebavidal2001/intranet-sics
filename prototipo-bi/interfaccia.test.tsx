@@ -279,7 +279,7 @@ describe("Analista", () => {
   });
 });
 
-describe("Libreria analisi", () => {
+describe("Riquadri salvati", () => {
   it("mostra gli utilizzi ed elimina tramite l'endpoint dedicato", async () => {
     const spiaFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "DELETE") return { ok: true, json: async () => ({ eliminata: true }) };
@@ -322,10 +322,12 @@ describe("Libreria analisi", () => {
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Commerciale / Sintesi"));
   });
 
-  it("nello stato vuoto offre subito la creazione", async () => {
+  it("nello stato vuoto rimanda dove i riquadri si costruiscono davvero", async () => {
+    // Non piu' all'editor isolato: i riquadri nascono dentro una pagina, con
+    // il pulsante "Aggiungi", ed e' li' che va mandato chi non ha niente.
     vi.stubGlobal("fetch", mockFetch({ "/api/bi/analisi": { analisi: [] } }));
     render(<AnalisiList />);
 
-    expect(await screen.findByRole("link", { name: /Crea la prima analisi/i })).toHaveAttribute("href", "/bi/esplora");
+    expect(await screen.findByRole("link", { name: /Vai alle dashboard/i })).toHaveAttribute("href", "/bi/dashboard");
   });
 });

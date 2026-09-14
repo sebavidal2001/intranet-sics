@@ -138,7 +138,7 @@ export function DashboardList() {
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="font-tenorite text-3xl font-bold tracking-[-0.02em]">Dashboard</h1>
-            <p className="mt-1 max-w-2xl text-sm text-text-muted">Pagine operative che combinano analisi salvate e le ricalcolano sul perimetro di chi le apre.</p>
+            <p className="mt-1 max-w-2xl text-sm text-text-muted">Le tue pagine di grafici. Ognuna si ricalcola sui filtri che scegli e sui dati che puoi vedere tu.</p>
           </div>
           <button type="button" onClick={() => setCreazione(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Nuova dashboard</button>
         </header>
@@ -159,8 +159,8 @@ export function DashboardList() {
           <Link href="/bi/analisi" className="group flex items-start gap-3 rounded-xl border border-border bg-bg p-4 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <Library className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
             <span className="min-w-0">
-              <span className="block font-tenorite text-base font-semibold group-hover:text-primary">Analisi salvate</span>
-              <span className="mt-0.5 block text-sm text-text-muted">La libreria da cui pescare un riquadro già fatto, o da cui riaprire e correggere un’analisi.</span>
+              <span className="block font-tenorite text-base font-semibold group-hover:text-primary">Riquadri salvati</span>
+              <span className="mt-0.5 block text-sm text-text-muted">Quelli già fatti: da qui si riaprono, si correggono e si eliminano quelli che non servono più.</span>
             </span>
           </Link>
         </nav>
@@ -182,7 +182,7 @@ export function DashboardList() {
         {caricamento ? (
           <div className="flex min-h-48 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Carico le dashboard…</div>
         ) : dashboard.length === 0 ? (
-          <section className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-10 text-center"><LayoutDashboard className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Ancora nessuna dashboard</h2><p className="mt-1 max-w-md text-sm text-text-muted">Crea uno spazio per riunire le analisi che consulti insieme.</p><button type="button" onClick={() => setCreazione(true)} className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Crea la prima dashboard</button></section>
+          <section className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-10 text-center"><LayoutDashboard className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Ancora nessuna dashboard</h2><p className="mt-1 max-w-md text-sm text-text-muted">Crea uno spazio per tenere insieme i grafici che guardi di seguito.</p><button type="button" onClick={() => setCreazione(true)} className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Crea la prima dashboard</button></section>
         ) : (
           <div className="divide-y divide-border border-y border-border bg-bg">
             {dashboard.map((voce) => (

@@ -1,9 +1,17 @@
 "use client";
 
 /**
- * Le tre strade per aggiungere un riquadro convergono qui, così libreria,
- * builder e Analista rispettano la stessa sequenza: ottenere un'analisi
- * persistita e poi collegarla una sola volta alla pagina corrente.
+ * Le tre strade per aggiungere un riquadro convergono qui.
+ *
+ * L'ordine delle schede non è neutro. Chi usa questo cruscotto non costruisce
+ * grafici per mestiere: descrivere a parole quello che si vuole vedere è il
+ * gesto che riesce a tutti, e va per primo. Spuntare i campi viene dopo, per
+ * chi vuole mettere le mani. La raccolta di quelli già fatti è l'ultima: serve
+ * quando si sa già cosa si cerca.
+ *
+ * Sotto restano lo stesso oggetto e la stessa sequenza — una `SpecQuery`
+ * persistita, collegata una volta sola alla pagina corrente — ma l'utente non
+ * ha motivo di saperlo, e infatti da nessuna parte gli viene detto.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -59,7 +67,7 @@ interface ProprietaAggiungiRiquadro {
   onChiudi: () => void;
 }
 
-type Scheda = "libreria" | "costruisci" | "ai";
+type Scheda = "ai" | "costruisci" | "pronti";
 
 function messaggioErrore(valore: unknown, ripiego: string): string {
   if (valore && typeof valore === "object" && "error" in valore && typeof valore.error === "string") {
@@ -75,7 +83,7 @@ export function AggiungiRiquadro({
   onAggiunta,
   onChiudi,
 }: ProprietaAggiungiRiquadro) {
-  const [scheda, setScheda] = useState<Scheda>("libreria");
+  const [scheda, setScheda] = useState<Scheda>("ai");
   const [analisi, setAnalisi] = useState<AnalisiAggiungibile[]>([]);
   const [caricamentoLibreria, setCaricamentoLibreria] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
@@ -136,10 +144,10 @@ export function AggiungiRiquadro({
     try {
       const disponibili = await leggiLibreria();
       const salvata = disponibili.find((voce) => voce.id === id);
-      if (!salvata) throw new Error("L'analisi salvata non è ancora disponibile nella libreria.");
+      if (!salvata) throw new Error("Il riquadro è stato creato ma non è ancora leggibile: riprova fra un istante.");
       await aggancia(salvata);
     } catch (causa) {
-      setErrore(causa instanceof Error ? causa.message : "Impossibile aggiungere l'analisi salvata.");
+      setErrore(causa instanceof Error ? causa.message : "Impossibile aggiungere il riquadro appena creato.");
     }
   }
 
@@ -198,9 +206,9 @@ export function AggiungiRiquadro({
   }
 
   const schede: Array<{ id: Scheda; etichetta: string; Icona: typeof Library }> = [
-    { id: "libreria", etichetta: "Dalla libreria", Icona: Library },
-    { id: "costruisci", etichetta: "Costruisci", Icona: Wrench },
-    { id: "ai", etichetta: "Chiedi all'AI", Icona: Bot },
+    { id: "ai", etichetta: "Dillo a parole", Icona: Bot },
+    { id: "costruisci", etichetta: "Scegli i campi", Icona: Wrench },
+    { id: "pronti", etichetta: "Già pronti", Icona: Library },
   ];
 
   return (
@@ -208,7 +216,7 @@ export function AggiungiRiquadro({
       <header className="flex items-start justify-between gap-4 border-b border-border px-4 pt-4">
         <div>
           <h2 className="font-tenorite text-xl font-semibold">Aggiungi un riquadro</h2>
-          <p className="mt-1 text-sm text-text-muted">Scegli il percorso più rapido per la domanda che hai in mente.</p>
+          <p className="mt-1 text-sm text-text-muted">Il modo più veloce è descriverlo a parole. Se preferisci scegliere tu, spunta i campi.</p>
         </div>
         <button type="button" onClick={onChiudi} className="rounded-lg p-2 text-text-muted hover:bg-bg-page hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Chiudi pannello">
           <X className="h-4 w-4" aria-hidden />
@@ -226,9 +234,9 @@ export function AggiungiRiquadro({
       {errore && <p role="alert" className="mx-4 mt-4 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{errore}</p>}
 
       <div className="p-4">
-        {scheda === "libreria" && (
+        {scheda === "pronti" && (
           <div className="divide-y divide-border border-y border-border">
-            {caricamentoLibreria ? <p className="flex items-center justify-center py-8 text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Carico la libreria…</p> : analisi.length === 0 ? <div className="flex flex-col items-center py-8 text-center"><p className="font-tenorite text-lg font-semibold">Nessuna analisi disponibile</p><p className="mt-1 max-w-md text-sm text-text-muted">Costruisci qui la prima analisi oppure descrivila all’AI: verrà salvata e aggiunta subito alla pagina.</p><div className="mt-4 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => setScheda("costruisci")} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Wrench className="h-4 w-4" aria-hidden />Costruisci la prima analisi</button><button type="button" onClick={() => setScheda("ai")} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Bot className="h-4 w-4" aria-hidden />Chiedi all’AI</button></div></div> : analisi.map((voce) => {
+            {caricamentoLibreria ? <p className="flex items-center justify-center py-8 text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Carico la libreria…</p> : analisi.length === 0 ? <div className="flex flex-col items-center py-8 text-center"><p className="font-tenorite text-lg font-semibold">Non c’è ancora niente di pronto</p><p className="mt-1 max-w-md text-sm text-text-muted">Descrivi a parole cosa vuoi vedere, oppure spunta i campi: il riquadro compare subito in questa pagina.</p><div className="mt-4 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => setScheda("costruisci")} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Wrench className="h-4 w-4" aria-hidden />Scegli i campi</button><button type="button" onClick={() => setScheda("ai")} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Bot className="h-4 w-4" aria-hidden />Dillo a parole</button></div></div> : analisi.map((voce) => {
               const presente = analisiPresenti.includes(voce.id);
               return <div key={voce.id} className="flex flex-col justify-between gap-3 py-3 sm:flex-row sm:items-center"><div><p className="font-tenorite text-base font-semibold">{voce.titolo}</p>{voce.descrizione && <p className="mt-0.5 text-sm text-text-muted">{voce.descrizione}</p>}</div><button type="button" disabled={presente || azioneInCorso !== null} onClick={() => void aggancia(voce)} className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold text-primary hover:bg-bg-page disabled:cursor-not-allowed disabled:opacity-45">{azioneInCorso === voce.id ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}{presente ? "Già presente" : "Aggiungi alla pagina"}</button></div>;
             })}
@@ -243,12 +251,12 @@ export function AggiungiRiquadro({
 
         {scheda === "ai" && (
           <div>
-            <label htmlFor="domanda-riquadro" className="font-tenorite text-base font-semibold">Descrivi cosa vuoi vedere</label>
+            <label htmlFor="domanda-riquadro" className="font-tenorite text-base font-semibold">Che cosa vuoi vedere?</label>
             <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <textarea id="domanda-riquadro" value={domanda} onChange={(evento) => setDomanda(evento.target.value)} rows={3} placeholder="Per esempio: mostrami la conversione per agente negli ultimi mesi" className="min-w-0 flex-1 resize-y rounded-lg border border-border bg-bg-page px-3 py-2 text-sm outline-none placeholder:text-text-muted focus:ring-2 focus:ring-primary" />
-              <button type="button" disabled={!domanda.trim() || analistaInCorso} onClick={() => void chiediAllAnalista()} className="inline-flex min-h-10 items-center justify-center gap-2 self-end rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">{analistaInCorso && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />}Chiedi all’AI</button>
+              <textarea id="domanda-riquadro" value={domanda} onChange={(evento) => setDomanda(evento.target.value)} rows={3} placeholder="Per esempio: l’ordinato per agente mese per mese, con il budget a confronto" className="min-w-0 flex-1 resize-y rounded-lg border border-border bg-bg-page px-3 py-2 text-sm outline-none placeholder:text-text-muted focus:ring-2 focus:ring-primary" />
+              <button type="button" disabled={!domanda.trim() || analistaInCorso} onClick={() => void chiediAllAnalista()} className="inline-flex min-h-10 items-center justify-center gap-2 self-end rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">{analistaInCorso && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />}Chiedi</button>
             </div>
-            {!analistaInCorso && proposte.length === 0 && <p className="mt-4 text-sm text-text-muted">Le proposte useranno metriche certificate e mostreranno subito il grafico suggerito.</p>}
+            {!analistaInCorso && proposte.length === 0 && <p className="mt-4 text-sm text-text-muted">Scrivi come parleresti a un collega. L’AI sceglie i numeri giusti e il grafico adatto, e te lo mostra prima di aggiungerlo.</p>}
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               {proposte.map((proposta, indice) => (
                 <article key={`${proposta.titolo}-${indice}`} className="overflow-hidden rounded-xl border border-border bg-bg-page">

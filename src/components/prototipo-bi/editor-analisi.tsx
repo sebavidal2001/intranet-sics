@@ -352,7 +352,7 @@ export function EditorAnalisi({
         })
         .catch((causa: unknown) => {
           if (causa instanceof DOMException && causa.name === "AbortError") return;
-          setErrore(causa instanceof Error ? causa.message : "Analisi non eseguibile.");
+          setErrore(causa instanceof Error ? causa.message : "Non riesco a calcolare questo riquadro.");
         })
         .finally(() => {
           if (!controller.signal.aborted) setCaricamento(false);
@@ -553,7 +553,7 @@ export function EditorAnalisi({
           ? "Modifiche salvate."
           : dentroUnaPagina
             ? "Riquadro aggiunto alla pagina."
-            : "Analisi salvata."
+            : "Riquadro salvato."
       );
       onSalvata?.(id);
     } catch (causa) {
@@ -594,12 +594,12 @@ export function EditorAnalisi({
           Torna alle analisi
         </Link>
         <h1 className="font-tenorite text-3xl font-semibold">
-          {aggiornaEsistente ? "Modifica l’analisi" : modificabile ? "Componi un’analisi" : "Crea una copia modificabile"}
+          {aggiornaEsistente ? "Modifica il riquadro" : modificabile ? "Costruisci un riquadro" : "Crea una copia modificabile"}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-text-muted">
           {modificabile
             ? "Costruisci la stessa domanda certificata che usa l’Analista AI. Ogni scelta aggiorna subito il risultato e può essere riaperta, modificata o condivisa."
-            : "Questa analisi è condivisa o appartiene al Cruscotto di sistema: le modifiche verranno salvate in una nuova analisi privata."}
+            : "Questo riquadro è condiviso o appartiene al Cruscotto: le tue modifiche finiranno in una copia tua, l’originale resta com’è."}
         </p>
       </header>
 
@@ -610,7 +610,7 @@ export function EditorAnalisi({
           </h2>
           <p className="mt-1 text-sm text-text-muted">Scegli l’area con cui parlate dei dati in azienda.</p>
         </div>
-        <div className="flex gap-3 overflow-x-auto pb-2" aria-label="Tipologie di analisi">
+        <div className="flex gap-3 overflow-x-auto pb-2" aria-label="Che cosa vuoi misurare">
           {vocabolario.tipologie.map((tipologia) => {
             const selezionata = tipologia.chiave === tipologiaScelta;
             return (
@@ -997,7 +997,7 @@ export function EditorAnalisi({
 
           <Scheda
             titolo="Solo dove"
-            sottotitolo="Restringi l’analisi con filtri espliciti"
+            sottotitolo="Tieni solo le righe che ti interessano"
             azione={
               <button
                 type="button"
@@ -1181,12 +1181,12 @@ export function EditorAnalisi({
 
             <div className="mt-5 border-t border-border pt-5">
               <label htmlFor="editor-titolo" className="text-sm font-medium">
-                {dentroUnaPagina ? "Titolo del riquadro" : "Titolo dell’analisi"}
+                {dentroUnaPagina ? "Titolo del riquadro" : "Titolo del riquadro"}
               </label>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <input
                   id="editor-titolo"
-                  aria-label="Titolo dell’analisi"
+                  aria-label="Titolo del riquadro"
                   required
                   value={titolo}
                   onChange={(evento) => {
@@ -1213,7 +1213,7 @@ export function EditorAnalisi({
                         : dentroUnaPagina
                           ? "Aggiungi alla pagina"
                           : modificabile
-                            ? "Salva analisi"
+                            ? "Salva il riquadro"
                             : "Salva una copia"}
                 </button>
               </div>
