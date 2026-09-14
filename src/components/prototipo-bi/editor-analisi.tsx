@@ -25,6 +25,11 @@ import { GraficoDaAnalisi } from "@/components/prototipo-bi/grafico-da-risultato
 import { Scheda, Scheletro, euro, numero } from "@/components/prototipo-bi/primitivi";
 import { useImpostazioni } from "@/components/prototipo-bi/impostazioni";
 import {
+  AlberoCampi,
+  SELEZIONE_VUOTA,
+  type SelezioneCampi,
+} from "@/components/prototipo-bi/albero-campi";
+import {
   ammetteConfrontoBudget,
   eseguiAnalisiComposita,
   motivoBudgetNonDisponibile,
@@ -375,8 +380,69 @@ export function EditorAnalisi({
   const grafici = risultatoGrafico ? graficiPossibili(risultatoGrafico) : [];
   const tipoGrafico =
     graficoScelto && grafici.includes(graficoScelto) ? graficoScelto : proposta?.tipo;
-  const dimensioniScelte = spec?.raggruppa ?? [];
-  const limiteDimensioniRaggiunto = dimensioniScelte.length >= 2;
+
+  /**
+   * La selezione dell'albero, ricavata dallo stato che gia' c'era.
+   *
+   * `serieAggiuntive` ha due proprietari: l'albero possiede le misure in piu'
+   * (quelle senza `scorciatoia`), il pannello «Confronta con…» possiede anno
+   * precedente e progressivo, che sono modificatori della stessa misura e non
+   * misure diverse. Tenerli distinti e' l'unico modo perche' l'uno non
+   * cancelli le serie dell'altro a ogni spunta.
+   */
+  const selezioneCampi: SelezioneCampi = spec
+    ? {
+        misure: [
+          spec.metrica,
+          ...serieAggiuntive.filter((voce) => !voce.scorciatoia).map((voce) => voce.spec.metrica),
+        ],
+        suddivisioni: spec.raggruppa ?? [],
+        granularita: spec.granularita,
+      }
+    : SELEZIONE_VUOTA;
+
+  function applicaSelezione(nuova: SelezioneCampi) {
+    const [principale, ...altre] = nuova.misure;
+    if (!principale) return;
+
+    const tipologia = vocabolario?.tipologie.find((voce) => voce.metriche.includes(principale));
+    if (tipologia) setTipologiaScelta(tipologia.chiave);
+
+    setSpec((corrente) => ({
+      ...(corrente ?? { metrica: principale, modificatore: "corrente" as const }),
+      metrica: principale,
+      raggruppa: nuova.suddivisioni.length > 0 ? [...nuova.suddivisioni] : undefined,
+      granularita: nuova.granularita,
+    }));
+
+    setSerieAggiuntive((correnti) => {
+      const scorciatoie = correnti.filter((voce) => voce.scorciatoia);
+      const misureExtra = altre.map((metrica) => {
+        const gia = correnti.find((voce) => !voce.scorciatoia && voce.spec.metrica === metrica);
+        const nome =
+          gia?.nome ??
+          vocabolario?.metriche.find((voce) => voce.chiave === metrica)?.etichetta ??
+          metrica;
+        return {
+          ruolo:
+            metrica === "budget"
+              ? ("obiettivo" as const)
+              : metrica === "bep"
+                ? ("soglia" as const)
+                : ("confronto" as const),
+          nome,
+          // Il colore scelto a mano sopravvive a una rispuntata.
+          ...(gia?.colore ? { colore: gia.colore } : {}),
+          spec: { metrica, modificatore: "corrente" as const },
+        };
+      });
+      return [...scorciatoie, ...misureExtra];
+    });
+
+    setGraficoScelto(undefined);
+    setSalvataggio("pronto");
+    setMessaggioSalvataggio("");
+  }
 
   // Budget e BEP esistono solo per business unit e agente: con altri
   // raggruppamenti la serie collasserebbe sul totale e il confronto mentirebbe.
@@ -385,12 +451,6 @@ export function EditorAnalisi({
   // non c'è ancora nulla da spiegare.
   const budgetDisponibile = spec !== null && ammetteConfrontoBudget(spec);
   const motivoBudget = spec === null ? null : motivoBudgetNonDisponibile(spec);
-  const tipologiaAttiva = vocabolario?.tipologie.find(
-    (voce) => voce.chiave === tipologiaScelta
-  );
-  const metricheVisibili = (tipologiaAttiva?.metriche ?? [])
-    .map((chiave) => vocabolario?.metriche.find((metrica) => metrica.chiave === chiave))
-    .filter((metrica): metrica is VoceMetrica => Boolean(metrica));
   const metricheConfrontoVisibili = (vocabolario?.tipologie.find(
     (voce) => voce.chiave === tipologiaConfronto
   )?.metriche ?? [])
@@ -407,42 +467,6 @@ export function EditorAnalisi({
     setSpec((corrente) => (corrente ? aggiornamento(corrente) : corrente));
     setSalvataggio("pronto");
     setMessaggioSalvataggio("");
-  }
-
-  function cambiaDimensione(dimensione: Dimensione, selezionata: boolean) {
-    aggiornaSpec((corrente) => {
-      const raggruppa = corrente.raggruppa ?? [];
-      return {
-        ...corrente,
-        raggruppa: selezionata
-          ? [...raggruppa, dimensione].slice(0, 2)
-          : raggruppa.filter((voce) => voce !== dimensione),
-      };
-    });
-  }
-
-  function scegliTipologia(chiave: ChiaveTipologia) {
-    const tipologia = vocabolario?.tipologie.find((voce) => voce.chiave === chiave);
-    const metrica = tipologia?.metriche[0];
-    if (!metrica) return;
-    setTipologiaScelta(chiave);
-    setSpec({ metrica, modificatore: "corrente" });
-    setSerieAggiuntive([]);
-    setGraficoScelto(undefined);
-    titoloModificato.current = false;
-    setSalvataggio("pronto");
-    setMessaggioSalvataggio("");
-  }
-
-  function cambiaMetrica(metrica: ChiaveMetrica) {
-    const ammesse = new Set(vocabolario?.dimensioniPerMetrica[metrica] ?? []);
-    aggiornaSpec((corrente) => ({
-      ...corrente,
-      metrica,
-      raggruppa: corrente.raggruppa?.filter((dimensione) => ammesse.has(dimensione)),
-      filtri: corrente.filtri?.filter((filtro) => ammesse.has(filtro.campo)),
-    }));
-    setGraficoScelto(undefined);
   }
 
   function aggiungiScorciatoia(
@@ -582,10 +606,6 @@ export function EditorAnalisi({
     );
   }
 
-  const metricaScelta = spec
-    ? vocabolario.metriche.find((voce) => voce.chiave === spec.metrica)
-    : undefined;
-
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6">
       <header className="mb-6 max-w-3xl">
@@ -603,103 +623,41 @@ export function EditorAnalisi({
         </p>
       </header>
 
-      <section aria-labelledby="titolo-tipologia" className="mb-6">
-        <div className="mb-3">
-          <h2 id="titolo-tipologia" className="font-tenorite text-xl font-semibold">
-            Cosa vuoi analizzare?
-          </h2>
-          <p className="mt-1 text-sm text-text-muted">Scegli l’area con cui parlate dei dati in azienda.</p>
-        </div>
-        <div className="flex gap-3 overflow-x-auto pb-2" aria-label="Che cosa vuoi misurare">
-          {vocabolario.tipologie.map((tipologia) => {
-            const selezionata = tipologia.chiave === tipologiaScelta;
-            return (
-              <button
-                key={tipologia.chiave}
-                type="button"
-                aria-pressed={selezionata}
-                onClick={() => scegliTipologia(tipologia.chiave)}
-                className={`min-h-24 min-w-44 rounded-xl border p-4 text-left outline-none transition-colors focus:ring-2 focus:ring-primary ${
-                  selezionata
-                    ? "border-primary bg-bg-page text-primary"
-                    : "border-border bg-bg-page hover:text-primary"
-                }`}
-              >
-                <span className="font-tenorite text-lg font-semibold">{tipologia.etichetta}</span>
-                <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-                  {tipologia.descrizione}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      {/*
+        L'albero prende il posto di tre tendine in fila — tipologia, metrica,
+        raggruppa — che chiedevano di compilare un modulo prima di vedere
+        qualcosa. Qui si spunta e il risultato si aggiorna.
+      */}
+      {vocabolario && (
+        <section aria-labelledby="titolo-campi" className="mb-6">
+          <div className="mb-3">
+            <h2 id="titolo-campi" className="font-tenorite text-xl font-semibold">
+              Scegli i campi
+            </h2>
+            <p className="mt-1 text-sm text-text-muted">
+              Spunta la misura che ti interessa e, se vuoi, come suddividerla. Due misure spuntate finiscono nello stesso grafico.
+            </p>
+          </div>
+          <AlberoCampi
+            vocabolario={{
+              tipologie: vocabolario.tipologie,
+              metriche: vocabolario.metriche,
+              dimensioni: vocabolario.dimensioni,
+              dimensioniPerMetrica: vocabolario.dimensioniPerMetrica,
+            }}
+            selezione={selezioneCampi}
+            onCambia={applicaSelezione}
+          />
+        </section>
+      )}
 
       {!spec ? (
         <p className="rounded-xl border border-border bg-bg-page p-5 text-sm text-text-muted">
-          Scegli una tipologia per vedere le metriche e i raggruppamenti disponibili.
+          Spunta una misura qui sopra per vedere il risultato.
         </p>
       ) : (
       <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.5fr)] xl:items-start">
         <div className="space-y-4">
-          <Scheda titolo="Metrica" sottotitolo={`Solo le misure di ${tipologiaAttiva?.etichetta ?? "questa tipologia"}`}>
-            <label className="text-sm font-medium" htmlFor="editor-metrica">
-              Metrica
-            </label>
-            <select
-              id="editor-metrica"
-              aria-label="Metrica"
-              value={spec.metrica}
-              onChange={(evento) => cambiaMetrica(evento.target.value as ChiaveMetrica)}
-              className={`${CLASSE_CAMPO} mt-2`}
-            >
-              {metricheVisibili.map((metrica) => (
-                <option key={metrica.chiave} value={metrica.chiave}>
-                  {metrica.etichetta}
-                </option>
-              ))}
-            </select>
-            {metricaScelta && (
-              <p className="mt-2 text-xs leading-relaxed text-text-muted">
-                {metricaScelta.descrizione}
-              </p>
-            )}
-          </Scheda>
-
-          <Scheda titolo="Raggruppa per" sottotitolo="Fino a due dimensioni">
-            <fieldset>
-              <legend className="sr-only">Dimensioni</legend>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                {dimensioniAmmesse.map((dimensione) => {
-                  const selezionata = dimensioniScelte.includes(dimensione.chiave);
-                  const disabilitata = limiteDimensioniRaggiunto && !selezionata;
-                  return (
-                    <label
-                      key={dimensione.chiave}
-                      className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-bg-page px-3 text-sm has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selezionata}
-                        disabled={disabilitata}
-                        onChange={(evento) =>
-                          cambiaDimensione(dimensione.chiave, evento.target.checked)
-                        }
-                        className="h-4 w-4 accent-primary"
-                      />
-                      {dimensione.etichetta}
-                    </label>
-                  );
-                })}
-              </div>
-              <p className={`mt-2 text-xs ${limiteDimensioniRaggiunto ? "text-warning" : "text-text-muted"}`}>
-                {limiteDimensioniRaggiunto
-                  ? "Hai scelto due dimensioni: è il massimo rappresentabile in un grafico. Deselezionane una per cambiarla."
-                  : "Puoi scegliere ancora fino a due dimensioni complessive."}
-              </p>
-            </fieldset>
-          </Scheda>
-
           <Scheda titolo="Quando" sottotitolo="Segui la dashboard oppure mantieni un confronto fisso">
             <fieldset>
               <legend className="sr-only">Modalità del periodo</legend>

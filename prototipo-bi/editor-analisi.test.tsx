@@ -146,38 +146,40 @@ describe("EditorAnalisi", () => {
     expect(corpo.serie.map((voce) => voce.ruolo)).toEqual(["principale", "obiettivo", "soglia"]);
   });
 
-  it("mostra solo le metriche della tipologia scelta", async () => {
+  it("le misure sono caselle raggruppate, non una tendina piatta", async () => {
+    // La tendina unica metteva sullo stesso piano «Ordinato» e «Quota stesso
+    // giorno», che non sono la stessa specie di cosa. I gruppi lo dicono.
     preparaFetch();
     render(<EditorAnalisi />);
     await caricaVocabolario();
 
     expect(screen.queryByLabelText("Metrica")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Ordinato/i }));
-
-    expect(screen.getByRole("option", { name: "Valore ordinato" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Numero ordini" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Valore fatturato" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Valore ordinato" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Numero ordini" })).toBeInTheDocument();
+    // Il fatturato sta in un altro gruppo, chiuso: c'è, ma non ingombra.
+    expect(screen.queryByRole("checkbox", { name: "Valore fatturato" })).not.toBeInTheDocument();
   });
 
-  it("rimuove le dimensioni non ammesse quando cambia la metrica", async () => {
+  it("riaprendo un riquadro il gruppo che contiene i campi scelti è già aperto", async () => {
+    // Un gruppo chiuso nasconderebbe proprio i campi già scelti, e chi apre il
+    // riquadro penserebbe di averli persi.
     preparaFetch();
     render(<EditorAnalisi specIniziale={{ metrica: "consegnato", raggruppa: ["causale"] }} />);
     await caricaVocabolario();
 
     expect(screen.getByRole("checkbox", { name: "Causale magazzino" })).toBeChecked();
-    fireEvent.change(screen.getByLabelText("Metrica"), { target: { value: "portafoglio" } });
-
-    expect(screen.queryByRole("checkbox", { name: "Causale magazzino" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Valore consegnato" })).toBeChecked();
   });
 
-  it("mantiene il limite di due dimensioni", async () => {
+  it("alla terza dimensione il limite è scritto invece che subìto", async () => {
     preparaFetch();
     render(<EditorAnalisi specIniziale={{ metrica: "ordinato", raggruppa: ["bu", "agente"] }} />);
     await caricaVocabolario();
 
     expect(screen.getByRole("checkbox", { name: "Business unit" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Agente" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Cliente" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /^Cliente/ })).toBeDisabled();
+    expect(screen.getAllByText(/Al massimo due/).length).toBeGreaterThan(0);
   });
 
   it("aggiorna l'analisi riaperta senza crearne una nuova", async () => {
