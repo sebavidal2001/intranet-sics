@@ -329,9 +329,20 @@ export function EditorAnalisi({
 
   useEffect(() => {
     if (!spec) return;
-    setSerieAggiuntive((correnti) => correnti.map((voce) =>
-      voce.scorciatoia ? { ...voce, spec: specDaScorciatoia(spec, voce.scorciatoia) } : voce
-    ));
+    setSerieAggiuntive((correnti) => correnti.map((voce) => {
+      if (voce.scorciatoia) return { ...voce, spec: specDaScorciatoia(spec, voce.scorciatoia) };
+      // Le misure spuntate nell'albero seguono la principale su suddivisione e
+      // granularita': cambiare «mese» in «anno» deve spostare tutte le serie,
+      // non solo la prima.
+      return {
+        ...voce,
+        spec: {
+          ...voce.spec,
+          raggruppa: spec.raggruppa ? [...spec.raggruppa] : undefined,
+          granularita: spec.granularita,
+        },
+      };
+    }));
   }, [spec]);
 
   useEffect(() => {
@@ -433,7 +444,16 @@ export function EditorAnalisi({
           nome,
           // Il colore scelto a mano sopravvive a una rispuntata.
           ...(gia?.colore ? { colore: gia.colore } : {}),
-          spec: { metrica, modificatore: "corrente" as const },
+          // La misura in piu' deve condividere suddivisione e granularita'
+          // della principale: e' la stessa domanda su un altro numero. Senza,
+          // la serie si riduce a un solo valore e compare sull'asse come una
+          // categoria di troppo chiamata «totale», accanto ai mesi.
+          spec: {
+            metrica,
+            modificatore: "corrente" as const,
+            ...(nuova.suddivisioni.length > 0 ? { raggruppa: [...nuova.suddivisioni] } : {}),
+            ...(nuova.granularita ? { granularita: nuova.granularita } : {}),
+          },
         };
       });
       return [...scorciatoie, ...misureExtra];

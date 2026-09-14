@@ -18,7 +18,7 @@
  *     far comporre le spec all'AI.
  */
 
-import { risolviBudget } from "./budget-fonte";
+import { anniDellaSpec, risolviBudget, unisciSerieBudget } from "./budget-fonte";
 import type {
   ChiaveMetrica,
   Dimensione,
@@ -552,24 +552,6 @@ const METRICHE_A_COSTO = new Set<ChiaveMetrica>([
 ]);
 
 /**
- * Anno a cui si riferisce una spec su budget/BEP.
- *
- * Il budget e' annuale: per pescare la serie giusta serve sapere l'anno prima
- * di filtrare. I modificatori anno-su-anno spostano il bersaglio indietro di
- * uno.
- */
-function annoDellaSpec(spec: SpecQuery, snapshot: Snapshot): number {
-  const p = spec.periodo ?? {};
-  let anno =
-    p.anno ??
-    (Number((p.al ?? p.dal ?? snapshot.dataMassima ?? "").slice(0, 4)) ||
-      new Date().getFullYear());
-  const mod = spec.modificatore ?? "corrente";
-  if (mod === "anno_precedente" || mod === "progressivo_ap") anno -= 1;
-  return anno;
-}
-
-/**
  * Budget/BEP a partire dalla serie agganciata allo snapshot.
  *
  * Se la serie non c'e' il risultato e' vuoto e lo dice. Non si ripiega mai su
@@ -577,7 +559,14 @@ function annoDellaSpec(spec: SpecQuery, snapshot: Snapshot): number {
  * assente.
  */
 function risolviBudgetSuSnapshot(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
-  const anno = annoDellaSpec(spec, snapshot);
+  // Tutti gli anni che il periodo attraversa, non uno solo.
+  //
+  // Prima qui si sceglieva un anno secco, e su una dashboard il cui periodo
+  // copre 2025 e 2026 — cioe' il default, perche' i dati partono dal gennaio
+  // 2025 — il budget arrivava solo per il 2026: le barre coprivano due anni e
+  // le linee di budget e BEP cominciavano a gennaio. Sembrava che il budget
+  // del 2025 non fosse stato caricato, e invece c'era.
+  const anni = anniDellaSpec(spec, snapshot);
   const mappa = snapshot.serieBudget;
 
   if (!mappa) {
@@ -596,7 +585,7 @@ function risolviBudgetSuSnapshot(spec: SpecQuery, snapshot: Snapshot): Risultato
     };
   }
 
-  return risolviBudget(spec, mappa[anno] ?? null).risultato;
+  return risolviBudget(spec, unisciSerieBudget(mappa, anni)).risultato;
 }
 
 /**

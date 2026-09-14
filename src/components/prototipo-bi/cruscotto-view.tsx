@@ -331,6 +331,10 @@ export function CruscottoView({
           ordina: "etichetta",
         },
         ordinatoAgente: { metrica: "ordinato", raggruppa: ["agente"], ...base, ordina: "valore_desc" },
+        // La scheda disegna anche la torta per business unit: senza questa
+        // riga il pannello restava a scheletro per sempre, e uno scheletro
+        // dice «sto caricando», non «questo dato nessuno l'ha chiesto».
+        ordinatoBu: { metrica: "ordinato", raggruppa: ["bu"], ...base, ordina: "valore_desc" },
       };
     }
 
@@ -375,7 +379,39 @@ export function CruscottoView({
   }, [vista, filtriSpec, periodo, periodoProg]);
 
   const { risultati, caricamento, errori, ricarica } = useQueryBi(specs);
-  const r = (k: string) => risultati[k];
+  /**
+   * Legge un risultato del batch.
+   *
+   * Con il guardiano acceso: chiedere una chiave che questa vista **non ha
+   * richiesto** non e' un dato mancante, e' un errore di programmazione. Senza
+   * segnalarlo il pannello resta a scheletro per sempre, e uno scheletro dice
+   * «sto caricando», non «questo dato nessuno l'ha chiesto» — che e' esattamente
+   * come la torta per business unit e' rimasta vuota nella scheda Clienti senza
+   * che nessuno se ne accorgesse.
+   *
+   * Solo in sviluppo: in produzione un pannello vuoto e' meglio di una pagina
+   * che non si apre.
+   */
+  /**
+   * Lettura permissiva, per i calcoli derivati.
+   *
+   * I derivati (waterfall, tabelle di confronto, multipli) sono `useMemo` che
+   * girano a ogni render qualunque sia la scheda aperta, e leggono chiavi che
+   * solo *alcune* schede richiedono. Li' l'assenza e' normale e il risultato
+   * viene semplicemente vuoto: segnalarla renderebbe il guardiano rumoroso
+   * fino a farlo ignorare.
+   */
+  const rSeCe = (k: string) => risultati[k];
+
+  const r = (k: string) => {
+    if (process.env.NODE_ENV !== "production" && !(k in specs)) {
+      console.error(
+        `[cruscotto] la vista "${vista}" disegna "${k}" ma non lo chiede: ` +
+          "aggiungilo al blocco delle richieste, altrimenti resta a scheletro per sempre."
+      );
+    }
+    return risultati[k];
+  };
   const tot = (k: string) => risultati[k]?.totale ?? 0;
 
   // ── Derivati per i grafici analitici ──────────────────────────────────────
@@ -421,7 +457,7 @@ export function CruscottoView({
   /** Heatmap business unit × mese, colorata sullo scostamento dal budget. */
   const heatmapScostamenti = useMemo(() => {
     const ord = r("ordinatoBuMese");
-    const bdg = r("budgetBuMese");
+    const bdg = rSeCe("budgetBuMese");
     if (!ord) return null;
 
     const bu = [...new Set(ord.righe.map((x) => x.chiavi.bu).filter(Boolean))] as string[];
@@ -456,8 +492,8 @@ export function CruscottoView({
 
   /** Punti dei quadranti: valore anno precedente contro crescita. */
   const puntiQuadranti = useMemo(() => {
-    const cur = r("clienti");
-    const ap = r("clientiAP");
+    const cur = rSeCe("clienti");
+    const ap = rSeCe("clientiAP");
     if (!cur || !ap) return [];
     const mappaAP = new Map(ap.righe.map((x) => [x.etichetta, x.valore]));
     return cur.righe
@@ -1032,13 +1068,14 @@ export function CruscottoView({
             <Scheda
               titolo="Clienti — quadro completo"
               className="lg:col-span-2"
-              sottotitolo="ordinabile per qualsiasi colonna; l'andamento è mensile"
+              sottotitolo="ordinabile per qualsiasi colonna; l’andamento è la tendenza dei mesi, verde se sale — il mese in corso, ancora incompleto, non conta"
             >
               <TabellaAnalitica
                 colonnaDimensione="Cliente"
                 colonne={colonneConfronto({ annoCorrente: anno, conSparkline: true })}
                 righe={tabellaDi("clienti", "clientiAP", null, "clientiMese", "cliente").righe}
                 massimoIniziale={15}
+                ultimoPeriodoParziale
                 onClickRiga={(c) => alternaFiltro("cliente", c)}
                 rigaEvidenziata={filtroDi("cliente")}
               />

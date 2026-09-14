@@ -114,6 +114,7 @@ export function TabellaAnalitica({
   onClickRiga,
   rigaEvidenziata,
   ricercabile = true,
+  ultimoPeriodoParziale = false,
 }: {
   colonne: ColonnaAnalitica[];
   righe: RigaAnalitica[];
@@ -123,6 +124,14 @@ export function TabellaAnalitica({
   massimoIniziale?: number;
   onClickRiga?: (chiave: string) => void;
   rigaEvidenziata?: string | null;
+  /**
+   * L'ultimo periodo della sparkline non e' concluso.
+   *
+   * Sul mese in corso lo snapshot si ferma al giorno dell'ultimo caricamento:
+   * quel punto vale una frazione degli altri e, contato nella tendenza,
+   * tingerebbe di rosso anche chi sta crescendo.
+   */
+  ultimoPeriodoParziale?: boolean;
   ricercabile?: boolean;
 }) {
   const [ordinaPer, setOrdinaPer] = useState<string>(
@@ -278,7 +287,7 @@ export function TabellaAnalitica({
       return (
         <td key={c.chiave} className="py-1 px-2">
           <div className="flex justify-end">
-            <Sparkline valori={valori} />
+            <Sparkline valori={valori} ultimoParziale={ultimoPeriodoParziale} />
           </div>
         </td>
       );

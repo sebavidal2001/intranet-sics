@@ -41,10 +41,13 @@ import {
   type RiquadroCreato,
 } from "./aggiungi-riquadro";
 import { GraficoDaAnalisi } from "./grafico-da-risultato";
+import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti";
+import { DATASET_DI_METRICA } from "@/lib/prototipo-bi/gruppi-campi";
 import { preparaEsecuzioneAnalisi } from "@/lib/prototipo-bi/analisi-composita";
 import type { FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type {
+  Filtro,
   RisultatoQuery,
   SerieAnalisi,
   SerieAnalisiEseguita,
@@ -152,6 +155,16 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
   const [titoloPagina, setTitoloPagina] = useState("");
   const [pannelloAggiungi, setPannelloAggiungi] = useState(false);
   const [azioneInCorso, setAzioneInCorso] = useState(false);
+  /**
+   * I documenti dietro il punto cliccato.
+   *
+   * Il pannello e il suo motore esistevano gia', ma erano agganciati alle sole
+   * schede Conversione e Back office del Cruscotto: nei riquadri costruiti
+   * dagli utenti il clic non faceva niente. Un numero su cui non si puo'
+   * scendere resta una cosa da credere sulla parola, ed e' il primo motivo per
+   * cui a un cruscotto non si crede.
+   */
+  const [dettaglio, setDettaglio] = useState<RichiestaPannello | null>(null);
   const [duplicazioneInCorso, setDuplicazioneInCorso] = useState(false);
 
   const caricaDashboard = useCallback(async () => {
@@ -182,6 +195,41 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
   const paginaAttiva = useMemo(
     () => dashboard?.pagine.find((pagina) => pagina.id === paginaAttivaId) ?? dashboard?.pagine[0] ?? null,
     [dashboard, paginaAttivaId]
+  );
+
+  /**
+   * Apre i documenti dietro una categoria cliccata su un riquadro.
+   *
+   * La dimensione su cui si e' cliccato e' la prima del raggruppamento: e'
+   * quella che genera le etichette dell'asse, quindi il valore cliccato e' un
+   * suo valore. Se il riquadro non raggruppa niente, l'etichetta e' un periodo
+   * o un totale e non c'e' niente su cui scendere.
+   */
+  const apriDocumenti = useCallback(
+    (riquadro: RiquadroDashboard, etichetta: string) => {
+      const spec = riquadro.analisi.spec;
+      const dataset = DATASET_DI_METRICA[spec.metrica];
+      const dimensione = spec.raggruppa?.[0];
+      if (!dataset || !dimensione) return;
+
+      const filtriPagina = filtriPuliti(paginaAttiva?.filtri ?? {});
+      setDettaglio({
+        dataset: dataset as RichiestaPannello["dataset"],
+        titolo: `${riquadro.titolo || riquadro.analisi.titolo} — ${etichetta}`,
+        filtri: [
+          ...(spec.filtri ?? [])
+            .filter((filtro: Filtro) => filtro.op === "eq" && filtro.campo !== dimensione)
+            .map((filtro: Filtro) => ({
+              campo: filtro.campo,
+              op: "eq" as const,
+              valore: String(filtro.valore),
+            })),
+          { campo: dimensione, op: "eq" as const, valore: etichetta },
+        ],
+        periodo: spec.periodo ?? filtriPagina.periodo,
+      });
+    },
+    [paginaAttiva]
   );
 
   const specsBatch = useMemo(() => {
@@ -515,7 +563,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                         </div>}
                       </header>
                       <div className="min-h-48 p-4">
-                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
+                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => apriDocumenti(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
                       </div>
                     </article>
                   );
@@ -525,6 +573,8 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
           </>
         )}
       </div>
+
+      <PannelloDettaglio richiesta={dettaglio} onChiudi={() => setDettaglio(null)} />
     </main>
   );
 }

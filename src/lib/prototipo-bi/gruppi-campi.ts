@@ -98,3 +98,49 @@ export function motivoDimensioneNonAmmessa(dimensione: Dimensione): string {
 export function gruppoDi(dimensione: Dimensione): GruppoDimensioni | undefined {
   return GRUPPI_DIMENSIONI.find((gruppo) => gruppo.dimensioni.includes(dimensione));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dal numero ai documenti che lo compongono
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Il dataset documentale dietro ogni metrica, per aprire il dettaglio.
+ *
+ * Serve al clic su un riquadro: da «ordinato per cliente» si deve poter
+ * scendere alle bolle e agli ordini veri, altrimenti il numero resta una cosa
+ * da credere sulla parola.
+ *
+ * Sono elencate **solo** le metriche il cui dataset ha un dettaglio
+ * documentale (`DATASET_DETTAGLIO` in `dettaglio.ts`). Budget e BEP non ci
+ * sono di proposito: non nascono da documenti, e offrire un drill-down che
+ * apre una lista vuota è peggio che non offrirlo.
+ *
+ * È una copia di quel che `CATALOGO` sa già, tenuta qui perché il componente
+ * che la usa gira nel browser. `gruppi-campi.test.ts` la confronta con
+ * l'originale: se le due divergono, il test lo dice.
+ */
+export const DATASET_DI_METRICA: Partial<Record<string, string>> = {
+  ordinato: "ordinato",
+  n_ordini: "ordinato",
+  ordine_medio: "ordinato",
+  fatturato: "fatturato",
+  costo_venduto: "fatturato",
+  margine: "fatturato",
+  margine_pct: "fatturato",
+  copertura_costi_pct: "fatturato",
+  consegnato: "consegnato",
+  portafoglio: "portafoglio",
+  preventivi_aperti: "preventivi_aperti",
+  n_preventivi: "preventivi_aperti",
+  preventivi_valore: "preventivi_aperti",
+  preventivi_convertito: "preventivi_aperti",
+  tasso_conversione: "preventivi_aperti",
+  valore_medio_preventivo: "preventivi_aperti",
+  preventivi_creati: "preventivi_aperti",
+  righe_preventivo: "preventivi_aperti",
+  giorni_risposta: "preventivi_aperti",
+  quota_stesso_giorno: "preventivi_aperti",
+  giorni_apertura: "preventivi_aperti",
+  eta_massima_apertura: "preventivi_aperti",
+  preventivi_aperti_oltre_90: "preventivi_aperti",
+};

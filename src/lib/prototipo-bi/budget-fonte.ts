@@ -42,6 +42,106 @@ function chiaveTempo(data: string, g: Granularita): string {
   }
 }
 
+function annoDaData(data: string | null | undefined): number | null {
+  if (!data) return null;
+  const anno = Number(data.slice(0, 4));
+  return Number.isInteger(anno) && anno > 0 ? anno : null;
+}
+
+function anniFra(estremoA: number, estremoB: number): number[] {
+  const primo = Math.min(estremoA, estremoB);
+  const ultimo = Math.max(estremoA, estremoB);
+  return Array.from({ length: ultimo - primo + 1 }, (_, indice) => primo + indice);
+}
+
+/** Gli anni che una spec attraversa davvero, nell'ordine. */
+export function anniDellaSpec(
+  spec: SpecQuery,
+  copertura: { dataMinima: string | null; dataMassima: string | null }
+): number[] {
+  const periodo = spec.periodo;
+  const annoCorrente = new Date().getFullYear();
+  let anni: number[];
+
+  if (periodo?.anno !== undefined && Number.isInteger(periodo.anno) && periodo.anno > 0) {
+    anni = [periodo.anno];
+  } else {
+    const annoMinimo = annoDaData(copertura.dataMinima);
+    const annoMassimo = annoDaData(copertura.dataMassima);
+    const haEstremiEspliciti = Boolean(periodo?.dal || periodo?.al);
+
+    const primo = haEstremiEspliciti
+      ? annoDaData(periodo?.dal) ?? annoMinimo ?? annoDaData(periodo?.al) ?? annoMassimo
+      : annoMinimo ?? annoMassimo;
+    const ultimo = haEstremiEspliciti
+      ? annoDaData(periodo?.al) ?? annoMassimo ?? annoDaData(periodo?.dal) ?? annoMinimo
+      : annoMassimo ?? annoMinimo;
+
+    anni = primo !== null && ultimo !== null ? anniFra(primo, ultimo) : [annoCorrente];
+  }
+
+  const modificatore = spec.modificatore ?? "corrente";
+  if (modificatore === "anno_precedente" || modificatore === "progressivo_ap") {
+    anni = [...anni, ...anni.map((anno) => anno - 1)];
+  }
+
+  const unici = [...new Set(anni)].filter((anno) => Number.isInteger(anno) && anno > 0);
+  return unici.length > 0 ? unici.sort((a, b) => a - b) : [annoCorrente];
+}
+
+/** Fonde le serie di piu' anni in una sola, da passare a risolviBudget. */
+export function unisciSerieBudget(
+  mappa: Record<number, SerieBudget | null>,
+  anni: number[]
+): SerieBudget | null {
+  const presenti: Array<{ annoRichiesto: number; serie: SerieBudget }> = [];
+  for (const anno of new Set(anni)) {
+    const serie = mappa[anno];
+    if (serie) presenti.push({ annoRichiesto: anno, serie });
+  }
+
+  if (presenti.length === 0) return null;
+
+  const prima = presenti[0].serie;
+  const origini = [...new Set(presenti.map(({ serie }) => serie.origine))];
+  const formato =
+    origini.length > 1
+      ? `${prima.formato} (origini miste: ${origini.join(" + ")})`
+      : prima.formato;
+  const anniFusi: number[] = [];
+  const visti = new Set<number>();
+  const totaliPerAnno: SerieBudget["totaliPerAnno"] = {};
+  const righe: RigaSerieBudget[] = [];
+
+  const aggiungiAnno = (anno: number) => {
+    if (visti.has(anno)) return;
+    visti.add(anno);
+    anniFusi.push(anno);
+  };
+
+  for (const { annoRichiesto, serie } of presenti) {
+    aggiungiAnno(annoRichiesto);
+    for (const anno of serie.anni) aggiungiAnno(anno);
+    for (const [annoTesto, totali] of Object.entries(serie.totaliPerAnno)) {
+      const anno = Number(annoTesto);
+      if (Number.isInteger(anno)) {
+        aggiungiAnno(anno);
+        totaliPerAnno[anno] = totali;
+      }
+    }
+    righe.push(...serie.righe);
+  }
+
+  return {
+    origine: prima.origine,
+    formato,
+    importatoIl: prima.importatoIl,
+    anni: anniFusi,
+    totaliPerAnno,
+    righe,
+  };
+}
+
 /** Converte una distribuzione generata nella stessa forma della serie importata. */
 export function serieDaConfigurazione(config: ConfigurazioneAnno): SerieBudget {
   const d = distribuisci(config);

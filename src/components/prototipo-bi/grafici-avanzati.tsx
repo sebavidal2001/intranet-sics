@@ -662,22 +662,60 @@ export function Quadranti({
 // 6. SPARKLINE — per le tabelle
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * La pendenza di una serie: positiva se nel complesso sale.
+ *
+ * Si usa una retta ai minimi quadrati su **tutti** i punti, non la differenza
+ * fra il primo e l'ultimo. La differenza fra gli estremi ignora tutto quello
+ * che c'e' in mezzo: un cliente cresciuto tutto l'anno ma con un gennaio
+ * eccezionale risulta in calo, e uno fermo tutto l'anno con un buon dicembre
+ * risulta in crescita.
+ *
+ * L'ultimo punto si scarta quando copre un periodo non ancora concluso: il
+ * mese in corso e' sempre troncato al giorno dell'ultimo caricamento e vale
+ * una frazione degli altri, quindi tirerebbe la retta verso il basso per
+ * tutti.
+ */
+export function pendenza(valori: number[], ultimoParziale = false): number {
+  const punti = ultimoParziale && valori.length > 2 ? valori.slice(0, -1) : valori;
+  const n = punti.length;
+  if (n < 2) return 0;
+
+  const mediaX = (n - 1) / 2;
+  const mediaY = punti.reduce((somma, v) => somma + v, 0) / n;
+  let numeratore = 0;
+  let denominatore = 0;
+  for (let i = 0; i < n; i += 1) {
+    numeratore += (i - mediaX) * (punti[i] - mediaY);
+    denominatore += (i - mediaX) ** 2;
+  }
+  return denominatore === 0 ? 0 : numeratore / denominatore;
+}
+
 export function Sparkline({
   valori,
   larghezza = 90,
   altezza = 26,
   colore,
+  ultimoParziale = false,
 }: {
   valori: number[];
   larghezza?: number;
   altezza?: number;
   colore?: string;
+  /**
+   * L'ultimo punto copre un periodo non ancora concluso.
+   *
+   * Succede sempre sul mese in corso: lo snapshot si ferma a meta' mese e quel
+   * valore vale un terzo degli altri. Contarlo nella tendenza tinge di rosso
+   * anche chi sta crescendo.
+   */
+  ultimoParziale?: boolean;
 }) {
   const { palette } = useImpostazioni();
   if (valori.length < 2) return <span className="text-text-muted text-xs">—</span>;
 
-  const tendenza = valori[valori.length - 1] - valori[0];
-  const c = colore ?? (tendenza >= 0 ? palette.positivo : palette.negativo);
+  const c = colore ?? (pendenza(valori, ultimoParziale) >= 0 ? palette.positivo : palette.negativo);
   const dati = valori.map((v, i) => ({ i, v }));
   const id = `spark-${Math.random().toString(36).slice(2, 8)}`;
 

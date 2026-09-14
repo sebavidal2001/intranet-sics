@@ -107,6 +107,17 @@ describe("Dalla selezione alla domanda", () => {
     expect(esito?.serie?.[2].ruolo).toBe("soglia");
   });
 
+  it("la misura in più non perde la suddivisione né la granularità", () => {
+    // Senza, la serie si riduce a un valore unico e compare sull'asse come una
+    // categoria di troppo chiamata «totale», in mezzo ai mesi.
+    const esito = specDaSelezione(
+      sel({ misure: ["ordinato", "budget"], suddivisioni: ["bu"], granularita: "mese" })
+    );
+    const budget = esito?.serie?.find((voce) => voce.spec.metrica === "budget");
+    expect(budget?.spec.granularita).toBe("mese");
+    expect(budget?.spec.raggruppa).toEqual(["bu"]);
+  });
+
   it("tutte le serie condividono suddivisione e periodo", () => {
     const esito = specDaSelezione(
       sel({ misure: ["ordinato", "budget"], suddivisioni: ["bu"], granularita: "mese" })
