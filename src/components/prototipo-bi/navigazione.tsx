@@ -4,25 +4,41 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Sunrise,
-  LayoutDashboard,
   Settings2,
   MessageSquareText,
   ShoppingCart,
   LayoutGrid,
-  Library,
 } from "lucide-react";
 
-// L'editor resta un'azione, mentre la libreria è una destinazione: separare i
-// due concetti evita di nascondere di nuovo gli oggetti già salvati.
+/**
+ * Cinque destinazioni, non sette.
+ *
+ * Cruscotto, Dashboard, Analisi ed Esplora erano quattro voci per una cosa
+ * sola: guardare i dati organizzati in pagine. Chi apriva "Analisi" trovava un
+ * elenco che non spiegava a cosa servisse, e chi apriva "Cruscotto" e
+ * "Dashboard" vedeva due versioni della stessa schermata senza capire quale
+ * fosse quella buona.
+ *
+ * Ora esiste **Dashboard**, e da lì si raggiunge tutto il resto: il Cruscotto
+ * completo, la sua copia modificabile, le analisi salvate. Le route restano
+ * dove sono — chi ha un collegamento salvato non lo perde — ma smettono di
+ * occupare un posto nella barra e di chiedere all'utente una scelta che non è
+ * in grado di fare al primo colpo.
+ */
 const VOCI = [
   { href: "/bi", etichetta: "Briefing", icona: Sunrise },
-  { href: "/bi/cruscotto", etichetta: "Cruscotto", icona: LayoutDashboard },
   { href: "/bi/dashboard", etichetta: "Dashboard", icona: LayoutGrid },
-  { href: "/bi/analisi", etichetta: "Analisi", icona: Library },
   { href: "/bi/articoli", etichetta: "Articoli & Acquisti", icona: ShoppingCart },
   { href: "/bi/analista", etichetta: "Analista", icona: MessageSquareText },
   { href: "/bi/configurazione", etichetta: "Budget & BEP", icona: Settings2 },
 ];
+
+/**
+ * Le pagine che ora vivono sotto Dashboard ma conservano il proprio indirizzo:
+ * la voce deve restare accesa, altrimenti aprendo il Cruscotto la barra
+ * sembra dire che ci si trova da nessuna parte.
+ */
+const RAMI_DASHBOARD = ["/bi/dashboard", "/bi/cruscotto", "/bi/analisi", "/bi/esplora"];
 
 export function NavigazionePrototipo() {
   const percorso = usePathname();
@@ -31,13 +47,10 @@ export function NavigazionePrototipo() {
     <nav className="border-b border-border bg-bg/80 backdrop-blur-sm sticky top-0 z-20">
       <div className="max-w-[1600px] mx-auto px-4 flex items-center gap-1 overflow-x-auto">
         {VOCI.map((v) => {
-          // Le sottopagine (/bi/dashboard/<id>) devono tenere accesa la voce
-          // del loro ramo, altrimenti aprendo una dashboard la barra non
-          // segnala piu' dove ci si trova.
-          const attivo =
-            percorso === v.href ||
-            (v.href !== "/bi" && percorso.startsWith(`${v.href}/`)) ||
-            (v.href === "/bi/analisi" && percorso.startsWith("/bi/esplora"));
+          const rami = v.href === "/bi/dashboard" ? RAMI_DASHBOARD : [v.href];
+          const attivo = rami.some(
+            (ramo) => percorso === ramo || (ramo !== "/bi" && percorso.startsWith(`${ramo}/`))
+          );
           const Icona = v.icona;
           return (
             <Link

@@ -6,7 +6,8 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, ExternalLink, LoaderCircle } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Copy, ExternalLink, LoaderCircle } from "lucide-react";
 
 interface DashboardSistema {
   id: string;
@@ -65,6 +66,11 @@ export function RaccordoCruscottoDashboard() {
   return (
     <section className="mb-5 flex flex-col justify-between gap-3 border-y border-border bg-bg py-4 sm:flex-row sm:items-center" aria-label="Versione Dashboard del Cruscotto">
       <div className="max-w-3xl">
+        {/* Il Cruscotto non è più una voce della barra: il ritorno va detto. */}
+        <Link href="/bi/dashboard" className="mb-2 inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Dashboard
+        </Link>
         <h1 className="font-tenorite text-xl font-semibold">Cruscotto completo e versione Dashboard</h1>
         <p className="mt-1 text-sm text-text-muted">
           Qui restano i pannelli compositi storici. La versione Dashboard contiene i grafici già personalizzabili: duplicala per aggiungere le tue analisi.

@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
   BarChart3,
   Copy,
@@ -138,6 +139,14 @@ export function AnalisiList() {
       <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
+            {/*
+              Questa pagina non è più nella barra in alto: senza un ritorno
+              esplicito chi ci arriva resta senza strada per tornare indietro.
+            */}
+            <Link href="/bi/dashboard" className="mb-2 inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              Dashboard
+            </Link>
             <h1 className="font-tenorite text-3xl font-bold tracking-[-0.02em]">Analisi</h1>
             <p className="mt-1 max-w-2xl text-sm text-text-muted">
               Le domande certificate che hai creato e quelle condivise con te. Da qui puoi riaprirle o usarle nelle dashboard.

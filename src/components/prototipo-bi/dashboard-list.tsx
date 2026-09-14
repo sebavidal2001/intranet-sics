@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight,
   Check,
+  Gauge,
   LayoutDashboard,
+  Library,
   LoaderCircle,
   Pencil,
   Plus,
@@ -13,6 +15,20 @@ import {
   Users,
   X,
 } from "lucide-react";
+
+/**
+ * Questa pagina è diventata il punto d’ingresso unico ai dati organizzati.
+ *
+ * Prima la barra offriva Cruscotto, Dashboard e Analisi come tre destinazioni
+ * separate, e nessuna delle tre diceva cosa fosse rispetto alle altre. La
+ * duplicazione più fastidiosa era fra il Cruscotto storico — completo, con i
+ * pannelli compositi — e la sua versione a dashboard, che ne contiene solo i
+ * riquadri esprimibili come una sola query.
+ *
+ * Le due restano due cose diverse perché lo sono davvero, ma ora convivono in
+ * una riga sola che dice a voce alta quale serve a cosa: il Cruscotto per
+ * leggere, la sua copia per modificare.
+ */
 
 interface DashboardElenco {
   id: string;
@@ -119,13 +135,35 @@ export function DashboardList() {
   return (
     <main className="flex-1 bg-bg-page px-4 py-8 text-text sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="font-tenorite text-3xl font-bold tracking-[-0.02em]">Dashboard</h1>
             <p className="mt-1 max-w-2xl text-sm text-text-muted">Pagine operative che combinano analisi salvate e le ricalcolano sul perimetro di chi le apre.</p>
           </div>
           <button type="button" onClick={() => setCreazione(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Nuova dashboard</button>
         </header>
+
+        {/*
+          Il Cruscotto e la libreria non sono più voci di menu: chi li cerca li
+          trova qui, con una riga che dice a cosa servono invece di lasciarlo
+          dedurre dal nome.
+        */}
+        <nav aria-label="Altre viste" className="mb-8 grid gap-3 sm:grid-cols-2">
+          <Link href="/bi/cruscotto" className="group flex items-start gap-3 rounded-xl border border-border bg-bg p-4 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <Gauge className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+            <span className="min-w-0">
+              <span className="block font-tenorite text-base font-semibold group-hover:text-primary">Cruscotto direzionale</span>
+              <span className="mt-0.5 block text-sm text-text-muted">Le sei schede complete, già pronte da leggere: sintesi, scostamenti, clienti, preventivi, conversione, back office.</span>
+            </span>
+          </Link>
+          <Link href="/bi/analisi" className="group flex items-start gap-3 rounded-xl border border-border bg-bg p-4 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <Library className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+            <span className="min-w-0">
+              <span className="block font-tenorite text-base font-semibold group-hover:text-primary">Analisi salvate</span>
+              <span className="mt-0.5 block text-sm text-text-muted">La libreria da cui pescare un riquadro già fatto, o da cui riaprire e correggere un’analisi.</span>
+            </span>
+          </Link>
+        </nav>
 
         {errore && <div role="alert" className="mb-5 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{errore}</div>}
 
@@ -160,7 +198,7 @@ export function DashboardList() {
                     <Link href={`/bi/dashboard/${voce.id}`} className="group block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       <div className="flex flex-wrap items-center gap-2"><h2 className="truncate font-tenorite text-lg font-bold group-hover:text-primary">{voce.titolo}</h2>{voce.di_sistema ? <span className="inline-flex items-center gap-1 rounded-full border border-primary px-2 py-0.5 text-[11px] font-semibold text-primary"><LayoutDashboard className="h-3 w-3" aria-hidden />Cruscotto di sistema</span> : voce.visibilita === "condivisa" ? <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted"><Users className="h-3 w-3" aria-hidden />Condivisa</span> : null}</div>
                       {voce.descrizione && <p className="mt-1 text-sm text-text-muted">{voce.descrizione}</p>}
-                      {voce.di_sistema && <p className="mt-2 text-xs text-text-muted">È la versione a dashboard del Cruscotto storico: aprila per consultarla o duplicarla.</p>}
+                      {voce.di_sistema && <p className="mt-2 text-xs text-text-muted">È la copia modificabile del Cruscotto: contiene i riquadri che nascono da una sola domanda, non i pannelli compositi. Duplicala per costruirci sopra la tua versione.</p>}
                     </Link>
                   )}
                 </div>
