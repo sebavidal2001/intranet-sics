@@ -201,6 +201,83 @@ async function scaricaVista(
   return grezze.map((r) => normalizza(r, importoCampo));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Costi di acquisto
+//
+// I costi non stanno nelle viste BI: stanno in `preventivatore.prodotti`, una
+// riga per articolo con l'ULTIMO costo di acquisto noto (`ult_costo`) e la
+// data a cui risale (`data_ult_costo`). Si agganciano alle righe di vendita
+// per codice articolo.
+//
+// Due avvertenze che il margine si porta dietro e che vanno dette a chi legge:
+//
+//  1. E' l'ULTIMO costo, non il costo al momento della vendita. Misurato sul
+//     2026: il 32,5% del valore fatturato ha un costo con data POSTERIORE alla
+//     vendita. E' quindi un margine A COSTO CORRENTE (di ricostituzione), non
+//     un margine storico.
+//  2. Di conseguenza NON e' riproducibile nel tempo: rieseguito il mese
+//     prossimo, lo stesso report sulla stessa storia da' numeri diversi,
+//     perche' `ult_costo` nel frattempo si e' mosso.
+//
+// `bi.costi_storico` versiona i costi (valid_from/valid_to) e permetterebbe il
+// costo valido alla data di vendita, ma la rilevazione parte dal 02/08/2026:
+// per la storia precedente non c'e' niente da ricostruire.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CostoArticolo {
+  costo: number;
+  dataCosto: string | null;
+}
+
+async function caricaCostiArticoli(): Promise<Map<string, CostoArticolo>> {
+  const mappa = new Map<string, CostoArticolo>();
+  try {
+    const sb = createAdminClient().schema("preventivatore");
+    const conteggio = await semaforo.esegui(async () =>
+      sb.from("prodotti").select("*", { count: "exact", head: true })
+    );
+    if (conteggio.error) throw new Error(conteggio.error.message);
+    const totale = conteggio.count ?? 0;
+    if (totale === 0) return mappa;
+
+    const pagine = Math.min(Math.ceil(totale / PAGINA), 200);
+    const blocchi = await Promise.all(
+      Array.from({ length: pagine }, (_, i) =>
+        semaforo.esegui(async () => {
+          const { data, error } = await sb
+            .from("prodotti")
+            .select("codice,ult_costo,data_ult_costo")
+            .range(i * PAGINA, i * PAGINA + PAGINA - 1);
+          if (error) throw new Error(error.message);
+          return (data ?? []) as RigaGrezza[];
+        })
+      )
+    );
+
+    for (const riga of blocchi.flat()) {
+      const codice = chiaveArticolo(riga["codice"]);
+      if (!codice) continue;
+      const grezzo = riga["ult_costo"];
+      // Zero e negativo non sono costi: sono campi non compilati. Trattarli
+      // come costo darebbe margine 100% o superiore su quelle righe.
+      if (grezzo === null || grezzo === undefined || grezzo === "") continue;
+      const costo = numero(grezzo);
+      if (!(costo > 0)) continue;
+      mappa.set(codice, { costo, dataCosto: soloData(riga["data_ult_costo"]) || null });
+    }
+  } catch (e) {
+    // Il costo e' un arricchimento: se manca, le metriche di margine lo dicono
+    // e tutto il resto dello snapshot resta valido. Non vale un errore fatale.
+    console.warn("[BI] costi articolo non caricati:", e instanceof Error ? e.message : e);
+  }
+  return mappa;
+}
+
+/** I codici articolo nel gestionale hanno spazi e maiuscole incoerenti. */
+function chiaveArticolo(v: unknown): string {
+  return testo(v).toUpperCase();
+}
+
 async function leggiStatoRun(): Promise<{
   runCorrente: string | null;
   ricevutoIl: string | null;
@@ -240,6 +317,18 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
   );
 
   const dataset = Object.fromEntries(risultati) as Record<ChiaveDataset, RigaFatto[]>;
+
+  // Il costo si aggancia a ogni riga che ha un articolo e una quantita'. Le
+  // righe senza corrispondenza restano con `costoUnitario: null` e le metriche
+  // di margine le escludono: e' la differenza fra "non lo so" e "vale zero".
+  const costi = await caricaCostiArticoli();
+  for (const righe of Object.values(dataset)) {
+    for (const r of righe) {
+      const c = r.articolo ? costi.get(chiaveArticolo(r.articolo)) : undefined;
+      r.costoUnitario = c ? c.costo : null;
+      r.dataCosto = c ? c.dataCosto : null;
+    }
+  }
 
   // Sentinella: se il gestionale introduce un gruppo o una categoria nuova,
   // meglio saperlo subito che ritrovarsi una fetta in piu' nei grafici.
@@ -306,8 +395,20 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
     dataMassimaAssoluta: tutteLeDate[tutteLeDate.length - 1] ?? null,
     dataset,
     conteggi,
+    versioneForma: VERSIONE_FORMA,
   };
 }
+
+/**
+ * Forma dello snapshot serializzato.
+ *
+ * Da incrementare quando si aggiungono campi alle righe: un file di cache
+ * scritto prima non li ha, e un campo assente non e' un errore visibile —
+ * diventa una metrica che risponde zero. E' successo col costo: senza questo
+ * numero, per sei ore dopo il deploy il margine sarebbe stato vuoto senza che
+ * niente fosse rotto.
+ */
+const VERSIONE_FORMA = 2;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.
@@ -326,7 +427,7 @@ export async function ottieniSnapshot(forza = false): Promise<Snapshot> {
     const eta = await etaSnapshot();
     if (eta !== null && eta < SCADENZA_MS) {
       const daFile = await leggiSnapshotDaCache<Snapshot>();
-      if (daFile) {
+      if (daFile && daFile.versioneForma === VERSIONE_FORMA) {
         inMemoria = daFile;
         return daFile;
       }

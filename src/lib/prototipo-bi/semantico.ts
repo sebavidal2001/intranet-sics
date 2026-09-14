@@ -18,6 +18,7 @@
  *     far comporre le spec all'AI.
  */
 
+import { risolviBudget } from "./budget-fonte";
 import type {
   ChiaveMetrica,
   Dimensione,
@@ -265,6 +266,57 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     valore: (r) => ((r.giorniAperto ?? 0) > 90 ? r.importo : 0),
   },
 
+  // ── Margine ────────────────────────────────────────────────────────────
+  // Ricavo meno costo di acquisto, riga per riga. Il costo e' l'ULTIMO noto
+  // (`preventivatore.prodotti.ult_costo`), quindi si tratta di un margine A
+  // COSTO CORRENTE: vedere la nota in `sorgente.ts`.
+  //
+  // La regola che tiene in piedi tutte e tre: una riga senza costo vale `null`,
+  // non zero. `esegui()` salta i null nella somma, e nel rapporto il
+  // denominatore resta a zero: la riga esce dal calcolo invece di gonfiarlo.
+  costo_venduto: {
+    chiave: "costo_venduto",
+    etichetta: "Costo del venduto",
+    descrizione:
+      "Costo di acquisto della merce fatturata, a ultimo costo noto. Esclude le righe senza costo in anagrafica.",
+    dataset: "fatturato",
+    aggregazione: "somma",
+    unita: "euro",
+    valore: (r) => (r.costoUnitario == null ? null : r.quantita * r.costoUnitario),
+  },
+  margine: {
+    chiave: "margine",
+    etichetta: "Margine",
+    descrizione:
+      "Fatturato meno costo di acquisto, a ultimo costo noto. Margine di primo livello: non contiene costi di struttura, trasporto o manodopera. Le righe senza costo in anagrafica sono escluse, non contate a margine pieno.",
+    dataset: "fatturato",
+    aggregazione: "somma",
+    unita: "euro",
+    valore: (r) => (r.costoUnitario == null ? null : r.importo - r.quantita * r.costoUnitario),
+  },
+  margine_pct: {
+    chiave: "margine_pct",
+    etichetta: "Margine %",
+    descrizione:
+      "Margine in percentuale sul fatturato, calcolato SOLO sulle righe di cui si conosce il costo: e' la marginalita' della parte coperta, non dell'intero fatturato.",
+    dataset: "fatturato",
+    aggregazione: "rapporto",
+    unita: "percentuale",
+    numeratore: (r) => (r.costoUnitario == null ? 0 : r.importo - r.quantita * r.costoUnitario),
+    denominatore: (r) => (r.costoUnitario == null ? 0 : r.importo),
+  },
+  copertura_costi_pct: {
+    chiave: "copertura_costi_pct",
+    etichetta: "Copertura costi %",
+    descrizione:
+      "Quota del fatturato per cui si conosce il costo di acquisto. Va letta accanto al margine: un margine calcolato sul 60% del fatturato dice poco.",
+    dataset: "fatturato",
+    aggregazione: "rapporto",
+    unita: "percentuale",
+    numeratore: (r) => (r.costoUnitario == null ? 0 : r.importo),
+    denominatore: (r) => r.importo,
+  },
+
   // Budget e BEP non vengono dallo snapshot: sono iniettati dal motore budget.
   budget: {
     chiave: "budget",
@@ -492,12 +544,77 @@ function inPeriodo(data: string, p: Periodo): boolean {
   return true;
 }
 
+/** Metriche che dipendono dal costo di acquisto: portano sempre le loro cautele. */
+const METRICHE_A_COSTO = new Set<ChiaveMetrica>([
+  "margine",
+  "margine_pct",
+  "costo_venduto",
+]);
+
+/**
+ * Anno a cui si riferisce una spec su budget/BEP.
+ *
+ * Il budget e' annuale: per pescare la serie giusta serve sapere l'anno prima
+ * di filtrare. I modificatori anno-su-anno spostano il bersaglio indietro di
+ * uno.
+ */
+function annoDellaSpec(spec: SpecQuery, snapshot: Snapshot): number {
+  const p = spec.periodo ?? {};
+  let anno =
+    p.anno ??
+    (Number((p.al ?? p.dal ?? snapshot.dataMassima ?? "").slice(0, 4)) ||
+      new Date().getFullYear());
+  const mod = spec.modificatore ?? "corrente";
+  if (mod === "anno_precedente" || mod === "progressivo_ap") anno -= 1;
+  return anno;
+}
+
+/**
+ * Budget/BEP a partire dalla serie agganciata allo snapshot.
+ *
+ * Se la serie non c'e' il risultato e' vuoto e lo dice. Non si ripiega mai su
+ * un'altra metrica: un numero plausibile e sbagliato costa piu' di un numero
+ * assente.
+ */
+function risolviBudgetSuSnapshot(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
+  const anno = annoDellaSpec(spec, snapshot);
+  const mappa = snapshot.serieBudget;
+
+  if (!mappa) {
+    return {
+      spec,
+      metrica: spec.metrica,
+      unita: "euro",
+      righe: [],
+      totale: 0,
+      certificata: true,
+      avvisi: [
+        "Budget e BEP non sono stati caricati per questa richiesta: il valore " +
+          "non e' calcolabile qui. Vanno chiesti alla rotta /api/bi/query, che " +
+          "aggancia la serie allo snapshot.",
+      ],
+    };
+  }
+
+  return risolviBudget(spec, mappa[anno] ?? null).risultato;
+}
+
 /**
  * Esegue una spec contro lo snapshot.
  * Il risultato è sempre marcato `certificata: true`: proviene dal vocabolario,
  * non da SQL improvvisato.
  */
 export function esegui(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
+  // Budget e BEP non stanno nei dataset del gestionale: vanno risolti sulla
+  // serie agganciata allo snapshot. Il passaggio e' qui, e non nelle singole
+  // route, perche' `esegui()` e' chiamata da decine di punti — chat, briefing,
+  // rilevatori, export Excel, report Word — e ognuno era un'occasione per
+  // dimenticarsene. Chi se ne dimenticava otteneva l'ordinato spacciato per
+  // BEP: tabelle diverse con numeri identici, e nessun avviso.
+  if (spec.metrica === "budget" || spec.metrica === "bep") {
+    return risolviBudgetSuSnapshot(spec, snapshot);
+  }
+
   const def = CATALOGO[spec.metrica];
   const avvisi: string[] = [];
   const periodo = periodoEffettivo(spec);
@@ -516,6 +633,37 @@ export function esegui(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
   }
   if (righe.length === 0) {
     avvisi.push("Nessuna riga nel periodo e nei filtri richiesti.");
+  }
+
+  // ── Onesta' del margine ───────────────────────────────────────────────────
+  // Un margine calcolato sul 60% del fatturato non e' il margine: e' il
+  // margine di quel 60%. Chi legge deve saperlo dal risultato, non doverlo
+  // chiedere.
+  if (METRICHE_A_COSTO.has(spec.metrica) && righe.length > 0) {
+    let coperto = 0;
+    let totaleRicavo = 0;
+    for (const r of righe) {
+      totaleRicavo += r.importo;
+      if (r.costoUnitario != null) coperto += r.importo;
+    }
+    const pct = totaleRicavo > 0 ? (coperto / totaleRicavo) * 100 : 0;
+
+    avvisi.push(
+      "Margine a ULTIMO costo di acquisto, non al costo del momento della " +
+        "vendita: e' un margine a costo corrente e cambia se i costi si " +
+        "aggiornano. Non contiene costi di struttura, trasporto o manodopera."
+    );
+    if (pct < 99.5) {
+      avvisi.push(
+        `Costo noto per il ${pct.toFixed(1)}% del valore nel periodo: il margine ` +
+          `e' calcolato su quella parte, le altre righe sono escluse.`
+      );
+    }
+    if (pct < 80) {
+      avvisi.push(
+        "Copertura sotto l'80%: il margine di questo taglio non e' rappresentativo."
+      );
+    }
   }
 
   // ── Raggruppamento ────────────────────────────────────────────────────────

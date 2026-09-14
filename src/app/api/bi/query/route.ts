@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { preliminari, errore, snapshotPerimetrato } from "../_comune";
 import { esegui, validaSpec, SpecNonValida, vocabolario } from "@/lib/prototipo-bi/semantico";
-import { leggiConfigurazione, leggiSerieBudget } from "@/lib/prototipo-bi/archivio";
-import { risolviBudget, serieDaConfigurazione } from "@/lib/prototipo-bi/budget-fonte";
 import { cacheQuery, chiaveStabile } from "@/lib/prototipo-bi/cache";
 import { registraAccesso } from "@/lib/prototipo-bi/registro";
-import type { RisultatoQuery, SerieBudget, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type { RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 export const dynamic = "force-dynamic";
 
@@ -34,21 +32,6 @@ export async function POST(request: NextRequest) {
   try {
     const snapshot = await snapshotPerimetrato(pre.accesso);
 
-    // Le serie budget si caricano una volta per anno e si riusano fra le spec
-    // dello stesso batch: un cruscotto ne chiede fino a una decina.
-    const cacheSerie = new Map<number, SerieBudget | null>();
-
-    async function serieAnno(anno: number): Promise<SerieBudget | null> {
-      if (cacheSerie.has(anno)) return cacheSerie.get(anno)!;
-      let serie = await leggiSerieBudget(anno);
-      if (!serie) {
-        const config = await leggiConfigurazione(anno);
-        serie = config && config.budgetAnnuo > 0 ? serieDaConfigurazione(config) : null;
-      }
-      cacheSerie.set(anno, serie);
-      return serie;
-    }
-
     /**
      * Esegue una spec, riusando il risultato se è già stato calcolato per
      * questo run. La chiave comprende il run pubblicato: un caricamento nuovo
@@ -66,28 +49,16 @@ export async function POST(request: NextRequest) {
     // mai condividere una voce.
     const chiavePerimetro = chiaveStabile(pre.accesso.perimetro);
 
+    // Budget e BEP non sono piu' un caso speciale di questa rotta: `esegui()`
+    // li risolve sulla serie che `snapshotPerimetrato` ha gia' agganciato.
     async function esegui1(grezza: unknown) {
       const spec = validaSpec(grezza);
       const chiave = `${snapshot.runCorrente ?? "?"}|${chiavePerimetro}|${chiaveStabile(spec)}`;
       const inCache = cacheQuery.leggi(chiave) as RisultatoQuery | undefined;
       if (inCache) return inCache;
-      const calcolato = await calcola(spec);
+      const calcolato = esegui(spec, snapshot);
       cacheQuery.scrivi(chiave, calcolato);
       return calcolato;
-    }
-
-    async function calcola(spec: SpecQuery) {
-      if (spec.metrica === "budget" || spec.metrica === "bep") {
-        const mod = spec.modificatore ?? "corrente";
-        let anno =
-          spec.periodo?.anno ??
-          Number((spec.periodo?.al ?? spec.periodo?.dal ?? snapshot.dataMassima ?? "").slice(0, 4));
-        if (mod === "anno_precedente" || mod === "progressivo_ap") anno -= 1;
-        const esito = risolviBudget(spec, await serieAnno(anno));
-        return { ...esito.risultato, origineBudget: esito.origine };
-      }
-
-      return esegui(spec, snapshot);
     }
 
     const inizio = Date.now();

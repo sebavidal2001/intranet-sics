@@ -18,7 +18,7 @@ import {
   TextRun,
   WidthType,
 } from "docx";
-import { esegui, formattaEuro } from "../semantico";
+import { CATALOGO, DIMENSIONI, esegui, formattaEuro } from "../semantico";
 import type {
   Briefing,
   ConfigurazioneAnno,
@@ -231,6 +231,136 @@ function tabella(intestazioni: string[], righe: (string | number)[][]): Table {
   });
 }
 
+const NOME_MODIFICATORE: Record<string, string> = {
+  corrente: "periodo richiesto",
+  anno_precedente: "stesso periodo dell'anno precedente",
+  progressivo: "progressivo da inizio anno",
+  progressivo_ap: "progressivo da inizio anno precedente",
+};
+
+/** Prima colonna: dice per cosa sono spaccate le righe. */
+function etichettaDimensione(spec: SpecQuery): string {
+  const parti: string[] = [];
+  if (spec.granularita) parti.push(spec.granularita.charAt(0).toUpperCase() + spec.granularita.slice(1));
+  for (const d of spec.raggruppa ?? []) parti.push(DIMENSIONI[d]?.etichetta ?? d);
+  return parti.join(" · ") || "Voce";
+}
+
+/**
+ * Seconda colonna: il nome della metrica certificata, non un generico
+ * "Valore". Quattro tabelle intitolate diversamente ma tutte con la colonna
+ * "Ordinato (EUR)" si smascherano da sole.
+ */
+function intestazioneValore(spec: SpecQuery, res: RisultatoQuery): string {
+  const nome = CATALOGO[spec.metrica]?.etichetta ?? spec.metrica;
+  const unita =
+    res.unita === "euro" ? " (€)" : res.unita === "percentuale" ? " (%)" : res.unita === "giorni" ? " (gg)" : "";
+  const mod = spec.modificatore ?? "corrente";
+  const coda = mod === "corrente" ? "" : ` — ${NOME_MODIFICATORE[mod] ?? mod}`;
+  return `${nome}${unita}${coda}`;
+}
+
+/** Riga di provenienza sotto la tabella: metrica, periodo, filtri. */
+function provenienzaSpec(spec: SpecQuery): string {
+  const parti = [`Metrica certificata: ${CATALOGO[spec.metrica]?.etichetta ?? spec.metrica}`];
+  const p = spec.periodo ?? {};
+  if (p.anno) parti.push(`anno ${p.anno}`);
+  else if (p.dal || p.al) parti.push(`dal ${p.dal ?? "inizio"} al ${p.al ?? "ultimo dato"}`);
+  const filtri = (spec.filtri ?? []).map(
+    (f) => `${f.campo} ${f.op} ${Array.isArray(f.valore) ? f.valore.join("/") : f.valore}`
+  );
+  if (filtri.length > 0) parti.push(`filtri: ${filtri.join("; ")}`);
+  return `${parti.join(" · ")}.`;
+}
+
+/** Valore formattato secondo l'unita' della metrica. */
+function formattaValore(valore: number, unita: RisultatoQuery["unita"]): string {
+  if (unita === "euro") return formattaEuro(valore);
+  if (unita === "percentuale") return `${valore.toFixed(1)}%`;
+  if (unita === "giorni") return `${valore} gg`;
+  return String(valore);
+}
+
+/**
+ * Due blocchi finiscono nella stessa tabella solo se hanno la STESSA forma:
+ * stessa granularita', stesse dimensioni, stesso periodo e **stessi filtri**.
+ *
+ * I filtri nella chiave non sono un dettaglio. «Ordinato BU SISTEMI per mese» e
+ * «Ordinato BU COSTRUITO per mese» hanno la stessa forma ma non sono
+ * confrontabili riga per riga: affiancarli darebbe due colonne intitolate
+ * entrambe "Ordinato (€)" con dentro due cose diverse. Restano separati.
+ *
+ * Con i filtri nella chiave, invece, i blocchi di un gruppo differiscono solo
+ * per metrica o modificatore — ed e' esattamente cio' che `intestazioneValore()`
+ * sa gia' distinguere nell'intestazione di colonna.
+ */
+function chiaveForma(spec: SpecQuery): string {
+  const p = spec.periodo ?? {};
+  const filtri = (spec.filtri ?? [])
+    .map((f) => `${f.campo}|${f.op}|${Array.isArray(f.valore) ? [...f.valore].sort().join(",") : f.valore}`)
+    .sort()
+    .join("&");
+  return [
+    spec.granularita ?? "",
+    (spec.raggruppa ?? []).join(","),
+    p.anno ?? "",
+    p.dal ?? "",
+    p.al ?? "",
+    filtri,
+  ].join("#");
+}
+
+interface BloccoCalcolato {
+  titolo: string;
+  spec: SpecQuery;
+  res: RisultatoQuery;
+}
+
+/**
+ * Raggruppa mantenendo l'ordine in cui l'analista ha chiesto i blocchi: il
+ * gruppo prende la posizione del suo primo membro. Un documento che chiede
+ * ordinato, fatturato, BEP e budget per mese esce come UNA tabella di quattro
+ * colonne, che e' cio' che il titolo «Ordinato vs BEP e Budget» prometteva e
+ * che quattro tabelle separate non davano.
+ */
+function raggruppaPerForma(blocchi: BloccoCalcolato[]): BloccoCalcolato[][] {
+  const gruppi = new Map<string, BloccoCalcolato[]>();
+  const ordine: string[] = [];
+
+  for (const b of blocchi) {
+    // Senza granularita' ne' raggruppamento la "tabella" e' un numero solo:
+    // accostarne diversi in colonna non aiuta, e la riga unica ha etichette
+    // che non combaciano. Ognuno per conto suo.
+    const unico = !b.spec.granularita && (b.spec.raggruppa ?? []).length === 0;
+    const k = unico ? `solo:${ordine.length}` : chiaveForma(b.spec);
+    if (!gruppi.has(k)) {
+      gruppi.set(k, []);
+      ordine.push(k);
+    }
+    const gruppo = gruppi.get(k)!;
+    // Stessa metrica e stesso modificatore due volte: sarebbe una colonna
+    // duplicata. Si tiene la prima.
+    const gia = gruppo.some(
+      (g) =>
+        g.spec.metrica === b.spec.metrica &&
+        (g.spec.modificatore ?? "corrente") === (b.spec.modificatore ?? "corrente")
+    );
+    if (!gia) gruppo.push(b);
+  }
+
+  return ordine.map((k) => gruppi.get(k)!).filter((g) => g.length > 0);
+}
+
+/** Titolo di un gruppo: quello del blocco se e' solo, altrimenti composto. */
+function titoloGruppo(gruppo: BloccoCalcolato[]): string {
+  if (gruppo.length === 1) return gruppo[0].titolo;
+  const nomi = gruppo.map((g) => CATALOGO[g.spec.metrica]?.etichetta ?? g.spec.metrica);
+  const ultimo = nomi.pop();
+  const elenco = nomi.length > 0 ? `${nomi.join(", ")} e ${ultimo}` : (ultimo ?? "");
+  const per = etichettaDimensione(gruppo[0].spec);
+  return `${elenco} per ${per.toLowerCase()}`;
+}
+
 /** Report direzionale in Word a partire dal briefing e da query certificate. */
 export async function generaReportWord(opzioni: {
   briefing: Briefing;
@@ -307,28 +437,84 @@ export async function generaReportWord(opzioni: {
     for (const riga of opzioni.commento.split("\n").filter(Boolean)) figli.push(p(riga));
   }
 
-  for (const a of opzioni.approfondimenti ?? []) {
-    const res = esegui(a.spec, snapshot);
+  const calcolati: BloccoCalcolato[] = (opzioni.approfondimenti ?? []).map((a) => ({
+    titolo: a.titolo,
+    spec: a.spec,
+    res: esegui(a.spec, snapshot),
+  }));
+
+  for (const gruppo of raggruppaPerForma(calcolati)) {
     figli.push(
-      new Paragraph({ text: a.titolo, heading: HeadingLevel.HEADING_2, spacing: { before: 240, after: 120 } })
+      new Paragraph({
+        text: titoloGruppo(gruppo),
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 240, after: 120 },
+      })
     );
+
+    // Le righe sono l'unione delle etichette di tutti i blocchi del gruppo: un
+    // mese presente nell'ordinato ma non nel budget deve comparire lo stesso,
+    // con la cella vuota. Saltarlo disallineerebbe il confronto in silenzio.
+    const etichette: string[] = [];
+    const viste = new Set<string>();
+    for (const b of gruppo) {
+      for (const r of b.res.righe) {
+        if (viste.has(r.etichetta)) continue;
+        viste.add(r.etichetta);
+        etichette.push(r.etichetta);
+      }
+    }
+    // Con una granularita' temporale l'ordine cronologico e' l'unico leggibile.
+    if (gruppo[0].spec.granularita) etichette.sort((x, y) => x.localeCompare(y));
+
+    const mostrate = etichette.slice(0, 20);
+    const valori = gruppo.map((b) => new Map(b.res.righe.map((r) => [r.etichetta, r.valore])));
+
+    // Il titolo del blocco lo scrive l'analista, la colonna no: porta il nome
+    // della metrica davvero calcolata. Se il titolo promette un confronto che
+    // la tabella non contiene, il lettore se ne accorge dall'intestazione
+    // invece di credere al titolo.
     figli.push(
       tabella(
-        ["Voce", res.unita === "euro" ? "Valore" : "Quantità"],
-        res.righe
-          .slice(0, 20)
-          .map((r) => [
-            r.etichetta,
-            res.unita === "euro" ? formattaEuro(r.valore) : String(r.valore),
-          ])
+        [etichettaDimensione(gruppo[0].spec), ...gruppo.map((b) => intestazioneValore(b.spec, b.res))],
+        mostrate.map((et) => [
+          et,
+          ...gruppo.map((b, i) => {
+            const v = valori[i].get(et);
+            return v === undefined ? "—" : formattaValore(v, b.res.unita);
+          }),
+        ])
       )
     );
+
+    if (etichette.length > mostrate.length) {
+      figli.push(
+        p(`Mostrate 20 voci su ${etichette.length}.`, { size: 18, colore: "64748B" })
+      );
+    }
+
     figli.push(
       p(
-        `Totale: ${res.unita === "euro" ? formattaEuro(res.totale) : res.totale}`,
+        `Totale: ${gruppo
+          .map((b) => `${CATALOGO[b.spec.metrica]?.etichetta ?? b.spec.metrica} ${formattaValore(b.res.totale, b.res.unita)}`)
+          .join(" · ")}`,
         { grassetto: true }
       )
     );
+
+    for (const b of gruppo) {
+      figli.push(p(provenienzaSpec(b.spec), { size: 16, colore: "64748B" }));
+      for (const avviso of b.res.avvisi ?? []) {
+        const nome = CATALOGO[b.spec.metrica]?.etichetta ?? b.spec.metrica;
+        figli.push(p(`Avvertenza (${nome}): ${avviso}`, { size: 18, colore: "B45309" }));
+      }
+      if (b.res.righe.length === 0) {
+        const nome = CATALOGO[b.spec.metrica]?.etichetta ?? b.spec.metrica;
+        figli.push(
+          p(`Nessun dato per "${nome}" nel periodo richiesto.`, { size: 18, colore: "B45309" })
+        );
+      }
+    }
   }
 
   for (const a of opzioni.approfondimentiSql ?? []) {

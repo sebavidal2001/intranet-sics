@@ -14,7 +14,8 @@ export type ChiaveTipologia =
   | "preventivi"
   | "back_office"
   | "banco"
-  | "budget";
+  | "budget"
+  | "margine";
 
 export interface Tipologia {
   chiave: ChiaveTipologia;
@@ -80,6 +81,13 @@ export const TIPOLOGIE: Tipologia[] = [
     etichetta: "Budget",
     descrizione: "Obiettivi commerciali e punto di pareggio.",
     metriche: ["budget", "bep"],
+  },
+  {
+    chiave: "margine",
+    etichetta: "Margine",
+    descrizione:
+      "Margine sul fatturato a ultimo costo di acquisto. Da leggere sempre accanto alla copertura costi.",
+    metriche: ["margine", "margine_pct", "costo_venduto", "copertura_costi_pct"],
   },
 ];
 

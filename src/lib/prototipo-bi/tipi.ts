@@ -33,6 +33,20 @@ export interface RigaFatto {
   causaleDescrizione?: string;
   rigaEvasa?: string;
 
+  /**
+   * Ultimo costo unitario di acquisto dell'articolo, da
+   * `preventivatore.prodotti.ult_costo`. Agganciato alla riga quando lo
+   * snapshot viene costruito.
+   *
+   * `null` significa **costo sconosciuto**, e le metriche di margine devono
+   * escludere la riga invece di trattare il costo come zero: un costo zero
+   * darebbe margine 100% e sarebbe la stessa classe di bugia del BEP che
+   * valeva l'ordinato.
+   */
+  costoUnitario?: number | null;
+  /** Data del costo nel gestionale: serve a dire quanto e' vecchio. */
+  dataCosto?: string | null;
+
   // ── Campi disponibili solo sui preventivi (dal run corrente) ─────────────
   /**
    * Valore TOTALE della riga. Nel gestionale la colonna si chiama
@@ -94,6 +108,22 @@ export interface Snapshot {
     estranei: string[];
     sistemiResidua: boolean;
   };
+  /**
+   * Serie budget/BEP per anno, agganciate allo snapshot all'ingresso della
+   * richiesta.
+   *
+   * Budget e BEP non sono nel gestionale: vengono dal file importato o dalla
+   * distribuzione generata. Senza questa mappa `esegui()` non puo' calcolarli
+   * e lo dice, invece di restituire l'ordinato al posto loro — che e' quello
+   * che faceva prima, silenziosamente.
+   */
+  serieBudget?: Record<number, SerieBudget | null>;
+  /**
+   * Forma dei campi di riga presenti in questo snapshot. Una cache su file
+   * scritta con una forma piu' vecchia viene scartata invece di essere usata
+   * con campi mancanti.
+   */
+  versioneForma?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,7 +249,12 @@ export type ChiaveMetrica =
   // ── Anzianità dei preventivi ancora aperti ──────────────────────────────
   | "giorni_apertura"
   | "preventivi_aperti_oltre_90"
-  | "eta_massima_apertura";
+  | "eta_massima_apertura"
+  // ── Margine (a ultimo costo di acquisto) ────────────────────────────────
+  | "costo_venduto"
+  | "margine"
+  | "margine_pct"
+  | "copertura_costi_pct";
 
 export type Modificatore =
   | "corrente"
