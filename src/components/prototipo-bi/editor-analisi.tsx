@@ -36,6 +36,7 @@ import {
 } from "@/lib/prototipo-bi/analisi-composita";
 import {
   NOMI_GRAFICI,
+  comeSbloccareAltriGrafici,
   graficiPossibili,
   scegliGrafico,
   type TipoGrafico,
@@ -389,6 +390,10 @@ export function EditorAnalisi({
   const risultatoGrafico = serieEseguite.length > 1 ? serieEseguite : risultato;
   const proposta = risultatoGrafico ? scegliGrafico(risultatoGrafico) : null;
   const grafici = risultatoGrafico ? graficiPossibili(risultatoGrafico) : [];
+  // Perche' la tendina delle visualizzazioni e' cosi' corta. Si accorcia da
+  // sola quando la forma del dato non regge un tipo, ed e' giusto, ma senza
+  // dirlo chi guarda non sa che gli basterebbe cambiare una tendina.
+  const sbloccaGrafici = risultatoGrafico ? comeSbloccareAltriGrafici(risultatoGrafico) : [];
   const tipoGrafico =
     graficoScelto && grafici.includes(graficoScelto) ? graficoScelto : proposta?.tipo;
 
@@ -1144,6 +1149,14 @@ export function EditorAnalisi({
                     </select>
                   </label>
                 </div>
+
+                {sbloccaGrafici.length > 0 && (
+                  <ul className="mt-3 space-y-1 border-t border-border pt-3 text-xs leading-relaxed text-text-muted">
+                    {sbloccaGrafici.map((suggerimento) => (
+                      <li key={suggerimento}>{suggerimento}</li>
+                    ))}
+                  </ul>
+                )}
 
                 {risultato.avvisi.length > 0 && (
                   <div className="mt-4 space-y-2" aria-label="Avvisi del risultato">

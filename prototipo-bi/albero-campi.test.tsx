@@ -19,6 +19,7 @@ import {
   type SelezioneCampi,
   type VocabolarioAlbero,
 } from "@/components/prototipo-bi/albero-campi";
+import { comeSbloccareAltriGrafici } from "@/lib/prototipo-bi/scelta-grafico";
 import type { ChiaveMetrica, Dimensione } from "@/lib/prototipo-bi/tipi";
 
 const COMUNI: Dimensione[] = ["bu", "agente", "cliente", "categoria", "articolo"];
@@ -242,5 +243,40 @@ describe("L'albero sullo schermo", () => {
     expect(onCambia).toHaveBeenCalledWith(
       expect.objectContaining({ misure: ["ordinato"], suddivisioni: ["bu"] })
     );
+  });
+});
+
+describe("Perché la tendina dei grafici è corta", () => {
+  it("senza granularità spiega come ottenere Linee e Combinato", () => {
+    // È la domanda che si è posto Sebastiano guardando «fatturato con budget e
+    // BEP»: l'AI gli aveva prodotto un Combinato e il builder non lo offriva.
+    // La differenza era una tendina, e niente lo diceva.
+    const senzaTempo = specDaSelezione(sel({ misure: ["fatturato", "budget"] }));
+    const risultatoFinto = {
+      spec: senzaTempo!.spec,
+      metrica: "fatturato" as const,
+      unita: "euro" as const,
+      righe: [{ etichetta: "totale", chiavi: {}, valore: 100, conteggio: 1 }],
+      totale: 100,
+      certificata: true as const,
+      avvisi: [],
+    };
+    const detto = comeSbloccareAltriGrafici(risultatoFinto).join(" ");
+    expect(detto).toMatch(/granularit/i);
+    expect(detto).toMatch(/Linee e Combinato/);
+  });
+
+  it("con granularità non ripete quel consiglio", () => {
+    const conTempo = specDaSelezione(sel({ misure: ["ordinato"], granularita: "mese" }));
+    const risultatoFinto = {
+      spec: conTempo!.spec,
+      metrica: "ordinato" as const,
+      unita: "euro" as const,
+      righe: [{ etichetta: "2026-01", chiavi: { periodo: "2026-01" }, valore: 100, conteggio: 1 }],
+      totale: 100,
+      certificata: true as const,
+      avvisi: [],
+    };
+    expect(comeSbloccareAltriGrafici(risultatoFinto).join(" ")).not.toMatch(/Linee e Combinato/);
   });
 });

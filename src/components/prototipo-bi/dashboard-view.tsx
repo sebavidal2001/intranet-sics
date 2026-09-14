@@ -559,6 +559,14 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                           <button type="button" onClick={() => spostaRiquadro(indice, 1)} disabled={indice === paginaAttiva.riquadri.length - 1} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta dopo"><ChevronRight className="h-4 w-4" /></button>
                           <select aria-label={`Larghezza di ${riquadro.analisi.titolo}`} value={riquadro.larghezza} onChange={(e) => { const larghezza = Number(e.target.value); const aggiornato = { ...riquadro, larghezza }; void aggiornaRiquadri(paginaAttiva.riquadri.map((r) => r.id === riquadro.id ? aggiornato : r), [{ id: riquadro.id, larghezza }]); }} className="h-8 rounded-md border border-border bg-bg-page px-1.5 text-xs outline-none focus:ring-2 focus:ring-primary"><option value={3}>3/12</option><option value={4}>4/12</option><option value={6}>6/12</option><option value={8}>8/12</option><option value={9}>9/12</option><option value={12}>12/12</option></select>
                           <select aria-label={`Grafico di ${riquadro.analisi.titolo}`} value={riquadro.grafico ?? riquadro.analisi.grafico ?? "barre"} onChange={(e) => { const grafico = e.target.value as TipoGrafico; const aggiornato = { ...riquadro, grafico }; void aggiornaRiquadri(paginaAttiva.riquadri.map((r) => r.id === riquadro.id ? aggiornato : r), [{ id: riquadro.id, grafico }]); }} className="h-8 max-w-32 rounded-md border border-border bg-bg-page px-1.5 text-xs outline-none focus:ring-2 focus:ring-primary">{GRAFICI.map((grafico) => <option key={grafico.valore} value={grafico.valore}>{grafico.etichetta}</option>)}</select>
+                          {/*
+                            Riaprire un riquadro nel builder serve a correggerlo
+                            senza rifarlo, e a vedere com'e' fatto: quelli
+                            composti dall'AI sono lo stesso oggetto di quelli
+                            fatti a mano, e aprirli e' il modo piu' rapido per
+                            imparare a comporli.
+                          */}
+                          <Link href={`/bi/esplora?analisi=${encodeURIComponent(riquadro.analisi_id)}`} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={`Modifica ${riquadro.analisi.titolo}`} title="Apri nel builder"><Pencil className="h-4 w-4" /></Link>
                           <button type="button" onClick={() => void togliRiquadro(riquadro.id)} className="rounded-md p-1.5 text-text-muted hover:bg-danger/10 hover:text-danger" aria-label="Togli riquadro"><Trash2 className="h-4 w-4" /></button>
                         </div>}
                       </header>

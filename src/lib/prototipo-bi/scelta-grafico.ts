@@ -366,3 +366,52 @@ export function scegliGrafico(
     alternative: applicabili.filter((tipo) => tipo !== scelta.tipo),
   };
 }
+
+/**
+ * Cosa manca per poter scegliere gli altri grafici.
+ *
+ * La tendina delle visualizzazioni si accorcia da sola quando la forma del
+ * dato non regge un tipo — ed e' giusto — ma non dice perche', e chi guarda
+ * non ha modo di sapere che gli basterebbe cambiare una tendina. E' successo
+ * davvero: «fatturato con budget e BEP» senza granularita' offre solo cinque
+ * tipi, e il Combinato che l'AI aveva prodotto sembrava irraggiungibile.
+ *
+ * Si elencano solo le mancanze **rimediabili con un gesto**: dire «manca la
+ * torta perche' ci sono valori negativi» non aiuta nessuno, perche' non e' una
+ * cosa che si sistema spuntando qualcosa.
+ */
+export function comeSbloccareAltriGrafici(
+  risultato: RisultatoQuery | SerieAnalisiEseguita[]
+): string[] {
+  const serie = Array.isArray(risultato) ? risultato : null;
+  const principale = serie
+    ? (serie.find((voce) => voce.ruolo === "principale") ?? serie[0])?.risultato
+    : (risultato as RisultatoQuery);
+  if (!principale) return [];
+
+  const temporale = serie
+    ? serie.some((voce) => voce.risultato.spec.granularita !== undefined)
+    : principale.spec.granularita !== undefined;
+  const raggruppamenti = principale.spec.raggruppa?.length ?? 0;
+
+  const suggerimenti: string[] = [];
+  if (!temporale) {
+    suggerimenti.push(
+      "Per vedere Linee e Combinato serve un asse del tempo: in «Quando» scegli " +
+        "una granularità (per esempio Mese) al posto di «Totale del periodo»."
+    );
+  }
+  if (raggruppamenti === 0) {
+    suggerimenti.push(
+      "Per confrontare Barre, Pareto o Quadranti serve una suddivisione: " +
+        "spunta per esempio Cliente o Agente."
+    );
+  }
+  if (temporale && raggruppamenti === 0) {
+    suggerimenti.push(
+      "Aggiungendo una suddivisione a una serie nel tempo compaiono anche Aree " +
+        "impilate e Mappa di calore."
+    );
+  }
+  return suggerimenti;
+}

@@ -121,6 +121,15 @@ export function AggiungiRiquadro({
   const [interpretazione, setInterpretazione] = useState<string | null>(null);
   const [rispostaTestuale, setRispostaTestuale] = useState<string | null>(null);
   const [analistaInCorso, setAnalistaInCorso] = useState(false);
+  /**
+   * La proposta dell'AI aperta nel builder.
+   *
+   * Serve a due cose diverse e tutte e due utili: correggere una proposta quasi
+   * giusta senza ripartire da capo, e **vedere come e' fatta**. Le domande che
+   * l'AI compone sono le stesse che si compongono a mano — stesso `SpecQuery`,
+   * stesse serie — e aprirle e' il modo piu' rapido per imparare a farle.
+   */
+  const [daAprire, setDaAprire] = useState<AnalisiProposta | null>(null);
   const [azioneInCorso, setAzioneInCorso] = useState<string | null>(null);
   const bloccoAzione = useRef(false);
 
@@ -190,6 +199,7 @@ export function AggiungiRiquadro({
     setProposte([]);
     setInterpretazione(null);
     setRispostaTestuale(null);
+    setDaAprire(null);
     try {
       const risposta = await fetch("/api/bi/analista", {
         method: "POST",
@@ -265,7 +275,7 @@ export function AggiungiRiquadro({
 
       <div className="flex min-w-0 gap-1 overflow-x-auto border-b border-border px-4 pt-3" role="tablist" aria-label="Modalità di aggiunta">
         {schede.map(({ id, etichetta, Icona }) => (
-          <button key={id} type="button" role="tab" aria-selected={scheda === id} onClick={() => setScheda(id)} className={`inline-flex min-h-10 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${scheda === id ? "border-primary text-primary" : "border-transparent text-text-muted hover:text-text"}`}>
+          <button key={id} type="button" role="tab" aria-selected={scheda === id} onClick={() => { if (id !== "costruisci") setDaAprire(null); setScheda(id); }} className={`inline-flex min-h-10 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${scheda === id ? "border-primary text-primary" : "border-transparent text-text-muted hover:text-text"}`}>
             <Icona className="h-4 w-4" aria-hidden />{etichetta}
           </button>
         ))}
@@ -285,7 +295,16 @@ export function AggiungiRiquadro({
 
         {scheda === "costruisci" && (
           <div className="[&>main]:max-w-none [&>main]:p-0 [&>main>header]:hidden">
-            <EditorAnalisi dentroUnaPagina periodoEreditato={filtriPagina.periodo} onSalvata={(id) => void agganciaSalvata(id)} />
+            <EditorAnalisi
+              key={daAprire?.titolo ?? "vuoto"}
+              dentroUnaPagina
+              periodoEreditato={filtriPagina.periodo}
+              specIniziale={daAprire?.spec}
+              serieIniziali={daAprire?.serie ?? null}
+              graficoIniziale={daAprire?.grafico}
+              titoloIniziale={daAprire?.titolo}
+              onSalvata={(id) => void agganciaSalvata(id)}
+            />
           </div>
         )}
 
@@ -346,7 +365,7 @@ export function AggiungiRiquadro({
                 <article key={`${proposta.titolo}-${indice}`} className="overflow-hidden rounded-xl border border-border bg-bg-page">
                   <header className="px-4 pt-4"><h3 className="font-tenorite text-lg font-semibold">{proposta.titolo}</h3>{proposta.commento && <p className="mt-1 text-sm text-text-muted">{proposta.commento}</p>}</header>
                   <div className="min-h-48 p-4"><GraficoDaAnalisi serie={proposta.risultatiSerie ?? [{ ruolo: "principale", nome: proposta.spec.metrica, spec: proposta.spec, risultato: proposta.risultato }]} tipo={proposta.grafico} altezza={220} /></div>
-                  <div className="border-t border-border p-3"><button type="button" disabled={azioneInCorso !== null} onClick={() => void salvaEaggancia(proposta, indice)} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{azioneInCorso === `ai-${indice}` ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}Aggiungi alla pagina</button></div>
+                  <div className="border-t border-border p-3"><button type="button" disabled={azioneInCorso !== null} onClick={() => void salvaEaggancia(proposta, indice)} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{azioneInCorso === `ai-${indice}` ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}Aggiungi alla pagina</button><button type="button" onClick={() => { setDaAprire(proposta); setScheda("costruisci"); }} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold text-primary hover:bg-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Wrench className="h-4 w-4" aria-hidden />Apri nel builder</button></div>
                 </article>
               ))}
             </div>
