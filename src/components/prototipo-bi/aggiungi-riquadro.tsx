@@ -69,6 +69,26 @@ interface ProprietaAggiungiRiquadro {
 
 type Scheda = "ai" | "costruisci" | "pronti";
 
+/**
+ * Domande di esempio, cliccabili.
+ *
+ * Davanti a un campo vuoto la difficolta' non e' scrivere, e' sapere cosa si
+ * puo' chiedere. Chi non ha mai usato uno strumento del genere non immagina
+ * che «con il budget a confronto» sia una richiesta legittima. Cliccarne una e
+ * vederla funzionare insegna il resto: da li' in poi si modifica invece di
+ * inventare da zero.
+ *
+ * Sono scelte fra quelle che il motore esegue davvero: una che fallisce qui
+ * costa piu' fiducia di quanta ne farebbe guadagnare.
+ */
+const ESEMPI = [
+  "L’ordinato per agente, mese per mese",
+  "Il fatturato di quest’anno confrontato con il budget",
+  "I dieci clienti che pesano di più sul fatturato",
+  "Il tasso di conversione dei preventivi per business unit",
+  "Come sta andando il consegnato rispetto all’anno scorso",
+];
+
 function messaggioErrore(valore: unknown, ripiego: string): string {
   if (valore && typeof valore === "object" && "error" in valore && typeof valore.error === "string") {
     return valore.error;
@@ -89,6 +109,17 @@ export function AggiungiRiquadro({
   const [errore, setErrore] = useState<string | null>(null);
   const [domanda, setDomanda] = useState("");
   const [proposte, setProposte] = useState<AnalisiProposta[]>([]);
+  /**
+   * Quello che l'AI dice di aver capito, e il suo commento.
+   *
+   * Prima venivano scartati e si mostravano solo i grafici. Per chi non
+   * costruisce grafici di mestiere e' il pezzo che serve di piu': vedere
+   * scritto «ho capito che vuoi l'ordinato per agente, mese per mese» dice
+   * subito se la domanda e' stata intesa, senza dover interpretare l'asse di
+   * un grafico per scoprirlo.
+   */
+  const [interpretazione, setInterpretazione] = useState<string | null>(null);
+  const [rispostaTestuale, setRispostaTestuale] = useState<string | null>(null);
   const [analistaInCorso, setAnalistaInCorso] = useState(false);
   const [azioneInCorso, setAzioneInCorso] = useState<string | null>(null);
   const bloccoAzione = useRef(false);
@@ -157,15 +188,24 @@ export function AggiungiRiquadro({
     setAnalistaInCorso(true);
     setErrore(null);
     setProposte([]);
+    setInterpretazione(null);
+    setRispostaTestuale(null);
     try {
       const risposta = await fetch("/api/bi/analista", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domanda: testo }),
       });
-      const corpo = (await risposta.json()) as { analisi?: AnalisiProposta[]; error?: string };
+      const corpo = (await risposta.json()) as {
+        analisi?: AnalisiProposta[];
+        interpretazione?: string | null;
+        testo?: string;
+        error?: string;
+      };
       if (!risposta.ok) throw new Error(messaggioErrore(corpo, "L'Analista non ha risposto."));
       setProposte(corpo.analisi ?? []);
+      setInterpretazione(corpo.interpretazione ?? null);
+      setRispostaTestuale(typeof corpo.testo === "string" ? corpo.testo : null);
     } catch (causa) {
       setErrore(causa instanceof Error ? causa.message : "L'Analista non ha risposto.");
     } finally {
@@ -256,7 +296,51 @@ export function AggiungiRiquadro({
               <textarea id="domanda-riquadro" value={domanda} onChange={(evento) => setDomanda(evento.target.value)} rows={3} placeholder="Per esempio: l’ordinato per agente mese per mese, con il budget a confronto" className="min-w-0 flex-1 resize-y rounded-lg border border-border bg-bg-page px-3 py-2 text-sm outline-none placeholder:text-text-muted focus:ring-2 focus:ring-primary" />
               <button type="button" disabled={!domanda.trim() || analistaInCorso} onClick={() => void chiediAllAnalista()} className="inline-flex min-h-10 items-center justify-center gap-2 self-end rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">{analistaInCorso && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />}Chiedi</button>
             </div>
-            {!analistaInCorso && proposte.length === 0 && <p className="mt-4 text-sm text-text-muted">Scrivi come parleresti a un collega. L’AI sceglie i numeri giusti e il grafico adatto, e te lo mostra prima di aggiungerlo.</p>}
+            {!analistaInCorso && proposte.length === 0 && !rispostaTestuale && (
+              <div className="mt-4">
+                <p className="text-sm text-text-muted">Scrivi come parleresti a un collega. L’AI sceglie i numeri giusti e il grafico adatto, e te lo mostra prima di aggiungerlo.</p>
+                <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Oppure prova con una di queste</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {ESEMPI.map((esempio) => (
+                    <button
+                      key={esempio}
+                      type="button"
+                      onClick={() => { setDomanda(esempio); setErrore(null); }}
+                      className="min-h-9 rounded-full border border-border bg-bg-page px-3 text-left text-sm text-text transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      {esempio}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {analistaInCorso && (
+              <p role="status" className="mt-4 flex items-center gap-2 text-sm text-text-muted">
+                <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />
+                Sto leggendo i dati e scelgo il grafico… ci vogliono pochi secondi.
+              </p>
+            )}
+
+            {!analistaInCorso && interpretazione && (
+              <p className="mt-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-text">
+                <span className="font-semibold">Ho capito così:</span> {interpretazione}
+              </p>
+            )}
+
+            {/*
+              Quando l'AI risponde ma non propone nessun grafico, prima non
+              compariva niente e sembrava un guasto. La sua risposta a parole e'
+              comunque un'informazione: va mostrata, insieme a cosa fare dopo.
+            */}
+            {!analistaInCorso && proposte.length === 0 && rispostaTestuale && (
+              <div className="mt-4 rounded-lg border border-border bg-bg-page p-4">
+                <p className="text-sm text-text">{rispostaTestuale}</p>
+                <p className="mt-3 text-sm text-text-muted">
+                  Non è riuscita a ricavarne un grafico. Prova a dire quale numero ti interessa e come vuoi vederlo diviso — per esempio «per agente» o «mese per mese» — oppure costruiscilo tu da <button type="button" onClick={() => setScheda("costruisci")} className="font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Scegli i campi</button>.
+                </p>
+              </div>
+            )}
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               {proposte.map((proposta, indice) => (
                 <article key={`${proposta.titolo}-${indice}`} className="overflow-hidden rounded-xl border border-border bg-bg-page">

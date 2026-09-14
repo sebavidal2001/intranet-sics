@@ -213,6 +213,10 @@ describe("Dashboard a pagine", () => {
     expect(screen.getByRole("tab", { name: "Scegli i campi" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Già pronti" })).toBeInTheDocument();
 
+    // Davanti al campo vuoto la difficolta' non e' scrivere, e' sapere cosa si
+    // puo' chiedere: gli esempi cliccabili sono li' per quello.
+    expect(screen.getByRole("button", { name: /ordinato per agente/i })).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("tab", { name: "Già pronti" }));
     fireEvent.click(await screen.findByRole("button", { name: "Aggiungi alla pagina" }));
     await waitFor(() => {
