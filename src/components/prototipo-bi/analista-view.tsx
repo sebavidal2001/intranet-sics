@@ -29,7 +29,7 @@ import {
 import { BadgeCertificata, euro } from "./primitivi";
 import { Markdown } from "./markdown";
 import { GraficoDaAnalisi } from "./grafico-da-risultato";
-import { graficiPossibili, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
+import { NOMI_GRAFICI, graficiPossibili, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type {
   RisultatoQuery,
   SerieAnalisi,
@@ -128,24 +128,6 @@ const LIVELLI = [
   { chiave: "analitica", nome: "Analisi", nota: "confronti e scomposizioni" },
   { chiave: "profonda", nome: "Approfondita", nota: "previsioni, scenari, documenti" },
 ] as const;
-
-const NOMI_GRAFICI: Record<TipoGrafico, string> = {
-  linee: "Linee",
-  barre: "Barre",
-  combo: "Combinato",
-  torta: "Torta",
-  anelli: "Anelli",
-  areeImpilate: "Aree impilate",
-  pareto: "Pareto",
-  bullet: "Bullet",
-  heatmap: "Mappa di calore",
-  quadranti: "Quadranti",
-  imbuto: "Imbuto",
-  treemap: "Mappa ad albero",
-  sparkline: "Sparkline",
-  kpi: "KPI",
-  tabella: "Tabella",
-};
 
 function BloccoPrevisione({ p }: { p: Previsione }) {
   const validi = p.metodi.filter((m) => !m.nonApplicabile);

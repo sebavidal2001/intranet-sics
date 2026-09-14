@@ -103,8 +103,18 @@ describe("scegliGrafico", () => {
     expect(proposta.motivo).toMatch(/prime 6.*altre 1/);
   });
 
-  it("usa la heatmap con due dimensioni", () => {
-    expect(scegliGrafico(creaRisultato({ raggruppa: ["bu", "agente"] })).tipo).toBe("heatmap");
+  it("con due dimensioni piccole propone la matrice, non la heatmap", () => {
+    // Tre business unit per due agenti fanno sei celle: una mappa di calore
+    // costringe a leggere dei valori dall'intensita' del colore quando i numeri
+    // ci starebbero scritti. La pivot li scrive, e ci aggiunge i totali.
+    expect(scegliGrafico(creaRisultato({ raggruppa: ["bu", "agente"] })).tipo).toBe("matrice");
+  });
+
+  it("con due dimensioni estese torna alla heatmap", () => {
+    // Oltre la dozzina di categorie per lato la tabella diventa illeggibile e
+    // il colore ridiventa il modo piu' rapido per vedere dove si concentra.
+    const grande = creaRisultato({ numeroRighe: 40, categorie: 20, raggruppa: ["cliente", "agente"] });
+    expect(scegliGrafico(grande).tipo).toBe("heatmap");
   });
 
   it("usa le barre per le percentuali", () => {

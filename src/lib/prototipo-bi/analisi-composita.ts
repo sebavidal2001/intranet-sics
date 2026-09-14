@@ -49,6 +49,7 @@ export function motivoBudgetNonDisponibile(spec: SpecQuery): string | null {
 }
 
 const RUOLI_SERIE: readonly RuoloSerie[] = ["principale", "confronto", "obiettivo", "soglia"];
+const COLORE_ESAGONALE = /^#[0-9a-fA-F]{6}$/u;
 
 export interface AnalisiEseguibile {
   spec: SpecQuery;
@@ -98,7 +99,20 @@ export function validaSerieAnalisi(valore: unknown): SerieAnalisi[] {
     }
     const nome = typeof voce.nome === "string" ? voce.nome.trim() : "";
     if (!nome) throw new SpecNonValida(`Nome obbligatorio nella serie ${indice + 1}.`);
-    return { ruolo: voce.ruolo, nome, spec: validaSpec(voce.spec) };
+    if (
+      voce.colore !== undefined &&
+      (typeof voce.colore !== "string" || !COLORE_ESAGONALE.test(voce.colore))
+    ) {
+      throw new SpecNonValida(
+        `Colore non valido nella serie ${indice + 1}: usa il formato #rrggbb.`
+      );
+    }
+    return {
+      ruolo: voce.ruolo,
+      nome,
+      ...(typeof voce.colore === "string" ? { colore: voce.colore } : {}),
+      spec: validaSpec(voce.spec),
+    };
   });
 
   if (!serie.some((voce) => voce.ruolo === "principale")) {
@@ -194,6 +208,7 @@ export async function eseguiAnalisiComposita(
     return {
       ruolo: preparata.ruolo,
       nome: preparata.nome,
+      colore: preparata.colore,
       spec: preparata.spec,
       risultato: voce.risultato,
     };

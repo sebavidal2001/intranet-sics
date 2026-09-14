@@ -23,12 +23,14 @@ import Link from "next/link";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
 import { GraficoDaAnalisi } from "@/components/prototipo-bi/grafico-da-risultato";
 import { Scheda, Scheletro, euro, numero } from "@/components/prototipo-bi/primitivi";
+import { useImpostazioni } from "@/components/prototipo-bi/impostazioni";
 import {
   ammetteConfrontoBudget,
   eseguiAnalisiComposita,
   motivoBudgetNonDisponibile,
 } from "@/lib/prototipo-bi/analisi-composita";
 import {
+  NOMI_GRAFICI,
   graficiPossibili,
   scegliGrafico,
   type TipoGrafico,
@@ -81,23 +83,64 @@ interface Vocabolario {
   granularita: Granularita[];
 }
 
-const NOMI_GRAFICI: Record<TipoGrafico, string> = {
-  linee: "Linee",
-  barre: "Barre",
-  combo: "Combinato",
-  torta: "Torta",
-  anelli: "Anelli",
-  areeImpilate: "Aree impilate",
-  pareto: "Pareto",
-  bullet: "Bullet",
-  heatmap: "Mappa di calore",
-  quadranti: "Quadranti",
-  imbuto: "Imbuto",
-  treemap: "Mappa ad albero",
-  sparkline: "Sparkline",
-  kpi: "KPI",
-  tabella: "Tabella",
-};
+/**
+ * Il colore di una serie.
+ *
+ * Le pastiglie della palette coprono il caso normale — servono a distinguere
+ * budget da ordinato, non a scegliere una tinta precisa — e il campo libero
+ * resta per chi ha un colore aziendale da rispettare. «Automatico» e' una voce
+ * vera e non l'assenza di scelta: riporta la serie sulla palette, e senza di
+ * essa un colore messo per prova non si potrebbe piu' togliere.
+ */
+function SelettoreColore({
+  valore,
+  etichetta,
+  onCambia,
+}: {
+  valore: string | undefined;
+  etichetta: string;
+  onCambia: (colore: string | undefined) => void;
+}) {
+  const { palette } = useImpostazioni();
+  return (
+    <div className="flex items-center gap-1" role="group" aria-label={etichetta}>
+      <button
+        type="button"
+        aria-label={`${etichetta}: automatico`}
+        aria-pressed={valore === undefined}
+        title="Colore automatico dalla palette"
+        onClick={() => onCambia(undefined)}
+        className={`h-6 w-6 rounded-full border text-[10px] font-semibold leading-none transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
+          valore === undefined ? "border-primary text-primary" : "border-border text-text-muted"
+        }`}
+      >
+        A
+      </button>
+      {palette.serie.slice(0, 6).map((tinta) => (
+        <button
+          key={tinta}
+          type="button"
+          aria-label={`${etichetta}: ${tinta}`}
+          aria-pressed={valore === tinta}
+          title={tinta}
+          onClick={() => onCambia(tinta)}
+          style={{ backgroundColor: tinta }}
+          className={`h-6 w-6 rounded-full border-2 transition-transform focus:outline-none focus:ring-2 focus:ring-primary ${
+            valore === tinta ? "border-text scale-110" : "border-transparent"
+          }`}
+        />
+      ))}
+      <input
+        type="color"
+        aria-label={`${etichetta}: colore libero`}
+        title="Scegli un colore qualsiasi"
+        value={valore ?? palette.serie[0]}
+        onChange={(evento) => onCambia(evento.target.value)}
+        className="h-6 w-6 cursor-pointer rounded-full border border-border bg-transparent p-0"
+      />
+    </div>
+  );
+}
 
 const NOMI_OPERATORI: Record<Filtro["op"], string> = {
   eq: "è uguale a",
@@ -191,6 +234,7 @@ export function EditorAnalisi({
   graficoIniziale,
   modificabile = true,
   periodoEreditato,
+  dentroUnaPagina = false,
   onSalvata,
 }: {
   idAnalisi?: string;
@@ -200,6 +244,15 @@ export function EditorAnalisi({
   graficoIniziale?: TipoGrafico;
   modificabile?: boolean;
   periodoEreditato?: Periodo;
+  /**
+   * Vero quando l'editor e' dentro il pannello "Aggiungi" di una pagina.
+   *
+   * Cambia solo le parole, ma sono le parole che descrivono cosa succede:
+   * li' il pulsante non salva in libreria e basta, crea il riquadro nella
+   * pagina che si sta guardando. Chiamarlo "Salva" faceva sembrare che
+   * mancasse ancora un passo, ed era il passo che non c'e' piu'.
+   */
+  dentroUnaPagina?: boolean;
   onSalvata?: (id: string) => void;
 }): JSX.Element {
   const [vocabolario, setVocabolario] = useState<Vocabolario | null>(null);
@@ -259,10 +312,15 @@ export function EditorAnalisi({
     return [{ ruolo: "principale", nome: nomePrincipale, spec }, ...serieAggiuntive];
   }, [serieAggiuntive, serieIniziali, spec, vocabolario]);
   const seriePersistita = serieAggiuntive.length > 0 ? serieAnalisi : null;
-  const chiaveSpec = useMemo(
-    () => spec ? JSON.stringify({ spec, serie: seriePersistita, periodoEreditato }) : "",
-    [periodoEreditato, seriePersistita, spec]
-  );
+  // La chiave che decide se rieseguire deve contenere solo cio' che cambia i
+  // NUMERI. Il colore e' una scelta di resa: lasciarlo qui dentro farebbe
+  // partire una query certificata a ogni pastiglia cliccata, e il selettore
+  // sembrerebbe lento per il motivo sbagliato.
+  const chiaveSpec = useMemo(() => {
+    if (!spec) return "";
+    const serieSenzaResa = seriePersistita?.map(({ colore: _colore, ...resto }) => resto) ?? null;
+    return JSON.stringify({ spec, serie: serieSenzaResa, periodoEreditato });
+  }, [periodoEreditato, seriePersistita, spec]);
 
   useEffect(() => {
     if (!spec) return;
@@ -490,7 +548,13 @@ export function EditorAnalisi({
           : null;
       if (!id) throw new Error("Il salvataggio non ha restituito un identificativo.");
       setSalvataggio("salvata");
-      setMessaggioSalvataggio(aggiornaEsistente ? "Modifiche salvate." : "Analisi salvata.");
+      setMessaggioSalvataggio(
+        aggiornaEsistente
+          ? "Modifiche salvate."
+          : dentroUnaPagina
+            ? "Riquadro aggiunto alla pagina."
+            : "Analisi salvata."
+      );
       onSalvata?.(id);
     } catch (causa) {
       setSalvataggio("pronto");
@@ -879,7 +943,7 @@ export function EditorAnalisi({
             {serieAggiuntive.length > 0 && (
               <div className="mt-4 space-y-2 border-t border-border pt-4" aria-label="Serie aggiunte">
                 {serieAggiuntive.map((voce, indice) => (
-                  <div key={`${voce.ruolo}-${indice}`} className="grid gap-2 rounded-lg bg-bg-page p-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+                  <div key={`${voce.ruolo}-${indice}`} className="grid gap-2 rounded-lg bg-bg-page p-2 sm:grid-cols-[auto_1fr_auto_auto] sm:items-center">
                     <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
                       {NOMI_RUOLI[voce.ruolo]}
                     </span>
@@ -895,6 +959,22 @@ export function EditorAnalisi({
                         setMessaggioSalvataggio("");
                       }}
                       className={CLASSE_CAMPO}
+                    />
+                    <SelettoreColore
+                      valore={voce.colore}
+                      etichetta={`Colore di ${voce.nome || `serie ${indice + 1}`}`}
+                      onCambia={(colore) => {
+                        setSerieAggiuntive((correnti) => correnti.map((serie, posizione) => {
+                          if (posizione !== indice) return serie;
+                          // Togliere la chiave, non metterla a undefined: il
+                          // jsonb salvato porterebbe con se' un campo nullo che
+                          // il validatore poi rifiuta.
+                          const { colore: _tolto, ...resto } = serie;
+                          return colore === undefined ? resto : { ...resto, colore };
+                        }));
+                        setSalvataggio("pronto");
+                        setMessaggioSalvataggio("");
+                      }}
                     />
                     <button
                       type="button"
@@ -1101,7 +1181,7 @@ export function EditorAnalisi({
 
             <div className="mt-5 border-t border-border pt-5">
               <label htmlFor="editor-titolo" className="text-sm font-medium">
-                Titolo dell’analisi
+                {dentroUnaPagina ? "Titolo del riquadro" : "Titolo dell’analisi"}
               </label>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <input
@@ -1125,14 +1205,16 @@ export function EditorAnalisi({
                 >
                   <Save className="h-4 w-4" aria-hidden />
                   {salvataggio === "in_corso"
-                    ? "Salvataggio…"
+                    ? dentroUnaPagina ? "Aggiungo…" : "Salvataggio…"
                     : salvataggio === "salvata"
-                      ? "Salvata"
+                      ? dentroUnaPagina ? "Aggiunta" : "Salvata"
                       : aggiornaEsistente
                         ? "Salva modifiche"
-                        : modificabile
-                          ? "Salva analisi"
-                          : "Salva una copia"}
+                        : dentroUnaPagina
+                          ? "Aggiungi alla pagina"
+                          : modificabile
+                            ? "Salva analisi"
+                            : "Salva una copia"}
                 </button>
               </div>
               {messaggioSalvataggio && (

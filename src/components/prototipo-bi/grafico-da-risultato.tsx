@@ -29,6 +29,14 @@ import {
   Sparkline,
 } from "./grafici-avanzati";
 import { Anelli, AreeImpilate, Composizione, Imbuto } from "./grafici-spettacolari";
+import {
+  Distribuzione,
+  Flusso,
+  Istogramma,
+  Matrice,
+  Pendenza,
+  Posizioni,
+} from "./grafici-nuovi";
 import { useImpostazioni } from "./impostazioni";
 import {
   TabellaAnalitica,
@@ -40,6 +48,7 @@ interface ProprietaGraficoDaRisultato {
   risultato: RisultatoQuery;
   tipo?: TipoGrafico;
   altezza?: number;
+  coloreSerie?: string;
   onClickEtichetta?: (etichetta: string) => void;
 }
 
@@ -300,12 +309,13 @@ export function GraficoDaRisultato({
   risultato,
   tipo,
   altezza = 300,
+  coloreSerie,
   onClickEtichetta,
 }: ProprietaGraficoDaRisultato): JSX.Element {
   const { colore } = useImpostazioni();
   const tipoScelto = tipo ?? scegliGrafico(risultato).tipo;
   const applicabili = graficiPossibili(risultato);
-  const colorePrincipale = colore(0) || PALETTE[0];
+  const colorePrincipale = coloreSerie ?? (colore(0) || PALETTE[0]);
 
   if (!applicabili.includes(tipoScelto)) {
     return <Ripiego risultato={risultato} tipo={tipoScelto} />;
@@ -430,7 +440,38 @@ export function GraficoDaRisultato({
       // RisultatoQuery non contiene un obiettivo: inventarne uno renderebbe il confronto ingannevole.
       void Bullet;
       return <Ripiego risultato={risultato} tipo={tipoScelto} />;
+
+    // I sei tipi nuovi. `graficiPossibili` li ha gia' esclusi quando la forma
+    // del dato non li regge — il controllo sopra e' passato — quindi qui si
+    // disegna e basta: ognuno dichiara da se' cosa manca nei casi limite.
+    case "matrice":
+      return <Matrice risultato={risultato} altezza={altezza} onClick={onClickEtichetta} />;
+    case "pendenza":
+      return <Pendenza risultato={risultato} altezza={altezza} onClick={onClickEtichetta} />;
+    case "distribuzione":
+      return <Distribuzione risultato={risultato} altezza={altezza} onClick={onClickEtichetta} />;
+    case "posizioni":
+      return <Posizioni risultato={risultato} altezza={altezza} onClick={onClickEtichetta} />;
+    case "flusso":
+      return <Flusso risultato={risultato} altezza={altezza} onClick={onClickEtichetta} />;
+    case "istogramma":
+      return <Istogramma risultato={risultato} altezza={altezza} />;
   }
+}
+
+/**
+ * La tinta di una serie: quella scelta a mano se c'è, altrimenti la palette.
+ *
+ * Il colore scelto conta soprattutto qui, dove le serie sono più di una:
+ * affiancare ordinato, budget e BEP senza poter dire quale è quale lascia la
+ * legenda come unico appiglio.
+ */
+function tintaSerie(
+  voce: SerieAnalisiEseguita,
+  indice: number,
+  dallaPalette: (posizione: number) => string
+): string {
+  return voce.colore ?? (dallaPalette(indice) || PALETTE[indice % PALETTE.length]);
 }
 
 /** Distribuisce ruoli e risultati sulle firme già usate dai grafici del Cruscotto. */
@@ -451,6 +492,7 @@ export function GraficoDaAnalisi({
         risultato={principale.risultato}
         tipo={tipo}
         altezza={altezza}
+        coloreSerie={principale.colore}
         onClickEtichetta={onClickEtichetta}
       />
     );
@@ -469,7 +511,7 @@ export function GraficoDaAnalisi({
           serie={serie.map((voce, indice) => ({
             nome: voce.nome,
             risultato: risultatoAllineatoNelTempo(voce),
-            colore: colore(indice) || PALETTE[indice % PALETTE.length],
+            colore: tintaSerie(voce, indice, colore),
             tratteggiata: voce.ruolo !== "principale",
           }))}
           altezza={altezza}
@@ -481,14 +523,14 @@ export function GraficoDaAnalisi({
           barre={{
             nome: principale.nome,
             risultato: principale.risultato,
-            colore: colore(0) || PALETTE[0],
+            colore: tintaSerie(principale, 0, colore),
           }}
           linee={serie
             .filter((voce) => voce !== principale)
             .map((voce, indice) => ({
               nome: voce.nome,
               risultato: risultatoAllineatoNelTempo(voce),
-              colore: colore(indice + 1) || PALETTE[(indice + 1) % PALETTE.length],
+              colore: tintaSerie(voce, indice + 1, colore),
               tratteggiata: voce.ruolo !== "principale",
             }))}
           altezza={altezza}

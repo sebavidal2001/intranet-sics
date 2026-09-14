@@ -275,6 +275,8 @@ export interface SerieAnalisi {
   ruolo: RuoloSerie;
   /** Etichetta mostrata in legenda, per esempio "Ordinato", "2025" o "Budget". */
   nome: string;
+  /** Colore SVG esadecimale; se assente viene usata la palette attiva. */
+  colore?: string;
   spec: SpecQuery;
 }
 

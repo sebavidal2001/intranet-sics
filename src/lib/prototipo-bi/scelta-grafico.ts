@@ -34,8 +34,46 @@ export type TipoGrafico =
   | "imbuto"
   | "treemap"
   | "sparkline"
+  | "matrice"
+  | "pendenza"
+  | "distribuzione"
+  | "posizioni"
+  | "flusso"
+  | "istogramma"
   | "kpi"
   | "tabella";
+
+/**
+ * I nomi da mostrare all'utente.
+ *
+ * Stanno qui, accanto al tipo, e non nei componenti: erano duplicati identici
+ * in due file diversi e ogni tipo nuovo li rompeva entrambi, sempre con lo
+ * stesso errore. Tenerli legati alla definizione fa segnalare a TypeScript
+ * l'unico punto da aggiornare.
+ */
+export const NOMI_GRAFICI: Record<TipoGrafico, string> = {
+  linee: "Linee",
+  barre: "Barre",
+  combo: "Combinato",
+  torta: "Torta",
+  anelli: "Anelli",
+  areeImpilate: "Aree impilate",
+  pareto: "Pareto",
+  bullet: "Bullet",
+  heatmap: "Mappa di calore",
+  quadranti: "Quadranti",
+  imbuto: "Imbuto",
+  treemap: "Mappa ad albero",
+  sparkline: "Sparkline",
+  matrice: "Matrice",
+  pendenza: "Pendenza",
+  distribuzione: "Distribuzione",
+  posizioni: "Posizioni in classifica",
+  flusso: "Flusso a stadi",
+  istogramma: "Istogramma",
+  kpi: "KPI",
+  tabella: "Tabella",
+};
 
 export interface PropostaGrafico {
   tipo: TipoGrafico;
@@ -54,6 +92,35 @@ function categorieDistinte(risultato: RisultatoQuery): number {
   return new Set(risultato.righe.map((riga) => riga.chiavi[dimensione])).size;
 }
 
+function periodiDistinti(risultato: RisultatoQuery): number {
+  return new Set(
+    risultato.righe
+      .map((riga) => riga.chiavi.periodo)
+      .filter((periodo): periodo is string => Boolean(periodo))
+  ).size;
+}
+
+function categorieDistintePer(risultato: RisultatoQuery, dimensione: string): number {
+  return new Set(
+    risultato.righe
+      .map((riga) => riga.chiavi[dimensione])
+      .filter((categoria): categoria is string => Boolean(categoria))
+  ).size;
+}
+
+function haDueDimensioniPiccole(risultato: RisultatoQuery): boolean {
+  const dimensioni = risultato.spec.raggruppa ?? [];
+  return dimensioni.length === 2 && dimensioni.every(
+    (dimensione) => categorieDistintePer(risultato, dimensione) <= 12
+  );
+}
+
+function haFlussoDecrescente(risultato: RisultatoQuery): boolean {
+  return risultato.righe.length >= 2 && risultato.righe.every(
+    (riga, indice, righe) => indice === 0 || riga.valore <= righe[indice - 1].valore
+  );
+}
+
 function determinaScelta(risultato: RisultatoQuery): SceltaBase {
   const numeroRighe = risultato.righe.length;
   const raggruppamenti = risultato.spec.raggruppa ?? [];
@@ -64,6 +131,12 @@ function determinaScelta(risultato: RisultatoQuery): SceltaBase {
   }
   if (numeroRighe === 1 && raggruppamenti.length === 0) {
     return { tipo: "kpi", motivo: "Un solo valore complessivo: una KPI lo rende immediatamente leggibile." };
+  }
+  if (temporale && raggruppamenti.length === 1 && periodiDistinti(risultato) === 2) {
+    return {
+      tipo: "pendenza",
+      motivo: "Due periodi per categoria: la pendenza rende immediati aumenti e diminuzioni.",
+    };
   }
   if (temporale && raggruppamenti.length === 0) {
     return { tipo: "linee", motivo: "Serie temporale: la linea mette in evidenza andamento e cambi di ritmo." };
@@ -83,8 +156,10 @@ function determinaScelta(risultato: RisultatoQuery): SceltaBase {
   }
   if (raggruppamenti.length === 2) {
     return {
-      tipo: "heatmap",
-      motivo: "Due dimensioni di confronto: la matrice rende visibili concentrazioni e incroci.",
+      tipo: haDueDimensioniPiccole(risultato) ? "matrice" : "heatmap",
+      motivo: haDueDimensioniPiccole(risultato)
+        ? "Due dimensioni compatte: la matrice mostra incroci e totali senza perdere precisione."
+        : "Due dimensioni estese: la mappa di calore rende visibili concentrazioni e incroci.",
     };
   }
   if (risultato.unita === "percentuale") {
@@ -146,13 +221,29 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
     if (raggruppamenti.length === 1 && categorieDistinte(risultato) <= 6) {
       possibili.push("areeImpilate");
     }
+    if (raggruppamenti.length === 1) {
+      const periodi = periodiDistinti(risultato);
+      if (periodi === 2) possibili.push("pendenza");
+      // Il box plot vuole abbastanza osservazioni per avere dei quartili veri.
+      // Con due o tre periodi la mediana e' il punto di mezzo, Q1 coincide con
+      // il minimo e Q3 con il massimo: si disegnerebbe una scatola che non
+      // dice niente e sembra dire qualcosa. Cinque e' la soglia sotto cui una
+      // distribuzione non si legge.
+      if (periodi >= 5) possibili.push("distribuzione");
+      if (periodi >= 3) possibili.push("posizioni");
+    }
   }
   if (raggruppamenti.length === 2 || (temporale && raggruppamenti.length === 1)) {
     possibili.push("heatmap");
   }
+  if (raggruppamenti.length === 2) possibili.push("matrice");
 
   possibili.push("barre");
   if (numeroRighe >= 2) possibili.push("pareto", "quadranti");
+  // Un istogramma raggruppa i valori in fasce di frequenza: con poche righe le
+  // fasce sono piu' delle osservazioni e il risultato e' un grafico a barre
+  // travestito, con in piu' il difetto di nascondere le etichette.
+  if (numeroRighe >= 8) possibili.push("istogramma");
 
   if (!temporale) {
     if (
@@ -163,6 +254,14 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
       possibili.push("torta", "anelli");
     }
     if (numeroRighe >= 2 && tuttiNonNegativi) possibili.push("imbuto");
+    if (
+      raggruppamenti.length === 1 &&
+      risultato.unita !== "percentuale" &&
+      tuttiNonNegativi &&
+      haFlussoDecrescente(risultato)
+    ) {
+      possibili.push("flusso");
+    }
     if (risultato.righe.some((riga) => riga.valore > 0)) possibili.push("treemap");
   }
 
@@ -231,6 +330,11 @@ function graficiApplicabiliAnalisi(serie: SerieAnalisiEseguita[]): TipoGrafico[]
   if (temporale && (risultato.spec.raggruppa?.length ?? 0) > 0) {
     possibili.push("heatmap", "areeImpilate");
   }
+  const nuoviSulPrincipale = graficiApplicabili(risultato).filter((tipo) =>
+    (["matrice", "pendenza", "distribuzione", "posizioni", "flusso", "istogramma"] as TipoGrafico[])
+      .includes(tipo)
+  );
+  possibili.push(...nuoviSulPrincipale);
   possibili.push("tabella");
   return [...new Set(possibili)];
 }

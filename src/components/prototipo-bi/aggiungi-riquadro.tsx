@@ -237,7 +237,7 @@ export function AggiungiRiquadro({
 
         {scheda === "costruisci" && (
           <div className="[&>main]:max-w-none [&>main]:p-0 [&>main>header]:hidden">
-            <EditorAnalisi onSalvata={(id) => void agganciaSalvata(id)} />
+            <EditorAnalisi dentroUnaPagina periodoEreditato={filtriPagina.periodo} onSalvata={(id) => void agganciaSalvata(id)} />
           </div>
         )}
 

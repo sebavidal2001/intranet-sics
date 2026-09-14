@@ -583,7 +583,7 @@ export function AreeImpilate({
   onClick,
 }: {
   periodi: string[];
-  serie: { nome: string; valori: Record<string, number> }[];
+  serie: { nome: string; valori: Record<string, number>; colore?: string }[];
   unita?: UnitaMisura;
   altezza?: number;
   /** true = ogni periodo vale 100%: mostra la composizione, non il volume. */
@@ -614,8 +614,8 @@ export function AreeImpilate({
         <defs>
           {serie.map((s, i) => (
             <linearGradient key={s.nome} id={`a${id}-${i}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={colore(i)} stopOpacity={imp.gradienti ? 0.9 : 0.75} />
-              <stop offset="100%" stopColor={colore(i)} stopOpacity={imp.gradienti ? 0.45 : 0.75} />
+              <stop offset="0%" stopColor={s.colore ?? colore(i)} stopOpacity={imp.gradienti ? 0.9 : 0.75} />
+              <stop offset="100%" stopColor={s.colore ?? colore(i)} stopOpacity={imp.gradienti ? 0.45 : 0.75} />
             </linearGradient>
           ))}
         </defs>
@@ -656,7 +656,7 @@ export function AreeImpilate({
             type="monotone"
             dataKey={s.nome}
             stackId="1"
-            stroke={colore(i)}
+            stroke={s.colore ?? colore(i)}
             strokeWidth={1}
             fill={`url(#a${id}-${i})`}
             animationDuration={durata}

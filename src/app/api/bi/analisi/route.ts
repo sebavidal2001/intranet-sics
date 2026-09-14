@@ -4,28 +4,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { registraAccesso } from "@/lib/prototipo-bi/registro";
 import { SpecNonValida, validaSpec } from "@/lib/prototipo-bi/semantico";
 import { validaSerieAnalisi } from "@/lib/prototipo-bi/analisi-composita";
-import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
+import { NOMI_GRAFICI, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type { SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 export const dynamic = "force-dynamic";
 
-const TIPI_GRAFICO = new Set<TipoGrafico>([
-  "linee",
-  "barre",
-  "combo",
-  "torta",
-  "anelli",
-  "areeImpilate",
-  "pareto",
-  "bullet",
-  "heatmap",
-  "quadranti",
-  "imbuto",
-  "treemap",
-  "sparkline",
-  "kpi",
-  "tabella",
-]);
+// Derivato dai nomi, non ricopiato: era il terzo elenco degli stessi tipi e
+// l'unico che TypeScript non poteva controllare, perche' una `Set` di stringhe
+// resta valida anche se e' incompleta. Un tipo dimenticato qui non avrebbe dato
+// errore di compilazione: avrebbe solo fatto rifiutare dall'API un grafico che
+// l'interfaccia mostra.
+const TIPI_GRAFICO = new Set<TipoGrafico>(Object.keys(NOMI_GRAFICI) as TipoGrafico[]);
 
 function graficoValido(valore: unknown): valore is TipoGrafico {
   return typeof valore === "string" && TIPI_GRAFICO.has(valore as TipoGrafico);
