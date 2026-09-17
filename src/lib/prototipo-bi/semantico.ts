@@ -376,6 +376,64 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
 };
 
 /** Descrizione del vocabolario, da passare all'AI come contesto. */
+export interface ValoreDimensione {
+  valore: string;
+  righe: number;
+  importo: number;
+}
+
+/**
+ * I valori che una dimensione contiene davvero, ordinati per peso.
+ *
+ * Serve a chiudere il buco fra "so quali dimensioni esistono" e "so cosa
+ * scrivere in un filtro". Il vocabolario dice che esiste `cliente`; non dice
+ * che quel cliente nel gestionale si chiama "TECNA spa" e non "Tecna S.p.A.".
+ * Un filtro che sbaglia la grafia torna vuoto senza errore, e un risultato
+ * vuoto somiglia moltissimo a «quel cliente non ha comprato».
+ *
+ * Si guarda tutto lo snapshot e non un dataset solo: un cliente puo' comparire
+ * nel fatturato e non nell'ordinato, e chi fa la domanda non sa in quale dei
+ * due vive.
+ */
+export function elencaValoriDimensione(
+  snapshot: Snapshot,
+  dimensione: Dimensione,
+  opzioni: { contiene?: string; massimo?: number } = {}
+): { distinti: number; valori: ValoreDimensione[] } {
+  const estrattore = DIMENSIONI[dimensione];
+  if (!estrattore) throw new SpecNonValida(
+    `Dimensione "${dimensione}" non esiste.`,
+    `Disponibili: ${Object.keys(DIMENSIONI).join(", ")}.`
+  );
+
+  const cerca = (opzioni.contiene ?? "").trim().toLowerCase();
+  const massimo = Math.max(1, Math.min(200, Math.floor(Number(opzioni.massimo) || 40)));
+
+  const peso = new Map<string, { righe: number; importo: number }>();
+  for (const righe of Object.values(snapshot.dataset)) {
+    for (const r of righe) {
+      const v = estrattore.estrai(r);
+      if (!v) continue;
+      if (cerca && !v.toLowerCase().includes(cerca)) continue;
+      const voce = peso.get(v) ?? { righe: 0, importo: 0 };
+      voce.righe += 1;
+      voce.importo += r.importo;
+      peso.set(v, voce);
+    }
+  }
+
+  const ordinati = [...peso.entries()].sort((x, y) => y[1].importo - x[1].importo);
+  return {
+    distinti: ordinati.length,
+    // La grafia e' il punto: va riportata esattamente come sta nel dato.
+    valori: ordinati.slice(0, massimo).map(([valore, v]) => ({
+      valore,
+      righe: v.righe,
+      importo: Math.round(v.importo),
+    })),
+  };
+}
+
 export function vocabolario() {
   const dimensioniAmmesse = Object.fromEntries(
     Object.keys(CATALOGO).map((chiave) => [
@@ -411,7 +469,21 @@ export function vocabolario() {
 // Validazione: perimetro chiuso
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class SpecNonValida extends Error {}
+/**
+ * Spec rifiutata, con l'indicazione di cosa usare al posto di cosa.
+ *
+ * Il suggerimento non e' cortesia: e' l'analista che legge questi messaggi, e
+ * «Dimensione "fornitore" non esiste» lo lascia a indovinare quali esistano.
+ * Con l'elenco davanti corregge al passo dopo invece di bruciarne tre.
+ */
+export class SpecNonValida extends Error {
+  readonly suggerimento: string | null;
+  constructor(messaggio: string, suggerimento: string | null = null) {
+    super(messaggio);
+    this.name = "SpecNonValida";
+    this.suggerimento = suggerimento;
+  }
+}
 
 export function validaSpec(spec: unknown): SpecQuery {
   if (!spec || typeof spec !== "object") throw new SpecNonValida("Spec assente.");
@@ -420,7 +492,9 @@ export function validaSpec(spec: unknown): SpecQuery {
   const metrica = String(s.metrica ?? "") as ChiaveMetrica;
   if (!CATALOGO[metrica]) {
     throw new SpecNonValida(
-      `Metrica "${String(s.metrica)}" non esiste. Disponibili: ${Object.keys(CATALOGO).join(", ")}.`
+      `Metrica "${String(s.metrica)}" non esiste.`,
+      `Disponibili: ${Object.keys(CATALOGO).join(", ")}. ` +
+        "Se nessuna esprime la domanda, dillo apertamente invece di ripiegare su una vicina."
     );
   }
 
@@ -439,10 +513,23 @@ export function validaSpec(spec: unknown): SpecQuery {
     throw new SpecNonValida(`Granularità "${granularita}" non valida.`);
   }
 
+  // Le dimensioni sensate per questa metrica, per poterle nominare nei rifiuti.
+  // Non si RESTRINGE a queste: le analisi gia' salvate nelle dashboard usano
+  // combinazioni che oggi passano, e trasformarle in errori le romperebbe in
+  // blocco. Dove il raggruppamento produce davvero un numero sbagliato — budget
+  // e BEP oltre business unit e agente — l'avviso lo mette `risolviBudget`.
+  const suggerite = dimensioniPerMetrica(metrica).join(", ");
+  const tutte = Object.keys(DIMENSIONI).join(", ");
+
   const raggruppa = Array.isArray(s.raggruppa)
     ? s.raggruppa.map((d) => {
         const dim = String(d) as Dimensione;
-        if (!DIMENSIONI[dim]) throw new SpecNonValida(`Dimensione "${d}" non esiste.`);
+        if (!DIMENSIONI[dim]) {
+          throw new SpecNonValida(
+            `Dimensione "${d}" non esiste.`,
+            `Per la metrica "${metrica}" hanno senso: ${suggerite}. Esistenti in tutto: ${tutte}.`
+          );
+        }
         return dim;
       })
     : [];
@@ -451,10 +538,19 @@ export function validaSpec(spec: unknown): SpecQuery {
     ? s.filtri.map((f) => {
         const ff = f as Record<string, unknown>;
         const campo = String(ff.campo ?? "") as Dimensione;
-        if (!DIMENSIONI[campo]) throw new SpecNonValida(`Filtro su dimensione "${ff.campo}" non esiste.`);
+        if (!DIMENSIONI[campo]) {
+          throw new SpecNonValida(
+            `Filtro su dimensione "${ff.campo}" non esiste.`,
+            `Per la metrica "${metrica}" hanno senso: ${suggerite}. Esistenti in tutto: ${tutte}. ` +
+              "Per sapere quali valori contiene una dimensione usa elenca_valori."
+          );
+        }
         const op = String(ff.op ?? "eq") as Filtro["op"];
         if (!["eq", "neq", "in", "contiene"].includes(op)) {
-          throw new SpecNonValida(`Operatore filtro "${op}" non valido.`);
+          throw new SpecNonValida(
+            `Operatore filtro "${op}" non valido.`,
+            'Operatori ammessi: eq, neq, in, contiene. Per un confronto parziale usa "contiene".'
+          );
         }
         return { campo, op, valore: (ff.valore ?? "") as string | string[] };
       })

@@ -19,12 +19,20 @@
  *    con sole SELECT/WITH, timeout, limite righe e viste in allowlist.
  */
 
-import { esegui, validaSpec, vocabolario, formattaEuro } from "./semantico";
+import {
+  esegui,
+  validaSpec,
+  vocabolario,
+  formattaEuro,
+  DIMENSIONI,
+  SpecNonValida,
+  elencaValoriDimensione,
+} from "./semantico";
 import { calcolaPrevisione, type Previsione } from "./previsione";
 import { instrada, calcolaCosto, MODELLI, type Complessita, type Consumo } from "./modelli";
 import { leggiConfigurazione } from "./archivio";
 import { chiusureEffettive } from "./chiusure-dedotte";
-import { eseguiSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
+import { eseguiSqlBi, ErroreSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
 import { graficiPossibili, scegliGrafico, type TipoGrafico } from "./scelta-grafico";
 import { validaSerieAnalisi } from "./analisi-composita";
 import { calcolaPunteggi, costruisciContesto, rilevaTutto } from "./rilevatori";
@@ -408,6 +416,32 @@ const STRUMENTI_TUTTI = [
   {
     type: "function",
     function: {
+      name: "elenca_valori",
+      description:
+        "Elenca i valori realmente presenti in una dimensione (clienti, agenti, business unit, " +
+        "categorie, articoli, addetti), con quanto pesano. Usalo PRIMA di filtrare su un nome: " +
+        "la grafia del gestionale non e' quella del parlato, e un filtro che sbaglia una lettera " +
+        "torna vuoto senza dire perche'.",
+      parameters: {
+        type: "object",
+        properties: {
+          dimensione: {
+            type: "string",
+            enum: ["bu", "agente", "cliente", "categoria", "causale", "articolo", "creatore", "esito", "fascia_eta"],
+          },
+          contiene: {
+            type: "string",
+            description: "Filtra i valori che contengono questo testo (senza distinzione di maiuscole)",
+          },
+          massimo: { type: "number", description: "Quanti valori restituire, predefinito 40" },
+        },
+        required: ["dimensione"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "proponi_analisi",
       description:
         "Crea un'analisi visuale certificata, già eseguita, con il grafico più adatto. " +
@@ -596,6 +630,12 @@ STRUMENTI
   obiettivo" proponi UNA sola analisi con più serie e ruoli, mai analisi separate
   che costringano chi legge a confrontare grafici diversi a mente.
 - interroga_metrica: usalo quando serve solo un numero dentro una frase.
+- elenca_valori: PRIMA di filtrare su un nome proprio (cliente, agente, articolo,
+  addetto). La grafia del gestionale non è quella del parlato — ragioni sociali
+  abbreviate, maiuscole incoerenti, doppi spazi — e un filtro che sbaglia una
+  lettera torna vuoto senza dire perché, il che somiglia moltissimo a "quel
+  cliente non ha comprato". Cerca il nome con il parametro "contiene", poi
+  filtra con la grafia esatta che ti è stata restituita.
 ${strumentiSql}- prevedi_chiusura_anno: per ogni stima di fine anno. NON calcolare proiezioni
   a mente: sbaglieresti e nessuno potrebbe rifare il conto.
 - prepara_documento: quando serve un file Excel o Word.
@@ -621,6 +661,12 @@ TRAPPOLE DI QUESTI DATI — sono errori già commessi, non ipotesi
 - La business unit "(non assegnata)" è dato mancante, non una divisione.
 - Il tasso di conversione è un rapporto fra totali, non la media dei tassi.
 - L'anzianità dei preventivi riguarda solo le righe con inevaso residuo.
+
+QUANDO UNO STRUMENTO TI RIFIUTA
+La risposta di errore può contenere un campo "suggerimento": leggilo e correggi
+di conseguenza al passo successivo, invece di riprovare la stessa cosa o di
+ripiegare su una metrica diversa da quella che serviva. Se il suggerimento non
+basta, dichiara cosa non sei riuscito a ottenere.
 
 LIMITI
 - NON IPOTIZZARE LE CAUSE. Puoi dire dove si concentra uno scostamento, perché
@@ -1146,6 +1192,44 @@ export async function chiediAnalista(opzioni: {
       });
     }
 
+    if (nome === "elenca_valori") {
+      const a = arg as { dimensione?: string; contiene?: string; massimo?: number };
+      const chiave = String(a.dimensione ?? "") as Dimensione;
+      const estrattore = DIMENSIONI[chiave];
+      if (!estrattore) {
+        return JSON.stringify({
+          errore: `Dimensione "${a.dimensione}" non esiste.`,
+          suggerimento: `Disponibili: ${Object.keys(DIMENSIONI).join(", ")}.`,
+        });
+      }
+
+      const esito = elencaValoriDimensione(snapshot, chiave, {
+        contiene: a.contiene,
+        massimo: a.massimo,
+      });
+
+      passi.push({
+        tipo: "interrogazione",
+        descrizione:
+          `valori di ${estrattore.etichetta}` +
+          `${a.contiene ? ` che contengono "${a.contiene}"` : ""}: ${esito.distinti}`,
+        righe: esito.distinti,
+      });
+
+      return JSON.stringify({
+        dimensione: chiave,
+        etichetta: estrattore.etichetta,
+        distinti: esito.distinti,
+        mostrati: esito.valori.length,
+        valori: esito.valori,
+        nota:
+          esito.valori.length < esito.distinti
+            ? `Mostrati i ${esito.valori.length} di maggior peso su ${esito.distinti}. ` +
+              'Restringi con "contiene" se cerchi un nome preciso.'
+            : "Elenco completo.",
+      });
+    }
+
     if (nome === "interroga_metrica") {
       const spec = validaSpec(arg);
       const res = esegui(spec, snapshot);
@@ -1445,8 +1529,19 @@ export async function chiediAnalista(opzioni: {
         risultato = await eseguiStrumento(tc.function.name, tc.function.arguments);
       } catch (e) {
         const messaggio = e instanceof Error ? e.message : String(e);
-        passi.push({ tipo: "errore", descrizione: messaggio });
-        risultato = JSON.stringify({ errore: messaggio });
+        // Il suggerimento e' la differenza fra un rifiuto e un'indicazione.
+        // «Funzione SQL non autorizzata: where» non dice al modello cosa fare,
+        // e il ciclo bruciava passi a riprovare a caso finche' non ripiegava su
+        // una metrica piu' debole. Gli errori che ne portano uno lo espongono.
+        const suggerimento =
+          e instanceof ErroreSqlBi || e instanceof SpecNonValida ? e.suggerimento : null;
+        passi.push({
+          tipo: "errore",
+          descrizione: suggerimento ? `${messaggio} ${suggerimento}` : messaggio,
+        });
+        risultato = JSON.stringify(
+          suggerimento ? { errore: messaggio, suggerimento } : { errore: messaggio }
+        );
       }
       messaggi.push({
         role: "tool",

@@ -331,7 +331,16 @@ export function risolviBudget(
       let v: string | null = null;
       if (d === "bu") v = r.area;
       else if (d === "agente") v = r.agente;
-      if (v === null) continue;
+      if (v === null) {
+        // Il budget esiste per area e agente, non per cliente, articolo o
+        // categoria. Prima questo `continue` era muto: chiedere il budget per
+        // cliente restituiva il TOTALE su una riga sola, etichettata "totale",
+        // che sembra un risultato valido e non lo e'. Il filtro sulle stesse
+        // dimensioni l'avviso ce l'aveva gia'; il raggruppamento no.
+        const avviso = `Il budget non e' definito per dimensione "${d}": il raggruppamento e' stato ignorato e il valore resta aggregato.`;
+        if (!avvisi.includes(avviso)) avvisi.push(avviso);
+        continue;
+      }
       chiavi[d] = v;
       parti.push(v);
     }
