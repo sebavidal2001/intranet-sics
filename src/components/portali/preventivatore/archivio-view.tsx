@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
-import { Search, ChevronDown, Loader2, FileText, AlertCircle, Sparkles, X, ArrowUpDown, ArrowUp, ArrowDown, SlidersHorizontal } from "lucide-react"
+import { Search, ChevronDown, FileText, AlertCircle, Sparkles, X, ArrowUpDown, ArrowUp, ArrowDown, SlidersHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -12,13 +12,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
 import { formattaNomeCliente } from "@/lib/portali/preventivatore/testo"
 import { badgeStato, type StatoDocumento } from "@/lib/portali/preventivatore/stati"
 
@@ -169,16 +162,7 @@ export function ArchivioView() {
   const [destinazioniDisponibili, setDestinazioniDisponibili] = useState<Destinazione[]>([])
 
   // Modal stato
-  const [modalOrdinato, setModalOrdinato] = useState<string | null>(null)
-  const [codiciArticolo, setCodiciArticolo] = useState("")
-  const [noteOrdinato, setNoteOrdinato] = useState("")
-  const [importoOrdinato, setImportoOrdinato] = useState("")
 
-  const [modalRifiutato, setModalRifiutato] = useState<string | null>(null)
-  const [motiviRifiuto, setMotiviRifiuto] = useState<MotivoRifiuto[]>([])
-  const [motivoSelezionato, setMotivoSelezionato] = useState("")
-  const [noteRifiutato, setNoteRifiutato] = useState("")
-  const [savingStato, setSavingStato] = useState(false)
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null)
 
   // ── Carica clienti unici ─────────────────────────────────────────────────────
@@ -301,70 +285,6 @@ export function ArchivioView() {
     (filtroDestinazione ? 1 : 0) +
     (importoMin ? 1 : 0) +
     (importoMax ? 1 : 0)
-
-  // ── Stato modal ─────────────────────────────────────────────────────────────
-  const fetchMotiviRifiuto = async () => {
-    if (motiviRifiuto.length > 0) return
-    try {
-      const res = await fetch("/api/portali/preventivatore/motivi-rifiuto")
-      if (res.ok) setMotiviRifiuto(await res.json())
-    } catch {}
-  }
-
-  const openModalRifiutato = async (id: string) => {
-    setModalRifiutato(id); setMotivoSelezionato(""); setNoteRifiutato("")
-    await fetchMotiviRifiuto()
-  }
-
-  const openModalOrdinato = (id: string) => {
-    setModalOrdinato(id); setCodiciArticolo(""); setNoteOrdinato(""); setImportoOrdinato("")
-  }
-
-  const aggiornaStato = async (id: string, stato: StatoDocumento, extra: Record<string, unknown> = {}) => {
-    setSavingStato(true)
-    try {
-      const res = await fetch(`/api/portali/preventivatore/documenti/${id}/stato`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stato, ...extra }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.error ?? "Errore aggiornamento stato")
-      }
-      // Aggiorna locale (sia AI mode che lista)
-      if (aiMode) {
-        setAiResults((prev) => prev?.map((r) => r.documento_id === id ? { ...r, stato } : r) ?? null)
-      } else {
-        setData((prev) => prev ? { ...prev, items: prev.items.map((r) => r.id === id ? { ...r, stato } : r) } : prev)
-      }
-      setFeedbackMsg("Stato aggiornato con successo")
-      setTimeout(() => setFeedbackMsg(null), 3000)
-    } catch (err) {
-      setFeedbackMsg(`Errore: ${err instanceof Error ? err.message : "Sconosciuto"}`)
-      setTimeout(() => setFeedbackMsg(null), 4000)
-    } finally {
-      setSavingStato(false); setModalOrdinato(null); setModalRifiutato(null)
-    }
-  }
-
-  const salvaOrdinato = () => {
-    if (!modalOrdinato) return
-    const parsedImporto = parseFloat(importoOrdinato)
-    aggiornaStato(modalOrdinato, "ordinato", {
-      codici_articolo: codiciArticolo.split(",").map((c) => c.trim()).filter(Boolean),
-      note: noteOrdinato || undefined,
-      importo_ordinato: !isNaN(parsedImporto) && parsedImporto > 0 ? parsedImporto : undefined,
-    })
-  }
-
-  const salvaRifiutato = () => {
-    if (!modalRifiutato || !motivoSelezionato) return
-    aggiornaStato(modalRifiutato, "rifiutato", {
-      motivo_rifiuto_id: motivoSelezionato,
-      note: noteRifiutato || undefined,
-    })
-  }
 
   // ── Header sort handler ─────────────────────────────────────────────────────
   const toggleSort = (field: SortField) => {
@@ -698,21 +618,6 @@ export function ArchivioView() {
                       </p>
                     )}
 
-                    <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" className="gap-1 text-xs">
-                            Azioni
-                            <ChevronDown className="w-3 h-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                          <DropdownMenuItem onSelect={() => openModalOrdinato(r.id)}>Segna come Ordinato</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => openModalRifiutato(r.id)}>Segna come Rifiutato</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => aggiornaStato(r.id, "pending")}>Lascia Pending</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
                   </div>
                 )
               })}
@@ -751,58 +656,6 @@ export function ArchivioView() {
             </div>
           )}
 
-          {/* Modal: Ordinato */}
-          <Dialog open={!!modalOrdinato} onOpenChange={() => setModalOrdinato(null)}>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Segna come Ordinato</DialogTitle></DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="codici">Codici articolo <span className="text-text-muted font-normal">(separati da virgola)</span></Label>
-                  <Input id="codici" value={codiciArticolo} onChange={(e) => setCodiciArticolo(e.target.value)} placeholder="ART001, ART002, ..." className="mt-1" />
-                </div>
-                <div>
-                  <Label htmlFor="importo-ordinato">Importo concordato (€) <span className="text-text-muted font-normal">opzionale</span></Label>
-                  <Input id="importo-ordinato" type="number" step="0.01" min="0" value={importoOrdinato} onChange={(e) => setImportoOrdinato(e.target.value)} placeholder="es. 4800.00" className="mt-1" />
-                </div>
-                <div>
-                  <Label htmlFor="note-ordinato">Note</Label>
-                  <textarea id="note-ordinato" value={noteOrdinato} onChange={(e) => setNoteOrdinato(e.target.value)} rows={3} className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-text placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40 resize-none" placeholder="Note aggiuntive..." />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setModalOrdinato(null)}>Annulla</Button>
-                  <Button onClick={salvaOrdinato} disabled={savingStato} style={{ backgroundColor: "#00a1be" }} className="text-white hover:opacity-90">
-                    {savingStato ? <Loader2 className="w-4 h-4 animate-spin" /> : "Conferma"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* Modal: Rifiutato */}
-          <Dialog open={!!modalRifiutato} onOpenChange={() => setModalRifiutato(null)}>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Segna come Rifiutato</DialogTitle></DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="motivo">Motivo rifiuto</Label>
-                  <select id="motivo" value={motivoSelezionato} onChange={(e) => setMotivoSelezionato(e.target.value)} className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40">
-                    <option value="">Seleziona un motivo...</option>
-                    {motiviRifiuto.map((m) => (<option key={m.id} value={m.id}>{m.label}</option>))}
-                  </select>
-                </div>
-                <div>
-                  <Label htmlFor="note-rifiutato">Note</Label>
-                  <textarea id="note-rifiutato" value={noteRifiutato} onChange={(e) => setNoteRifiutato(e.target.value)} rows={3} className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-text placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40 resize-none" placeholder="Note aggiuntive..." />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setModalRifiutato(null)}>Annulla</Button>
-                  <Button onClick={salvaRifiutato} disabled={savingStato || !motivoSelezionato} className="bg-red-600 text-white hover:bg-red-700">
-                    {savingStato ? <Loader2 className="w-4 h-4 animate-spin" /> : "Conferma rifiuto"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
 
         <ChatAI contesto="archivio" />

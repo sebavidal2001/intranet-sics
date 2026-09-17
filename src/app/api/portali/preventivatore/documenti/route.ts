@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     // Filtro "io commerciale vedo solo i miei clienti" (vedi api-guard/ruoli).
-    // Trasparente per admin/back_office/preventivatore o per utenti senza ruolo commerciale.
+    // Trasparente per admin/preventivatore o per utenti senza ruolo commerciale.
     query = scoped(query);
 
     // Il filtro accetta sia un gruppo (in_lavorazione/ordinato/rifiutato/...)

@@ -8,7 +8,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const PREVENTIVATORE_RUOLI = {
   commerciale: "commerciale",
   preventivatore: "preventivatore",
-  back_office: "back_office",
 } as const;
 
 export type PreventivatoreRuoloSlug =
@@ -103,9 +102,7 @@ export function filtroCommercialeFromContext(
 ): string | null {
   if (ctx.livello === "admin" || ctx.livello === "superadmin") return null;
   const isCommerciale = ctx.ruoli.includes(PREVENTIVATORE_RUOLI.commerciale);
-  const haAccessoTotale =
-    ctx.ruoli.includes(PREVENTIVATORE_RUOLI.preventivatore) ||
-    ctx.ruoli.includes(PREVENTIVATORE_RUOLI.back_office);
+  const haAccessoTotale = ctx.ruoli.includes(PREVENTIVATORE_RUOLI.preventivatore);
   if (!isCommerciale || haAccessoTotale) return null;
   // Fail-closed: un commerciale senza codice agente NON vede tutto, vede zero.
   // Vedi il commento in `getFiltroCommerciale`.
@@ -147,7 +144,7 @@ export async function haRuoloFunzionaleAsync(
 /**
  * Decide se applicare il filtro "vedi solo i miei clienti" all'utente:
  * - L'utente DEVE avere il ruolo funzionale 'commerciale'
- * - E NON deve avere ruoli che gli danno accesso totale (preventivatore, back_office)
+ * - E NON deve avere ruoli che gli danno accesso totale (preventivatore)
  * - E deve avere un `preventivatore_agente_codice` assegnato
  *
  * Returns null se NON filtrare (l'utente vede tutto), altrimenti il codice agente
@@ -166,9 +163,7 @@ export async function getFiltroCommerciale(
 
   const ruoli = await getRuoliFunzionali(userId);
   const isCommerciale = ruoli.includes(PREVENTIVATORE_RUOLI.commerciale);
-  const haAccessoTotale =
-    ruoli.includes(PREVENTIVATORE_RUOLI.preventivatore) ||
-    ruoli.includes(PREVENTIVATORE_RUOLI.back_office);
+  const haAccessoTotale = ruoli.includes(PREVENTIVATORE_RUOLI.preventivatore);
 
   if (!isCommerciale || haAccessoTotale) return null;
 
@@ -206,7 +201,7 @@ export async function getIdClientiVisibili(agenteCodice: string): Promise<string
  * leggono dati preventivi (lista, dettaglio, stats, dashboard, BI, tool AI) per
  * applicare in modo coerente il filtro "vedo solo i miei clienti".
  *
- * - `restricted = false` → l'utente vede tutto (admin/back_office/preventivatore o
+ * - `restricted = false` → l'utente vede tutto (admin/preventivatore o
  *   commerciale senza codice). `clienteIds` ignorato.
  * - `restricted = true`  → commerciale ristretto: `clienteIds` = cliente_master_id
  *   visibili (clienti del suo agente + AIRFLUID). Può essere vuoto (= vede 0 record).

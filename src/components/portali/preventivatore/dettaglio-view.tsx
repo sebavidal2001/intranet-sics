@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DocumentoWordDialog } from "./documento-word-dialog";
 import { MarkdownLight } from "./markdown-light";
 import { CorreggiTotaliDialog } from "./correggi-totali-dialog";
-import { WorkflowActions } from "./workflow-actions";
+import { ConfermaDefinitivo } from "./conferma-definitivo";
 import { formattaNomeCliente, capitalizzaDescrizione } from "@/lib/portali/preventivatore/testo";
 import { badgeStato, STATI_NON_MODIFICABILI } from "@/lib/portali/preventivatore/stati";
 import {
@@ -405,16 +405,11 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
           )}
         </div>
 
-        {/* Workflow actions (solo per preventivi 'generato' con stato workflow attivo) */}
-        <WorkflowActions
+        {/* Bozza ⇄ definitivo: gli unici due stati vivi del preventivo. */}
+        <ConfermaDefinitivo
           documentoId={documento.id}
           statoCorrente={documento.stato}
           tipo={documento.tipo}
-          importoCorrente={
-            documento.importo_preventivo != null
-              ? Number(documento.importo_preventivo)
-              : null
-          }
         />
 
         {/* Stato note + motivo rifiuto */}

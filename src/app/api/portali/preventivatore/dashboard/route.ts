@@ -76,7 +76,7 @@ export async function GET() {
     const sb = admin.schema("preventivatore");
 
     // Filtro commerciale ristretto: tutte le RPC dashboard accettano p_agente_codice
-    // (migration 053). NULL = aggregati globali (admin/back_office/preventivatore).
+    // (migration 053). NULL = aggregati globali (admin/preventivatore).
     const agenteCommerciale = scopeAgente(ctx);
 
     const [kpiRes, topClientiRes, serieRes, serieCategorieRes, topArticoliRes, attivitaRes, usageRes] = await Promise.all([

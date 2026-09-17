@@ -13,32 +13,38 @@ import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
-// ── Transizioni workflow valide ────────────────────────────────────────────
-// stato_corrente → array di stati raggiungibili.
-// Da uno stato "finale" (ordinata/fallita/storico) NON si torna indietro.
+// ── Transizioni valide ─────────────────────────────────────────────────────
+// stato_corrente → stati raggiungibili.
+//
+// Dal 17/09/2026 il portale fa SOLO PREVENTIVI: restano due stati, `aperta`
+// (bozza) e `completato` (definitivo), e si va avanti e indietro fra i due.
+// Il ciclo offerta→esito (`inviata` → `ordinata`/`fallita`) è stato rimosso:
+// non è mai entrato in servizio — zero documenti in quegli stati, e nemmeno un
+// pulsante per entrare in `presa_in_carico` — mentre l'esito vero (conversione,
+// giorni di risposta, carico back office) lo produce già il gestionale.
+//
+// Gli stati vecchi restano ELENCATI, non raggiungibili: se un documento ne
+// porta uno deve continuare a mostrarsi e a non muoversi.
 const TRANSIZIONI_VALIDE: Record<string, string[]> = {
-  aperta:          ["presa_in_carico", "completato"],
-  presa_in_carico: ["aperta", "completato"],            // rollback ammesso
-  completato:      ["presa_in_carico", "inviata"],     // rollback ammesso prima invio
-  inviata:         ["ordinata", "fallita"],
-  // Stati finali (ammessi solo da chi ha accesso totale admin)
+  aperta:          ["completato"],
+  completato:      ["aperta"],   // si torna in bozza finché non è uscito niente
+  // Stati non più raggiungibili: nessuna transizione in uscita.
+  presa_in_carico: [],
+  inviata:         [],
   ordinata:        [],
   fallita:         [],
   storico:         [],
-  // Legacy V2 (compat)
+  // Legacy V2 (compat con i documenti importati)
   pending:         [],
   ordinato:        [],
   rifiutato:       [],
 };
 
-// Ruoli funzionali ammessi per ogni transizione di stato (target)
+// Ruoli funzionali ammessi per ogni transizione di stato (target).
+// Restano solo i due stati vivi, ed è sempre il preventivatore a muoverli.
 const RUOLI_PER_STATO_TARGET: Record<string, string[]> = {
-  presa_in_carico: [PREVENTIVATORE_RUOLI.preventivatore],
-  completato:      [PREVENTIVATORE_RUOLI.preventivatore],
-  inviata:         [PREVENTIVATORE_RUOLI.back_office],
-  ordinata:        [PREVENTIVATORE_RUOLI.back_office],
-  fallita:         [PREVENTIVATORE_RUOLI.back_office],
-  aperta:          [PREVENTIVATORE_RUOLI.preventivatore, PREVENTIVATORE_RUOLI.back_office, PREVENTIVATORE_RUOLI.commerciale],
+  aperta:     [PREVENTIVATORE_RUOLI.preventivatore],
+  completato: [PREVENTIVATORE_RUOLI.preventivatore],
 };
 
 /**
@@ -52,16 +58,17 @@ const RUOLI_PER_STATO_TARGET: Record<string, string[]> = {
  * Body: {
  *   stato: <stato>,
  *   codici_articolo?: string[],
- *   motivo_rifiuto_id?: string,        // obbligatorio per fallita/rifiutato
  *   note?: string,                      // salvata su stato_note
- *   importo_ordinato?: number,          // per ordinato (legacy)
- *   numero_preventivo?: string,         // per inviata (PC N°)
- *   importo_offerta?: number,           // per inviata (importo confermato)
- *   note_offerta?: string,              // motivo scostamento vs importo_preventivo
  * }
  *
- * Auth: serve livello >= 'admin' sul portale preventivatore. (In futuro
- * affineremo con ruoli funzionali commerciale/preventivatore/back_office.)
+ * Auth: livello di portale non nullo per vedere il preventivatore, ruolo
+ * funzionale `preventivatore` (o admin/superadmin) per muovere lo stato.
+ *
+ * I campi del ciclo offerta (`numero_preventivo`, `importo_offerta`,
+ * `note_offerta`, `motivo_rifiuto_id`, `importo_ordinato`) non sono più
+ * accettati: il ciclo è stato rimosso. Le colonne restano in tabella — tre
+ * documenti storici hanno un `numero_preventivo` valorizzato dall'import V2 —
+ * ma nessuno le scrive più da qui.
  */
 
 const STATI_VALIDI = [
@@ -75,12 +82,7 @@ const STATI_VALIDI = [
 const StatoBodySchema = z.object({
   stato: z.enum(STATI_VALIDI),
   codici_articolo: z.array(z.string().trim().max(64)).max(500).optional(),
-  motivo_rifiuto_id: z.string().uuid().optional(),
   note: z.string().trim().max(4000).optional(),
-  importo_ordinato: z.number().finite().min(0).max(100_000_000).optional(),
-  numero_preventivo: z.string().trim().max(64).optional(),
-  importo_offerta: z.number().finite().min(0).max(100_000_000).optional(),
-  note_offerta: z.string().trim().max(4000).optional(),
 });
 
 export async function PATCH(
@@ -136,8 +138,7 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    const { stato, codici_articolo, motivo_rifiuto_id, note, importo_ordinato,
-            numero_preventivo, importo_offerta, note_offerta } = parsed.data;
+    const { stato, codici_articolo, note } = parsed.data;
 
     // ── Validazione transizione workflow ────────────────────────────────────
     // Se stato corrente è uno workflow nuovo, controlla che la transizione sia valida.
@@ -181,32 +182,17 @@ export async function PATCH(
         }, { status: 403 });
       }
     } else if (livello !== "admin" && livello !== "superadmin") {
-      // Stati senza ruolo mappato (legacy: pending/ordinato/rifiutato/storico):
-      // restano riservati agli admin, come prima.
+      // Stati senza ruolo mappato: ormai sono tutti quelli non più
+      // raggiungibili (legacy V2, storico, e i residui del ciclo offerta).
+      // Restano riservati agli admin, come prima.
       return NextResponse.json(
         { error: `Lo stato '${stato}' può essere impostato solo da un admin del portale.` },
         { status: 403 }
       );
     }
 
-    // Validazioni per stati specifici
-    if ((stato === "rifiutato" || stato === "fallita") && !motivo_rifiuto_id) {
-      return NextResponse.json({ error: "Motivo rifiuto obbligatorio" }, { status: 400 });
-    }
-    if (stato === "inviata" && !numero_preventivo?.trim()) {
-      return NextResponse.json(
-        { error: "Numero preventivo obbligatorio per stato 'inviata'" },
-        { status: 400 }
-      );
-    }
     if (codici_articolo !== undefined && !Array.isArray(codici_articolo)) {
       return NextResponse.json({ error: "Codici articolo non validi" }, { status: 400 });
-    }
-    if (importo_ordinato !== undefined && typeof importo_ordinato !== "number") {
-      return NextResponse.json({ error: "Importo ordinato non valido" }, { status: 400 });
-    }
-    if (importo_offerta !== undefined && typeof importo_offerta !== "number") {
-      return NextResponse.json({ error: "Importo offerta non valido" }, { status: 400 });
     }
 
     const updatePayload: Record<string, unknown> = {
@@ -216,27 +202,7 @@ export async function PATCH(
     };
 
     if (codici_articolo !== undefined) updatePayload.codici_articolo = codici_articolo;
-    if (motivo_rifiuto_id !== undefined) updatePayload.motivo_rifiuto_id = motivo_rifiuto_id;
     if (note !== undefined) updatePayload.stato_note = note;
-
-    // Legacy: importo_ordinato si applica a 'ordinato'
-    if (stato === "ordinato" && importo_ordinato !== undefined && importo_ordinato > 0) {
-      updatePayload.importo_ordinato = importo_ordinato;
-    }
-
-    // Workflow: inviata → setta numero_preventivo + importo_offerta + note_offerta
-    if (stato === "inviata") {
-      updatePayload.numero_preventivo = numero_preventivo?.trim();
-      if (typeof importo_offerta === "number" && importo_offerta > 0) {
-        updatePayload.importo_offerta = importo_offerta;
-      }
-      if (note_offerta !== undefined) updatePayload.note_offerta = note_offerta;
-    }
-
-    // Workflow: ordinata → si può fissare un importo_ordinato come per legacy
-    if (stato === "ordinata" && importo_ordinato !== undefined && importo_ordinato > 0) {
-      updatePayload.importo_ordinato = importo_ordinato;
-    }
 
     const adminClient = createAdminClient();
     const { error } = await adminClient

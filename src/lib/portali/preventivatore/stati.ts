@@ -15,6 +15,13 @@
 
 export const STATI_LEGACY = ["pending", "ordinato", "rifiutato"] as const;
 
+/**
+ * Stati del workflow (migration 039). Dal 17/09/2026 il portale fa **solo
+ * preventivi**: gli unici stati che si possono ancora raggiungere sono
+ * `aperta` (bozza) e `completato` (definitivo). Gli altri restano elencati
+ * perché esistono nei dati e vanno saputi mostrare, ma nessuna transizione
+ * ci porta più — vedi `documenti/[id]/stato/route.ts`.
+ */
 export const STATI_WORKFLOW = [
   "storico",
   "aperta",
@@ -24,6 +31,10 @@ export const STATI_WORKFLOW = [
   "ordinata",
   "fallita",
 ] as const;
+
+/** Gli unici due stati vivi: bozza e definitivo. */
+export const STATO_BOZZA = "aperta";
+export const STATO_DEFINITIVO = "completato";
 
 export type StatoDocumento =
   | (typeof STATI_LEGACY)[number]
@@ -36,8 +47,12 @@ export const STATI_TUTTI: readonly string[] = [...STATI_LEGACY, ...STATI_WORKFLO
  * generazioni, così un filtro non sparisce a seconda di come è nato il documento.
  */
 export const GRUPPI_STATO = {
-  in_lavorazione: ["aperta", "presa_in_carico", "completato", "pending"],
-  inviata: ["inviata"],
+  bozza: ["aperta", "presa_in_carico", "pending"],
+  definitivo: ["completato"],
+  // Restano per i documenti nati dall'import V2, che usa questi stati. Nessuna
+  // azione del portale li produce più: il ciclo offerta→esito è stato rimosso
+  // perché non è mai entrato in servizio (zero documenti in quegli stati) e
+  // perché l'esito vero lo tiene il gestionale.
   ordinato: ["ordinato", "ordinata"],
   rifiutato: ["rifiutato", "fallita"],
   storico: ["storico"],
@@ -45,7 +60,11 @@ export const GRUPPI_STATO = {
 
 export type GruppoStato = keyof typeof GRUPPI_STATO;
 
-export const STATI_IN_LAVORAZIONE: readonly string[] = GRUPPI_STATO.in_lavorazione;
+export const STATI_IN_LAVORAZIONE: readonly string[] = [
+  ...GRUPPI_STATO.bozza,
+  ...GRUPPI_STATO.definitivo,
+  "inviata",
+];
 export const STATI_ORDINATO: readonly string[] = GRUPPI_STATO.ordinato;
 export const STATI_RIFIUTATO: readonly string[] = GRUPPI_STATO.rifiutato;
 
@@ -71,7 +90,7 @@ export const BADGE_STATO: Record<StatoDocumento, { label: string; className: str
   storico: { label: "Archivio storico", className: "bg-slate-100 text-slate-700 border-slate-200" },
   aperta: { label: "Aperta", className: "bg-slate-100 text-slate-700 border-slate-200" },
   presa_in_carico: { label: "Presa in carico", className: "bg-blue-100 text-blue-800 border-blue-200" },
-  completato: { label: "Pronto per offerta", className: "bg-violet-100 text-violet-800 border-violet-200" },
+  completato: { label: "Definitivo", className: "bg-violet-100 text-violet-800 border-violet-200" },
   inviata: { label: "Offerta inviata", className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
   ordinata: { label: "Ordinata", className: "bg-green-100 text-green-800 border-green-200" },
   fallita: { label: "Fallita", className: "bg-red-100 text-red-800 border-red-200" },

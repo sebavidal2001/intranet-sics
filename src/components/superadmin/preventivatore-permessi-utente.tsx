@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 
 const RUOLI_DEFINIZIONE: Array<{ slug: string; nome: string; descrizione: string; colore: string }> = [
   { slug: "commerciale",    nome: "Commerciale",    descrizione: "Apre richieste, vede SOLO i propri clienti (+AIRFLUID), flagga validazione economica", colore: "bg-blue-100 text-blue-800 border-blue-200" },
-  { slug: "preventivatore", nome: "Preventivatore", descrizione: "Apre cartella, usa il builder, marca preventivo completato", colore: "bg-emerald-100 text-emerald-800 border-emerald-200" },
-  { slug: "back_office",    nome: "Back Office",    descrizione: "Inserisce numero offerta, importo finale, sceglie blocchi inclusi, marca inviata/ordinata/fallita", colore: "bg-amber-100 text-amber-800 border-amber-200" },
+  { slug: "preventivatore", nome: "Preventivatore", descrizione: "Usa il builder, salva e modifica i preventivi, li porta da bozza a definitivo", colore: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+  // Il ruolo "Back Office" è stato rimosso il 17/09/2026 insieme al ciclo
+  // offerta→esito: serviva solo per «Invia offerta», «Marca ordinata» e
+  // «Marca fallita», tre pulsanti che non esistono più.
 ];
 
 /**

@@ -17,23 +17,27 @@ const ctx = (over: Partial<PreventivatoreContext> = {}): PreventivatoreContext =
 
 describe("haRuoloFunzionale — chi può fare cosa", () => {
   it("admin e superadmin del portale possono tutto", () => {
-    expect(haRuoloFunzionale(ctx({ livello: "admin" }), [PREVENTIVATORE_RUOLI.back_office])).toBe(true);
+    expect(haRuoloFunzionale(ctx({ livello: "admin" }), [PREVENTIVATORE_RUOLI.commerciale])).toBe(true);
     expect(haRuoloFunzionale(ctx({ livello: "superadmin" }), [PREVENTIVATORE_RUOLI.preventivatore])).toBe(true);
   });
 
   it("un viewer con il ruolo funzionale giusto è autorizzato", () => {
-    const jessica = ctx({ livello: "viewer", ruoli: [PREVENTIVATORE_RUOLI.back_office] });
-    expect(haRuoloFunzionale(jessica, [PREVENTIVATORE_RUOLI.back_office])).toBe(true);
+    const gregor = ctx({ livello: "viewer", ruoli: [PREVENTIVATORE_RUOLI.preventivatore] });
+    expect(haRuoloFunzionale(gregor, [PREVENTIVATORE_RUOLI.preventivatore])).toBe(true);
   });
 
   it("un viewer con il ruolo sbagliato NON è autorizzato", () => {
-    // Il back office non deve poter marcare un preventivo come completato,
-    // né il preventivatore inviare l'offerta al cliente.
-    const jessica = ctx({ livello: "viewer", ruoli: [PREVENTIVATORE_RUOLI.back_office] });
-    expect(haRuoloFunzionale(jessica, [PREVENTIVATORE_RUOLI.preventivatore])).toBe(false);
+    // Un commerciale non deve poter portare un preventivo a definitivo.
+    const valeria = ctx({ livello: "viewer", ruoli: [PREVENTIVATORE_RUOLI.commerciale] });
+    expect(haRuoloFunzionale(valeria, [PREVENTIVATORE_RUOLI.preventivatore])).toBe(false);
+  });
 
-    const gregor = ctx({ livello: "viewer", ruoli: [PREVENTIVATORE_RUOLI.preventivatore] });
-    expect(haRuoloFunzionale(gregor, [PREVENTIVATORE_RUOLI.back_office])).toBe(false);
+  it("il ruolo back_office non esiste più: chi l'aveva non è autorizzato a nulla", () => {
+    // Rimosso il 17/09/2026 col ciclo offerta→esito. Un'assegnazione residua
+    // in `utente_ruoli_funzionali` non deve autorizzare niente.
+    const residuo = ctx({ livello: "viewer", ruoli: ["back_office"] });
+    expect(haRuoloFunzionale(residuo, [PREVENTIVATORE_RUOLI.preventivatore])).toBe(false);
+    expect(haRuoloFunzionale(residuo, [PREVENTIVATORE_RUOLI.commerciale])).toBe(false);
   });
 
   it("un utente senza ruoli funzionali non è autorizzato a nulla", () => {
@@ -57,9 +61,12 @@ describe("filtroCommercialeFromContext — fail-closed", () => {
     expect(filtroCommercialeFromContext(nonConfigurato)).toBe(AGENTE_NESSUNO);
   });
 
-  it("preventivatore e back office non sono ristretti", () => {
+  it("il preventivatore non è ristretto", () => {
     expect(filtroCommercialeFromContext(ctx({ ruoli: [PREVENTIVATORE_RUOLI.preventivatore] }))).toBeNull();
-    expect(filtroCommercialeFromContext(ctx({ ruoli: [PREVENTIVATORE_RUOLI.back_office] }))).toBeNull();
+  });
+
+  it("chi ha solo il ruolo residuo back_office non è ristretto (non è commerciale)", () => {
+    expect(filtroCommercialeFromContext(ctx({ ruoli: ["back_office"] }))).toBeNull();
   });
 
   it("chi è commerciale MA anche preventivatore vede tutto", () => {
