@@ -24,6 +24,10 @@ interface RagioneAggregata {
   n_destinazioni: number
 }
 
+/** Soglia minima prima di interrogare l'anagrafica. */
+const MIN_CARATTERI = 3
+const DEBOUNCE_MS = 400
+
 export function AutocompleteCliente({
   onSelect,
   valore,
@@ -37,6 +41,7 @@ export function AutocompleteCliente({
   const [aperto, setAperto] = useState(false)
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   // Step 2 — destinazioni
@@ -85,24 +90,42 @@ export function AutocompleteCliente({
 
   const cerca = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (q.length < 1) {
+    // La richiesta in volo non serve più: annullarla evita che una risposta
+    // vecchia arrivi DOPO quella nuova e riscriva la lista. Con la ricerca a
+    // ~1,4 s bastava digitare in fretta per vedere i risultati di «SO» al
+    // posto di quelli di «SORM».
+    abortRef.current?.abort()
+    // Sotto i 3 caratteri la ricerca è una `ILIKE '%x%'` sull'intera anagrafica
+    // che restituisce comunque il tetto di 60 righe: rumore per l'utente e
+    // scansione inutile per il database.
+    if (q.length < MIN_CARATTERI) {
       setRisultatiRaw([])
       setAperto(false)
+      setLoading(false)
       return
     }
     debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController()
+      abortRef.current = controller
       setLoading(true)
       try {
-        const res = await fetch(`/api/portali/preventivatore/clienti?q=${encodeURIComponent(q)}`)
+        const res = await fetch(
+          `/api/portali/preventivatore/clienti?q=${encodeURIComponent(q)}`,
+          { signal: controller.signal }
+        )
         if (res.ok) {
           const data: Cliente[] = await res.json()
+          if (controller.signal.aborted) return
           setRisultatiRaw(data)
           setAperto(true)
         }
+      } catch (e) {
+        // L'annullamento è la via normale quando si continua a digitare.
+        if (!(e instanceof DOMException && e.name === "AbortError")) throw e
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
-    }, 300)
+    }, DEBOUNCE_MS)
   }, [])
 
   // Step 1 → Step 2: l'utente sceglie una ragione, carico le destinazioni
@@ -187,6 +210,14 @@ export function AutocompleteCliente({
             </button>
           )}
         </div>
+
+        {/* Sotto la soglia non si cerca: senza questo avviso l'utente digita
+            una lettera e non succede nulla, senza capire perché. */}
+        {!valore && !ragioneScelta && testo.length > 0 && testo.length < MIN_CARATTERI && (
+          <p className="mt-1 text-[11px] text-text-muted">
+            Scrivi almeno {MIN_CARATTERI} caratteri per cercare.
+          </p>
+        )}
 
         {aperto && ragioniAggregate.length > 0 && (
           <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-bg shadow-lg overflow-hidden max-h-80 overflow-y-auto">

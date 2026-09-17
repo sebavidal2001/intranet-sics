@@ -1,32 +1,66 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
+import { requirePreventivatore, scopeAgente } from "@/lib/portali/preventivatore/api-guard";
+import { getIdClientiVisibili } from "@/lib/portali/preventivatore/ruoli";
 import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
-// Restituisce le opzioni distinte da popolare nei dropdown dei filtri globali BI.
+/**
+ * Tetto di righe lette per costruire le liste di valori distinti. Senza, ogni
+ * apertura della pagina BI faceva tre `select` sull'INTERA tabella `documenti`
+ * solo per ricavare tre elenchi di poche decine di voci.
+ */
+const MAX_RIGHE = 20_000;
+
+/**
+ * GET /api/portali/preventivatore/bi/filters-options
+ *
+ * Opzioni dei dropdown dei filtri globali della BI del Preventivatore
+ * (anni, clienti, categorie), ricavate da `preventivatore.documenti`.
+ *
+ * Scope commerciale: le voci rispecchiano solo i documenti che l'utente può
+ * vedere, esattamente come `bi/data`. Prima questa route si limitava a
+ * verificare l'accesso al portale e poi leggeva con l'admin client senza
+ * filtro: un commerciale ristretto si ritrovava nel menu «Cliente» l'intera
+ * anagrafica, cioè proprio l'enumerazione che `documenti/clienti` e
+ * `documenti/destinazioni` si preoccupano di impedire.
+ */
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
 
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+    const agente = scopeAgente(guard.ctx);
+    const clienteIds = agente ? await getIdClientiVisibili(agente) : null;
+
+    // Commerciale ristretto senza clienti visibili: nessuna opzione, non tutte.
+    if (clienteIds !== null && clienteIds.length === 0) {
+      return NextResponse.json({ anni: [], clienti: [], categorie: [] });
+    }
 
     const admin = createAdminClient().schema("preventivatore");
-    const [anniRes, clientiRes, categorieRes] = await Promise.all([
-      admin.from("documenti").select("anno").not("anno", "is", null).order("anno", { ascending: false }),
-      // Il BI raggruppa per ragione sociale del master (vedi query-engine): il
-      // dropdown deve offrire le stesse voci, non le varianti di testo storiche.
-      admin
-        .from("documenti")
-        .select("cliente, clienti_master(ragione_sociale)")
-        .order("cliente", { ascending: true }),
-      admin.from("documenti").select("categoria").not("categoria", "is", null).order("categoria", { ascending: true }),
-    ]);
+
+    let qAnni = admin.from("documenti").select("anno").not("anno", "is", null).limit(MAX_RIGHE);
+    // Il BI raggruppa per ragione sociale del master (vedi query-engine): il
+    // dropdown deve offrire le stesse voci, non le varianti di testo storiche.
+    let qClienti = admin
+      .from("documenti")
+      .select("cliente, clienti_master(ragione_sociale)")
+      .limit(MAX_RIGHE);
+    let qCategorie = admin
+      .from("documenti")
+      .select("categoria")
+      .not("categoria", "is", null)
+      .limit(MAX_RIGHE);
+
+    if (clienteIds) {
+      qAnni = qAnni.in("cliente_master_id", clienteIds);
+      qClienti = qClienti.in("cliente_master_id", clienteIds);
+      qCategorie = qCategorie.in("cliente_master_id", clienteIds);
+    }
+
+    const [anniRes, clientiRes, categorieRes] = await Promise.all([qAnni, qClienti, qCategorie]);
 
     const anni = Array.from(new Set((anniRes.data ?? []).map((r) => (r as { anno: number }).anno))).sort((a, b) => b - a);
     const clienti = Array.from(

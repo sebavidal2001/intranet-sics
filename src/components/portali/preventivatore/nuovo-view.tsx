@@ -58,6 +58,9 @@ const SchedaTecnicaDialog = dynamic(
   { ssr: false }
 )
 
+/** Preferenza "pannello AI aperto", per singolo browser. */
+const CHAT_APERTA_KEY = "preventivatore:chat-aperta"
+
 export function NuovoView() {
   const [titolo, setTitolo] = useState("")
   // Codice commessa inserito dall'utente (sostituisce il vecchio progressivo G).
@@ -72,12 +75,23 @@ export function NuovoView() {
   const [templates, setTemplates] = useState<TemplateListItem[]>([])
   const [schedaOpen, setSchedaOpen] = useState(false)
   const [savingPreventivo, setSavingPreventivo] = useState(false)
+  // Fase del salvataggio, per dire all'utente cosa sta succedendo. Fra il POST
+  // (≈3 s) e la scheda del preventivo (navigazione RSC) passavano diversi
+  // secondi in cui a schermo non cambiava nulla se non lo spinner del bottone:
+  // è esattamente il momento in cui si riclicca e si rischia il doppione.
+  const [faseSalvataggio, setFaseSalvataggio] = useState<"idle" | "salvataggio" | "apertura">("idle")
   const [saveError, setSaveError] = useState<string | null>(null)
   const [baseLoading, setBaseLoading] = useState(false)
   const [baseAvviso, setBaseAvviso] = useState<string | null>(null)
   const [editCodice, setEditCodice] = useState<string | null>(null)
   const [editTempoIniziale, setEditTempoIniziale] = useState(0)
   const [refreshingPrezzi, setRefreshingPrezzi] = useState(false)
+  // Il pannello AI occupa 320 px fissi e non si poteva chiudere: con sidebar,
+  // padding e gap fanno ~612 px di cornice, e sotto i ~1100 px le etichette
+  // dell'intestazione finivano una sopra l'altra. Ora si chiude, e sotto xl
+  // parte chiuso. `null` = non ancora deciso lato client (evita il mismatch
+  // di idratazione).
+  const [chatAperta, setChatAperta] = useState<boolean | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const baseId = searchParams.get("base")
@@ -88,6 +102,29 @@ export function NuovoView() {
   const timerKey = editId
     ? `prev-timer:edit:${editId}`
     : `prev-timer:${baseId ?? "nuovo"}`
+
+  useEffect(() => {
+    let salvata: string | null = null
+    try {
+      salvata = window.localStorage.getItem(CHAT_APERTA_KEY)
+    } catch {
+      // Storage non disponibile (finestra privata, cookie bloccati): si ripiega
+      // sulla larghezza della finestra.
+    }
+    setChatAperta(salvata !== null ? salvata === "1" : window.innerWidth >= 1280)
+  }, [])
+
+  function toggleChat() {
+    setChatAperta((precedente) => {
+      const nuova = !precedente
+      try {
+        window.localStorage.setItem(CHAT_APERTA_KEY, nuova ? "1" : "0")
+      } catch {
+        // La preferenza non si salva: pazienza, il pannello si apre lo stesso.
+      }
+      return nuova
+    })
+  }
 
   async function handleSalvaPreventivo() {
     if (savingPreventivo) return
@@ -105,6 +142,7 @@ export function NuovoView() {
       return
     }
     setSavingPreventivo(true)
+    setFaseSalvataggio("salvataggio")
     setSaveError(null)
     try {
       const payload = {
@@ -155,6 +193,7 @@ export function NuovoView() {
       }
       // Preventivo salvato: azzera il cronometro di questa bozza.
       clearPreventivoTimer(timerKey)
+      setFaseSalvataggio("apertura")
       // Redirect alla scheda del nuovo preventivo creato
       const id = (data as { id?: string }).id
       if (id) {
@@ -165,6 +204,7 @@ export function NuovoView() {
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Errore sconosciuto")
       setSavingPreventivo(false)
+      setFaseSalvataggio("idle")
     }
   }
 
@@ -593,8 +633,45 @@ export function NuovoView() {
             </Button>
           )}
           <PreventivoTimer storageKey={timerKey} initialSeconds={editTempoIniziale} />
+          {/* Il pannello AI ruba 320 px al builder: da qui si apre e si chiude. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleChat}
+            className="gap-1.5"
+            aria-pressed={chatAperta === true}
+            title={chatAperta ? "Chiudi il Copilot AI e allarga il builder" : "Apri il Copilot AI"}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {chatAperta ? "Chiudi AI" : "Apri AI"}
+          </Button>
         </div>
       </div>
+
+      {/* Copre i secondi fra il POST e la scheda del preventivo: senza, la
+          pagina resta identica e sembra che il clic non abbia fatto niente. */}
+      {faseSalvataggio !== "idle" && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-[2px]"
+          style={{ background: "rgba(15,23,32,0.45)" }}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg px-6 py-4 shadow-xl">
+            <Loader2 className="w-5 h-5 animate-spin text-[#00a1be]" />
+            <div>
+              <p className="text-sm font-medium text-text">
+                {faseSalvataggio === "salvataggio" ? "Salvataggio del preventivo…" : "Apro la scheda del preventivo…"}
+              </p>
+              <p className="text-xs text-text-muted mt-0.5">
+                {faseSalvataggio === "salvataggio"
+                  ? "Non chiudere la pagina."
+                  : "Il preventivo è stato salvato."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {baseLoading && (
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#00a1be]/30 bg-[#00a1be]/5 px-4 py-3 text-sm text-[#007a91]">
@@ -621,7 +698,7 @@ export function NuovoView() {
           {/* Header card */}
           <div className="border border-border rounded-xl bg-bg p-5 space-y-4">
             {/* Codice commessa (obbligatorio in creazione) + Titolo */}
-            <div className="grid grid-cols-[minmax(0,220px)_1fr] gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,220px)_1fr] gap-4">
               <div>
                 <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
                   Codice commessa <span className="text-danger">*</span>
@@ -650,7 +727,7 @@ export function NuovoView() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Cliente */}
               <div>
                 <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
@@ -667,7 +744,7 @@ export function NuovoView() {
               </div>
 
               {/* Consegna stimata (range settimane) + margine trattativa */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
                     Consegna stimata (settimane)
@@ -841,7 +918,7 @@ export function NuovoView() {
                           <span className="flex items-center gap-1.5 shrink-0 text-[10px] text-slate-400 tabular-nums">
                             {coeffRicaricoMedio > 0 && (
                               <span title="Coefficiente di ricarico medio dei materiali (prezzo = costo ÷ coeff)">
-                                x{coeffRicaricoMedio.toFixed(2)}
+                                ÷{coeffRicaricoMedio.toFixed(2)}
                               </span>
                             )}
                             <span>{nArticoliTotali} pz</span>
@@ -868,7 +945,7 @@ export function NuovoView() {
                             className="text-[10px] text-amber-600/70 tabular-nums shrink-0"
                             title="Coefficiente di ricarico medio dei servizi (prezzo = costo ÷ coeff)"
                           >
-                            x{coeffRicaricoMedioServizi.toFixed(2)}
+                            ÷{coeffRicaricoMedioServizi.toFixed(2)}
                           </span>
                         )}
                       </div>
@@ -995,11 +1072,26 @@ export function NuovoView() {
         </div>
 
         {/* ── AI Chat sidebar ── */}
-        <ChatAI
-          contesto="nuovo"
-          placeholder="Chiedi suggerimenti sul preventivo, confronti storici, ottimizzazioni..."
-          builderState={builderState}
-        />
+        {chatAperta ? (
+          <ChatAI
+            contesto="nuovo"
+            placeholder="Chiedi suggerimenti sul preventivo, confronti storici, ottimizzazioni..."
+            builderState={builderState}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={toggleChat}
+            title="Apri il Copilot AI"
+            className="shrink-0 sticky top-6 self-start flex flex-col items-center gap-2 rounded-2xl px-2 py-4 text-white/70 hover:text-white transition-colors"
+            style={{ background: "linear-gradient(180deg, #0f1720 0%, #18222e 100%)" }}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span className="text-[10px] font-medium tracking-wider [writing-mode:vertical-rl]">
+              AI COPILOT
+            </span>
+          </button>
+        )}
       </div>
 
       {/* ── Dialog scheda tecnica ── */}

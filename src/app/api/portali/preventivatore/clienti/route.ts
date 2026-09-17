@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
-import { getFiltroCommerciale, AGENTE_AIRFLUID } from "@/lib/portali/preventivatore/ruoli";
+import { requirePreventivatore, scopeAgente } from "@/lib/portali/preventivatore/api-guard";
+import { AGENTE_AIRFLUID } from "@/lib/portali/preventivatore/ruoli";
 import { escapeIlike } from "@/lib/portali/preventivatore/postgrest";
 import { logError } from "@/lib/logger";
 
@@ -22,19 +21,12 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-    }
-
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) {
-      return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-    }
+    // Guard unico: un solo round-trip per utente + livello + ruoli + agente.
+    // Questa è la route più chiamata del portale (parte a ogni ricerca cliente):
+    // prima faceva getUser → getPortaleAccesso → getFiltroCommerciale (che a sua
+    // volta ne fa 1-2), cioè 4-5 andate e ritorni in serie a ogni richiesta.
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
 
     const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
     const adminClient = createAdminClient();
@@ -54,7 +46,7 @@ export async function GET(request: NextRequest) {
       .limit(60);
 
     // Filtro commerciale ristretto: vede solo i propri clienti + AIRFLUID (casa SICS)
-    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+    const agenteCommerciale = scopeAgente(guard.ctx);
     if (agenteCommerciale) {
       query = query.in("agente_codice", [agenteCommerciale, AGENTE_AIRFLUID]);
     }

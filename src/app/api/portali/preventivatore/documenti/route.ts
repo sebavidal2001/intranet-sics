@@ -9,6 +9,12 @@ import {
 } from "@/lib/portali/preventivatore/ruoli";
 import { idsMasterPerRagioneSociale } from "@/lib/portali/preventivatore/clienti-filtro";
 import { escapeIlike } from "@/lib/portali/preventivatore/postgrest";
+import {
+  STATI_IN_LAVORAZIONE,
+  STATI_ORDINATO,
+  STATI_RIFIUTATO,
+  statiDaFiltro,
+} from "@/lib/portali/preventivatore/stati";
 import { logError, logWarn } from "@/lib/logger";
 
 const ID_INESISTENTE = "00000000-0000-0000-0000-000000000000";
@@ -49,11 +55,16 @@ export async function GET(request: NextRequest) {
       // in banda e memoria man mano che lo storico cresce.
       const docsBase = () =>
         adminClient.schema("preventivatore").from("documenti").select("*", { count: "exact", head: true });
-      const [totRes, pendRes, ordRes, rifRes, chunksRes] = await Promise.all([
+      // I conteggi devono coprire ENTRAMBE le generazioni di stati: i legacy
+      // dell'import V2 (pending/ordinato/rifiutato) e quelli del workflow
+      // (migration 039). Prima usavano solo i primi, e siccome nessun documento
+      // li porta più tutte e tre le caselle mostravano zero.
+      const [totRes, pendRes, ordRes, rifRes, storRes, chunksRes] = await Promise.all([
         scoped(docsBase()),
-        scoped(docsBase()).eq("stato", "pending"),
-        scoped(docsBase()).eq("stato", "ordinato"),
-        scoped(docsBase()).eq("stato", "rifiutato"),
+        scoped(docsBase()).in("stato", STATI_IN_LAVORAZIONE),
+        scoped(docsBase()).in("stato", STATI_ORDINATO),
+        scoped(docsBase()).in("stato", STATI_RIFIUTATO),
+        scoped(docsBase()).eq("stato", "storico"),
         adminClient.schema("preventivatore").from("chunks").select("*", { count: "exact", head: true }),
       ]);
 
@@ -67,6 +78,7 @@ export async function GET(request: NextRequest) {
         pending: pendRes.count ?? 0,
         ordinato: ordRes.count ?? 0,
         rifiutato: rifRes.count ?? 0,
+        storico: storRes.count ?? 0,
         total_chunks: chunksRes.count ?? 0,
       });
     }
@@ -105,7 +117,10 @@ export async function GET(request: NextRequest) {
     // Trasparente per admin/back_office/preventivatore o per utenti senza ruolo commerciale.
     query = scoped(query);
 
-    if (stato && stato !== "tutti") query = query.eq("stato", stato);
+    // Il filtro accetta sia un gruppo (in_lavorazione/ordinato/rifiutato/...)
+    // sia un singolo stato, e ogni gruppo copre entrambe le generazioni.
+    const statiFiltro = statiDaFiltro(stato);
+    if (statiFiltro) query = query.in("stato", statiFiltro);
     // Il valore arriva dal dropdown = ragione sociale del master: va risolto
     // sugli id anagrafica, altrimenti "ALPHAMAC srl" non pescherebbe i 42
     // storici scritti come "ALPHAMAC".

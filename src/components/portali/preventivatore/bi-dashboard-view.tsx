@@ -299,19 +299,19 @@ export function BiDashboardView() {
               <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Filtri globali</span>
               <GlobalFilterSelect
                 label="Anno"
-                value={(globalFilterValue("anno") as string) ?? ""}
+                value={valoreFiltro(globalFilterValue("anno"))}
                 options={filterOptions.anni.map((a) => ({ value: String(a), label: String(a) }))}
                 onChange={(v) => setGlobalFilter("anno", v || null)}
               />
               <GlobalFilterSelect
                 label="Cliente"
-                value={(globalFilterValue("cliente") as string) ?? ""}
+                value={valoreFiltro(globalFilterValue("cliente"))}
                 options={filterOptions.clienti.map((c) => ({ value: c, label: c }))}
                 onChange={(v) => setGlobalFilter("cliente", v || null)}
               />
               <GlobalFilterSelect
                 label="Categoria"
-                value={(globalFilterValue("categoria") as string) ?? ""}
+                value={valoreFiltro(globalFilterValue("categoria"))}
                 options={filterOptions.categorie.map((c) => ({ value: c, label: c }))}
                 onChange={(v) => setGlobalFilter("categoria", v || null)}
               />
@@ -776,6 +776,18 @@ function FilterPill({ label, value }: { label: string; value: string }) {
       {value}
     </span>
   );
+}
+
+/**
+ * Normalizza il valore di un filtro globale per un `<select>`.
+ * L'anno e' salvato come NUMBER: il vecchio `as string` non convertiva nulla
+ * (e `?? ""` non scatta su un numero), quindi React riceveva un non-stringa e
+ * segnalava «The value prop supplied to <select> must be a scalar value».
+ * E' lo stesso confine number/string che aveva gia' rotto `matchesFilter`.
+ */
+function valoreFiltro(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  return String(v);
 }
 
 function GlobalFilterSelect({

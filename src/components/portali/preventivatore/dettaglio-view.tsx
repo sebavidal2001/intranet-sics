@@ -9,6 +9,7 @@ import { MarkdownLight } from "./markdown-light";
 import { CorreggiTotaliDialog } from "./correggi-totali-dialog";
 import { WorkflowActions } from "./workflow-actions";
 import { formattaNomeCliente, capitalizzaDescrizione } from "@/lib/portali/preventivatore/testo";
+import { badgeStato, STATI_NON_MODIFICABILI } from "@/lib/portali/preventivatore/stati";
 import {
   TOTAL_LABELS,
   TOTAL_ORDER,
@@ -120,26 +121,13 @@ function buildTotalsView(totals: Record<string, { raw: number; ceil_2: number }>
   return t;
 }
 
-const STATO_BADGE: Record<string, { label: string; className: string }> = {
-  // legacy (compat con vecchi import)
-  pending:   { label: "In attesa",  className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  ordinato:  { label: "Ordinato",   className: "bg-green-100 text-green-800 border-green-200" },
-  rifiutato: { label: "Rifiutato",  className: "bg-red-100 text-red-800 border-red-200" },
-  // workflow nuovo (migration 039)
-  storico:          { label: "Archivio storico",   className: "bg-slate-100 text-slate-700 border-slate-200" },
-  aperta:           { label: "Aperta",             className: "bg-slate-100 text-slate-700 border-slate-200" },
-  presa_in_carico:  { label: "Presa in carico",    className: "bg-blue-100 text-blue-800 border-blue-200" },
-  completato:       { label: "Pronto per offerta", className: "bg-violet-100 text-violet-800 border-violet-200" },
-  inviata:          { label: "Offerta inviata",    className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  ordinata:         { label: "Ordinata",           className: "bg-green-100 text-green-800 border-green-200" },
-  fallita:          { label: "Fallita",            className: "bg-red-100 text-red-800 border-red-200" },
-};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDettaglio }) {
   const { documento, chunks, righe_distinta, motivo_rifiuto_label } = dettaglio;
   const blocchiTable = useMemo(() => dettaglio.blocchi ?? [], [dettaglio.blocchi]);
+  const modificabile = !STATI_NON_MODIFICABILI.includes(documento.stato);
 
   // Preventivo generato dal builder: la distinta vive nelle tabelle blocchi +
   // righe_distinta (non nei chunk excel). Lo rendiamo con un percorso dedicato
@@ -217,7 +205,7 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
     [chunks]
   );
 
-  const stato = STATO_BADGE[documento.stato] ?? STATO_BADGE.pending;
+  const stato = badgeStato(documento.stato);
 
   // Statistiche aggregate per header
   const nArticoli = isGenerato
@@ -278,7 +266,7 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
         </Button>
         <span className="text-text-muted text-sm">/</span>
         <span className="text-sm font-mono text-text">{documento.codice ?? documento.id.slice(0, 8)}</span>
-        {documento.tipo === "generato" && (
+        {documento.tipo === "generato" && modificabile && (
           <Button
             asChild
             variant="outline"
@@ -296,7 +284,7 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
           asChild
           variant="outline"
           size="sm"
-          className={`${documento.tipo === "generato" ? "" : "ml-auto "}gap-1.5 text-emerald-700 border-emerald-300/60 hover:bg-emerald-50`}
+          className={`${documento.tipo === "generato" && modificabile ? "" : "ml-auto "}gap-1.5 text-emerald-700 border-emerald-300/60 hover:bg-emerald-50`}
           title="Crea un nuovo preventivo usando questo come base (prezzi aggiornati ai valori correnti)"
         >
           <Link href={`/preventivatore/nuovo?base=${documento.id}`}>

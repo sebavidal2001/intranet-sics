@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { Mascot } from "@/components/portali/preventivatore/mascot"
+import { badgeStato } from "@/lib/portali/preventivatore/stati"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,7 +129,10 @@ function Sparkline({ data, color = "#00a1be", fill = true }: { data: number[]; c
     return `${x},${y}`
   })
   const polyline = pts.join(" ")
-  const area = `${pad},${h} ${polyline} ${w - pad},${h} Z`
+  // Niente "Z" in coda: e' un comando di `path`, non un numero. In
+  // `<polygon points>` il browser rifiuta l'INTERO attributo e l'area non
+  // veniva disegnata, con un errore in console su ogni pagina con sparkline.
+  const area = `${pad},${h} ${polyline} ${w - pad},${h}`
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" xmlns="http://www.w3.org/2000/svg">
       {fill && <polygon points={area} fill={color} opacity={0.12} />}
@@ -399,10 +403,25 @@ function TopArticoli({ data }: { data: DashboardData["top_articoli"] }) {
 
 // ─── Timeline attività recente ───────────────────────────────────────────────
 
-const STATO_CFG: Record<string, { label: string; dot: string; chip: ChipVariant }> = {
-  pending:   { label: "Pending",   dot: "#94a3b8", chip: "muted"  },
-  ordinato:  { label: "Ordinato",  dot: "#95c11f", chip: "ok"     },
-  rifiutato: { label: "Rifiutato", dot: "#e73331", chip: "danger" },
+// Etichette da `lib/portali/preventivatore/stati.ts` (fonte unica), qui
+// tradotte nei colori della timeline. Prima la mappa conosceva solo i tre stati
+// legacy e il fallback marcava «Pending» qualunque cosa, storici inclusi.
+const STATO_CFG: Record<string, { dot: string; chip: ChipVariant }> = {
+  pending:          { dot: "#94a3b8", chip: "muted"  },
+  aperta:           { dot: "#94a3b8", chip: "muted"  },
+  presa_in_carico:  { dot: "#3b82f6", chip: "muted"  },
+  completato:       { dot: "#8b5cf6", chip: "muted"  },
+  inviata:          { dot: "#f59e0b", chip: "warn"   },
+  ordinato:         { dot: "#95c11f", chip: "ok"     },
+  ordinata:         { dot: "#95c11f", chip: "ok"     },
+  rifiutato:        { dot: "#e73331", chip: "danger" },
+  fallita:          { dot: "#e73331", chip: "danger" },
+  storico:          { dot: "#cbd5e1", chip: "muted"  },
+}
+
+function statoTimeline(stato: string): { label: string; dot: string; chip: ChipVariant } {
+  const cfg = STATO_CFG[stato] ?? { dot: "#cbd5e1", chip: "muted" as ChipVariant }
+  return { label: badgeStato(stato).label, ...cfg }
 }
 
 function Timeline({ data }: { data: DashboardData["attivita_recente"] }) {
@@ -420,7 +439,7 @@ function Timeline({ data }: { data: DashboardData["attivita_recente"] }) {
           <div className="absolute left-[7px] top-2 bottom-2 w-px" style={{ backgroundColor: "rgba(0,161,190,0.15)" }} />
           <div className="space-y-3.5">
             {data.map((item) => {
-              const cfg = STATO_CFG[item.stato] ?? STATO_CFG.pending
+              const cfg = statoTimeline(item.stato)
               return (
                 <div key={item.id} className="flex items-start gap-3 pl-0.5">
                   <div className="w-3.5 h-3.5 rounded-full shrink-0 mt-0.5 ring-2 ring-white" style={{ backgroundColor: cfg.dot }} />

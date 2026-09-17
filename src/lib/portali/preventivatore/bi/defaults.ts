@@ -56,17 +56,6 @@ export const DEFAULT_BI_WIDGETS: BiWidgetConfig[] = [
     metric: { op: "avg", field: "importo_preventivo", label: "Media" },
   },
   {
-    id: "kpi-ore",
-    title: "Ore preventivazione",
-    type: "kpi",
-    dataset: "documenti",
-    x: 9,
-    y: 0,
-    w: 3,
-    h: 2,
-    metric: { op: "count", label: "Da tracciare" },
-  },
-  {
     id: "monthly-category",
     title: "Preventivi per mese e categoria",
     type: "stacked_bar",

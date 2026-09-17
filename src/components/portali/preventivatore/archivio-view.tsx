@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { formattaNomeCliente } from "@/lib/portali/preventivatore/testo"
+import { badgeStato, type StatoDocumento } from "@/lib/portali/preventivatore/stati"
 
 const ChatAI = dynamic(
   () => import("@/components/portali/preventivatore/chat-ai").then((m) => m.ChatAI),
@@ -36,7 +37,6 @@ const ChatAI = dynamic(
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type StatoDocumento = "pending" | "ordinato" | "rifiutato"
 type TipoDocumento = "storico" | "generato"
 
 /** Sede/divisione del cliente selezionato, con quanti preventivi ha. */
@@ -91,17 +91,17 @@ interface MotivoRifiuto {
 
 // ─── Const ────────────────────────────────────────────────────────────────────
 
-const STATO_BADGE: Record<StatoDocumento, { label: string; className: string }> = {
-  pending: { label: "In attesa", className: "bg-yellow-100 text-yellow-800" },
-  ordinato: { label: "Ordinato", className: "bg-green-100 text-green-800" },
-  rifiutato: { label: "Rifiutato", className: "bg-red-100 text-red-800" },
-}
-
+// Le opzioni sono i GRUPPI di `lib/portali/preventivatore/stati.ts`: ognuno
+// copre sia gli stati legacy dell'import V2 sia quelli del workflow (migration
+// 039). Prima qui c'erano solo i tre legacy, che nessun documento porta più:
+// qualunque filtro si scegliesse il risultato era zero su 386.
 const FILTRI_STATO = [
   { value: "tutti", label: "Tutti gli stati" },
-  { value: "pending", label: "In attesa" },
+  { value: "in_lavorazione", label: "In lavorazione" },
+  { value: "inviata", label: "Offerta inviata" },
   { value: "ordinato", label: "Ordinato" },
   { value: "rifiutato", label: "Rifiutato" },
+  { value: "storico", label: "Archivio storico" },
 ] as const
 
 const FILTRI_TIPO = [
@@ -639,7 +639,7 @@ export function ArchivioView() {
           ) : (
             <div className="space-y-2">
               {items.map((r) => {
-                const badge = STATO_BADGE[r.stato] ?? STATO_BADGE.pending
+                const badge = badgeStato(r.stato)
                 return (
                   <div
                     key={r.id}

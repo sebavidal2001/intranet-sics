@@ -9,6 +9,7 @@ import {
   PREVENTIVATORE_RUOLI,
 } from "@/lib/portali/preventivatore/ruoli";
 import { PostBodySchema } from "@/lib/portali/preventivatore/documenti-schema";
+import { STATI_NON_MODIFICABILI } from "@/lib/portali/preventivatore/stati";
 import { logError, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,8 @@ export const dynamic = "force-dynamic";
 // Route per un singolo preventivo generato dal builder:
 //   GET  → ricostruisce lo stato del builder a PREZZI CONGELATI (per riaprire/modificare)
 //   PUT  → salva le modifiche IN PLACE (RPC aggiorna_documento_dal_builder, migration 060)
+
+
 
 type RigaRow = {
   codice_blocco: string | null;
@@ -268,13 +271,29 @@ export async function PUT(
     const { data: doc, error: docErr } = await admin
       .schema("preventivatore")
       .from("documenti")
-      .select("id, tipo, cliente_master_id")
+      .select("id, tipo, stato, cliente_master_id")
       .eq("id", id)
       .maybeSingle();
     if (docErr) throw docErr;
     if (!doc) return NextResponse.json({ error: "Documento non trovato" }, { status: 404 });
     if ((doc as { tipo: string }).tipo !== "generato") {
       return NextResponse.json({ error: "Solo i preventivi creati dal builder sono modificabili" }, { status: 422 });
+    }
+
+    // Oltre l'invio al cliente il preventivo non si riscrive. Senza questo
+    // controllo la PUT accettava qualunque stato: distinta, ore e totali
+    // cambiavano mentre `numero_preventivo` e `importo_offerta` restavano
+    // quelli dell'offerta già partita, e i due valori non corrispondevano più.
+    const statoDoc = (doc as { stato: string }).stato;
+    if (STATI_NON_MODIFICABILI.includes(statoDoc)) {
+      return NextResponse.json(
+        {
+          error:
+            `Il preventivo è nello stato '${statoDoc}': non è più modificabile. ` +
+            `Duplicalo con «Crea preventivo da questa base» per partire da qui.`,
+        },
+        { status: 409 }
+      );
     }
 
     const agente = await getFiltroCommerciale(user.id, livello);

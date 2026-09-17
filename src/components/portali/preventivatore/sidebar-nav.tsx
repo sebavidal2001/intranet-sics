@@ -41,6 +41,9 @@ export function PreventivatoreSidebar({ livello, profile }: PreventivatoreSideba
   const isAdmin = hasMinLivello(livello, "admin")
 
   const allItems = isAdmin ? [...NAV_ITEMS, ...ADMIN_ITEMS] : NAV_ITEMS
+  // Indice della prima voce admin: il divisore va disegnato lì sopra. Prima era
+  // renderizzato in coda al <nav>, quindi separava l'ultima voce dal nulla.
+  const primaVoceAdmin = isAdmin ? NAV_ITEMS.length : -1
 
   return (
     <aside
@@ -79,17 +82,23 @@ export function PreventivatoreSidebar({ livello, profile }: PreventivatoreSideba
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {allItems.map((item) => {
+        {allItems.map((item, index) => {
           const isActive =
             pathname === item.url ||
             (item.url !== "/preventivatore" && pathname.startsWith(item.url))
           const Icon = item.icon
 
           return (
+            <div key={item.url}>
+              {index === primaVoceAdmin && (
+                <div
+                  className="mx-2 my-3"
+                  style={{ height: "1px", backgroundColor: "rgba(255,255,255,0.07)" }}
+                />
+              )}
             <Link
-              key={item.url}
               href={item.url}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 group"
+              className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 group"
               style={{
                 color: isActive ? "#ffffff" : "rgba(255,255,255,0.50)",
                 backgroundColor: isActive ? "rgba(0,161,190,0.18)" : "transparent",
@@ -122,16 +131,10 @@ export function PreventivatoreSidebar({ livello, profile }: PreventivatoreSideba
               />
               {item.name}
             </Link>
+            </div>
           )
         })}
 
-        {/* Section divider for admin items */}
-        {isAdmin && (
-          <div
-            className="mx-2 my-3"
-            style={{ height: "1px", backgroundColor: "rgba(255,255,255,0.07)" }}
-          />
-        )}
       </nav>
 
       {/* Profile footer */}
