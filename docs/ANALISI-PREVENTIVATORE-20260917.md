@@ -4,14 +4,21 @@ Simulazione d'uso reale nel browser + lettura del codice + verifica sul database
 Il report gemello di Codex (audit statico esaustivo) è in
 `docs/AUDIT-PREVENTIVATORE-CODEX.md`.
 
-> [!warning] Limite delle misure
-> Tutto ciò che segue è misurato sull'ambiente di **sviluppo**, che punta al
-> Supabase `sowzewrfkoxernnvhzgg` (fermo dal 29/08/2026, 385 documenti).
-> La **produzione** gira sul PostgreSQL della VM. I conteggi per stato e i tempi
-> di risposta vanno riconfermati là prima di decidere; i difetti di codice, no:
-> quelli sono nel sorgente e valgono ovunque.
-> Le latenze sono in `npm run dev` (non ottimizzato) verso un Supabase remoto:
-> il valore assoluto è pessimistico, il **rapporto fra le chiamate** no.
+> [!success] Misure confermate in produzione (17/09/2026)
+> I conteggi erano stati presi sull'ambiente di **sviluppo** (Supabase
+> `sowzewrfkoxernnvhzgg`). Sono stati poi **riverificati sul PostgreSQL della
+> VM**, che è la produzione, e risultano **identici**: 385 documenti
+> (382 `storico` + 2 `completato` + 1 `aperta`), 144 storici senza
+> `data_offerta`, 3 generati senza `data_offerta`, 9.494 righe di distinta,
+> 6 ruoli funzionali assegnati, e **zero** valori su `importo_ordinato`,
+> `motivo_rifiuto_id`, `validazione_*`, `audit_hash`.
+>
+> Il DB della VM è il clone del 29/08 e da allora **non si è mosso**: vedi §8,
+> il portale non riesce a leggere il proprio schema.
+
+> [!warning] Le latenze restano di sviluppo
+> Misurate in `npm run dev` (non ottimizzato) verso un Supabase remoto: il
+> valore assoluto è pessimistico, il **rapporto fra le chiamate** no.
 
 ---
 
@@ -411,3 +418,128 @@ sovrascrivono senza accorgersene.
 - Latenze misurate con `performance.now()` nella pagina; conteggi per stato e
   `dashboard_kpi` interrogati direttamente col service role.
 - Nessun file di progetto modificato.
+
+---
+
+## 8. In produzione il Preventivatore non legge il proprio schema
+
+Verificato sulla VM il 17/09/2026, dopo che l'utente ha ricordato che la
+produzione gira sul PostgreSQL locale e non più su Supabase.
+
+### Il fatto
+
+PostgREST (`postgrest.service`, unico processo, `/etc/postgrest/intranet.conf`)
+espone **quattro schemi**, e `preventivatore` non è fra questi:
+
+```
+$ curl -H "Accept-Profile: preventivatore" .../rest/v1/documenti?select=stato&limit=2
+HTTP 406
+{"code":"PGRST106","message":"Invalid schema: preventivatore",
+ "hint":"Only the following schemas are exposed: public, vettori, bi, bi_direzionale"}
+```
+
+Identico sulla porta locale `127.0.0.1:3001` e sull'endpoint pubblico
+`https://intranet.s-ics.com`, con la **service role key di produzione**. È
+esattamente l'header che manda `createAdminClient().schema("preventivatore")`.
+
+Nel codice ci sono **133 chiamate** `.schema("preventivatore")`: in produzione
+falliscono tutte.
+
+### Perché
+
+| | |
+|---|---|
+| Avvio del processo PostgREST | **29/08/2026 17:00** |
+| Ultima modifica di `/etc/postgrest/intranet.conf` | **09/09/2026 20:52** |
+
+Il file è stato modificato **11 giorni dopo** l'avvio e il processo non è mai
+stato riavviato: gira ancora con la configurazione del 29 agosto. Da qui anche
+il fatto che il DB della VM sia fermo al clone di quel giorno — il portale non
+può scriverci.
+
+> [!danger] Il riavvio così com'è **romperebbe la BI Direzionale**
+> Il file su disco dice `db-schemas = "public,preventivatore,service,bi,vettori"`:
+> **non contiene `bi_direzionale`**, che il processo in esecuzione invece espone
+> e che il codice usa in **24 punti**. Riavviare senza toccare il file
+> scambierebbe un guasto con un altro.
+>
+> Gli schemi usati davvero dal codice sono quattro:
+> `preventivatore` (133), `vettori` (55), `bi_direzionale` (24), `bi` (3).
+> La riga corretta è quindi:
+> `db-schemas = "public,preventivatore,service,bi,bi_direzionale,vettori"`
+
+### Altre due cose che un riavvio porterebbe con sé
+
+- `db-aggregates-enabled = true` è nel file ma non è attivo nel processo:
+  dopo il riavvio gli aggregati PostgREST si accendono. È un cambio di
+  comportamento per il prototipo BI, che era stato scritto per aggirarli.
+- `systemctl reload` **non basta**: l'`ExecReload` dell'unit manda `SIGUSR1`,
+  che in PostgREST ricarica solo la cache dello schema. La configurazione si
+  rilegge con `SIGUSR2` o con un `restart`.
+
+### Cosa è stato fatto (17/09/2026, con nessuno collegato)
+
+**Il file non era la fonte.** Corretto `db-schemas` nel file e riavviato il
+servizio: il log diceva «Config reloaded» ma l'elenco esposto era **identico**.
+Il motivo è che `db-config` è attivo e la chiave `pgrst.db_schemas` impostata
+sul ruolo `authenticator` **vince sul file**:
+
+```
+authenticator | pgrst.db_schemas=public, vettori, bi, bi_direzionale
+```
+
+La correzione vera, sul DB della VM:
+
+```sql
+ALTER ROLE authenticator
+  SET pgrst.db_schemas = 'public, preventivatore, service, bi, bi_direzionale, vettori';
+NOTIFY pgrst, 'reload config';
+NOTIFY pgrst, 'reload schema';
+```
+
+> [!warning] Servono entrambe le NOTIFY
+> Con solo `reload config` lo schema viene accettato ma le sue tabelle non sono
+> nella cache: la risposta passa da 406 `PGRST106 Invalid schema` a 404
+> `PGRST205 Could not find the table`. Sembra un errore diverso e si va a
+> cercare un problema di nomi.
+
+Il file è stato comunque allineato (con `bi_direzionale` aggiunto) e ne resta
+il backup `intranet.conf.bak-20260917`, così non restano due verità diverse.
+
+**Verifiche dopo l'intervento** — tutte dall'endpoint pubblico, con la service
+role key di produzione e gli header che manda l'app:
+
+| Controllo | Esito |
+|---|---|
+| `preventivatore.documenti` | **200**, restituisce i dati |
+| `vettori.vettori`, `bi.cruscotto_runs`, `public.utenti` | 200 |
+| `bi_direzionale.dashboard` / `.analisi` / `.configurazione_anno` | 200 |
+| `rpc/dashboard_kpi` come la chiama l'app | 200 → 96 preventivi, 3 pending |
+| `rpc/dashboard_top_clienti` come la chiama l'app | 200 → SORMA, CM3, IMA |
+
+**Migration `110` applicata al PostgreSQL della VM** (`psql -v ON_ERROR_STOP=1`,
+snapshot delle funzioni precedenti in `/tmp/rollback-110.sql`). Verificata sui
+dati veri: `dashboard_kpi(12)` → 96 preventivi / 3 pending, e la serie mensile
+mostra i 2 preventivi del builder a luglio, che prima non comparivano.
+
+> [!info] `dashboard_top_clienti` ha due overload e resta ambiguo da psql
+> `select ... from dashboard_top_clienti(3)` → *«function is not unique»*.
+> **L'app non è toccata**: chiama con i tre argomenti nominati e risolve
+> correttamente (verificato, 200). L'ambiguità è preesistente — la 041 ha creato
+> la versione a 2 argomenti, la 053 quella a 3 — e la migration 110 le ha
+> allineate entrambe invece di rimuoverne una. Toglierla è una decisione a sé.
+
+> [!todo] Manca il deploy del codice
+> La produzione gira su `8f9dca3` (14/09): la migration è viva, le correzioni
+> del codice no. `deploy.sh` fa `git reset --hard origin/main`, quindi i due
+> commit di oggi vanno prima portati su `main`.
+> Il disallineamento è **innocuo**: `dashboard_kpi` non ha cambiato forma, il
+> codice vecchio la legge e ora riceve numeri corretti. Restano da deployare i
+> badge dell'archivio, il filtro per stato e il resto.
+
+### Cosa fare, nell'ordine### Cosa fare, nell'ordine
+
+1. Correggere `db-schemas` nel file aggiungendo `bi_direzionale`.
+2. `sudo systemctl restart postgrest` (breve interruzione dell'API per tutti i portali).
+3. Riverificare con la curl qui sopra: deve rispondere 200.
+4. Solo dopo, applicare la migration `110` al DB della VM e fare il deploy del codice.
