@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { elencaValoriDimensione, SpecNonValida, validaSpec } from "@/lib/prototipo-bi/semantico";
 import { risolviBudget } from "@/lib/prototipo-bi/budget-fonte";
-import type { RigaFatto, SerieBudget, Snapshot } from "@/lib/prototipo-bi/tipi";
+import type { RigaFatto, SerieBudget, Snapshot, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 function riga(p: Partial<RigaFatto>): RigaFatto {
   return {
@@ -50,7 +50,7 @@ function snapshotFinto(): Snapshot {
     generatoIl: "2026-09-17T00:00:00.000Z",
     runCorrente: "20260917_013001",
     runRicevutoIl: "2026-09-17T01:31:00.000Z",
-    tassonomiaBu: { coerente: true, estranei: [] },
+    tassonomiaBu: { coerente: true, estranei: [], sistemiResidua: false },
     dataMinima: "2025-01-07",
     dataMassima: "2026-09-16",
     dataMassimaAssoluta: "2027-03-31",
@@ -67,7 +67,7 @@ function snapshotFinto(): Snapshot {
     },
     conteggi: {},
     versioneForma: 2,
-  } as Snapshot;
+  };
 }
 
 describe("elenca_valori: la grafia esatta da mettere nei filtri", () => {
@@ -148,17 +148,36 @@ describe("I rifiuti dicono cosa usare al posto di cosa", () => {
 
 describe("Il budget non finge un dettaglio che non ha", () => {
   const serie: SerieBudget = {
-    anno: 2026,
-    origine: "file",
+    origine: "importato",
+    formato: "excel",
+    importatoIl: "2026-09-12T00:00:00.000Z",
+    anni: [2026],
+    totaliPerAnno: { 2026: { budget: 1500, bep: 1200 } },
     righe: [
-      { data: "2026-03-01", area: "COSTRUITO", agente: null, budget: 1000, bep: 800 },
-      { data: "2026-03-01", area: "STRUTTURE", agente: null, budget: 500, bep: 400 },
+      {
+        data: "2026-03-01",
+        area: "COSTRUITO",
+        agente: null,
+        codiceAgente: null,
+        budget: 1000,
+        bep: 800,
+        granularita: "giorno",
+      },
+      {
+        data: "2026-03-01",
+        area: "STRUTTURE",
+        agente: null,
+        codiceAgente: null,
+        budget: 500,
+        bep: 400,
+        granularita: "giorno",
+      },
     ],
-  } as SerieBudget;
+  };
 
   it("avvisa quando lo si raggruppa per una dimensione che non possiede", () => {
     const esito = risolviBudget(
-      { metrica: "budget", raggruppa: ["cliente"], periodo: { anno: 2026 } } as never,
+      { metrica: "budget", raggruppa: ["cliente"], periodo: { anno: 2026 } } as SpecQuery,
       serie
     );
     // Il numero resta quello aggregato — ed è corretto che lo sia — ma ora chi
@@ -169,7 +188,7 @@ describe("Il budget non finge un dettaglio che non ha", () => {
 
   it("non avvisa quando il raggruppamento è legittimo", () => {
     const esito = risolviBudget(
-      { metrica: "budget", raggruppa: ["bu"], periodo: { anno: 2026 } } as never,
+      { metrica: "budget", raggruppa: ["bu"], periodo: { anno: 2026 } } as SpecQuery,
       serie
     );
     expect(esito.risultato.avvisi).toHaveLength(0);

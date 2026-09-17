@@ -81,6 +81,10 @@ interface EsitoModello {
   toolCalls: ToolCall[];
   ingresso: number;
   uscita: number;
+  /** Costo addebitato da OpenRouter per questa chiamata, quando lo dichiara. */
+  costo: number | null;
+  /** Token d'ingresso serviti dalla cache invece che riletti per intero. */
+  cache: number;
 }
 
 async function chiamaModello(
@@ -97,6 +101,21 @@ async function chiamaModello(
     },
     body: JSON.stringify({
       model: modelloId,
+      // Cache del prompt.
+      //
+      // Il prefisso fisso di ogni chiamata pesa ~7.600 token — istruzioni
+      // ~1.100, vocabolario ~3.500, schemi degli strumenti ~3.000 — e il ciclo
+      // lo rispedisce a ogni passo, fino a dodici volte. Una domanda "profonda"
+      // arriva cosi' a ~241.000 token di solo ingresso: l'input domina il costo
+      // di un ordine di grandezza rispetto all'uscita.
+      //
+      // Su OpenRouter la cache e' automatica per OpenAI ma NON per Anthropic:
+      // li' serve almeno questo campo, che mette il punto di taglio sull'ultimo
+      // blocco memorizzabile. Senza, si paga il prezzo pieno tutte le volte.
+      // Misurato sul listino del 17/09/2026, su un mix di 100 domande:
+      // 19,05 $ senza cache, 5,18 $ con. La prima scrittura costa 1,25x, le
+      // riletture un decimo.
+      cache_control: { type: "ephemeral" },
       messages: messaggi,
       tools: opzioni.strumenti,
       temperature: opzioni.temperatura ?? 0.2,
@@ -110,7 +129,13 @@ async function chiamaModello(
 
   const json = (await res.json()) as {
     choices?: Array<{ message?: { content?: string; tool_calls?: ToolCall[] } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      /** Importo addebitato: vale piu' di qualunque moltiplicazione fatta da noi. */
+      cost?: number;
+      prompt_tokens_details?: { cached_tokens?: number };
+    };
   };
   const msg = json.choices?.[0]?.message;
   return {
@@ -118,6 +143,8 @@ async function chiamaModello(
     toolCalls: msg?.tool_calls ?? [],
     ingresso: json.usage?.prompt_tokens ?? 0,
     uscita: json.usage?.completion_tokens ?? 0,
+    costo: json.usage?.cost ?? null,
+    cache: json.usage?.prompt_tokens_details?.cached_tokens ?? 0,
   };
 }
 
@@ -1123,6 +1150,9 @@ export async function chiediAnalista(opzioni: {
   const documenti: DocumentoProposto[] = [];
   let ingresso = 0;
   let uscita = 0;
+  // Sommati su tutte le chiamate del ciclo: e' il costo della domanda intera.
+  let costoDichiarato = 0;
+  let tokenCache = 0;
 
   const vuota = (testo: string): RispostaAnalista => ({
     testo,
@@ -1150,7 +1180,10 @@ export async function chiediAnalista(opzioni: {
 
   const messaggi: MessaggioChat[] = [
     { role: "system", content: istruzioni(snapshot, sqlLibero) },
-    { role: "system", content: `Vocabolario disponibile:\n${JSON.stringify(vocabolario(), null, 2)}` },
+    // Compatto, non indentato: l'indentazione era ~1.200 token di spazi
+    // rispediti a ogni passo del ciclo. Il modello legge JSON su una riga
+    // esattamente come lo legge su trenta.
+    { role: "system", content: `Vocabolario disponibile:\n${JSON.stringify(vocabolario())}` },
   ];
 
   for (const m of opzioni.storico ?? []) {
@@ -1463,6 +1496,8 @@ export async function chiediAnalista(opzioni: {
       });
       ingresso += correzione.ingresso;
       uscita += correzione.uscita;
+      costoDichiarato += correzione.costo ?? 0;
+      tokenCache += correzione.cache;
       if (!correzione.testo.trim()) {
         return { ...risposta, verifica, correzioneApplicata: false };
       }
@@ -1496,6 +1531,8 @@ export async function chiediAnalista(opzioni: {
     });
     ingresso += esito.ingresso;
     uscita += esito.uscita;
+    costoDichiarato += esito.costo ?? 0;
+    tokenCache += esito.cache;
 
     if (esito.toolCalls.length === 0 || ultimoPasso) {
       passi.push({ tipo: "risposta", descrizione: "Risposta finale" });
@@ -1517,7 +1554,7 @@ export async function chiediAnalista(opzioni: {
         modello: rotta.modello.nome,
         complessita: rotta.complessita,
         motivoModello: rotta.motivo,
-        consumo: calcolaCosto(rotta.modello, ingresso, uscita),
+        consumo: calcolaCosto(rotta.modello, ingresso, uscita, costoDichiarato, tokenCache),
       };
     }
 
@@ -1570,7 +1607,7 @@ export async function chiediAnalista(opzioni: {
     modello: rotta.modello.nome,
     complessita: rotta.complessita,
     motivoModello: rotta.motivo,
-    consumo: calcolaCosto(rotta.modello, ingresso, uscita),
+    consumo: calcolaCosto(rotta.modello, ingresso, uscita, costoDichiarato, tokenCache),
   };
 }
 

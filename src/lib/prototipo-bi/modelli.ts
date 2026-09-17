@@ -23,7 +23,7 @@ export interface Modello {
   note: string;
 }
 
-/** Listino al 29/08/2026, letto da https://openrouter.ai/api/v1/models. */
+/** Listino al 17/09/2026, letto da https://openrouter.ai/api/v1/models. */
 export const MODELLI: Record<string, Modello> = {
   leggero: {
     id: "anthropic/claude-haiku-4.5",
@@ -33,18 +33,32 @@ export const MODELLI: Record<string, Modello> = {
     note: "Veloce ed economico. Adatto a letture dirette e riassunti.",
   },
   standard: {
-    id: "anthropic/claude-sonnet-4.5",
-    nome: "Sonnet 4.5",
-    ingresso: 3.0,
-    uscita: 15.0,
+    // Era Sonnet 4.5 (3,00 / 15,00). Sonnet 5 costa un terzo meno ED e' piu'
+    // recente: restare sul 4.5 non aveva giustificazione ne' di prezzo ne' di
+    // qualita'. Verificato sul listino OpenRouter il 17/09/2026.
+    id: "anthropic/claude-sonnet-5",
+    nome: "Sonnet 5",
+    ingresso: 2.0,
+    uscita: 10.0,
     note: "Ragionamento multi-passo: scomposizioni, confronti, previsioni.",
   },
+  /**
+   * NON COLLEGATO. Nessun punto del codice lo usa: `instrada()` sceglie fra
+   * `leggero` e `standard`, e il briefing usa `leggero` (`analista.ts`).
+   *
+   * Resta qui perche' e' il candidato naturale del livello leggero — costa un
+   * terzo di Haiku 4.5 — ma collegarlo e' una decisione da MISURARE, non da
+   * prendere sul prezzo: nel confronto del 17/09/2026 Haiku ha prodotto cifre
+   * non verificate su tutte e quattro le domande, e un modello piu' economico
+   * che sbaglia di piu' non e' un risparmio. Il banco e'
+   * `prototipo-bi/confronto-modelli-dal-vivo.ts`.
+   */
   economico: {
     id: "google/gemini-2.5-flash",
     nome: "Gemini 2.5 Flash",
     ingresso: 0.3,
     uscita: 2.5,
-    note: "Alternativa a basso costo, utile per il briefing automatico.",
+    note: "Non collegato: candidato per il livello leggero, da misurare prima.",
   },
 };
 
@@ -188,13 +202,37 @@ export interface Consumo {
   tokenIngresso: number;
   tokenUscita: number;
   costoUsd: number;
+  /** Token d'ingresso serviti dalla cache, che si pagano un decimo. */
+  tokenCache?: number;
+  /** `true` se `costoUsd` e' l'importo addebitato da OpenRouter, non una stima. */
+  costoDichiarato?: boolean;
 }
 
-export function calcolaCosto(modello: Modello, ingresso: number, uscita: number): Consumo {
-  const costo = (ingresso / 1e6) * modello.ingresso + (uscita / 1e6) * modello.uscita;
+/**
+ * Costo di una domanda.
+ *
+ * Se OpenRouter dichiara il costo (`usage.cost`), si usa quello: e' l'importo
+ * davvero addebitato. La moltiplicazione qui sotto resta come ripiego, ma e'
+ * una STIMA PER ECCESSO da quando la cache del prompt e' accesa, perche'
+ * `prompt_tokens` comprende anche i token riletti dalla cache, che costano un
+ * decimo. Mostrare all'utente un numero calcolato da noi quando il fornitore ci
+ * dice quello vero e' lo stesso errore del BEP che valeva l'ordinato: un numero
+ * plausibile al posto di quello giusto.
+ */
+export function calcolaCosto(
+  modello: Modello,
+  ingresso: number,
+  uscita: number,
+  dichiarato?: number | null,
+  tokenCache = 0
+): Consumo {
+  const stima = (ingresso / 1e6) * modello.ingresso + (uscita / 1e6) * modello.uscita;
+  const costo = dichiarato != null && dichiarato > 0 ? dichiarato : stima;
   return {
     tokenIngresso: ingresso,
     tokenUscita: uscita,
+    tokenCache,
+    costoDichiarato: dichiarato != null && dichiarato > 0,
     // Sei decimali: una domanda singola costa frazioni di centesimo e
     // arrotondare a due la farebbe sembrare gratis.
     costoUsd: Math.round(costo * 1e6) / 1e6,

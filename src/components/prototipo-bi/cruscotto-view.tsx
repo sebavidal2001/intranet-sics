@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Download,
@@ -38,6 +39,7 @@ import {
   KpiEroe,
   Scheda,
   useQueryBi,
+  svuotaCacheQuery,
   euro,
 } from "./primitivi";
 import {
@@ -115,15 +117,22 @@ export function CruscottoView({
   dataMassima,
   runRicevutoIl,
   tassonomiaBu,
+  puoForzareAggiornamento = false,
 }: {
   anniDisponibili: number[];
-  buDisponibili?: string[];
-  agentiDisponibili?: string[];
+  // `buDisponibili` e `agentiDisponibili` erano dichiarati qui e mai usati: la
+  // pagina li calcolava sullo snapshot INTERO — non perimetrato — e Next li
+  // serializzava comunque nel payload verso il browser. Nessuno li disegnava,
+  // ma l'elenco completo di agenti e business unit arrivava lo stesso a
+  // chiunque aprisse il cruscotto. Tolti da qui e dalla pagina.
   dataMassima: string | null;
   runRicevutoIl: string | null;
+  /** Se chi guarda può forzare la rilettura dello snapshot (solo la direzione). */
+  puoForzareAggiornamento?: boolean;
   /** Esito del controllo sulle business unit riconciliate. */
   tassonomiaBu?: { coerente: boolean; estranei: string[] } | null;
 }) {
+  const router = useRouter();
   const [vista, setVista] = useState<Vista>("sintesi");
   const [anno, setAnno] = useState<number>(anniDisponibili[0] ?? new Date().getFullYear());
   const [filtri, setFiltri] = useState<FiltroAttivo[]>([]);
@@ -197,6 +206,32 @@ export function CruscottoView({
     return Math.floor((Date.now() - t) / 3_600_000);
   }, [runRicevutoIl]);
   const caricamentoVecchio = oreDalCaricamento !== null && oreDalCaricamento >= 36;
+
+  const [forzando, setForzando] = useState(false);
+  const [erroreAggiornamento, setErroreAggiornamento] = useState<string | null>(null);
+
+  /**
+   * Rilegge lo snapshot dalle viste `bi_*`.
+   *
+   * Svuota anche la cache del browser: senza, le risposte gia' ottenute
+   * restano valide dieci minuti e la pagina continuerebbe a mostrare i numeri
+   * vecchi subito dopo aver detto «aggiornato».
+   */
+  const forzaAggiornamento = useCallback(async () => {
+    setForzando(true);
+    setErroreAggiornamento(null);
+    try {
+      const r = await fetch("/api/bi/snapshot", { method: "POST" });
+      const j = (await r.json()) as { error?: string };
+      if (!r.ok) throw new Error(j.error ?? "Aggiornamento non riuscito");
+      svuotaCacheQuery();
+      router.refresh();
+    } catch (e) {
+      setErroreAggiornamento(e instanceof Error ? e.message : "Aggiornamento non riuscito");
+    } finally {
+      setForzando(false);
+    }
+  }, [router]);
 
   // Con YTD acceso ogni metrica si ferma allo stesso giorno dell'anno; il
   // modificatore "anno_precedente" sposta indietro sia l'inizio sia la fine,
@@ -868,7 +903,27 @@ export function CruscottoView({
             <span>
               L&apos;ultimo caricamento risale a <strong>{oreDalCaricamento} ore fa</strong>. Il
               gestionale consegna i dati ogni notte: se questo numero continua a crescere, quello
-              che stai leggendo non e&apos; la situazione di oggi.
+              che stai leggendo non e&apos; la situazione di oggi.{" "}
+              {/* Il rimedio sta dentro l'avviso, non in un'icona altrove. Il tasto
+                  «Ricarica» qui sopra svuota solo la cache del browser: premuto sui
+                  dati fermi ridava gli stessi dati fermi, ed e' il motivo per cui
+                  nessuno riusciva a sbloccarli. Questo rilegge davvero dalle viste. */}
+              {puoForzareAggiornamento ? (
+                <button
+                  onClick={() => void forzaAggiornamento()}
+                  disabled={forzando}
+                  className="underline font-medium hover:no-underline disabled:opacity-50"
+                >
+                  {forzando ? "Rilettura in corso…" : "Rileggi i dati dal gestionale"}
+                </button>
+              ) : (
+                <span className="opacity-80">
+                  La rilettura immediata è riservata alla direzione.
+                </span>
+              )}
+              {erroreAggiornamento && (
+                <span className="block mt-1 text-danger">{erroreAggiornamento}</span>
+              )}
             </span>
           </p>
         )}

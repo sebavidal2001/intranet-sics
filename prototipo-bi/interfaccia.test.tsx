@@ -9,6 +9,18 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+// Il cruscotto usa `useRouter` per ridisegnare la pagina dopo una rilettura
+// forzata dei dati. Fuori da Next il router non è montato e l'hook solleva
+// «invariant expected app router to be mounted»: qui basta che esista.
+const rinfrescato = vi.hoisted(() => ({ volte: 0 }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    refresh: () => {
+      rinfrescato.volte += 1;
+    },
+  }),
+}));
 import { BriefingView } from "@/components/prototipo-bi/briefing-view";
 import { CruscottoView } from "@/components/prototipo-bi/cruscotto-view";
 import { ConfigurazioneView } from "@/components/prototipo-bi/configurazione-view";
@@ -182,10 +194,11 @@ describe("Cruscotto", () => {
     vi.stubGlobal("fetch", spia);
 
     render(
+      // `buDisponibili` e `agentiDisponibili` non esistono più: erano prop mai
+      // usati dal componente, ma Next li serializzava lo stesso verso il
+      // browser, e la pagina li calcolava sullo snapshot non perimetrato.
       <CruscottoView
         anniDisponibili={[2026, 2025]}
-        buDisponibili={["COMPONENTI", "IMPIANTI"]}
-        agentiDisponibili={["AIRFLUID"]}
         dataMassima="2026-08-27"
         runRicevutoIl="2026-08-27T23:31:00Z"
       />
