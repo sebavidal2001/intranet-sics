@@ -118,8 +118,14 @@ export function BiDashboardView() {
   // Carica opzioni filtri globali una volta sola al mount
   useEffect(() => {
     fetch("/api/portali/preventivatore/bi/filters-options", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => setFilterOptions(j))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: FiltroGlobaleOption | null) => {
+        // Senza il controllo su `r.ok` un 403/500 finiva qui come
+        // `{ error: "..." }`: sovrascriveva lo stato iniziale e più sotto
+        // `filterOptions.anni.map(...)` andava in TypeError, buttando l'intera
+        // pagina BI nell'error boundary invece di lasciare i filtri vuoti.
+        if (j && Array.isArray(j.anni)) setFilterOptions(j);
+      })
       .catch(() => {});
   }, []);
 

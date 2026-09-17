@@ -145,7 +145,18 @@ export async function PATCH(
       const transizioniAmmesse = TRANSIZIONI_VALIDE[statoCorrente];
       // Caso "storico/legacy → workflow": ammesso solo da superadmin (livello superadmin) per re-aprire
       const isUnlock = ["storico","pending","ordinato","rifiutato"].includes(statoCorrente);
-      if (!isUnlock && !transizioniAmmesse.includes(stato) && stato !== statoCorrente) {
+      // Una transizione verso SE STESSI non e' un no-op: il body puo' riscrivere
+      // `numero_preventivo`, `importo_offerta` e `note_offerta`. Su un preventivo
+      // gia' 'inviata' significava cambiare il numero dell'offerta mandata al
+      // cliente, in silenzio e senza traccia — bastava ripremere «Conferma invio».
+      // Il guard aveva una deroga esplicita (`stato !== statoCorrente`) che
+      // lasciava passare proprio questo caso: qui viene tolta.
+      if (!isUnlock && stato === statoCorrente) {
+        return NextResponse.json({
+          error: `Il preventivo è già nello stato '${statoCorrente}': non c'è niente da cambiare.`
+        }, { status: 409 });
+      }
+      if (!isUnlock && !transizioniAmmesse.includes(stato)) {
         return NextResponse.json({
           error: `Transizione non valida: da '${statoCorrente}' non si può passare a '${stato}'. Ammesse: ${transizioniAmmesse.join(", ") || "(nessuna)"}.`
         }, { status: 400 });

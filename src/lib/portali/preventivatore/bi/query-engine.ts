@@ -262,6 +262,11 @@ export async function loadBiRows(
       .schema("preventivatore")
       .from("documenti")
       .select(DOC_SELECT, { count: "exact" })
+      // Un `.limit()` senza ordinamento lascia al piano di esecuzione la scelta
+      // di QUALI righe restituire: sopra il tetto il campione sarebbe arbitrario
+      // e potrebbe cambiare fra due caricamenti della stessa pagina. Ordinare
+      // rende il troncamento almeno deterministico e prevedibile (i più recenti).
+      .order("created_at", { ascending: false })
       .limit(DOC_LIMIT);
     if (scopeIds) q = q.in("cliente_master_id", scopeIds);
     const { data, count, error } = await q;
@@ -279,6 +284,7 @@ export async function loadBiRows(
     .schema("preventivatore")
     .from("righe_distinta")
     .select(`${RIGA_FIELDS.join(",")}, documenti!inner(${DOC_SELECT})`, { count: "exact" })
+    .order("created_at", { ascending: false })
     .limit(RIGA_LIMIT);
   if (scopeIds) rq = rq.in("documenti.cliente_master_id", scopeIds);
   const { data, count, error } = await rq;
