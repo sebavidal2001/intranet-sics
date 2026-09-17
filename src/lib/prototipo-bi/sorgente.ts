@@ -412,35 +412,104 @@ const VERSIONE_FORMA = 2;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.
+//
+// `inMemoriaIl` non e' un dettaglio: senza, la copia in memoria non scadeva
+// MAI. Il file aveva sei ore di validita', ma il file veniva riletto solo
+// quando `inMemoria` era vuota — cioe' solo subito dopo un riavvio. Sotto pm2
+// il processo vive per giorni, quindi il primo snapshot costruito restava in
+// servizio per sempre. Il 17/09/2026 il cruscotto scriveva "Dati aggiornati
+// al 11/09": lo snapshot era stato costruito il 14/09 alle 19:28 e da allora
+// nessuna richiesta aveva piu' guardato ne' il file ne' il database, mentre
+// l'ingest notturno da SRVWOA continuava a lavorare regolarmente.
 let inMemoria: Snapshot | null = null;
+let inMemoriaIl = 0;
 
 const SCADENZA_MS = 6 * 60 * 60 * 1000; // 6 ore
+
+// Ogni quanto ci si chiede se e' arrivato un caricamento nuovo. E' una sola
+// riga da `bi_runs`, non lo snapshot: costa quanto un ping. Serve perche' sei
+// ore sono la misura giusta per il costo di ricostruzione e quella sbagliata
+// per chi apre il BI la mattina dopo l'ingest dell'01:31 e vuole vedere ieri.
+const CONTROLLO_RUN_MS = 10 * 60 * 1000; // 10 minuti
+let controllatoIl = 0;
+
+/**
+ * Vero se il run pubblicato e' diverso da quello dello snapshot in mano.
+ *
+ * In caso di dubbio risponde `false`: se il database non risponde, o non dice
+ * quale sia il run corrente, si tiene lo snapshot che c'e'. Rispondere `true`
+ * su un errore trasformerebbe un'indisponibilita' momentanea in una raffica di
+ * ricostruzioni da 66.000 righe.
+ */
+async function runCambiato(snapshot: Snapshot): Promise<boolean> {
+  const stato = await leggiStatoRun();
+  if (!stato.runCorrente || !snapshot.runCorrente) return false;
+  return stato.runCorrente !== snapshot.runCorrente;
+}
+
+// Ricostruzione in corso. Dieci richieste che arrivano insieme su uno snapshot
+// scaduto devono aspettare la stessa ricostruzione, non farne dieci.
+let inCorso: Promise<Snapshot> | null = null;
 
 /**
  * Restituisce lo snapshot, ricostruendolo se manca o è scaduto.
  * `forza` ignora la cache e rilegge dal database.
  */
 export async function ottieniSnapshot(forza = false): Promise<Snapshot> {
-  if (!forza && inMemoria) return inMemoria;
+  // Il file su disco e' una scorciatoia valida solo finche' descrive lo stesso
+  // caricamento che abbiamo in mano: se e' arrivato un run nuovo va saltato,
+  // altrimenti si sostituisce un dato vecchio con lo stesso dato vecchio.
+  let ignoraFile = forza;
 
-  if (!forza) {
-    const eta = await etaSnapshot();
-    if (eta !== null && eta < SCADENZA_MS) {
-      const daFile = await leggiSnapshotDaCache<Snapshot>();
-      if (daFile && daFile.versioneForma === VERSIONE_FORMA) {
-        inMemoria = daFile;
-        return daFile;
-      }
+  if (!forza && inMemoria) {
+    const adesso = Date.now();
+    if (adesso - inMemoriaIl < SCADENZA_MS) {
+      if (adesso - controllatoIl < CONTROLLO_RUN_MS) return inMemoria;
+      controllatoIl = adesso;
+      if (!(await runCambiato(inMemoria))) return inMemoria;
+      ignoraFile = true;
     }
   }
 
-  const fresco = await costruisciSnapshot();
-  await salvaSnapshotInCache(fresco);
-  inMemoria = fresco;
-  return fresco;
+  if (!forza && inCorso) return inCorso;
+
+  const lavoro = (async () => {
+    if (!ignoraFile) {
+      const eta = await etaSnapshot();
+      if (eta !== null && eta < SCADENZA_MS) {
+        const daFile = await leggiSnapshotDaCache<Snapshot>();
+        if (daFile && daFile.versioneForma === VERSIONE_FORMA) {
+          inMemoria = daFile;
+          // L'eta' e' quella del file: uno snapshot scritto cinque ore fa da un
+          // altro processo ha un'ora di vita davanti, non sei.
+          inMemoriaIl = Date.now() - eta;
+          // Azzerato apposta: il file puo' venire da un run precedente, quindi
+          // la prossima richiesta deve poter chiedere subito se e' cambiato.
+          controllatoIl = 0;
+          return daFile;
+        }
+      }
+    }
+
+    const fresco = await costruisciSnapshot();
+    await salvaSnapshotInCache(fresco);
+    inMemoria = fresco;
+    inMemoriaIl = Date.now();
+    controllatoIl = Date.now();
+    return fresco;
+  })();
+
+  inCorso = lavoro;
+  try {
+    return await lavoro;
+  } finally {
+    if (inCorso === lavoro) inCorso = null;
+  }
 }
 
 /** Svuota la cache in memoria (usato dopo un aggiornamento forzato). */
 export function invalidaCacheMemoria() {
   inMemoria = null;
+  inMemoriaIl = 0;
+  controllatoIl = 0;
 }

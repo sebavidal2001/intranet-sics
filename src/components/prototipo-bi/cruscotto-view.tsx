@@ -27,6 +27,7 @@ import {
   Play,
   Pause,
   RefreshCw,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { RaccordoCruscottoDashboard } from "./raccordo-cruscotto-dashboard";
@@ -181,6 +182,21 @@ export function CruscottoView({
     [anno, dataMassima]
   );
   const limiteYtd = useMemo(() => giornoLimite(anno, dataMassima), [anno, dataMassima]);
+
+  // Quanto e' vecchio il caricamento che stiamo guardando.
+  //
+  // Serve perche' il 17/09/2026 questa pagina ha scritto per tre giorni «Dati
+  // aggiornati al 11/09» in grigio piccolo, e nessuno l'ha letto come un
+  // guasto. L'ingest da SRVWOA arriva ogni notte all'01:31: oltre le 36 ore
+  // manca almeno un caricamento, e va detto a voce alta invece che lasciato
+  // dedurre da una data.
+  const oreDalCaricamento = useMemo(() => {
+    if (!runRicevutoIl) return null;
+    const t = Date.parse(runRicevutoIl);
+    if (Number.isNaN(t)) return null;
+    return Math.floor((Date.now() - t) / 3_600_000);
+  }, [runRicevutoIl]);
+  const caricamentoVecchio = oreDalCaricamento !== null && oreDalCaricamento >= 36;
 
   // Con YTD acceso ogni metrica si ferma allo stesso giorno dell'anno; il
   // modificatore "anno_precedente" sposta indietro sia l'inizio sia la fine,
@@ -845,6 +861,17 @@ export function CruscottoView({
             }
           />
         </motion.div>
+
+        {caricamentoVecchio && (
+          <p className="text-xs text-warning mb-2 flex items-start gap-1.5">
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
+            <span>
+              L&apos;ultimo caricamento risale a <strong>{oreDalCaricamento} ore fa</strong>. Il
+              gestionale consegna i dati ogni notte: se questo numero continua a crescere, quello
+              che stai leggendo non e&apos; la situazione di oggi.
+            </span>
+          </p>
+        )}
 
         <p className="text-xs text-text-muted mb-4">
           Dati aggiornati al <strong>{dataMassima ?? "n/d"}</strong>
