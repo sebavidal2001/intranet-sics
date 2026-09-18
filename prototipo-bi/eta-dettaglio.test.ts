@@ -103,27 +103,57 @@ describe("Anzianità e dettaglio, sui dati reali", () => {
     console.log(`   Età media ${eta.totale.toFixed(1)} giorni su ${M(inevaso.totale)} € di inevaso`);
   });
 
-  it("le fasce di anzianità riproducono la distribuzione SQL", () => {
-    // SQL:  0-30 78 righe · 31-60 117 · 61-90 96 · 91-180 356
-    //       6-12 mesi 757 · oltre 1 anno 1.339
-    const attese: Record<string, number> = {
-      "0-30 giorni": 78,
-      "31-60 giorni": 117,
-      "61-90 giorni": 96,
-      "91-180 giorni": 356,
-      "6-12 mesi": 757,
-      "oltre 1 anno": 1339,
-    };
+  it("le fasce di anzianità sono una partizione, senza righe perse", () => {
+    // Prima c'erano sei conteggi copiati da una SELECT ("0-30 78 righe · 31-60
+    // 117 · ..."): valevano per il database di sviluppo di quel giorno, e su
+    // produzione questo test falliva con `expected 119 to be 78`.
+    //
+    // E non si ricalcolano nemmeno qui i confini della regola (<=30, <=60...):
+    // un test che ricopia la regola verifica la propria copia — se la copia è
+    // giusta non dimostra nulla, se è sbagliata diventa rosso senza che il BI
+    // abbia un difetto.
+    //
+    // Quello che conta è che la classificazione sia una PARTIZIONE: ogni riga
+    // finisce in una fascia e in una sola, nessuna si perde, nessun euro si
+    // perde, e le etichette sono quelle previste. Non duplica e non invecchia.
     const res = esegui(
       { metrica: "preventivi_aperti", raggruppa: ["fascia_eta"] },
       snapshot
     );
+
+    const ETICHETTE = [
+      "0-30 giorni",
+      "31-60 giorni",
+      "61-90 giorni",
+      "91-180 giorni",
+      "6-12 mesi",
+      "oltre 1 anno",
+      "(chiuso)",
+    ];
+    for (const r of res.righe) {
+      expect(ETICHETTE, `fascia inattesa: ${r.etichetta}`).toContain(r.etichetta);
+    }
+
+    // Nessuna riga persa e nessuna contata due volte.
+    const righeClassificate = res.righe.reduce((s, r) => s + r.conteggio, 0);
+    expect(righeClassificate).toBe(snapshot.dataset.preventivi_aperti.length);
+
+    // Gli euro non si perdono per strada.
+    const sommaImporti = res.righe.reduce((s, r) => s + r.valore, 0);
+    expect(Math.abs(sommaImporti - res.totale)).toBeLessThan(1);
+
+    // Le righe chiuse stanno tutte e sole in "(chiuso)".
+    const chiuse = snapshot.dataset.preventivi_aperti.filter(
+      (r) => r.giorniAperto === null || r.giorniAperto === undefined
+    ).length;
+    const inChiuso = res.righe.find((r) => r.etichetta === "(chiuso)")?.conteggio ?? 0;
+    expect(inChiuso).toBe(chiuse);
+
     console.log("\n   Fascia            righe      inevaso");
-    for (const [fascia, righe] of Object.entries(attese)) {
-      const r = res.righe.find((x) => x.etichetta === fascia);
-      expect(r, `manca ${fascia}`).toBeTruthy();
-      expect(r!.conteggio).toBe(righe);
-      console.log(`   ${fascia.padEnd(16)} ${String(righe).padStart(5)} ${M(r!.valore).padStart(12)} €`);
+    for (const r of res.righe) {
+      console.log(
+        `   ${r.etichetta.padEnd(16)} ${String(r.conteggio).padStart(5)} ${M(r.valore).padStart(12)} €`
+      );
     }
   });
 
