@@ -401,6 +401,170 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
       },
     ],
   },
+  {
+    // Il margine entra nel Cruscotto solo dal 18/09/2026, da quando il costo è
+    // quello valido il giorno della vendita e non l'ultimo noto: prima i
+    // confronti fra anni erano privi di significato, perché mettevano ricavi
+    // di allora accanto a costi di oggi.
+    //
+    // Ogni riquadro qui dentro va letto accanto alla COPERTURA: il margine si
+    // calcola sulle sole righe di cui si conosce il costo (circa il 98% del
+    // valore), e su un raggruppamento stretto quella quota può scendere molto.
+    // Per questo la copertura è il terzo KPI e non una nota a piè di pagina.
+    chiave: "margine",
+    titolo: "Margine",
+    ordine: 6,
+    analisi: [
+      {
+        chiave: "margine.margine-anno",
+        titolo: "Margine rispetto all'anno precedente",
+        descrizione:
+          "Fatturato meno costo di acquisto, al costo valido il giorno della vendita. Margine di primo livello: non contiene struttura, trasporto o manodopera.",
+        spec: { metrica: "margine" },
+        serie: [
+          { ruolo: "principale", nome: "Margine", spec: { metrica: "margine" } },
+          {
+            ruolo: "confronto",
+            nome: "Anno precedente",
+            spec: { metrica: "margine", modificatore: "anno_precedente" },
+          },
+        ],
+        grafico: "kpi",
+        larghezza: 4,
+      },
+      {
+        chiave: "margine.margine-pct-anno",
+        titolo: "Margine % rispetto all'anno precedente",
+        spec: { metrica: "margine_pct" },
+        serie: [
+          { ruolo: "principale", nome: "Margine %", spec: { metrica: "margine_pct" } },
+          {
+            ruolo: "confronto",
+            nome: "Anno precedente",
+            spec: { metrica: "margine_pct", modificatore: "anno_precedente" },
+          },
+        ],
+        grafico: "kpi",
+        larghezza: 4,
+      },
+      {
+        chiave: "margine.copertura",
+        titolo: "Copertura costi %",
+        descrizione:
+          "Quota del fatturato di cui si conosce il costo. Va guardata prima del margine: un margine calcolato sul 60% del fatturato dice poco.",
+        spec: { metrica: "copertura_costi_pct" },
+        serie: [
+          { ruolo: "principale", nome: "Copertura", spec: { metrica: "copertura_costi_pct" } },
+          {
+            ruolo: "confronto",
+            nome: "Anno precedente",
+            spec: { metrica: "copertura_costi_pct", modificatore: "anno_precedente" },
+          },
+        ],
+        grafico: "kpi",
+        larghezza: 4,
+      },
+      {
+        chiave: "margine.andamento-mensile",
+        titolo: "Andamento del margine, mese per mese",
+        descrizione: "Valore assoluto contro lo stesso periodo dell'anno precedente.",
+        spec: { metrica: "margine", granularita: "mese", ordina: "etichetta" },
+        serie: [
+          {
+            ruolo: "principale",
+            nome: "Margine",
+            spec: { metrica: "margine", granularita: "mese", ordina: "etichetta" },
+          },
+          {
+            ruolo: "confronto",
+            nome: "Anno precedente",
+            spec: {
+              metrica: "margine",
+              modificatore: "anno_precedente",
+              granularita: "mese",
+              ordina: "etichetta",
+            },
+          },
+        ],
+        grafico: "linee",
+        larghezza: 12,
+      },
+      {
+        chiave: "margine.pct-per-bu",
+        titolo: "Margine % per business unit",
+        descrizione: "Dove si guadagna davvero, che non è sempre dove si fattura di più.",
+        spec: { metrica: "margine_pct", raggruppa: ["bu"], ordina: "valore_desc" },
+        grafico: "barre",
+        larghezza: 6,
+      },
+      {
+        chiave: "margine.pct-per-categoria",
+        titolo: "Margine % per categoria",
+        spec: { metrica: "margine_pct", raggruppa: ["categoria"], ordina: "valore_desc" },
+        grafico: "barre",
+        larghezza: 6,
+      },
+      {
+        chiave: "margine.per-bu-quadro",
+        titolo: "Business unit — fatturato, costo e margine",
+        descrizione:
+          "Le tre grandezze affiancate: senza il fatturato, una percentuale alta su un volume piccolo sembra un risultato.",
+        spec: { metrica: "fatturato", raggruppa: ["bu"], ordina: "valore_desc" },
+        serie: [
+          {
+            ruolo: "principale",
+            nome: "Fatturato",
+            spec: { metrica: "fatturato", raggruppa: ["bu"], ordina: "valore_desc" },
+          },
+          {
+            ruolo: "confronto",
+            nome: "Costo del venduto",
+            spec: { metrica: "costo_venduto", raggruppa: ["bu"], ordina: "valore_desc" },
+          },
+          {
+            ruolo: "confronto",
+            nome: "Margine",
+            spec: { metrica: "margine", raggruppa: ["bu"], ordina: "valore_desc" },
+          },
+        ],
+        grafico: "tabella",
+        larghezza: 12,
+      },
+      {
+        chiave: "margine.clienti-piu-sottili",
+        titolo: "I clienti a margine più sottile",
+        descrizione:
+          "Ordinati dal margine percentuale più basso. Da leggere con la copertura: un cliente che compra articoli senza costo a listino compare qui senza meritarlo.",
+        spec: {
+          metrica: "margine_pct",
+          raggruppa: ["cliente"],
+          ordina: "valore_asc",
+          limite: 20,
+        },
+        grafico: "barre",
+        larghezza: 12,
+      },
+      {
+        chiave: "margine.articoli-quadro",
+        titolo: "Articoli — dove si concentra il margine",
+        spec: { metrica: "margine", raggruppa: ["articolo"], ordina: "valore_desc", limite: 25 },
+        serie: [
+          {
+            ruolo: "principale",
+            nome: "Margine",
+            spec: { metrica: "margine", raggruppa: ["articolo"], ordina: "valore_desc", limite: 25 },
+          },
+          {
+            ruolo: "confronto",
+            nome: "Fatturato",
+            spec: { metrica: "fatturato", raggruppa: ["articolo"], ordina: "valore_desc", limite: 25 },
+          },
+        ],
+        grafico: "tabella",
+        larghezza: 12,
+      },
+    ],
+  },
 ];
 
 // NON MIGRATI:

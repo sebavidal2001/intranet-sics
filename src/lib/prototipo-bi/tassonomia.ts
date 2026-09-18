@@ -86,7 +86,7 @@ export const TIPOLOGIE: Tipologia[] = [
     chiave: "margine",
     etichetta: "Margine",
     descrizione:
-      "Margine sul fatturato a ultimo costo di acquisto. Da leggere sempre accanto alla copertura costi.",
+      "Margine sul fatturato, al costo di acquisto valido il giorno della vendita. Da leggere sempre accanto alla copertura costi.",
     metriche: ["margine", "margine_pct", "costo_venduto", "copertura_costi_pct"],
   },
 ];

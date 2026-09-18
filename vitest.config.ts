@@ -20,6 +20,7 @@ const LEGGONO_DAL_DATABASE = [
   "prototipo-bi/analista.test.tsx",
   "prototipo-bi/business-unit.test.ts",
   "prototipo-bi/costo-storico-dal-database.test.ts",
+  "prototipo-bi/cruscotto-margine.test.ts",
   "prototipo-bi/documenti.test.ts",
   "prototipo-bi/eta-dettaglio.test.ts",
   "prototipo-bi/integrazione.test.ts",

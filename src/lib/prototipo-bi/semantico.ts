@@ -340,8 +340,15 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     dataset: "fatturato",
     aggregazione: "rapporto",
     unita: "percentuale",
-    numeratore: (r) => (r.costoUnitario == null ? 0 : r.importo),
-    denominatore: (r) => r.importo,
+    // Valori ASSOLUTI, non netti. Con l'importo firmato una copertura poteva
+    // superare il 100%: basta che le righe SENZA costo siano note di credito,
+    // e il denominatore (netto) scende piu' del numeratore. Misurato sul 2026,
+    // business unit STRUTTURE: 100,2%. Aritmeticamente corretto come rapporto,
+    // e assurdo come copertura — chi legge smette di fidarsi del numero, e ha
+    // ragione. In valore assoluto la domanda resta quella giusta: di quanta
+    // parte del movimentato conosciamo il costo.
+    numeratore: (r) => (r.costoUnitario == null ? 0 : Math.abs(r.importo)),
+    denominatore: (r) => Math.abs(r.importo),
   },
 
   // Budget e BEP non vengono dallo snapshot: sono iniettati dal motore budget.
@@ -752,11 +759,14 @@ export function esegui(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
   // margine di quel 60%. Chi legge deve saperlo dal risultato, non doverlo
   // chiedere.
   if (METRICHE_A_COSTO.has(spec.metrica) && righe.length > 0) {
+    // In valore assoluto, per la stessa ragione della metrica
+    // `copertura_costi_pct`: col netto una copertura poteva risultare sopra il
+    // 100% quando le righe senza costo erano note di credito.
     let coperto = 0;
     let totaleRicavo = 0;
     for (const r of righe) {
-      totaleRicavo += r.importo;
-      if (r.costoUnitario != null) coperto += r.importo;
+      totaleRicavo += Math.abs(r.importo);
+      if (r.costoUnitario != null) coperto += Math.abs(r.importo);
     }
     const pct = totaleRicavo > 0 ? (coperto / totaleRicavo) * 100 : 0;
 

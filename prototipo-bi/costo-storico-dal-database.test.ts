@@ -27,7 +27,14 @@ import { esegui, validaSpec } from "@/lib/prototipo-bi/semantico";
 import type { Snapshot } from "@/lib/prototipo-bi/tipi";
 
 // Misurati sul gestionale il 17/09/2026 (docs/bi/REFERTO-costo-alla-vendita-20260917.md).
-const ATTESO_2025 = { margineP: 35.4, coperturaP: 97.9, valore: 3_744_126.35 };
+//
+// La copertura attesa è 97,0 e non il 97,9 misurato con dbisql, e la
+// differenza è voluta: la query sul gestionale rapportava valori NETTI, la
+// metrica ora usa i valori ASSOLUTI. Col netto una copertura poteva superare
+// il 100% (business unit STRUTTURE, 2026: 100,2%), perché le righe senza costo
+// erano note di credito e abbassavano il denominatore più del numeratore.
+// Il margine non cambia: la copertura non entra nel suo calcolo.
+const ATTESO_2025 = { margineP: 35.4, coperturaP: 97.0, valore: 3_744_126.35 };
 
 const P_2025 = { dal: "2025-01-01", al: "2025-12-31" };
 
