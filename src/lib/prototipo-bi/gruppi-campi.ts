@@ -50,6 +50,12 @@ export const GRUPPI_DIMENSIONI: GruppoDimensioni[] = [
     dimensioni: ["categoria", "articolo", "causale"],
   },
   {
+    chiave: "operazioni",
+    etichetta: "Operazioni",
+    descrizione: "La singola fattura, ordine o preventivo.",
+    dimensioni: ["documento"],
+  },
+  {
     chiave: "preventivi",
     etichetta: "Preventivi",
     descrizione: "Disponibili solo sulle metriche dei preventivi.",

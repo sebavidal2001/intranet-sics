@@ -380,6 +380,7 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
     estrai: (r) => r.causaleDescrizione || r.causaleCodice || "(nessuna)",
   },
   articolo: { etichetta: "Articolo", estrai: (r) => r.descrizioneArticolo || r.articolo },
+  documento: { etichetta: "Documento", estrai: (r) => r.documento },
   creatore: {
     etichetta: "Addetto back office",
     estrai: (r) => r.creatore || "(non indicato)",

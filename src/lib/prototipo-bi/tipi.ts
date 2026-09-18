@@ -288,6 +288,16 @@ export type Dimensione =
   | "categoria"
   | "causale"
   | "articolo"
+  /**
+   * Il singolo documento: fattura, ordine, preventivo.
+   *
+   * Cardinalita' alta per costruzione — migliaia di valori — quindi ha senso
+   * solo con un `limite` o dentro una tabella che cerca e pagina. E' pero' il
+   * livello a cui si valuta un'operazione: un margine per business unit dice
+   * dove guardare, un margine per documento dice quale trattativa ha marginato
+   * male.
+   */
+  | "documento"
   /** Addetto back office che ha creato il preventivo. */
   | "creatore"
   /** Esito del preventivo: convertito, parziale, aperto. */

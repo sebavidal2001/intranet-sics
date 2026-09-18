@@ -91,7 +91,16 @@ export const TIPOLOGIE: Tipologia[] = [
   },
 ];
 
-const DIMENSIONI_COMUNI: Dimensione[] = ["bu", "agente", "cliente", "categoria", "articolo"];
+const DIMENSIONI_COMUNI: Dimensione[] = [
+  "bu",
+  "agente",
+  "cliente",
+  "categoria",
+  "articolo",
+  // Ultima di proposito: e' la piu' fine, e negli elenchi conviene che stia in
+  // coda alle dimensioni con cui si comincia a guardare.
+  "documento",
+];
 
 /** Le dimensioni che hanno senso per questa metrica. */
 export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {

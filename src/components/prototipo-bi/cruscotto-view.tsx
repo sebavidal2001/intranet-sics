@@ -56,6 +56,8 @@ import {
   TabellaAnalitica,
   colonneConfronto,
   costruisciConfronto,
+  type ColonnaAnalitica,
+  type RigaAnalitica,
 } from "./tabella-analitica";
 import { PannelloImpostazioni, useImpostazioni } from "./impostazioni";
 import { VistaConversione } from "./vista-conversione";
@@ -313,6 +315,62 @@ export function CruscottoView({
           ...base,
           ordina: "valore_desc",
         },
+        marginePctAgente: {
+          metrica: "margine_pct",
+          raggruppa: ["agente"],
+          ...base,
+          ordina: "valore_desc",
+        },
+        // Le quattro grandezze per agente, per la tabella: la percentuale da
+        // sola premia chi vende poco e bene, il valore da solo chi vende molto
+        // e male. Vanno lette insieme.
+        fatturatoAgente: { metrica: "fatturato", raggruppa: ["agente"], ...base, ordina: "valore_desc" },
+        costoAgente: { metrica: "costo_venduto", raggruppa: ["agente"], ...base, ordina: "valore_desc" },
+        margineAgente: { metrica: "margine", raggruppa: ["agente"], ...base, ordina: "valore_desc" },
+        coperturaAgente: {
+          metrica: "copertura_costi_pct",
+          raggruppa: ["agente"],
+          ...base,
+          ordina: "valore_desc",
+        },
+        // Le singole operazioni. Cardinalità alta per costruzione: il limite
+        // tiene la tabella maneggevole, e l'ordinamento per fatturato fa sì
+        // che quelle che pesano ci siano tutte.
+        fatturatoDoc: {
+          metrica: "fatturato",
+          raggruppa: ["documento"],
+          ...base,
+          ordina: "valore_desc",
+          limite: 500,
+        },
+        costoDoc: {
+          metrica: "costo_venduto",
+          raggruppa: ["documento"],
+          ...base,
+          ordina: "valore_desc",
+          limite: 500,
+        },
+        margineDoc: {
+          metrica: "margine",
+          raggruppa: ["documento"],
+          ...base,
+          ordina: "valore_desc",
+          limite: 500,
+        },
+        marginePctDoc: {
+          metrica: "margine_pct",
+          raggruppa: ["documento"],
+          ...base,
+          ordina: "valore_desc",
+          limite: 500,
+        },
+        coperturaDoc: {
+          metrica: "copertura_costi_pct",
+          raggruppa: ["documento"],
+          ...base,
+          ordina: "valore_desc",
+          limite: 500,
+        },
       };
     }
 
@@ -512,6 +570,72 @@ export function CruscottoView({
     return risultati[k];
   };
   const tot = (k: string) => risultati[k]?.totale ?? 0;
+
+  /**
+   * Righe di una tabella del margine: cinque misure affiancate sulla stessa
+   * chiave — business unit, agente o documento che sia.
+   *
+   * Servono tutte e cinque insieme. La percentuale da sola premia chi vende
+   * poco e bene; il valore da solo premia chi vende molto e male; e senza la
+   * copertura non si distingue un margine basso da un margine calcolato su
+   * mezza riga. L'ordine delle colonne è quello in cui si leggono.
+   */
+  const righeTabellaMargine = (chiavi: {
+    fatturato: string;
+    costo: string;
+    margine: string;
+    pct: string;
+    copertura: string;
+  }): RigaAnalitica[] => {
+    const mappa = (k: string) =>
+      new Map((rSeCe(k)?.righe ?? []).map((x) => [x.etichetta, x.valore]));
+    const costo = mappa(chiavi.costo);
+    const margine = mappa(chiavi.margine);
+    const pct = mappa(chiavi.pct);
+    const copertura = mappa(chiavi.copertura);
+
+    // Si parte dal fatturato: è la misura che esiste su ogni riga, anche dove
+    // il costo manca. Partire dal margine nasconderebbe proprio le voci di cui
+    // non si conosce il costo, che sono quelle da guardare.
+    return (rSeCe(chiavi.fatturato)?.righe ?? []).map((riga) => ({
+      chiave: riga.etichetta,
+      celle: {
+        voce: riga.etichetta,
+        fatturato: riga.valore,
+        costo: costo.get(riga.etichetta) ?? null,
+        margine: margine.get(riga.etichetta) ?? null,
+        pct: pct.get(riga.etichetta) ?? null,
+        copertura: copertura.get(riga.etichetta) ?? null,
+      },
+    }));
+  };
+
+  /** Colonne delle tabelle del margine: unità dichiarate una per una. */
+  const COLONNE_MARGINE: ColonnaAnalitica[] = [
+    { chiave: "fatturato", etichetta: "Fatturato", tipo: "euro", unita: "euro" },
+    { chiave: "costo", etichetta: "Costo del venduto", tipo: "euro", unita: "euro" },
+    { chiave: "margine", etichetta: "Margine", tipo: "euro", unita: "euro" },
+    {
+      chiave: "pct",
+      etichetta: "Margine %",
+      tipo: "numero",
+      unita: "percentuale",
+      decimali: 1,
+      altoBuono: true,
+      totale: { tipo: "nessuno" },
+      titolo: "Calcolato sulle sole righe di cui si conosce il costo",
+    },
+    {
+      chiave: "copertura",
+      etichetta: "Copertura %",
+      tipo: "numero",
+      unita: "percentuale",
+      decimali: 1,
+      altoBuono: true,
+      totale: { tipo: "nessuno" },
+      titolo: "Quota del fatturato con un costo noto: sotto il 100% il margine accanto è parziale",
+    },
+  ];
 
   // ── Derivati per i grafici analitici ──────────────────────────────────────
 
@@ -1298,6 +1422,7 @@ export function CruscottoView({
                   etichetta: x.etichetta,
                   valore: x.valore,
                 }))}
+                formato="percentuale"
                 onClick={(b) => alternaFiltro("bu", b)}
               />
             </Scheda>
@@ -1308,6 +1433,7 @@ export function CruscottoView({
                   etichetta: x.etichetta,
                   valore: x.valore,
                 }))}
+                formato="percentuale"
                 onClick={(c) => alternaFiltro("categoria", c)}
               />
             </Scheda>
@@ -1330,6 +1456,7 @@ export function CruscottoView({
                   etichetta: x.etichetta,
                   valore: x.valore,
                 }))}
+                formato="percentuale"
                 onClick={(c) => alternaFiltro("cliente", c)}
               />
             </Scheda>
@@ -1343,7 +1470,64 @@ export function CruscottoView({
                   etichetta: x.etichetta,
                   valore: x.valore,
                 }))}
+                formato="percentuale"
                 onClick={(b) => alternaFiltro("bu", b)}
+              />
+            </Scheda>
+
+            <Scheda
+              titolo="Margine % per agente"
+              sottotitolo="da leggere con la tabella qui sotto: una percentuale alta su poco volume non è un risultato"
+            >
+              <BarreScostamento
+                dati={(r("marginePctAgente")?.righe ?? []).map((x) => ({
+                  etichetta: x.etichetta,
+                  valore: x.valore,
+                }))}
+                formato="percentuale"
+                onClick={(a) => alternaFiltro("agente", a)}
+              />
+            </Scheda>
+
+            <Scheda
+              titolo="Agenti — fatturato, costo e margine"
+              className="lg:col-span-3"
+              sottotitolo="ordinabile per qualsiasi colonna; la copertura dice quanto fidarsi del margine accanto"
+            >
+              <TabellaAnalitica
+                colonnaDimensione="Agente"
+                colonne={COLONNE_MARGINE}
+                righe={righeTabellaMargine({
+                  fatturato: "fatturatoAgente",
+                  costo: "costoAgente",
+                  margine: "margineAgente",
+                  pct: "marginePctAgente",
+                  copertura: "coperturaAgente",
+                })}
+                colonnaOrdinamentoIniziale="margine"
+                massimoIniziale={15}
+                onClickRiga={(a) => alternaFiltro("agente", a)}
+                rigaEvidenziata={filtroDi("agente")}
+              />
+            </Scheda>
+
+            <Scheda
+              titolo="Le operazioni, una per una"
+              className="lg:col-span-3"
+              sottotitolo="le prime 500 per fatturato nel periodo; si cerca per numero documento e si ordina per qualsiasi colonna"
+            >
+              <TabellaAnalitica
+                colonnaDimensione="Documento"
+                colonne={COLONNE_MARGINE}
+                righe={righeTabellaMargine({
+                  fatturato: "fatturatoDoc",
+                  costo: "costoDoc",
+                  margine: "margineDoc",
+                  pct: "marginePctDoc",
+                  copertura: "coperturaDoc",
+                })}
+                colonnaOrdinamentoIniziale="margine"
+                massimoIniziale={20}
               />
             </Scheda>
           </div>
