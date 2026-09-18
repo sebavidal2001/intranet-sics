@@ -117,6 +117,52 @@ export interface RiepilogoAcquisizione {
   differenza: number;
 }
 
+export interface EstremiFattura {
+  numero: string | null;
+  data: string | null;
+  origine: {
+    numero: "documento" | "operatore" | "assente";
+    data: "documento" | "operatore" | "assente";
+  };
+}
+
+/**
+ * Completa gli estremi senza permettere a un dato manuale di sostituire quello
+ * letto. Nelle otto fatture GLS reali del 2026 tutte le 414 righe quadrano, ma
+ * numero e data non esistono nel PDF: l'intervento dell'operatore serve solo a
+ * colmare quell'assenza, non a correggere silenziosamente il documento.
+ */
+export function risolviEstremiFattura(
+  fattura: Pick<FatturaLetta, "numero" | "data">,
+  operatore: { numero?: string; data?: string } = {}
+): EstremiFattura {
+  const numeroOperatore = operatore.numero?.trim() || null;
+  const dataOperatore = operatore.data?.trim() || null;
+
+  return {
+    numero: fattura.numero ?? numeroOperatore,
+    data: fattura.data ?? dataOperatore,
+    origine: {
+      numero: fattura.numero
+        ? "documento"
+        : numeroOperatore
+          ? "operatore"
+          : "assente",
+      data: fattura.data ? "documento" : dataOperatore ? "operatore" : "assente",
+    },
+  };
+}
+
+export function erroreEstremiMancanti(
+  vettore: string,
+  estremi: Pick<EstremiFattura, "numero" | "data">
+): string | null {
+  if (estremi.numero && estremi.data) return null;
+  return vettore === "gls"
+    ? "GLS non espone numero e data nel dettaglio spedizioni: vanno indicati a mano."
+    : "Numero e data della fattura non sono presenti nel documento: vanno indicati a mano.";
+}
+
 function giorni(iso: string, delta: number): string {
   const d = new Date(`${iso}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + delta);
@@ -230,12 +276,18 @@ export async function preparaAcquisizione(params: {
   utenteId: string | null;
   metodoLettura?: "testo" | "ocr" | "manuale";
   misure?: MisuraRiga[];
+  numeroFattura?: string;
+  dataFattura?: string;
 }): Promise<{ payload: PayloadAcquisizione; riepilogo: RiepilogoAcquisizione }> {
   const fattura = { ...params.fattura, righe: params.fattura.righe.map((r) => {
     const m = params.misure?.find((x) => x.riga === r.numero);
     return m?.direzione ? { ...r, direzione: m.direzione } : r;
   }) };
 
+  const estremi = risolviEstremiFattura(fattura, {
+    numero: params.numeroFattura,
+    data: params.dataFattura,
+  });
   const p = periodo(fattura.righe);
   const bolle = p ? await caricaBolle(p.da, p.a) : [];
   const spedizioni = raggruppaInSpedizioni(bolle);
@@ -400,10 +452,10 @@ export async function preparaAcquisizione(params: {
   return {
     payload: {
       vettore_codice: fattura.vettore,
-      numero: fattura.numero,
-      data_fattura: fattura.data,
-      anno: fattura.anno,
-      mese: fattura.mese,
+      numero: estremi.numero,
+      data_fattura: estremi.data,
+      anno: estremi.data ? Number(estremi.data.slice(0, 4)) : fattura.anno,
+      mese: estremi.data ? Number(estremi.data.slice(5, 7)) : fattura.mese,
       nome_file: params.nomeFile,
       hash_file: params.hashFile,
       metodo_lettura: params.metodoLettura ?? "testo",
@@ -432,6 +484,12 @@ export async function preparaAcquisizione(params: {
 
 /** Scrive il payload chiamando la RPC transazionale. */
 export async function salvaAcquisizione(payload: PayloadAcquisizione) {
+  const erroreEstremi = erroreEstremiMancanti(payload.vettore_codice, {
+    numero: payload.numero,
+    data: payload.data_fattura,
+  });
+  if (erroreEstremi) throw new Error(erroreEstremi);
+
   // La stessa fusione usata dalla pagina Bolle precede l'RPC transazionale.
   // In questo modo una bolla manuale viene collegata ai documenti prima che il
   // controllo nasca e la congeli; la normalizzazione resta quella condivisa in

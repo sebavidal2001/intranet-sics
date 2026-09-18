@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { requireVettori } from "@/lib/portali/vettori/api-guard";
 import { VETTORI_RUOLI } from "@/lib/portali/vettori/ruoli";
 import {
@@ -9,6 +10,8 @@ import {
 } from "@/lib/portali/vettori/fatture";
 import {
   preparaAcquisizione,
+  erroreEstremiMancanti,
+  risolviEstremiFattura,
   salvaAcquisizione,
 } from "@/lib/portali/vettori/acquisizione";
 import { logError } from "@/lib/logger";
@@ -19,6 +22,17 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_BYTE = 15 * 1024 * 1024;
+
+const CampiOperatore = z.object({
+  numeroFattura: z.preprocess(
+    (valore) => valore === null || valore === "" ? undefined : valore,
+    z.string().trim().min(1, "Il numero della fattura non può essere vuoto.").max(100, "Il numero della fattura può contenere al massimo 100 caratteri.").optional()
+  ),
+  dataFattura: z.preprocess(
+    (valore) => valore === null || valore === "" ? undefined : valore,
+    z.string().date("La data della fattura deve avere il formato AAAA-MM-GG.").optional()
+  ),
+});
 
 /**
  * POST /api/portali/vettori/fatture/acquisisci
@@ -50,6 +64,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: `Il file supera i ${MAX_BYTE / 1024 / 1024} MB: non sembra una fattura.` },
         { status: 413 }
+      );
+    }
+
+    const campiOperatore = CampiOperatore.safeParse({
+      numeroFattura: form.get("numeroFattura"),
+      dataFattura: form.get("dataFattura"),
+    });
+    if (!campiOperatore.success) {
+      return NextResponse.json(
+        { error: campiOperatore.error.issues.map((issue) => issue.message).join(" ") },
+        { status: 400 }
       );
     }
 
@@ -107,6 +132,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: misure.success ? "Riga di fattura non trovata." : misure.error.issues.map((i) => i.message).join(" ") }, { status: 400 });
     }
     const quadratura = quadra(fattura);
+    const estremi = risolviEstremiFattura(fattura, {
+      numero: campiOperatore.data.numeroFattura,
+      data: campiOperatore.data.dataFattura,
+    });
 
     // La quadratura è il gate. Una fattura che non quadra si può guardare, non
     // acquisire: le righe che mancano non si vedono guardando quelle lette.
@@ -130,12 +159,18 @@ export async function POST(request: NextRequest) {
       utenteId: guard.user.id,
       misure: misure.data,
       metodoLettura: ocr ? "ocr" : "testo",
+      numeroFattura: campiOperatore.data.numeroFattura,
+      dataFattura: campiOperatore.data.dataFattura,
     });
 
     if (soloAnteprima) {
       return NextResponse.json({
         salvata: false,
         nomeFile: file.name,
+        origineMetadati: {
+          numero: fattura.numero ? "documento" : "assente",
+          data: fattura.data ? "documento" : "assente",
+        },
         fattura: {
           vettore: fattura.vettore,
           numero: fattura.numero,
@@ -160,6 +195,18 @@ export async function POST(request: NextRequest) {
             }
           : null,
       });
+    }
+
+    // Otto allegati GLS reali del 2026 contengono 414 righe tutte leggibili e
+    // quadrate, ma nessuno contiene numero o data. Li fermiamo qui con una
+    // spiegazione utile, prima che i NOT NULL del database producano un errore
+    // tecnico che l'operatore non può risolvere.
+    const erroreEstremi = erroreEstremiMancanti(fattura.vettore, estremi);
+    if (erroreEstremi) {
+      return NextResponse.json(
+        { error: erroreEstremi },
+        { status: 400 }
+      );
     }
 
     const esito = await salvaAcquisizione(payload);
