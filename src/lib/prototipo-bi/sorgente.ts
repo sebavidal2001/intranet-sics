@@ -202,35 +202,110 @@ async function scaricaVista(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Costi di acquisto
+// Costi di acquisto — il costo VALIDO ALLA DATA DI VENDITA
 //
-// I costi non stanno nelle viste BI: stanno in `preventivatore.prodotti`, una
-// riga per articolo con l'ULTIMO costo di acquisto noto (`ult_costo`) e la
-// data a cui risale (`data_ult_costo`). Si agganciano alle righe di vendita
-// per codice articolo.
+// Il gestionale tiene il listino dei costi versionato per data dal 1999
+// (`dba.listino` 331 -> `dba.variazione.data_inizio` -> `dba.prezzo`). Lo
+// storico arriva qui nella tabella `bi.costi_listino_storico` e si legge dalla
+// vista `public.bi_costi_listino_storico` — lo schema `bi` non e' esposto da
+// PostgREST, e una query su schema non esposto torna VUOTA SENZA ERRORE.
 //
-// Due avvertenze che il margine si porta dietro e che vanno dette a chi legge:
+// Per ogni riga di vendita si prende il costo della variazione piu' recente
+// fra quelle con `valido_dal <= data del documento`. Copertura misurata sul
+// 2025: 97,9% del valore, margine 35,40% — lo stesso numero che da' il
+// gestionale. Referto: docs/bi/REFERTO-costo-alla-vendita-20260917.md
 //
-//  1. E' l'ULTIMO costo, non il costo al momento della vendita. Misurato sul
-//     2026: il 32,5% del valore fatturato ha un costo con data POSTERIORE alla
-//     vendita. E' quindi un margine A COSTO CORRENTE (di ricostituzione), non
-//     un margine storico.
-//  2. Di conseguenza NON e' riproducibile nel tempo: rieseguito il mese
-//     prossimo, lo stesso report sulla stessa storia da' numeri diversi,
-//     perche' `ult_costo` nel frattempo si e' mosso.
+// Che cosa NON e' (e va detto a chi legge il numero): e' il costo a cui quel
+// giorno si sarebbe RICOMPRATA la merce, non il costo dei pezzi effettivamente
+// venduti. Il listino UC e' l'ultimo prezzo pagato, senza legame col lotto a
+// scaffale: se compro a 10, l'UC passa a 12 e vendo i pezzi comprati a 10,
+// viene registrato 12. Il costo vero non e' ricuperabile — magazzino non
+// valorizzato, lotti non usati. E' un margine a costo di ricostituzione, non
+// un COGS contabile.
 //
-// `bi.costi_storico` versiona i costi (valid_from/valid_to) e permetterebbe il
-// costo valido alla data di vendita, ma la rilevazione parte dal 02/08/2026:
-// per la storia precedente non c'e' niente da ricostruire.
+// Il ripiego su `preventivatore.prodotti` (ultimo costo noto, uno per
+// articolo) resta per il caso in cui lo storico non ci sia: meglio un margine
+// dichiarato approssimativo che nessun margine. Ma non deve MAI cambiare
+// significato in silenzio, quindi `costiApprossimati` finisce negli avvisi.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface CostoArticolo {
+/** Una variazione di costo: da quella data in poi, quel costo. */
+interface VoceCosto {
+  dal: string; // ISO yyyy-mm-dd
   costo: number;
-  dataCosto: string | null;
 }
 
-async function caricaCostiArticoli(): Promise<Map<string, CostoArticolo>> {
-  const mappa = new Map<string, CostoArticolo>();
+export interface StoricoCosti {
+  /** Per articolo, le variazioni ordinate dalla piu' recente alla piu' vecchia. */
+  serie: Map<string, VoceCosto[]>;
+  /** Vero se si e' ripiegato sull'ultimo costo noto invece dello storico. */
+  approssimati: boolean;
+}
+
+/**
+ * Costo valido a una data: la prima voce con `dal <= data`.
+ *
+ * Le voci sono ordinate dalla piu' recente alla piu' vecchia, quindi si cerca
+ * per bisezione il primo elemento che non sia nel futuro rispetto alla
+ * vendita. Con 82.000 voci e 66.000 righe da risolvere, la scansione lineare
+ * costerebbe un paio di ordini di grandezza in piu'.
+ *
+ * Ritorna `null` se l'articolo non ha nessun costo precedente alla vendita:
+ * "non lo so", che e' diverso da "vale zero". Un costo zero darebbe margine
+ * 100% su quella riga.
+ */
+export function costoAllaData(voci: VoceCosto[] | undefined, data: string): VoceCosto | null {
+  if (!voci || voci.length === 0 || !data) return null;
+  let basso = 0;
+  let alto = voci.length - 1;
+  let trovato: VoceCosto | null = null;
+  while (basso <= alto) {
+    const mezzo = (basso + alto) >> 1;
+    if (voci[mezzo].dal <= data) {
+      trovato = voci[mezzo];
+      alto = mezzo - 1; // piu' recente fra quelle valide: continua a sinistra
+    } else {
+      basso = mezzo + 1;
+    }
+  }
+  return trovato;
+}
+
+async function caricaStoricoCosti(): Promise<StoricoCosti> {
+  const serie = new Map<string, VoceCosto[]>();
+  try {
+    const righe = await scaricaPaginato<RigaGrezza>("bi_costi_listino_storico");
+    for (const riga of righe) {
+      const codice = chiaveArticolo(riga["codice_articolo"]);
+      const dal = soloData(riga["valido_dal"]);
+      const costo = numero(riga["costo"]);
+      // Zero e negativo non sono costi: sono campi non compilati.
+      if (!codice || !dal || !(costo > 0)) continue;
+      const voci = serie.get(codice);
+      if (voci) voci.push({ dal, costo });
+      else serie.set(codice, [{ dal, costo }]);
+    }
+    if (serie.size > 0) {
+      // Dalla piu' recente alla piu' vecchia: e' l'ordine che serve a
+      // `costoAllaData`. La vista non garantisce un ordinamento.
+      for (const voci of serie.values()) voci.sort((a, b) => (a.dal < b.dal ? 1 : a.dal > b.dal ? -1 : 0));
+      return { serie, approssimati: false };
+    }
+    // Vista vuota: non e' un errore, ma non e' nemmeno uno storico.
+    console.warn("[BI] storico costi vuoto: ripiego sull'ultimo costo noto");
+  } catch (e) {
+    console.warn("[BI] storico costi non caricato:", e instanceof Error ? e.message : e);
+  }
+  return caricaUltimoCostoNoto();
+}
+
+/**
+ * Ripiego: `preventivatore.prodotti.ult_costo`, un costo per articolo, quello
+ * corrente. Si presenta come uno storico di una voce sola con data d'inizio
+ * all'origine dei tempi, cosi' la risoluzione per riga resta identica.
+ */
+async function caricaUltimoCostoNoto(): Promise<StoricoCosti> {
+  const serie = new Map<string, VoceCosto[]>();
   try {
     const sb = createAdminClient().schema("preventivatore");
     const conteggio = await semaforo.esegui(async () =>
@@ -238,7 +313,7 @@ async function caricaCostiArticoli(): Promise<Map<string, CostoArticolo>> {
     );
     if (conteggio.error) throw new Error(conteggio.error.message);
     const totale = conteggio.count ?? 0;
-    if (totale === 0) return mappa;
+    if (totale === 0) return { serie, approssimati: true };
 
     const pagine = Math.min(Math.ceil(totale / PAGINA), 200);
     const blocchi = await Promise.all(
@@ -258,19 +333,19 @@ async function caricaCostiArticoli(): Promise<Map<string, CostoArticolo>> {
       const codice = chiaveArticolo(riga["codice"]);
       if (!codice) continue;
       const grezzo = riga["ult_costo"];
-      // Zero e negativo non sono costi: sono campi non compilati. Trattarli
-      // come costo darebbe margine 100% o superiore su quelle righe.
       if (grezzo === null || grezzo === undefined || grezzo === "") continue;
       const costo = numero(grezzo);
       if (!(costo > 0)) continue;
-      mappa.set(codice, { costo, dataCosto: soloData(riga["data_ult_costo"]) || null });
+      // Data all'origine dei tempi: questo costo vale per qualunque vendita,
+      // che e' esattamente il difetto del ripiego, dichiarato negli avvisi.
+      serie.set(codice, [{ dal: "0000-01-01", costo }]);
     }
   } catch (e) {
     // Il costo e' un arricchimento: se manca, le metriche di margine lo dicono
     // e tutto il resto dello snapshot resta valido. Non vale un errore fatale.
-    console.warn("[BI] costi articolo non caricati:", e instanceof Error ? e.message : e);
+    console.warn("[BI] ultimo costo noto non caricato:", e instanceof Error ? e.message : e);
   }
-  return mappa;
+  return { serie, approssimati: true };
 }
 
 /** I codici articolo nel gestionale hanno spazi e maiuscole incoerenti. */
@@ -318,15 +393,20 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
 
   const dataset = Object.fromEntries(risultati) as Record<ChiaveDataset, RigaFatto[]>;
 
-  // Il costo si aggancia a ogni riga che ha un articolo e una quantita'. Le
-  // righe senza corrispondenza restano con `costoUnitario: null` e le metriche
-  // di margine le escludono: e' la differenza fra "non lo so" e "vale zero".
-  const costi = await caricaCostiArticoli();
+  // Il costo si aggancia a ogni riga che ha un articolo, prendendo la
+  // variazione valida ALLA DATA DEL DOCUMENTO. Le righe senza corrispondenza
+  // restano con `costoUnitario: null` e le metriche di margine le escludono:
+  // e' la differenza fra "non lo so" e "vale zero".
+  const costi = await caricaStoricoCosti();
   for (const righe of Object.values(dataset)) {
     for (const r of righe) {
-      const c = r.articolo ? costi.get(chiaveArticolo(r.articolo)) : undefined;
-      r.costoUnitario = c ? c.costo : null;
-      r.dataCosto = c ? c.dataCosto : null;
+      const voce = r.articolo
+        ? costoAllaData(costi.serie.get(chiaveArticolo(r.articolo)), r.data)
+        : null;
+      r.costoUnitario = voce ? voce.costo : null;
+      // La data della versione APPLICATA, non l'ultima nota: e' cio' che
+      // permette di dire quanto era fresco il costo al momento della vendita.
+      r.dataCosto = voce ? (voce.dal === "0000-01-01" ? null : voce.dal) : null;
     }
   }
 
@@ -396,6 +476,7 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
     dataset,
     conteggi,
     versioneForma: VERSIONE_FORMA,
+    costiApprossimati: costi.approssimati,
   };
 }
 
@@ -407,8 +488,14 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * diventa una metrica che risponde zero. E' successo col costo: senza questo
  * numero, per sei ore dopo il deploy il margine sarebbe stato vuoto senza che
  * niente fosse rotto.
+ *
+ * 3 (17/09/2026): `costoUnitario` passa dall'ULTIMO costo noto al costo valido
+ * alla data di vendita. Qui il campo non cambia forma ma cambia SIGNIFICATO, e
+ * il pericolo e' lo stesso: senza incremento, per sei ore dopo il deploy la
+ * cache servirebbe i vecchi costi correnti spacciandoli per storici, senza
+ * dare errore.
  */
-const VERSIONE_FORMA = 2;
+const VERSIONE_FORMA = 3;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.

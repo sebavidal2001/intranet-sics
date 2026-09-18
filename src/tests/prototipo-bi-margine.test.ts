@@ -1,9 +1,12 @@
 /**
- * Margine a ultimo costo di acquisto.
+ * Margine al costo valido alla data di vendita.
  *
  * La regola che questi test presidiano: una riga di cui NON si conosce il
  * costo deve uscire dal calcolo, non entrarci con costo zero. Un costo zero
  * darebbe margine 100% su quella riga — plausibile a vedersi, e falso.
+ *
+ * La risoluzione del costo alla data sta in
+ * `prototipo-bi-costo-storico.test.ts`.
  */
 
 import { describe, expect, it } from "vitest";
@@ -94,9 +97,25 @@ describe("margine a ultimo costo", () => {
     expect(copertura.totale).toBeCloseTo(50, 1);
 
     const avvisi = esegui(validaSpec({ metrica: "margine", periodo }), snapshot).avvisi ?? [];
-    expect(avvisi.join(" ")).toMatch(/ULTIMO costo/i);
+    expect(avvisi.join(" ")).toMatch(/valido il giorno della vendita/i);
     expect(avvisi.join(" ")).toMatch(/50,0%|50\.0%/);
     expect(avvisi.join(" ")).toMatch(/non e' rappresentativo/i);
+  });
+
+  it("se ha ripiegato sull'ultimo costo noto, lo dice PRIMA di ogni altra cosa", () => {
+    // Il ripiego cambia il significato del numero: da "al costo di allora" a
+    // "al costo di oggi". Se cambiasse in silenzio, chi legge confronterebbe
+    // due margini incomparabili senza sospettarlo.
+    const snapshot = {
+      ...snapshotCon([riga({ importo: 1000, quantita: 10, costoUnitario: 60, documento: "F-1" })]),
+      costiApprossimati: true,
+    };
+
+    const avvisi = esegui(validaSpec({ metrica: "margine", periodo }), snapshot).avvisi ?? [];
+    expect(avvisi.join(" ")).toMatch(/ULTIMO costo noto/i);
+    expect(avvisi.join(" ")).toMatch(/costo corrente/i);
+    // E non deve affermare il contrario nello stesso respiro.
+    expect(avvisi.join(" ")).not.toMatch(/valido il giorno della vendita/i);
   });
 
   it("un costo pari al ricavo da' margine zero, non un margine assente", () => {

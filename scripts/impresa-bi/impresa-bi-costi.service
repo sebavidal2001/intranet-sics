@@ -1,0 +1,32 @@
+[Unit]
+Description=Impresa BI — ingest dello storico costi
+After=network-online.target impresa-bi-ingest.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=impresa-bi
+Group=impresa-bi
+EnvironmentFile=/etc/impresa-bi/supabase.env
+Environment=BI_COSTI_READY=/var/lib/impresa-bi/ready-costi
+Environment=BI_COSTI_PROCESSED=/var/lib/impresa-bi/processed-costi
+Environment=BI_COSTI_FAILED=/var/lib/impresa-bi/failed-costi
+Environment=BI_COSTI_SCRIPT=/opt/intranet-sics/scripts/bi-ingest-costi.mjs
+Environment=HOME=/var/lib/impresa-bi
+Environment=NODE_OPTIONS=--max-old-space-size=1024
+WorkingDirectory=/var/lib/impresa-bi
+ExecStart=/opt/impresa-bi/costi-ingest.sh
+TimeoutStartSec=30min
+UMask=0027
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/impresa-bi
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictRealtime=true

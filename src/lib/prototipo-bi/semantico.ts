@@ -69,6 +69,18 @@ interface DefinizioneMetrica {
   filtroImplicito?: (r: RigaFatto) => boolean;
 }
 
+/**
+ * Quantità col segno della transazione.
+ *
+ * Nelle viste `bi_*` l'importo porta il segno del documento, la quantità no:
+ * una nota di credito ha importo negativo e quantità positiva. Per il costo
+ * del venduto quel segno serve, altrimenti una resa aggiunge costo invece di
+ * toglierlo. Vedere la nota estesa sulle metriche di margine.
+ */
+export function quantitaOrientata(r: RigaFatto): number {
+  return r.importo < 0 ? -Math.abs(r.quantita) : r.quantita;
+}
+
 export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   ordinato: {
     chiave: "ordinato",
@@ -267,32 +279,47 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   },
 
   // ── Margine ────────────────────────────────────────────────────────────
-  // Ricavo meno costo di acquisto, riga per riga. Il costo e' l'ULTIMO noto
-  // (`preventivatore.prodotti.ult_costo`), quindi si tratta di un margine A
-  // COSTO CORRENTE: vedere la nota in `sorgente.ts`.
+  // Ricavo meno costo di acquisto, riga per riga, col costo VALIDO ALLA DATA
+  // DELLA VENDITA (storico del listino Ultimo Costo). Vedere la nota in
+  // `sorgente.ts` per che cosa questo margine e' e che cosa non e'.
   //
-  // La regola che tiene in piedi tutte e tre: una riga senza costo vale `null`,
-  // non zero. `esegui()` salta i null nella somma, e nel rapporto il
-  // denominatore resta a zero: la riga esce dal calcolo invece di gonfiarlo.
+  // Due regole tengono in piedi tutte e tre.
+  //
+  // 1. Una riga senza costo vale `null`, non zero. `esegui()` salta i null
+  //    nella somma, e nel rapporto il denominatore resta a zero: la riga esce
+  //    dal calcolo invece di gonfiarlo.
+  //
+  // 2. La quantita' va orientata col segno dell'importo. Nelle viste `bi_*`
+  //    l'importo porta il segno del documento (`tot_riga_val_az * segno_iva`)
+  //    ma la quantita' NO: una nota di credito ha importo negativo e quantita'
+  //    positiva, e senza correzione il suo costo verrebbe SOMMATO invece che
+  //    sottratto. Misurato sul 2025-2026: 7.365,76 EUR di costo col segno
+  //    sbagliato, che diventano 14.731 EUR di errore sul costo del venduto e
+  //    0,20 punti di margine sul 2025.
+  //
+  //    Verificato che il segno dell'importo basti: nei casi in cui diverge dal
+  //    segno del documento — 29 righe di nota di credito con importo >= 0 e 19
+  //    righe di fattura con importo < 0 — il costo in gioco e' rispettivamente
+  //    zero e assente. Dove pesa, i due segni coincidono sempre.
   costo_venduto: {
     chiave: "costo_venduto",
     etichetta: "Costo del venduto",
     descrizione:
-      "Costo di acquisto della merce fatturata, a ultimo costo noto. Esclude le righe senza costo in anagrafica.",
+      "Costo di acquisto della merce fatturata, al costo valido il giorno della vendita. Esclude le righe di cui non si conosce il costo.",
     dataset: "fatturato",
     aggregazione: "somma",
     unita: "euro",
-    valore: (r) => (r.costoUnitario == null ? null : r.quantita * r.costoUnitario),
+    valore: (r) => (r.costoUnitario == null ? null : quantitaOrientata(r) * r.costoUnitario),
   },
   margine: {
     chiave: "margine",
     etichetta: "Margine",
     descrizione:
-      "Fatturato meno costo di acquisto, a ultimo costo noto. Margine di primo livello: non contiene costi di struttura, trasporto o manodopera. Le righe senza costo in anagrafica sono escluse, non contate a margine pieno.",
+      "Fatturato meno costo di acquisto, al costo valido il giorno della vendita. Margine di primo livello: non contiene costi di struttura, trasporto o manodopera. Le righe senza costo sono escluse, non contate a margine pieno.",
     dataset: "fatturato",
     aggregazione: "somma",
     unita: "euro",
-    valore: (r) => (r.costoUnitario == null ? null : r.importo - r.quantita * r.costoUnitario),
+    valore: (r) => (r.costoUnitario == null ? null : r.importo - quantitaOrientata(r) * r.costoUnitario),
   },
   margine_pct: {
     chiave: "margine_pct",
@@ -302,7 +329,7 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     dataset: "fatturato",
     aggregazione: "rapporto",
     unita: "percentuale",
-    numeratore: (r) => (r.costoUnitario == null ? 0 : r.importo - r.quantita * r.costoUnitario),
+    numeratore: (r) => (r.costoUnitario == null ? 0 : r.importo - quantitaOrientata(r) * r.costoUnitario),
     denominatore: (r) => (r.costoUnitario == null ? 0 : r.importo),
   },
   copertura_costi_pct: {
@@ -733,11 +760,24 @@ export function esegui(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
     }
     const pct = totaleRicavo > 0 ? (coperto / totaleRicavo) * 100 : 0;
 
-    avvisi.push(
-      "Margine a ULTIMO costo di acquisto, non al costo del momento della " +
-        "vendita: e' un margine a costo corrente e cambia se i costi si " +
-        "aggiornano. Non contiene costi di struttura, trasporto o manodopera."
-    );
+    if (snapshot.costiApprossimati) {
+      // Il ripiego ha cambiato il significato del numero: dirlo per primo, e
+      // dirlo sempre. Un margine che cambia senso in silenzio e' peggio di un
+      // margine assente.
+      avvisi.push(
+        "ATTENZIONE: lo storico costi non era disponibile e si e' ripiegato " +
+          "sull'ULTIMO costo noto, lo stesso per ogni data. Il margine e' " +
+          "quindi a costo corrente, non al costo del momento della vendita, e " +
+          "cambia se i costi si aggiornano."
+      );
+    } else {
+      avvisi.push(
+        "Margine al costo di acquisto valido il giorno della vendita. E' il " +
+          "costo a cui quel giorno si sarebbe ricomprata la merce, non il " +
+          "costo dei pezzi effettivamente venduti: il magazzino non e' " +
+          "valorizzato. Non contiene costi di struttura, trasporto o manodopera."
+      );
+    }
     if (pct < 99.5) {
       avvisi.push(
         `Costo noto per il ${pct.toFixed(1)}% del valore nel periodo: il margine ` +

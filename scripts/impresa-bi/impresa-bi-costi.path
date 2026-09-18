@@ -1,0 +1,12 @@
+[Unit]
+Description=Monitora i run "costi" pronti per l'ingest
+
+[Path]
+# Directory distinta da ready/ e ready-cruscotto/: ogni profilo sveglia solo
+# il proprio servizio.
+PathChanged=/var/lib/impresa-bi/ready-costi
+DirectoryNotEmpty=/var/lib/impresa-bi/ready-costi
+Unit=impresa-bi-costi.service
+
+[Install]
+WantedBy=multi-user.target

@@ -3,8 +3,17 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot "config.json"),
-    [ValidateSet("commerciale", "cruscotto", "tutti")]
+    [ValidateSet("commerciale", "cruscotto", "costi", "tutti")]
     [string]$Profilo = "commerciale",
+    # Dove finisce lo stato dell'ultimo run. E' un parametro e non una
+    # costante perche' il file e' UNO SOLO e viene riletto dai launcher per
+    # comporre gli allarmi: due profili che girano nella stessa notte si
+    # sovrascriverebbero lo stato a vicenda, e un allarme del Cruscotto
+    # riporterebbe il run_id di un altro profilo.
+    #
+    # `commerciale` e `cruscotto` restano sul file storico — gli strumenti
+    # esistenti puntano li' — e ogni profilo aggiunto dopo porta il suo.
+    [string]$StatusFile = "last-run.json",
     [switch]$ValidateOnly,
     [switch]$SkipUpload
 )
@@ -242,7 +251,7 @@ $runId = Get-Date -Format "yyyyMMdd_HHmmss"
 $runtimeRoot = [string]$config.RuntimeRoot
 $logRoot = Join-Path $runtimeRoot "logs"
 $backupRoot = Join-Path $runtimeRoot "backups"
-$statusPath = Join-Path $runtimeRoot "last-run.json"
+$statusPath = Join-Path $runtimeRoot $StatusFile
 $lockPath = Join-Path $runtimeRoot "pipeline.lock"
 $dbCredentialPath = Join-Path $runtimeRoot "sqlanywhere.credential.xml"
 $bridgeTokenPath = Join-Path $runtimeRoot "linux-bridge.token"
