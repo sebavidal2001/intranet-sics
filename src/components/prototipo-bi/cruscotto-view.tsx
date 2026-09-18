@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { RaccordoCruscottoDashboard } from "./raccordo-cruscotto-dashboard";
 import {
+  GraficoBarre,
   GraficoCombo,
   GraficoLinee,
   GraficoTorta,
@@ -59,6 +60,7 @@ import {
   type ColonnaAnalitica,
   type RigaAnalitica,
 } from "./tabella-analitica";
+import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti";
 import { PannelloImpostazioni, useImpostazioni } from "./impostazioni";
 import { VistaConversione } from "./vista-conversione";
 import { VistaBackoffice } from "./vista-backoffice";
@@ -148,7 +150,7 @@ export function CruscottoView({
   // numero fuorviante.
   const [ytd, setYtd] = useState(true);
   const [esportando, setEsportando] = useState(false);
-  const { imp, scuro } = useImpostazioni();
+  const { imp, scuro, colore: coloreSerie } = useImpostazioni();
 
   // Modalità presentazione: schermo intero e rotazione automatica delle
   // schermate, per il monitor in sala riunioni.
@@ -333,43 +335,19 @@ export function CruscottoView({
           ...base,
           ordina: "valore_desc",
         },
-        // Le singole operazioni. Cardinalità alta per costruzione: il limite
-        // tiene la tabella maneggevole, e l'ordinamento per fatturato fa sì
-        // che quelle che pesano ci siano tutte.
-        fatturatoDoc: {
-          metrica: "fatturato",
-          raggruppa: ["documento"],
-          ...base,
-          ordina: "valore_desc",
-          limite: 500,
-        },
-        costoDoc: {
-          metrica: "costo_venduto",
-          raggruppa: ["documento"],
-          ...base,
-          ordina: "valore_desc",
-          limite: 500,
-        },
-        margineDoc: {
-          metrica: "margine",
-          raggruppa: ["documento"],
-          ...base,
-          ordina: "valore_desc",
-          limite: 500,
-        },
-        marginePctDoc: {
-          metrica: "margine_pct",
-          raggruppa: ["documento"],
-          ...base,
-          ordina: "valore_desc",
-          limite: 500,
-        },
-        coperturaDoc: {
+        // Per CLIENTE, non per documento: il documento e' il livello a cui si
+        // scende cliccando, non quello da cui si parte. Un elenco di cinquecento
+        // fatture non si guarda; un elenco di clienti si', e da li' si entra.
+        fatturatoCli: { metrica: "fatturato", raggruppa: ["cliente"], ...base, ordina: "valore_desc", limite: 400 },
+        costoCli: { metrica: "costo_venduto", raggruppa: ["cliente"], ...base, ordina: "valore_desc", limite: 400 },
+        margineCli: { metrica: "margine", raggruppa: ["cliente"], ...base, ordina: "valore_desc", limite: 400 },
+        marginePctCli: { metrica: "margine_pct", raggruppa: ["cliente"], ...base, ordina: "valore_desc", limite: 400 },
+        coperturaCli: {
           metrica: "copertura_costi_pct",
-          raggruppa: ["documento"],
+          raggruppa: ["cliente"],
           ...base,
           ordina: "valore_desc",
-          limite: 500,
+          limite: 400,
         },
       };
     }
@@ -558,6 +536,9 @@ export function CruscottoView({
    * viene semplicemente vuoto: segnalarla renderebbe il guardiano rumoroso
    * fino a farlo ignorare.
    */
+  /** Documento aperto in dettaglio: dalla riga di un cliente alle sue fatture. */
+  const [dettaglio, setDettaglio] = useState<RichiestaPannello | null>(null);
+
   const rSeCe = (k: string) => risultati[k];
 
   const r = (k: string) => {
@@ -1158,7 +1139,7 @@ export function CruscottoView({
             <Scheda titolo="Quota per business unit">
               <GraficoTorta
                 risultato={r("ordinatoBu")}
-                onClick={(b) => alternaFiltro("bu", b)}
+                onClick={(b: string) => alternaFiltro("bu", b)}
                 selezionata={filtroDi("bu")}
               />
             </Scheda>
@@ -1314,7 +1295,7 @@ export function CruscottoView({
             <Scheda titolo="Quota per business unit">
               <GraficoTorta
                 risultato={r("ordinatoBu")}
-                onClick={(b) => alternaFiltro("bu", b)}
+                onClick={(b: string) => alternaFiltro("bu", b)}
                 selezionata={filtroDi("bu")}
               />
             </Scheda>
@@ -1417,31 +1398,29 @@ export function CruscottoView({
               titolo="Margine % per business unit"
               sottotitolo="dove si guadagna non è dove si fattura di più"
             >
-              <BarreScostamento
-                dati={(r("marginePctBu")?.righe ?? []).map((x) => ({
-                  etichetta: x.etichetta,
-                  valore: x.valore,
-                }))}
-                formato="percentuale"
-                onClick={(b) => alternaFiltro("bu", b)}
+              <GraficoBarre
+                risultato={r("marginePctBu")}
+                orizzontale
+                colore={coloreSerie(0)}
+                onClick={(b: string) => alternaFiltro("bu", b)}
+                selezionata={filtroDi("bu")}
               />
             </Scheda>
 
             <Scheda titolo="Margine % per categoria">
-              <BarreScostamento
-                dati={(r("marginePctCategoria")?.righe ?? []).map((x) => ({
-                  etichetta: x.etichetta,
-                  valore: x.valore,
-                }))}
-                formato="percentuale"
-                onClick={(c) => alternaFiltro("categoria", c)}
+              <GraficoBarre
+                risultato={r("marginePctCategoria")}
+                orizzontale
+                colore={coloreSerie(1)}
+                onClick={(c: string) => alternaFiltro("categoria", c)}
+                selezionata={filtroDi("categoria")}
               />
             </Scheda>
 
             <Scheda titolo="Quota del margine per business unit">
               <GraficoTorta
                 risultato={r("margineBu")}
-                onClick={(b) => alternaFiltro("bu", b)}
+                onClick={(b: string) => alternaFiltro("bu", b)}
                 selezionata={filtroDi("bu")}
               />
             </Scheda>
@@ -1451,13 +1430,12 @@ export function CruscottoView({
               className="lg:col-span-2"
               sottotitolo="dal più basso; un cliente che compra articoli senza costo a listino compare qui senza meritarlo — controllare la copertura"
             >
-              <BarreScostamento
-                dati={(r("marginePctClienti")?.righe ?? []).map((x) => ({
-                  etichetta: x.etichetta,
-                  valore: x.valore,
-                }))}
-                formato="percentuale"
-                onClick={(c) => alternaFiltro("cliente", c)}
+              <GraficoBarre
+                risultato={r("marginePctClienti")}
+                orizzontale
+                colore={coloreSerie(2)}
+                onClick={(c: string) => alternaFiltro("cliente", c)}
+                selezionata={filtroDi("cliente")}
               />
             </Scheda>
 
@@ -1465,13 +1443,12 @@ export function CruscottoView({
               titolo="Copertura per business unit"
               sottotitolo="dove questa scende, il margine accanto vale di meno"
             >
-              <BarreScostamento
-                dati={(r("coperturaBu")?.righe ?? []).map((x) => ({
-                  etichetta: x.etichetta,
-                  valore: x.valore,
-                }))}
-                formato="percentuale"
-                onClick={(b) => alternaFiltro("bu", b)}
+              <GraficoBarre
+                risultato={r("coperturaBu")}
+                orizzontale
+                colore={coloreSerie(5)}
+                onClick={(b: string) => alternaFiltro("bu", b)}
+                selezionata={filtroDi("bu")}
               />
             </Scheda>
 
@@ -1479,13 +1456,12 @@ export function CruscottoView({
               titolo="Margine % per agente"
               sottotitolo="da leggere con la tabella qui sotto: una percentuale alta su poco volume non è un risultato"
             >
-              <BarreScostamento
-                dati={(r("marginePctAgente")?.righe ?? []).map((x) => ({
-                  etichetta: x.etichetta,
-                  valore: x.valore,
-                }))}
-                formato="percentuale"
-                onClick={(a) => alternaFiltro("agente", a)}
+              <GraficoBarre
+                risultato={r("marginePctAgente")}
+                orizzontale
+                colore={coloreSerie(3)}
+                onClick={(a: string) => alternaFiltro("agente", a)}
+                selezionata={filtroDi("agente")}
               />
             </Scheda>
 
@@ -1512,22 +1488,34 @@ export function CruscottoView({
             </Scheda>
 
             <Scheda
-              titolo="Le operazioni, una per una"
+              titolo="Clienti — il margine, uno per uno"
               className="lg:col-span-3"
-              sottotitolo="le prime 500 per fatturato nel periodo; si cerca per numero documento e si ordina per qualsiasi colonna"
+              sottotitolo="clicca una riga per aprire le sue fatture con il margine di ognuna"
             >
               <TabellaAnalitica
-                colonnaDimensione="Documento"
+                colonnaDimensione="Cliente"
                 colonne={COLONNE_MARGINE}
                 righe={righeTabellaMargine({
-                  fatturato: "fatturatoDoc",
-                  costo: "costoDoc",
-                  margine: "margineDoc",
-                  pct: "marginePctDoc",
-                  copertura: "coperturaDoc",
+                  fatturato: "fatturatoCli",
+                  costo: "costoCli",
+                  margine: "margineCli",
+                  pct: "marginePctCli",
+                  copertura: "coperturaCli",
                 })}
                 colonnaOrdinamentoIniziale="margine"
                 massimoIniziale={20}
+                onClickRiga={(cliente) =>
+                  setDettaglio({
+                    dataset: "fatturato",
+                    titolo: cliente,
+                    filtri: [
+                      ...filtriSpec.filter((f) => f.campo !== "cliente"),
+                      { campo: "cliente", op: "eq", valore: cliente },
+                    ],
+                    periodo,
+                  })
+                }
+                rigaEvidenziata={filtroDi("cliente")}
               />
             </Scheda>
           </div>
@@ -1619,6 +1607,9 @@ export function CruscottoView({
           />
         )}
       </div>
+
+      {/* Dalla riga di un cliente alle sue fatture, con il margine di ognuna. */}
+      <PannelloDettaglio richiesta={dettaglio} onChiudi={() => setDettaglio(null)} />
     </div>
   );
 }

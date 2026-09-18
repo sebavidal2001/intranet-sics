@@ -36,6 +36,14 @@ export interface RigaDettaglio {
   bu: string;
   causale?: string;
   evasa?: boolean;
+  /**
+   * Costo unitario valido il giorno della vendita, e margine della riga.
+   *
+   * `null` significa costo SCONOSCIUTO, mai zero: una riga senza costo esce
+   * dal calcolo invece di entrarci a margine pieno.
+   */
+  costoUnitario?: number | null;
+  margine?: number | null;
 }
 
 export interface DocumentoSintesi {
@@ -53,6 +61,12 @@ export interface DocumentoSintesi {
   giorniRisposta?: number | null;
   /** Quota del documento già derivata in ordine, 0-100. */
   conversionePct?: number;
+  /** Costo del venduto del documento, sulle sole righe di cui si sa il costo. */
+  costo?: number | null;
+  margine?: number | null;
+  marginePct?: number | null;
+  /** Quota del valore del documento con un costo noto, 0-100. */
+  coperturaPct?: number | null;
 }
 
 export interface EsitoDettaglio {
@@ -149,6 +163,19 @@ export function dettaglioDocumenti(
     const convertito = rr.some((r) => r.convertito !== undefined)
       ? rr.reduce((s, r) => s + (r.convertito ?? 0), 0)
       : undefined;
+    // Margine del documento: si sommano le sole righe di cui si conosce il
+    // costo, e la copertura dice quanta parte del documento rappresentano.
+    // Il segno sta sull'importo, non sulla quantità: su una nota di credito il
+    // costo va sottratto, non sommato.
+    const conCosto = rr.filter((r) => r.costoUnitario != null);
+    const costo = conCosto.reduce(
+      (s, r) => s + (r.costoUnitario ?? 0) * r.quantita * (r.importo < 0 ? -1 : 1),
+      0
+    );
+    const ricavoCoperto = conCosto.reduce((s, r) => s + r.importo, 0);
+    const assoluto = rr.reduce((s, r) => s + Math.abs(r.importo), 0);
+    const assolutoCoperto = conCosto.reduce((s, r) => s + Math.abs(r.importo), 0);
+
     const eta = rr.map((r) => r.giorniAperto).filter((g): g is number => typeof g === "number");
     const risposta = rr
       .map((r) => r.giorniRisposta)
@@ -172,6 +199,13 @@ export function dettaglioDocumenti(
         valoreTotale && valoreTotale > 0 && convertito !== undefined
           ? Math.round((convertito / valoreTotale) * 1000) / 10
           : undefined,
+      costo: conCosto.length > 0 ? Math.round(costo * 100) / 100 : null,
+      margine: conCosto.length > 0 ? Math.round((ricavoCoperto - costo) * 100) / 100 : null,
+      marginePct:
+        conCosto.length > 0 && ricavoCoperto !== 0
+          ? Math.round(((ricavoCoperto - costo) / ricavoCoperto) * 1000) / 10
+          : null,
+      coperturaPct: assoluto > 0 ? Math.round((assolutoCoperto / assoluto) * 1000) / 10 : null,
     };
   });
 
@@ -198,6 +232,13 @@ export function dettaglioDocumenti(
           descrizione: r.descrizioneArticolo,
           quantita: r.quantita,
           importo: r.importo,
+          costoUnitario: r.costoUnitario ?? null,
+          margine:
+            r.costoUnitario == null
+              ? null
+              : Math.round(
+                  (r.importo - r.costoUnitario * r.quantita * (r.importo < 0 ? -1 : 1)) * 100
+                ) / 100,
           valoreTotale: r.valoreTotale,
           convertito: r.convertito,
           categoria: r.categoria,

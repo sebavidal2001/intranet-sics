@@ -28,6 +28,10 @@ interface DocumentoSintesi {
   giorniAperto?: number | null;
   giorniRisposta?: number | null;
   conversionePct?: number;
+  costo?: number | null;
+  margine?: number | null;
+  marginePct?: number | null;
+  coperturaPct?: number | null;
 }
 
 interface RigaDettaglio {
@@ -37,6 +41,8 @@ interface RigaDettaglio {
   importo: number;
   valoreTotale?: number;
   convertito?: number;
+  costoUnitario?: number | null;
+  margine?: number | null;
   categoria: string;
   bu: string;
   causale?: string;
@@ -263,6 +269,29 @@ export function PannelloDettaglio({
                           {euro(doc.valoreTotale ?? doc.importo, false)}
                         </div>
                       </div>
+                      {!preventivi && doc.margine !== null && doc.margine !== undefined && (
+                        <>
+                          <div>
+                            <div className="text-[11px] text-text-muted">Margine</div>
+                            <div className="font-tenorite font-bold">
+                              {euro(doc.margine, false)}
+                              {doc.marginePct !== null && doc.marginePct !== undefined && (
+                                <span className="ml-1 text-xs text-text-muted">
+                                  {doc.marginePct.toFixed(1)}%
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            {/* Senza la copertura un margine alto puo' venire
+                                da mezzo documento: va detto accanto, non dopo. */}
+                            <div className="text-[11px] text-text-muted">Costo noto su</div>
+                            <div className="font-tenorite font-bold">
+                              {doc.coperturaPct?.toFixed(0) ?? "—"}%
+                            </div>
+                          </div>
+                        </>
+                      )}
                       {preventivi && (
                         <>
                           <div>
@@ -294,6 +323,12 @@ export function PannelloDettaglio({
                         </th>
                         {preventivi && (
                           <th className="py-2 pl-2 text-right font-tenorite">Inevaso</th>
+                        )}
+                        {!preventivi && (
+                          <>
+                            <th className="py-2 px-2 text-right font-tenorite">Costo un.</th>
+                            <th className="py-2 pl-2 text-right font-tenorite">Margine</th>
+                          </>
                         )}
                       </tr>
                     </thead>
@@ -337,6 +372,31 @@ export function PannelloDettaglio({
                             <td className="py-2 pl-2 text-right tabular-nums whitespace-nowrap text-text-muted">
                               {euro(r.importo, false)}
                             </td>
+                          )}
+                          {!preventivi && (
+                            <>
+                              <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap text-text-muted">
+                                {/* Trattino e non zero: il costo sconosciuto e
+                                    il costo nullo sono due cose diverse, e
+                                    confonderle darebbe margine pieno. */}
+                                {r.costoUnitario === null || r.costoUnitario === undefined
+                                  ? "—"
+                                  : euro(r.costoUnitario, false)}
+                              </td>
+                              <td
+                                className={`py-2 pl-2 text-right tabular-nums whitespace-nowrap font-medium ${
+                                  r.margine === null || r.margine === undefined
+                                    ? "text-text-muted"
+                                    : r.margine >= 0
+                                      ? "text-success"
+                                      : "text-danger"
+                                }`}
+                              >
+                                {r.margine === null || r.margine === undefined
+                                  ? "—"
+                                  : euro(r.margine, false)}
+                              </td>
+                            </>
                           )}
                         </tr>
                       ))}
