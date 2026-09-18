@@ -326,29 +326,33 @@ export function CruscottoView({
         // Le quattro grandezze per agente, per la tabella: la percentuale da
         // sola premia chi vende poco e bene, il valore da solo chi vende molto
         // e male. Vanno lette insieme.
-        fatturatoAgente: { metrica: "fatturato", raggruppa: ["agente"], ...base, ordina: "valore_desc" },
-        costoAgente: { metrica: "costo_venduto", raggruppa: ["agente"], ...base, ordina: "valore_desc" },
-        margineAgente: { metrica: "margine", raggruppa: ["agente"], ...base, ordina: "valore_desc" },
-        coperturaAgente: {
-          metrica: "copertura_costi_pct",
-          raggruppa: ["agente"],
-          ...base,
-          ordina: "valore_desc",
-        },
+        fatturatoAgente: { metrica: "fatturato", raggruppa: ["agente"], ...base },
+        costoAgente: { metrica: "costo_venduto", raggruppa: ["agente"], ...base },
+        margineAgente: { metrica: "margine", raggruppa: ["agente"], ...base },
+        coperturaAgente: { metrica: "copertura_costi_pct", raggruppa: ["agente"], ...base },
         // Per CLIENTE, non per documento: il documento e' il livello a cui si
         // scende cliccando, non quello da cui si parte. Un elenco di cinquecento
         // fatture non si guarda; un elenco di clienti si', e da li' si entra.
-        fatturatoCli: { metrica: "fatturato", raggruppa: ["cliente"], ...base, ordina: "valore_desc", limite: 400 },
-        costoCli: { metrica: "costo_venduto", raggruppa: ["cliente"], ...base, ordina: "valore_desc", limite: 400 },
-        margineCli: { metrica: "margine", raggruppa: ["cliente"], ...base, ordina: "valore_desc", limite: 400 },
-        marginePctCli: { metrica: "margine_pct", raggruppa: ["cliente"], ...base, ordina: "valore_desc", limite: 400 },
-        coperturaCli: {
-          metrica: "copertura_costi_pct",
-          raggruppa: ["cliente"],
-          ...base,
-          ordina: "valore_desc",
-          limite: 400,
-        },
+        //
+        // NESSUN `limite` e nessun `ordina` su queste cinque, ed e' la
+        // correzione di un difetto vero: erano tutte `limite: 400` con
+        // `ordina: "valore_desc"`, e ognuna ordinava per il PROPRIO valore.
+        // Su 517 clienti — di cui 457 con copertura al 100% — le cinque liste
+        // contenevano insiemi DIVERSI: un cliente grosso era fra i primi 400
+        // per fatturato ma non fra i primi 400 per percentuale, e la tabella
+        // gli mostrava margine in euro e un trattino al posto del margine %.
+        // Numeri veri accanto a caselle vuote, senza che niente segnalasse
+        // nulla.
+        //
+        // Quattro di queste servono solo da LOOKUP per chiave: tagliarle e
+        // ordinarle non ha alcun senso, e l'unica cosa che poteva fare era
+        // questa. L'ordinamento lo fa la tabella; il limite non serve, 517
+        // righe si cercano e si paginano.
+        fatturatoCli: { metrica: "fatturato", raggruppa: ["cliente"], ...base },
+        costoCli: { metrica: "costo_venduto", raggruppa: ["cliente"], ...base },
+        margineCli: { metrica: "margine", raggruppa: ["cliente"], ...base },
+        marginePctCli: { metrica: "margine_pct", raggruppa: ["cliente"], ...base },
+        coperturaCli: { metrica: "copertura_costi_pct", raggruppa: ["cliente"], ...base },
       };
     }
 
@@ -578,7 +582,30 @@ export function CruscottoView({
     // Si parte dal fatturato: è la misura che esiste su ogni riga, anche dove
     // il costo manca. Partire dal margine nasconderebbe proprio le voci di cui
     // non si conosce il costo, che sono quelle da guardare.
-    return (rSeCe(chiavi.fatturato)?.righe ?? []).map((riga) => ({
+    const principale = rSeCe(chiavi.fatturato)?.righe ?? [];
+
+    // Le quattro liste di lookup devono coprire le stesse chiavi della
+    // principale. Se una le taglia — un `limite` con un `ordina` diverso è
+    // bastato — la tabella mostra numeri veri accanto a caselle vuote, e
+    // sembra un dato mancante invece di un difetto.
+    if (process.env.NODE_ENV !== "production" && principale.length > 0) {
+      for (const [ruolo, chiave] of Object.entries(chiavi)) {
+        if (ruolo === "fatturato") continue;
+        const righe = rSeCe(chiave)?.righe;
+        if (!righe) continue;
+        const presenti = new Set(righe.map((x) => x.etichetta));
+        const mancanti = principale.filter((x) => !presenti.has(x.etichetta)).length;
+        if (mancanti > 0) {
+          console.error(
+            `[cruscotto] "${chiave}" copre ${righe.length} voci ma alla tabella ne mancano ` +
+              `${mancanti}: togli il limite e l'ordinamento dalle spec di lookup, ` +
+              "servono solo a cercare per chiave."
+          );
+        }
+      }
+    }
+
+    return principale.map((riga) => ({
       chiave: riga.etichetta,
       celle: {
         voce: riga.etichetta,

@@ -203,6 +203,41 @@ describe("Il margine ricalcolato da capo", () => {
     }
   });
 
+it("le liste che alimentano una tabella coprono le stesse voci", () => {
+    // Il difetto che questo test presidia, visto in produzione il 18/09/2026:
+    // le cinque metriche della tabella per cliente avevano tutte `limite: 400`
+    // e `ordina: "valore_desc"`, e ognuna ordinava per il PROPRIO valore. Su
+    // 517 clienti — 457 dei quali con copertura al 100% — le liste contenevano
+    // insiemi diversi, e in tabella comparivano righe con il margine in euro e
+    // un trattino al posto del margine percentuale.
+    //
+    // La regola: una lista usata come LOOKUP per chiave non si taglia e non si
+    // ordina. Qui si verifica che, senza limite, le cinque metriche coprano
+    // davvero le stesse voci.
+    for (const dimensione of ["cliente", "agente"] as const) {
+      const fatturato = daBi("fatturato", dimensione);
+      expect(fatturato.righe.length).toBeGreaterThan(0);
+      const voci = new Set(fatturato.righe.map((r) => r.etichetta));
+
+      for (const metrica of [
+        "costo_venduto",
+        "margine",
+        "margine_pct",
+        "copertura_costi_pct",
+      ]) {
+        const altra = daBi(metrica, dimensione);
+        const presenti = new Set(altra.righe.map((r) => r.etichetta));
+        const mancanti = [...voci].filter((v) => !presenti.has(v));
+        expect(
+          mancanti.length,
+          `${metrica} per ${dimensione}: mancano ${mancanti.length} voci, fra cui ${mancanti
+            .slice(0, 3)
+            .join(", ")}`,
+        ).toBe(0);
+      }
+    }
+  });
+
   it("la bisezione trova lo stesso costo della scansione lineare", () => {
     // `costoAllaData` cerca per bisezione su una lista ordinata al contrario.
     // Un errore di indice li' si vedrebbe solo su certe date, e su un numero
