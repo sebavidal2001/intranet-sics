@@ -37,6 +37,7 @@ export interface BollaGestionale {
   fonte_zona: string | null;
   tipo_trasporto_codice: string | null;
   tipo_trasporto: string | null;
+  tras_mezzo: string | null;
   vettore_codice: string | null;
   vettore: string | null;
   num_colli: string | number | null;
@@ -76,11 +77,6 @@ function n(v: string | number | null | undefined): number | null {
 }
 
 /**
- * Il verso del documento. `BF` è un carico da fornitore, `BC` un DDT di vendita;
- * il `tipo_registro` (`DA` / `DV`) è il classificatore primario, come stabilito
- * per `filiera_righe`, e il profilo serve da conferma.
- */
-/**
  * Sigla di provincia, o niente.
  *
  * `vettori.spedizioni.zona_provincia` e' `char(2)`, ma il gestionale ci mette
@@ -100,12 +96,36 @@ export function siglaProvincia(valore: string | null | undefined): string | null
   return /^[A-Z]{2}$/.test(sigla) ? sigla : null;
 }
 
+/**
+ * Il verso del documento. `BF` è un carico da fornitore, `BC` un DDT di vendita;
+ * il `tipo_registro` (`DA` / `DV`) è il classificatore primario, come stabilito
+ * per `filiera_righe`, e il profilo serve da conferma. I 114 documenti dei
+ * quattro profili di riparazione usano invece GA/GV: lì è il profilo a dire se
+ * la riparazione entra (`RIPEF`, `RIPEC`) o esce (`RIPUF`, `RIPUC`).
+ */
 export function direzioneDi(b: BollaGestionale): Direzione | null {
   if (b.tipo_registro === "DA") return "entrata";
   if (b.tipo_registro === "DV") return "uscita";
-  if (b.codice_profilo === "BF") return "entrata";
-  if (b.codice_profilo === "BC") return "uscita";
+  if (["BF", "RIPEF", "RIPEC"].includes(b.codice_profilo ?? "")) {
+    return "entrata";
+  }
+  if (["BC", "RIPUF", "RIPUC"].includes(b.codice_profilo ?? "")) {
+    return "uscita";
+  }
   return null;
+}
+
+/**
+ * Il documento può generare una spedizione controllabile verso un vettore?
+ *
+ * Nei dati reali 621 documenti su 1.883 hanno mezzo `D` (ritiro destinatario)
+ * o `M` (mezzo nostro): nessun vettore li fatturerà. Si conservano invece `V`
+ * e il mezzo vuoto, perché contengono rispettivamente 410 e 93 delle 612
+ * spedizioni a nostro carico.
+ */
+export function viaggiaConVettore(b: BollaGestionale): boolean {
+  const mezzo = (b.tras_mezzo ?? "").trim().toUpperCase();
+  return mezzo !== "D" && mezzo !== "M";
 }
 
 /**
@@ -140,6 +160,8 @@ export function raggruppaInSpedizioni(
   const gruppi = new Map<string, SpedizioneLogica>();
 
   for (const b of bolle) {
+    if (!viaggiaConVettore(b)) continue;
+
     const direzione = direzioneDi(b);
     if (!direzione) continue;
 

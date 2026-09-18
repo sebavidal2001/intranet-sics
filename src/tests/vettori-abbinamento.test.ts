@@ -9,6 +9,7 @@ import {
   raggruppaInSpedizioni,
   riepilogoAbbinamento,
   siglaProvincia,
+  viaggiaConVettore,
   type BollaGestionale,
 } from "@/lib/portali/vettori/abbinamento";
 import { leggiFattura } from "@/lib/portali/vettori/fatture";
@@ -39,6 +40,17 @@ describe("verso e porto del documento", () => {
     expect(direzioneDi({ tipo_registro: "DV", codice_profilo: "BC" } as BollaGestionale)).toBe("uscita");
     expect(direzioneDi({ tipo_registro: null, codice_profilo: "BF" } as BollaGestionale)).toBe("entrata");
     expect(direzioneDi({ tipo_registro: null, codice_profilo: "XX" } as BollaGestionale)).toBeNull();
+  });
+
+  it.each([
+    ["RIPEF", "entrata"],
+    ["RIPEC", "entrata"],
+    ["RIPUF", "uscita"],
+    ["RIPUC", "uscita"],
+  ] as const)("il profilo di riparazione %s è in %s", (profilo, direzione) => {
+    expect(
+      direzioneDi({ tipo_registro: profilo.endsWith("F") ? "GA" : "GV", codice_profilo: profilo } as BollaGestionale)
+    ).toBe(direzione);
   });
 
   /**
@@ -122,6 +134,26 @@ describe("raggruppamento in spedizioni logiche", () => {
       (s) => s.idDocumenti.length > 1 && s.peso != null && s.peso > 0
     );
     if (conPiu) expect(conPiu.peso).toBeGreaterThan(0);
+  });
+
+  it.each(["D", " d ", "M", " m "])("scarta il mezzo %j, che non usa un vettore", (mezzo) => {
+    const bolla = {
+      ...BOLLE[0],
+      id_documento: 900_001,
+      tras_mezzo: mezzo,
+    };
+    expect(viaggiaConVettore(bolla)).toBe(false);
+    expect(raggruppaInSpedizioni([bolla])).toHaveLength(0);
+  });
+
+  it.each(["V", " v ", "", "   "])("conserva il mezzo %j", (mezzo) => {
+    const bolla = {
+      ...BOLLE[0],
+      id_documento: 900_002,
+      tras_mezzo: mezzo,
+    };
+    expect(viaggiaConVettore(bolla)).toBe(true);
+    expect(raggruppaInSpedizioni([bolla])).toHaveLength(1);
   });
 });
 

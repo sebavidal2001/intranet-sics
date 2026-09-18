@@ -97,7 +97,10 @@ LEFT OUTER JOIN dba.unita_misura ump ON ump.id_unita_misura=d.id_unita_misura_pe
 LEFT OUTER JOIN dba.unita_misura umv ON umv.id_unita_misura=d.id_unita_misura_volume
 LEFT OUTER JOIN dba.utenti u ON u.id_utenti=d.id_utente_crea
 WHERE d.id_documento > {{ULTIMO_ID_SOGLIA}}
-  AND d.tipo_registro IN ('DV','DA')
+  -- I quattro profili di riparazione viaggiano davvero (114 documenti dal
+  -- 2025), ma usano i registri GA/GV e il solo filtro DV/DA li escludeva.
+  AND (d.tipo_registro IN ('DV','DA')
+       OR d.codice_profilo IN ('RIPEF','RIPEC','RIPUF','RIPUC'))
 ORDER BY d.data_registrazione,d.id_documento;
 OUTPUT TO 'C:\Impresa\Viste_BI\Esportazioni\Live\trasporti_documenti_live.csv'
 -- Niente WITH COLUMN NAMES: il client SQL Anywhere 11 installato su
