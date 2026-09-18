@@ -7,13 +7,14 @@
  * la pagina — il filtro incrociato che in Power BI si dà per scontato — e i
  * filtri attivi restano visibili come etichette rimovibili.
  *
- * Le sei viste rispondono a sei domande diverse:
+ * Le sette viste rispondono a sette domande diverse:
  *   Sintesi      → dove siamo rispetto all'obiettivo
  *   Scostamenti  → da dove viene la differenza
  *   Clienti      → da chi dipendiamo e chi si sta muovendo
  *   Preventivi   → cosa c'è in canna
  *   Conversione  → che fine fanno i preventivi
  *   Back office  → quanto lavorano gli addetti e con che tempi
+ *   Margine      → dove si guadagna, che non è dove si fattura
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -67,12 +68,14 @@ type Vista =
   | "clienti"
   | "preventivi"
   | "conversione"
-  | "backoffice";
+  | "backoffice"
+  | "margine";
 
 const VISTE: { chiave: Vista; etichetta: string; nota: string }[] = [
   { chiave: "sintesi", etichetta: "Sintesi", nota: "dove siamo rispetto all'obiettivo" },
   { chiave: "scostamenti", etichetta: "Scostamenti", nota: "da dove viene la differenza" },
   { chiave: "clienti", etichetta: "Clienti", nota: "da chi dipendiamo, chi si muove" },
+  { chiave: "margine", etichetta: "Margine", nota: "dove si guadagna, non dove si fattura" },
   { chiave: "preventivi", etichetta: "Preventivi", nota: "cosa c'è in canna" },
   { chiave: "conversione", etichetta: "Conversione", nota: "che fine fanno i preventivi" },
   { chiave: "backoffice", etichetta: "Back office", nota: "carico e tempi degli addetti" },
@@ -267,6 +270,51 @@ export function CruscottoView({
     // ma la fascia KPI generale resta visibile. Prima tornavamo `{}` qui:
     // l'effetto era una fila di zeri non calcolati su entrambe le pagine.
     if (vista === "conversione" || vista === "backoffice") return comuni;
+
+    if (vista === "margine") {
+      // Il margine vive solo sul fatturato: e' li' che esiste un costo da
+      // sottrarre. Le righe senza costo restano fuori dal calcolo, ed e' per
+      // questo che la copertura sta nella fascia dei KPI e non in una nota.
+      return {
+        ...comuni,
+        margineTot: { metrica: "margine", ...base },
+        margineAP: { metrica: "margine", modificatore: "anno_precedente", ...base },
+        marginePct: { metrica: "margine_pct", ...base },
+        marginePctAP: { metrica: "margine_pct", modificatore: "anno_precedente", ...base },
+        coperturaPct: { metrica: "copertura_costi_pct", ...base },
+        costoVendutoTot: { metrica: "costo_venduto", ...base },
+        margineMese: { metrica: "margine", granularita: "mese", ...base, ordina: "etichetta" },
+        margineMeseAP: {
+          metrica: "margine",
+          modificatore: "anno_precedente",
+          granularita: "mese",
+          ...base,
+          ordina: "etichetta",
+        },
+        margineBu: { metrica: "margine", raggruppa: ["bu"], ...base, ordina: "valore_desc" },
+        marginePctBu: { metrica: "margine_pct", raggruppa: ["bu"], ...base, ordina: "valore_desc" },
+        marginePctCategoria: {
+          metrica: "margine_pct",
+          raggruppa: ["categoria"],
+          ...base,
+          ordina: "valore_desc",
+        },
+        // Crescente: qui interessa la coda, non la testa.
+        marginePctClienti: {
+          metrica: "margine_pct",
+          raggruppa: ["cliente"],
+          ...base,
+          ordina: "valore_asc",
+          limite: 15,
+        },
+        coperturaBu: {
+          metrica: "copertura_costi_pct",
+          raggruppa: ["bu"],
+          ...base,
+          ordina: "valore_desc",
+        },
+      };
+    }
 
     if (vista === "sintesi") {
       return {
@@ -1160,6 +1208,142 @@ export function CruscottoView({
                 ultimoPeriodoParziale
                 onClickRiga={(c) => alternaFiltro("cliente", c)}
                 rigaEvidenziata={filtroDi("cliente")}
+              />
+            </Scheda>
+          </div>
+        )}
+
+        {/* ── MARGINE ────────────────────────────────────────────────────── */}
+        {/*
+          Il costo e' quello valido il GIORNO DELLA VENDITA, non l'ultimo noto:
+          e' cio' che rende confrontabili due anni diversi. Resta pero' un costo
+          di RICOSTITUZIONE — il prezzo a cui quel giorno si sarebbe ricomprata
+          la merce — e non il costo dei pezzi effettivamente venduti, perche' il
+          magazzino non e' valorizzato. I sottotitoli lo dicono, e devono
+          continuare a dirlo.
+        */}
+        {vista === "margine" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Scheda
+              titolo="Margine"
+              sottotitolo="fatturato meno costo di acquisto, al costo del giorno della vendita"
+            >
+              <div className="py-2">
+                <KpiEroe
+                  etichetta="Margine"
+                  valore={tot("margineTot")}
+                  confronto={
+                    tot("margineAP")
+                      ? { valore: tot("margineAP")!, etichetta: `${anno - 1}`, buonoSeAlto: true }
+                      : null
+                  }
+                />
+              </div>
+            </Scheda>
+
+            <Scheda titolo="Margine %" sottotitolo="sulla sola parte di cui si conosce il costo">
+              <div className="py-2">
+                <KpiEroe
+                  etichetta="Margine %"
+                  valore={tot("marginePct")}
+                  unita="percentuale"
+                  confronto={
+                    tot("marginePctAP")
+                      ? { valore: tot("marginePctAP")!, etichetta: `${anno - 1}`, buonoSeAlto: true }
+                      : null
+                  }
+                />
+              </div>
+            </Scheda>
+
+            <Scheda
+              titolo="Copertura costi"
+              sottotitolo="quanta parte del fatturato ha un costo noto: va guardata PRIMA del margine"
+            >
+              <div className="py-2">
+                <KpiEroe
+                  etichetta="Copertura"
+                  valore={tot("coperturaPct")}
+                  unita="percentuale"
+                  nota={`Costo del venduto ${euro(tot("costoVendutoTot") ?? 0)}`}
+                />
+              </div>
+            </Scheda>
+
+            <Scheda
+              titolo="Andamento del margine"
+              className="lg:col-span-3"
+              sottotitolo="mese per mese, contro lo stesso periodo dell'anno precedente"
+            >
+              <GraficoLinee
+                serie={[
+                  { nome: `Margine ${anno}`, risultato: r("margineMese"), colore: "#00a1be" },
+                  {
+                    nome: `Margine ${anno - 1}`,
+                    risultato: r("margineMeseAP"),
+                    colore: "#94a3b8",
+                    tratteggiata: true,
+                  },
+                ]}
+                altezza={300}
+              />
+            </Scheda>
+
+            <Scheda
+              titolo="Margine % per business unit"
+              sottotitolo="dove si guadagna non è dove si fattura di più"
+            >
+              <BarreScostamento
+                dati={(r("marginePctBu")?.righe ?? []).map((x) => ({
+                  etichetta: x.etichetta,
+                  valore: x.valore,
+                }))}
+                onClick={(b) => alternaFiltro("bu", b)}
+              />
+            </Scheda>
+
+            <Scheda titolo="Margine % per categoria">
+              <BarreScostamento
+                dati={(r("marginePctCategoria")?.righe ?? []).map((x) => ({
+                  etichetta: x.etichetta,
+                  valore: x.valore,
+                }))}
+                onClick={(c) => alternaFiltro("categoria", c)}
+              />
+            </Scheda>
+
+            <Scheda titolo="Quota del margine per business unit">
+              <GraficoTorta
+                risultato={r("margineBu")}
+                onClick={(b) => alternaFiltro("bu", b)}
+                selezionata={filtroDi("bu")}
+              />
+            </Scheda>
+
+            <Scheda
+              titolo="I clienti a margine più sottile"
+              className="lg:col-span-2"
+              sottotitolo="dal più basso; un cliente che compra articoli senza costo a listino compare qui senza meritarlo — controllare la copertura"
+            >
+              <BarreScostamento
+                dati={(r("marginePctClienti")?.righe ?? []).map((x) => ({
+                  etichetta: x.etichetta,
+                  valore: x.valore,
+                }))}
+                onClick={(c) => alternaFiltro("cliente", c)}
+              />
+            </Scheda>
+
+            <Scheda
+              titolo="Copertura per business unit"
+              sottotitolo="dove questa scende, il margine accanto vale di meno"
+            >
+              <BarreScostamento
+                dati={(r("coperturaBu")?.righe ?? []).map((x) => ({
+                  etichetta: x.etichetta,
+                  valore: x.valore,
+                }))}
+                onClick={(b) => alternaFiltro("bu", b)}
               />
             </Scheda>
           </div>
