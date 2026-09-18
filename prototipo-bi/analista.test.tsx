@@ -6,8 +6,6 @@
 
 import { describe, expect, it, vi, beforeEach, beforeAll } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { calcolaPrevisione } from "@/lib/prototipo-bi/previsione";
 import { instrada, calcolaCosto, MODELLI, aggiornaPrezzi } from "@/lib/prototipo-bi/modelli";
 import { esegui } from "@/lib/prototipo-bi/semantico";
@@ -15,6 +13,7 @@ import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import { leggiConfigurazione } from "@/lib/prototipo-bi/archivio";
 import { Markdown } from "@/components/prototipo-bi/markdown";
 import type { Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
 
 const M = (n: number) => Math.round(n).toLocaleString("it-IT");
 
@@ -182,13 +181,7 @@ describe("Previsione sui dati reali", () => {
   let snapshot: Snapshot;
 
   beforeAll(async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
+    caricaEnvLocale();
     snapshot = await costruisciSnapshot();
   }, 240_000);
 

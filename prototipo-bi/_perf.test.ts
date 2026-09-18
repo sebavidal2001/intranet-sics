@@ -1,19 +1,12 @@
 import { describe, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { esegui } from "@/lib/prototipo-bi/semantico";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import type { Snapshot, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
 
 describe("Profilo prestazioni", () => {
   it("misura dove va il tempo", async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
+    caricaEnvLocale();
 
     const t0 = performance.now();
     const snapshot: Snapshot = await costruisciSnapshot();

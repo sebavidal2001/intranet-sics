@@ -16,22 +16,15 @@
  *   documento Excel   → 2 tabelle, 3,16 centesimi
  */
 import { describe, expect, it, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { chiediAnalista } from "@/lib/prototipo-bi/analista";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import type { Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
 
 describe("Analista dal vivo", () => {
   let snapshot: Snapshot;
   beforeAll(async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
+    caricaEnvLocale();
     snapshot = await costruisciSnapshot();
   }, 240_000);
 

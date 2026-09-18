@@ -2,54 +2,67 @@
  * ⛔ PROTOTIPO BI DIREZIONALE — NON IN PRODUZIONE
  *
  * I dati nuovi: esito dei preventivi (derivazione in ordini) e carico del
- * back office. I valori attesi vengono da query SQL eseguite a mano sul
- * database, così il test verifica il motore, non se stesso.
+ * back office.
+ *
+ * Gli attesi si calcolano dalla VISTA, nello stesso istante in cui si legge lo
+ * snapshot. Prima erano numeri scritti a mano ("SQL: 6.476 righe"), presi da
+ * una query fatta un giorno preciso su un database preciso: passavano solo lì,
+ * e sul database di produzione fallivano in blocco senza che niente fosse
+ * rotto. Quello che il test vuole dimostrare non è che il valore sia
+ * 6.454.654 — cambia ogni notte, ed è giusto — ma che lo snapshot **non
+ * alteri** ciò che legge.
  */
 import { describe, expect, it, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { esegui } from "@/lib/prototipo-bi/semantico";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import type { Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
+import { leggiVista, numero, testo, type RigaVista } from "./_vista";
 
 const M = (n: number) => Math.round(n).toLocaleString("it-IT");
 
 describe("Esito preventivi e back office", () => {
   let snapshot: Snapshot;
+  let vista: RigaVista[];
 
   beforeAll(async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
-    snapshot = await costruisciSnapshot();
+    caricaEnvLocale();
+    [snapshot, vista] = await Promise.all([
+      costruisciSnapshot(),
+      leggiVista("bi_preventivi_backoffice"),
+    ]);
   }, 240_000);
 
   it("legge i preventivi del solo run corrente, con i campi nuovi", () => {
     const righe = snapshot.dataset.preventivi_aperti;
-    // SQL: 6.476 righe sul run corrente.
-    expect(righe.length).toBe(6476);
+    expect(righe.length).toBe(vista.length);
     expect(righe.every((r) => r.creatore && r.creatore.length > 0)).toBe(true);
-    expect(righe.filter((r) => r.valoreTotale !== undefined).length).toBe(6476);
+    expect(righe.filter((r) => r.valoreTotale !== undefined).length).toBe(vista.length);
     console.log(`   Preventivi: ${righe.length} righe, tutte con creatore e valore totale`);
   });
 
   it("il valore totale e l'inevaso coincidono con il database", () => {
-    // SQL: valore_totale 6.454.654 · inevaso 4.180.296 · convertito 2.274.358
     const valore = esegui({ metrica: "preventivi_valore" }, snapshot);
     const inevaso = esegui({ metrica: "preventivi_aperti" }, snapshot);
     const convertito = esegui({ metrica: "preventivi_convertito" }, snapshot);
 
-    expect(Math.round(valore.totale)).toBe(6_454_654);
-    expect(Math.round(inevaso.totale)).toBe(4_180_296);
-    // Il convertito azzera i contributi negativi: 4 righe hanno l'inevaso
-    // maggiore del totale (incoerenza del gestionale, -9.730 € in tutto) e
-    // una "conversione negativa" non significa nulla. Da qui la differenza
-    // fra i 2.284.088 € del motore e i 2.274.358 € della somma grezza.
-    expect(Math.round(convertito.totale)).toBe(2_284_088);
+    // I nomi delle colonne sono quelli VERI della vista, letti da PostgREST.
+    // Avevo scritto "Importo Evaso" deducendolo dal commento in `tipi.ts`, che
+    // parla del nome nel GESTIONALE: nella vista si chiama "Valore Totale
+    // Riga", e il test dava zero contro zero senza lamentarsi del nome.
+    const attesoValore = vista.reduce((s, r) => s + numero(r["Valore Totale Riga"]), 0);
+    const attesoInevaso = vista.reduce((s, r) => s + numero(r["Importo Inevaso"]), 0);
+    // Il convertito lo calcola già la vista, azzerando i contributi negativi:
+    // alcune righe hanno l'inevaso maggiore del totale (incoerenza del
+    // gestionale) e una "conversione negativa" non significa nulla.
+    const attesoConvertito = vista.reduce(
+      (s, r) => s + numero(r["Convertito In Ordine"]),
+      0,
+    );
+
+    expect(Math.round(valore.totale)).toBe(Math.round(attesoValore));
+    expect(Math.round(inevaso.totale)).toBe(Math.round(attesoInevaso));
+    expect(Math.round(convertito.totale)).toBe(Math.round(attesoConvertito));
 
     console.log(
       `   Valore ${M(valore.totale)} € · inevaso ${M(inevaso.totale)} € · convertito ${M(convertito.totale)} €`
@@ -108,10 +121,26 @@ describe("Esito preventivi e back office", () => {
       snapshot
     );
 
-    expect(creati.righe.length).toBe(7);
-    // SQL: LUCIA RODA 814 preventivi distinti sul run corrente.
-    const lucia = creati.righe.find((r) => r.etichetta.includes("LUCIA"));
-    expect(lucia?.valore).toBe(814);
+    // Quanti addetti compaiono lo dice la vista, non una costante: se domani
+    // ne assumono un ottavo il test non deve diventare rosso per questo.
+    const creatoriVista = new Set(vista.map((r) => testo(r["Creato da"])).filter(Boolean));
+    expect(creati.righe.length).toBe(creatoriVista.size);
+
+    // Preventivi DISTINTI per addetto: il conteggio va fatto sui documenti,
+    // non sulle righe, ed è esattamente la differenza che questa metrica deve
+    // rispettare.
+    const documentiPerCreatore = new Map<string, Set<string>>();
+    for (const r of vista) {
+      const chi = testo(r["Creato da"]);
+      if (!chi) continue;
+      const suoi = documentiPerCreatore.get(chi) ?? new Set<string>();
+      suoi.add(testo(r["Numero Doc."]));
+      documentiPerCreatore.set(chi, suoi);
+    }
+    for (const riga of creati.righe) {
+      const atteso = documentiPerCreatore.get(riga.etichetta)?.size;
+      expect(riga.valore, `preventivi distinti di ${riga.etichetta}`).toBe(atteso);
+    }
 
     const mappaRighe = new Map(righe.righe.map((r) => [r.etichetta, r.valore]));
     const mappaConv = new Map(conv.righe.map((r) => [r.etichetta, r.valore]));

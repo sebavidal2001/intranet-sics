@@ -9,13 +9,13 @@
  */
 import { describe, expect, it, beforeAll } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { importaBudget, unisciSerie } from "@/lib/prototipo-bi/importa-budget";
 import { salvaSerieBudget, leggiSerieBudget } from "@/lib/prototipo-bi/archivio";
 import { risolviBudget } from "@/lib/prototipo-bi/budget-fonte";
 import { esegui } from "@/lib/prototipo-bi/semantico";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import type { Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
 
 const BASE =
   "C:/Users/sebav/AppData/Local/Temp/claude/C--Users-sebav-Desktop-intranet-sics/af3333a2-79b1-4650-88c6-e6783b861a6b/scratchpad/bi";
@@ -28,13 +28,7 @@ describe("Catena completa budget + consuntivi", () => {
   let snapshot: Snapshot;
 
   beforeAll(async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^\ufeff/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
+    caricaEnvLocale();
     snapshot = await costruisciSnapshot();
 
     if (existsSync(F_GIORN)) {

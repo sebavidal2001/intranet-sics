@@ -6,7 +6,10 @@
  * La regola NON è più in TypeScript: vive nelle viste SQL, e i preventivi
  * passano da `public.bi_preventivi_backoffice`. Questi test verificano quindi
  * che sia il DATABASE a fare il lavoro, e che il prototipo lo riceva intatto.
- * I valori attesi vengono da query SQL eseguite a mano.
+ *
+ * Gli attesi si calcolano dalla vista nello stesso istante in cui si legge lo
+ * snapshot: erano numeri copiati da una SELECT, e valevano solo per il
+ * database su cui quella SELECT era stata fatta.
  */
 import { describe, expect, it, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
@@ -22,6 +25,8 @@ import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import { leggiSerieBudget } from "@/lib/prototipo-bi/archivio";
 import { risolviBudget } from "@/lib/prototipo-bi/budget-fonte";
 import type { Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
+import { leggiVista, numero, testo, type RigaVista } from "./_vista";
 
 const M = (n: number) => Math.round(n).toLocaleString("it-IT");
 
@@ -62,16 +67,14 @@ describe("Nessuna regola di business in TypeScript", () => {
 
 describe("Riconciliazione fatta dalla vista, sui dati reali", () => {
   let snapshot: Snapshot;
+  let vistaPreventivi: RigaVista[];
 
   beforeAll(async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
-    snapshot = await costruisciSnapshot();
+    caricaEnvLocale();
+    [snapshot, vistaPreventivi] = await Promise.all([
+      costruisciSnapshot(),
+      leggiVista("bi_preventivi_backoffice"),
+    ]);
   }, 240_000);
 
   it("la vista consegna i preventivi già riconciliati: SISTEMI non arriva mai", () => {
@@ -99,17 +102,31 @@ describe("Riconciliazione fatta dalla vista, sui dati reali", () => {
   });
 
   it("i valori per business unit coincidono con la vista", () => {
-    // SELECT dalla vista public.bi_preventivi_backoffice:
-    //   COSTRUITO  737 righe · 3.672.345 € · convertito 1.068.658 · 29,1%
-    //   COMPONENTI 3627      · 1.320.383 € ·   631.490            · 47,8%
-    //   IMPIANTI   1078      ·   973.556 € ·   472.774            · 48,6%
-    //   STRUTTURE   728      ·   486.897 € ·   111.037            · 22,8%
-    const attesi: Record<string, [number, number, number, number]> = {
-      COSTRUITO: [737, 3_672_345, 1_068_658, 29.1],
-      COMPONENTI: [3627, 1_320_383, 631_490, 47.8],
-      IMPIANTI: [1078, 973_556, 472_774, 48.6],
-      STRUTTURE: [728, 486_897, 111_037, 22.8],
-    };
+    // Gli attesi si calcolano dalla VISTA, nello stesso istante in cui si è
+    // letto lo snapshot. Prima erano quattro righe di numeri copiate da una
+    // SELECT ("COSTRUITO 737 righe · 3.672.345 €"): valevano per il database
+    // di sviluppo di quel giorno, e sul database di produzione questo test
+    // falliva insieme ad altri otto — non perché il codice fosse rotto, ma
+    // perché i dati erano altri. Verificato allora: la vista diceva 760 righe
+    // per COSTRUITO e lo snapshot diceva 760.
+    //
+    // Quello che conta qui è la RICONCILIAZIONE: lo snapshot deve riprodurre
+    // la vista riga per riga e euro per euro, quali che siano i numeri.
+    const attesi: Record<string, [number, number, number, number]> = {};
+    for (const bu of BUSINESS_UNIT) {
+      const righeBu = vistaPreventivi.filter((r) => testo(r["Gruppo Descrizione"]) === bu);
+      const valore = righeBu.reduce((s, r) => s + numero(r["Valore Totale Riga"]), 0);
+      const convertito = righeBu.reduce(
+        (s, r) => s + numero(r["Convertito In Ordine"]),
+        0,
+      );
+      attesi[bu] = [
+        righeBu.length,
+        Math.round(valore),
+        Math.round(convertito),
+        valore > 0 ? (convertito / valore) * 100 : 0,
+      ];
+    }
 
     const valore = esegui({ metrica: "preventivi_valore", raggruppa: ["bu"] }, snapshot);
     const conv = esegui({ metrica: "preventivi_convertito", raggruppa: ["bu"] }, snapshot);
@@ -137,9 +154,16 @@ describe("Riconciliazione fatta dalla vista, sui dati reali", () => {
     const inevaso = esegui({ metrica: "preventivi_aperti" }, snapshot);
     const perBu = esegui({ metrica: "preventivi_valore", raggruppa: ["bu"] }, snapshot);
 
-    expect(Math.round(totale.totale)).toBe(6_454_654);
-    expect(Math.round(inevaso.totale)).toBe(4_180_296);
-    expect(Math.round(convertito.totale)).toBe(2_284_088);
+    const attesoTotale = vistaPreventivi.reduce((s, r) => s + numero(r["Valore Totale Riga"]), 0);
+    const attesoInevaso = vistaPreventivi.reduce((s, r) => s + numero(r["Importo Inevaso"]), 0);
+    const attesoConvertito = vistaPreventivi.reduce(
+      (s, r) => s + numero(r["Convertito In Ordine"]),
+      0,
+    );
+
+    expect(Math.round(totale.totale)).toBe(Math.round(attesoTotale));
+    expect(Math.round(inevaso.totale)).toBe(Math.round(attesoInevaso));
+    expect(Math.round(convertito.totale)).toBe(Math.round(attesoConvertito));
 
     // La ripartizione non crea né perde euro.
     const somma = perBu.righe.reduce((s, r) => s + r.valore, 0);

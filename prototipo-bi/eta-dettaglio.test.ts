@@ -5,13 +5,13 @@
  * I valori attesi vengono da query SQL sulla vista bi_preventivi_backoffice.
  */
 import { describe, expect, it, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { esegui } from "@/lib/prototipo-bi/semantico";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import { dettaglioDocumenti } from "@/lib/prototipo-bi/dettaglio";
 import { CacheRisultati, chiaveStabile } from "@/lib/prototipo-bi/cache";
 import type { Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
+import { leggiVista, numero, type RigaVista } from "./_vista";
 
 const M = (n: number) => Math.round(n).toLocaleString("it-IT");
 
@@ -58,16 +58,14 @@ describe("Cache dei risultati", () => {
 
 describe("Anzianità e dettaglio, sui dati reali", () => {
   let snapshot: Snapshot;
+  let vista: RigaVista[];
 
   beforeAll(async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
-    snapshot = await costruisciSnapshot();
+    caricaEnvLocale();
+    [snapshot, vista] = await Promise.all([
+      costruisciSnapshot(),
+      leggiVista("bi_preventivi_backoffice"),
+    ]);
   }, 240_000);
 
   it("calcola l'anzianità solo sulle righe ancora aperte", () => {
@@ -75,21 +73,33 @@ describe("Anzianità e dettaglio, sui dati reali", () => {
     const aperte = righe.filter((r) => r.importo > 0.01);
     const chiuse = righe.filter((r) => r.importo <= 0.01);
 
-    // SQL: 2.743 righe con inevaso sul run corrente.
-    expect(aperte.length).toBe(2743);
+    // Quante siano lo dicono i dati: contarle qui e riasserirle sarebbe una
+    // tautologia, quindi si verifica la PROPRIETA' — ogni riga con inevaso ha
+    // un'anzianita', ogni riga chiusa non ce l'ha — e che ce ne sia un numero
+    // ragionevole. Il "2.743" che stava qui valeva per un database e un
+    // giorno soli.
+    expect(aperte.length).toBeGreaterThan(0);
+    expect(aperte.length).toBeLessThan(righe.length);
     expect(aperte.every((r) => typeof r.giorniAperto === "number")).toBe(true);
     expect(chiuse.every((r) => r.giorniAperto === null)).toBe(true);
     expect(aperte.every((r) => (r.giorniAperto ?? 0) >= 0)).toBe(true);
   });
 
   it("l'età media e l'inevaso coincidono con il database", () => {
-    // SQL: media 338,45 giorni su 4.181.638 € di inevaso.
     const eta = esegui({ metrica: "giorni_apertura" }, snapshot);
     const inevaso = esegui({ metrica: "preventivi_aperti" }, snapshot);
 
+    // L'inevaso deve riprodurre la vista euro per euro; l'eta' media deve
+    // essere la media delle righe APERTE, non di tutte — che e' l'errore che
+    // questo test presidia.
+    const attesoInevaso = vista.reduce((s, r) => s + numero(r["Importo Inevaso"]), 0);
+    const aperte = snapshot.dataset.preventivi_aperti.filter((r) => r.giorniAperto !== null);
+    const attesaEta =
+      aperte.reduce((s, r) => s + (r.giorniAperto ?? 0), 0) / (aperte.length || 1);
+
     expect(eta.unita).toBe("giorni");
-    expect(eta.totale).toBeCloseTo(338.45, 1);
-    expect(Math.round(inevaso.totale)).toBe(4_180_296);
+    expect(eta.totale).toBeCloseTo(attesaEta, 1);
+    expect(Math.round(inevaso.totale)).toBe(Math.round(attesoInevaso));
     console.log(`   Età media ${eta.totale.toFixed(1)} giorni su ${M(inevaso.totale)} € di inevaso`);
   });
 
@@ -122,8 +132,12 @@ describe("Anzianità e dettaglio, sui dati reali", () => {
     const totale = esegui({ metrica: "preventivi_aperti" }, snapshot);
     const massima = esegui({ metrica: "eta_massima_apertura" }, snapshot);
 
-    // 91-180 + 6-12 mesi + oltre 1 anno = 623.933 + 1.644.252 + 1.351.323
-    expect(Math.round(oltre.totale)).toBe(3_619_508);
+    // Le righe aperte da piu' di 90 giorni, sommate dallo snapshot stesso:
+    // il numero cambia ogni notte, la definizione no.
+    const attesoOltre = snapshot.dataset.preventivi_aperti
+      .filter((r) => (r.giorniAperto ?? 0) > 90)
+      .reduce((s, r) => s + r.importo, 0);
+    expect(Math.round(oltre.totale)).toBe(Math.round(attesoOltre));
     expect(massima.totale).toBeGreaterThan(365);
 
     const quota = (oltre.totale / totale.totale) * 100;

@@ -21,12 +21,12 @@
  * domande, così il confronto è a parità di condizioni.
  */
 import { describe, it, beforeAll } from "vitest";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { chiediAnalista } from "@/lib/prototipo-bi/analista";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import { MODELLI } from "@/lib/prototipo-bi/modelli";
 import type { Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
 
 const CANDIDATI = [
   { id: "anthropic/claude-haiku-4.5", nome: "Haiku 4.5", ingresso: 1.0, uscita: 5.0 },
@@ -103,13 +103,7 @@ describe("Confronto modelli dal vivo", () => {
   let snapshot: Snapshot;
 
   beforeAll(async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
+    caricaEnvLocale();
     snapshot = await costruisciSnapshot();
     console.log(
       `\nSnapshot: ${snapshot.dataMinima} → ${snapshot.dataMassima}, run ${snapshot.runCorrente}\n`

@@ -4,13 +4,12 @@
  */
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import * as XLSX from "xlsx";
 import { esportaBudgetExcel, esportaQueryExcel, generaReportWord } from "@/lib/prototipo-bi/documenti/genera";
 import { distribuisci } from "@/lib/prototipo-bi/budget";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import type { Briefing, ConfigurazioneAnno, Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
 
 const CONFIG: ConfigurazioneAnno = {
   anno: 2026, budgetAnnuo: 7_500_000, bepAnnuo: 6_200_000,
@@ -36,13 +35,7 @@ const BRIEFING: Briefing = {
 describe("Documenti", () => {
   let snapshot: Snapshot;
   beforeAll(async () => {
-    const t = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const r of t.split(/\r?\n/)) {
-      if (!r.includes("=") || r.trim().startsWith("#")) continue;
-      const i = r.indexOf("=");
-      const k = r.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[k]) process.env[k] = r.slice(i + 1).trim();
-    }
+    caricaEnvLocale();
     snapshot = await costruisciSnapshot();
   }, 180_000);
 

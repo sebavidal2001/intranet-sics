@@ -9,14 +9,13 @@
  */
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { costruisciCalendario, settimanaIso, dataDaIso } from "@/lib/prototipo-bi/calendario";
 import { distribuisci, budgetPerMese, budgetProgressivoAl } from "@/lib/prototipo-bi/budget";
 import { esegui, validaSpec, SpecNonValida } from "@/lib/prototipo-bi/semantico";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import { costruisciContesto, rilevaTutto, calcolaPunteggi } from "@/lib/prototipo-bi/rilevatori";
 import type { ConfigurazioneAnno, Snapshot } from "@/lib/prototipo-bi/tipi";
+import { caricaEnvLocale } from "./_env";
 
 const CONFIG_PROVA: ConfigurazioneAnno = {
   anno: 2026,
@@ -128,13 +127,7 @@ describe("Dati reali", () => {
   beforeAll(async () => {
     // Vitest non carica .env.local: lo si legge qui, prima che il client
     // Supabase venga istanziato (è lazy, quindi in tempo).
-    const testo = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-    for (const riga of testo.split(/\r?\n/)) {
-      if (!riga.includes("=") || riga.trim().startsWith("#")) continue;
-      const i = riga.indexOf("=");
-      const chiave = riga.slice(0, i).replace(/^﻿/, "").trim();
-      if (!process.env[chiave]) process.env[chiave] = riga.slice(i + 1).trim();
-    }
+    caricaEnvLocale();
 
     snapshot = await costruisciSnapshot();
   }, 180_000);
