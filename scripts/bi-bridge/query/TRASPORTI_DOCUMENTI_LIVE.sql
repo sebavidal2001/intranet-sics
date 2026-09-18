@@ -9,7 +9,13 @@
   chiave primaria indicizzata usata per la scansione di intervallo.
 */
 SELECT d.id_documento,
-       CASE WHEN d.tipo_registro='DA' THEN 'ENTRATA' ELSE 'USCITA' END AS direzione,
+       -- Fuori dai registri DV e DA decide il profilo: la riparazione che entra
+       -- (RIPEF, RIPEC) e quella che esce (RIPUF, RIPUC) condividono il registro,
+       -- quindi ricavare il verso da li' le marcherebbe tutte come uscite.
+       CASE WHEN d.tipo_registro='DA' THEN 'ENTRATA'
+            WHEN d.tipo_registro='DV' THEN 'USCITA'
+            WHEN d.codice_profilo IN ('RIPEF','RIPEC') THEN 'ENTRATA'
+            ELSE 'USCITA' END AS direzione,
        d.tipo_registro,
        d.codice_profilo,
        d.descrizione_profilo,
