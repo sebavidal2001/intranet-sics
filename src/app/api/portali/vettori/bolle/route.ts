@@ -159,7 +159,7 @@ async function sincronizzaDocumentiRecenti(): Promise<void> {
     .schema("bi")
     .from("trasporti_documenti")
     .select(
-      "id_documento,codice_profilo,tipo_registro,numero_progressivo,numero_documento,data_documento,data_registrazione,id_sog_commerciale,codice_soggetto,soggetto,zona_cap,zona_provincia,fonte_zona,tipo_trasporto_codice,tipo_trasporto,vettore_codice,vettore,num_colli,peso_netto,peso_lordo,volume"
+      "id_documento,codice_profilo,tipo_registro,numero_progressivo,numero_documento,data_documento,data_registrazione,id_sog_commerciale,codice_soggetto,soggetto,zona_cap,zona_provincia,fonte_zona,tipo_trasporto_codice,tipo_trasporto,tras_mezzo,vettore_codice,vettore,num_colli,peso_netto,peso_lordo,volume"
     )
     .order("data_creazione", { ascending: false, nullsFirst: false })
     .limit(500);

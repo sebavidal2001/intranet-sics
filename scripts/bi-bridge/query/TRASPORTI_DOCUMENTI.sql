@@ -94,7 +94,10 @@ WHERE (
        d.data_registrazione >= DATEADD(day,-90,TODAY(*))
        OR d.data_modifica >= DATEADD(day,-90,TODAY(*))
       )
-  AND d.tipo_registro IN ('DV','DA')
+  -- I quattro profili di riparazione viaggiano davvero (114 documenti dal
+  -- 2025), ma usano i registri GA/GV e il solo filtro DV/DA li escludeva.
+  AND (d.tipo_registro IN ('DV','DA')
+       OR d.codice_profilo IN ('RIPEF','RIPEC','RIPUF','RIPUC'))
 ORDER BY d.data_registrazione,d.id_documento;
 OUTPUT TO 'C:\Impresa\Viste_BI\Esportazioni\trasporti_documenti.csv'
 -- Niente WITH COLUMN NAMES: il client SQL Anywhere 11 installato su
