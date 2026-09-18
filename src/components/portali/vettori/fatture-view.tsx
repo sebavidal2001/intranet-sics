@@ -84,6 +84,10 @@ interface Riepilogo {
 
 interface Anteprima {
   nomeFile: string;
+  origineMetadati: {
+    numero: "documento" | "assente";
+    data: "documento" | "assente";
+  };
   fattura: {
     vettore: string;
     numero: string | null;
@@ -102,6 +106,16 @@ const NOMI: Record<string, string> = {
   fedex: "FedEx",
   trading_post: "Trading Post",
 };
+
+export function estremiDalNomeFile(nomeFile: string): { numero: string; data: string } | null {
+  const parti = /^FAT-BM_([^_]+)_.+_(\d{4})_(\d{2})\.pdf$/i.exec(nomeFile);
+  if (!parti) return null;
+  const anno = Number(parti[2]);
+  const mese = Number(parti[3]);
+  if (mese < 1 || mese > 12) return null;
+  const ultimoGiorno = new Date(Date.UTC(anno, mese, 0)).toISOString().slice(0, 10);
+  return { numero: parti[1], data: ultimoGiorno };
+}
 
 const COLORE_ESITO: Record<string, string> = {
   in_linea: "var(--color-success)",
@@ -126,9 +140,17 @@ export function FattureView() {
   const [sopra, setSopra] = useState(false);
   const [direzione, setDirezione] = useState("entrata");
   const [misure, setMisure] = useState<MisuraRiga[]>([]);
+  const [numeroFattura, setNumeroFattura] = useState("");
+  const [dataFattura, setDataFattura] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
-  const invia = useCallback(async (f: File, soloAnteprima: boolean, correzioni: MisuraRiga[] = [], ricalcolo = false) => {
+  const invia = useCallback(async (
+    f: File,
+    soloAnteprima: boolean,
+    correzioni: MisuraRiga[] = [],
+    ricalcolo = false,
+    estremi?: { numero: string; data: string }
+  ) => {
     setErrore(null);
     setInCorso(soloAnteprima ? "lettura" : "salvataggio");
     if (soloAnteprima) {
@@ -139,6 +161,8 @@ export function FattureView() {
       const body = new FormData();
       body.append("file", f);
       body.append("misure", JSON.stringify(correzioni));
+      if (estremi?.numero.trim()) body.append("numeroFattura", estremi.numero.trim());
+      if (estremi?.data) body.append("dataFattura", estremi.data);
       const res = await fetch(
         `/api/portali/vettori/fatture/acquisisci${soloAnteprima ? "?anteprima=1" : ""}`,
         { method: "POST", body }
@@ -155,7 +179,12 @@ export function FattureView() {
       if (soloAnteprima) {
         setFile(f);
         setAnteprima(dati as Anteprima);
-        if (!ricalcolo) setDirezione(dati.righe.some((x: Riga) => x.direzione === "entrata") ? "entrata" : dati.righe.some((x: Riga) => x.direzione === "uscita") ? "uscita" : "ignota");
+        if (!ricalcolo) {
+          const proposti = estremiDalNomeFile(f.name);
+          setNumeroFattura(dati.fattura.numero ?? proposti?.numero ?? "");
+          setDataFattura(dati.fattura.data ?? proposti?.data ?? "");
+          setDirezione(dati.righe.some((x: Riga) => x.direzione === "entrata") ? "entrata" : dati.righe.some((x: Riga) => x.direzione === "uscita") ? "uscita" : "ignota");
+        }
       } else {
         setSalvata(
           `Acquisita: ${dati.esito.righe} spedizioni, ${dati.esito.spedizioni_nuove} nuove bolle collegate, ${dati.esito.anomalie} anomalie da decidere.`
@@ -169,6 +198,8 @@ export function FattureView() {
   }, []);
 
   const q = anteprima?.quadratura;
+  const estremiAssenti = Boolean(anteprima && (!anteprima.fattura.numero || !anteprima.fattura.data));
+  const propostaDalNome = file ? estremiDalNomeFile(file.name) : null;
   const visibili = anteprima?.righe.filter((r) => direzione === "tutte" || (direzione === "ignota" ? !r.direzione : r.direzione === direzione)) ?? [];
   const somma = (fn: (r: Riga) => number) => Math.round(visibili.reduce((s, x) => s + fn(x), 0) * 100) / 100;
   const r = anteprima ? {
@@ -295,6 +326,9 @@ export function FattureView() {
                   {anteprima.fattura.data ? ` · ${anteprima.fattura.data}` : ""} ·{" "}
                   {anteprima.righe.length} spedizioni lette
                 </p>
+                {anteprima.origineMetadati?.numero === "documento" && anteprima.origineMetadati.data === "documento" && (
+                  <p className="mt-1 text-xs text-success">Numero e data letti dal documento.</p>
+                )}
               </div>
             </div>
 
@@ -355,6 +389,51 @@ export function FattureView() {
               )}
             </details>
           </div>
+
+          {estremiAssenti && (
+            <section className="mt-4 rounded-xl border border-warning bg-bg p-5" aria-labelledby="estremi-fattura">
+              <div className="flex items-start gap-3">
+                <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+                <div className="w-full">
+                  <h2 id="estremi-fattura" className="font-tenorite font-bold text-text">
+                    Indica gli estremi della fattura
+                  </h2>
+                  <p className="mt-1 text-sm text-text-muted">
+                    Il dettaglio spedizioni non contiene numero e data. Confronta entrambi con la fattura cartacea prima di acquisire.
+                  </p>
+                  {propostaDalNome && (
+                    <p className="mt-2 text-sm font-medium text-warning">
+                      I valori proposti vengono dal NOME DEL FILE, non dal documento: vanno verificati sulla fattura cartacea.
+                    </p>
+                  )}
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm font-medium text-text">
+                      Numero fattura
+                      <input
+                        className="mt-1 block w-full rounded-md border border-border bg-bg px-3 py-2 font-normal text-text"
+                        value={numeroFattura}
+                        maxLength={100}
+                        required
+                        disabled={Boolean(anteprima.fattura.numero)}
+                        onChange={(evento) => setNumeroFattura(evento.target.value)}
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-text">
+                      Data fattura
+                      <input
+                        type="date"
+                        className="mt-1 block w-full rounded-md border border-border bg-bg px-3 py-2 font-normal text-text"
+                        value={dataFattura}
+                        required
+                        disabled={Boolean(anteprima.fattura.data)}
+                        onChange={(evento) => setDataFattura(evento.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* --------------------------- riepilogo ---------------------------- */}
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -466,8 +545,8 @@ export function FattureView() {
               </p>
               <Button
                 type="button"
-                disabled={!q.ok || inCorso !== null || !file || Boolean(errore)}
-                onClick={() => file && void invia(file, false, misure)}
+                disabled={!q.ok || inCorso !== null || !file || Boolean(errore) || !numeroFattura.trim() || !dataFattura}
+                onClick={() => file && void invia(file, false, misure, false, { numero: numeroFattura, data: dataFattura })}
               >
                 {inCorso === "salvataggio" ? (
                   <>

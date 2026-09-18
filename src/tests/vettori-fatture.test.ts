@@ -13,6 +13,7 @@ import {
   numeroIt,
   percentualeIt,
 } from "@/lib/portali/vettori/fatture/testo";
+import { erroreEstremiMancanti, risolviEstremiFattura } from "@/lib/portali/vettori/acquisizione";
 
 /**
  * I parser sono verificati sulle fatture VERE di luglio e agosto 2026.
@@ -29,6 +30,45 @@ function fattura(nome: string): string {
     "utf8"
   );
 }
+
+describe("estremi usati per acquisire la fattura", () => {
+  it("mantiene numero e data letti dal documento", () => {
+    expect(risolviEstremiFattura(
+      { numero: "DOC-42", data: "2026-07-29" },
+      { numero: "OPERATORE-99", data: "2026-07-31" }
+    )).toEqual({
+      numero: "DOC-42",
+      data: "2026-07-29",
+      origine: { numero: "documento", data: "documento" },
+    });
+  });
+
+  it("usa numero e data dell'operatore solo quando il documento non li espone", () => {
+    expect(risolviEstremiFattura(
+      { numero: null, data: null },
+      { numero: "3655379", data: "2026-07-31" }
+    )).toEqual({
+      numero: "3655379",
+      data: "2026-07-31",
+      origine: { numero: "operatore", data: "operatore" },
+    });
+  });
+
+  it("lascia gli estremi assenti in anteprima se non sono stati indicati", () => {
+    expect(risolviEstremiFattura({ numero: null, data: null })).toEqual({
+      numero: null,
+      data: null,
+      origine: { numero: "assente", data: "assente" },
+    });
+  });
+
+  it("rifiuta il salvataggio GLS senza entrambi gli estremi con un messaggio comprensibile", () => {
+    expect(erroreEstremiMancanti("gls", { numero: null, data: null })).toBe(
+      "GLS non espone numero e data nel dettaglio spedizioni: vanno indicati a mano."
+    );
+    expect(erroreEstremiMancanti("gls", { numero: "3655379", data: "2026-07-31" })).toBeNull();
+  });
+});
 
 describe("lettura dei numeri all'italiana", () => {
   it("il punto è separatore di migliaia, la virgola è decimale", () => {
