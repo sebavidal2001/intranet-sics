@@ -195,6 +195,10 @@ export async function GET(request: NextRequest) {
           "id,direzione,vettore_id,numero_riferimento,data_documento,controparte_nome,zona_cap,zona_provincia,colli_bolla,peso_bolla,origine,campi_forzati,congelata,creata_il",
           { count: "exact" }
         )
+        // Le spedizioni ignorate non arrivano al banco: sono le righe dei fogli
+        // Excel riconosciute come doppioni di una bolla gia' presente, e
+        // misurare i colli due volte sulla stessa merce non ha senso.
+        .neq("stato", "ignorata")
         .order("data_documento", { ascending: false })
         .order("creata_il", { ascending: false })
         .range(da, da + perPagina - 1),
