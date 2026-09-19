@@ -342,6 +342,62 @@ describe("le fatture di agosto si leggono con lo stesso parser", () => {
   });
 });
 
+/**
+ * Maggio 2026, la fattura che per mesi non si è potuta acquisire.
+ *
+ * Due difetti in una volta, e nessuno dei due visibile su luglio e agosto:
+ * una riga con l'addebito di giacenza, e il piede spezzato dal diritto fisso.
+ * Il secondo è quello che faceva danno: senza il piede la fattura non ha
+ * totali, e senza totali non c'è niente con cui confrontare le righe lette.
+ */
+describe("Trading Post — la giacenza e il diritto fisso (maggio 2026)", () => {
+  const f = leggiFattura(fattura("tp1260-001534-05-26"));
+
+  it("legge tutte e 38 le spedizioni, giacenza compresa", () => {
+    expect(f.righe).toHaveLength(38);
+    expect(f.righeNonLette).toEqual([]);
+  });
+
+  it("sulla riga con la giacenza l'ultimo importo è il diritto, non l'addizionale", () => {
+    const conGiacenza = f.righe.filter((r) => r.dettaglio.addebitiVari === "G");
+    expect(conGiacenza).toHaveLength(1);
+    const r = conGiacenza[0]!;
+    expect(r.nolo).toBe(8.9);
+    expect(r.dettaglio.addizionaleGestione).toBe(0.98);
+    expect(r.dettaglio.dirittoFisso).toBe(5);
+    expect(r.totale).toBeCloseTo(14.88, 2);
+  });
+
+  it("il piede si legge anche con FUEL sulla riga sotto", () => {
+    expect(f.totali.spedizioni).toBe(38);
+    expect(f.totali.colli).toBe(45);
+    expect(f.totali.peso).toBe(839.4);
+    expect(f.totali.nolo).toBe(507.3);
+    // 55,87 di addizionale più 5,00 di diritto fisso.
+    expect(f.totali.supplementi).toBeCloseTo(60.87, 2);
+  });
+
+  it("quadra al centesimo con il netto stampato", () => {
+    expect(quadra(f).ok).toBe(true);
+    const somma = f.righe.reduce((a, r) => a + (r.totale ?? 0), 0);
+    expect(somma).toBeCloseTo(f.totali.totaleDocumento!, 2);
+    expect(f.totali.totaleDocumento).toBe(568.17);
+  });
+});
+
+describe("una nota di credito non è una fattura mal letta", () => {
+  it("lo dice, invece di dare la colpa al tracciato del vettore", () => {
+    try {
+      leggiFattura(fattura("tp1260-001605-05-26-nota-credito"));
+      throw new Error("doveva rifiutare la nota di credito");
+    } catch (e) {
+      expect(e).toBeInstanceOf(FatturaNonLeggibile);
+      expect((e as FatturaNonLeggibile).motivo).toBe("nota_di_credito");
+      expect((e as Error).message).toContain("nota di credito");
+    }
+  });
+});
+
 describe("quello che non si può leggere lo dice, invece di fingere", () => {
   it("FedEx: riconosciuto ma senza testo", () => {
     expect(() => leggiFattura(fattura("ft-fedex-07-26"))).toThrowError(

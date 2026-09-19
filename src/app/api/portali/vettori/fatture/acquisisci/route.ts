@@ -84,7 +84,13 @@ export async function POST(request: NextRequest) {
     const { extractText, getDocumentProxy } = await import("unpdf");
     let testo: string;
     try {
-      const pdf = await getDocumentProxy(bytes);
+      // Una copia, non i byte originali: pdf.js **stacca** l'array che riceve.
+      // Senza questa copia `bytes` resta svuotato, e la strada del
+      // riconoscimento ottico — che parte subito sotto, sugli stessi byte —
+      // muore con «Cannot perform slice on a detached ArrayBuffer» prima
+      // ancora di leggere una pagina. Cioè: nessuna fattura scansionata
+      // sarebbe mai stata acquisibile.
+      const pdf = await getDocumentProxy(bytes.slice());
       const estratto = await extractText(pdf, { mergePages: true });
       testo = Array.isArray(estratto.text) ? estratto.text.join("\n") : estratto.text;
     } catch {

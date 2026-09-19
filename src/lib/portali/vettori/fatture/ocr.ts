@@ -111,10 +111,12 @@ export async function rasterizza(
 
   // Copia dei byte, non i byte originali. pdf.js **svuota** l'array che gli si
   // passa: dopo la lettura il chiamante si ritrova un buffer staccato, e la
-  // seconda apertura fallisce con «Cannot transfer object of unsupported type».
-  // La route di acquisizione fa esattamente questo — prima prova a estrarre il
-  // testo, poi passa gli stessi byte al riconoscimento ottico — quindi senza
-  // questa copia il riconoscimento non partirebbe mai in produzione.
+  // seconda apertura fallisce.
+  //
+  // La copia va fatta anche a monte, però, e per la stessa ragione: chi apre il
+  // PDF per primo — la route, che prima prova a estrarre il testo — deve
+  // passare a sua volta una copia, altrimenti qui arriva un buffer gia'
+  // staccato e nemmeno `slice()` può più farne nulla.
   const pdf = await getDocumentProxy(bytes.slice());
   const quante = Math.min(pdf.numPages, opzioni.massimoPagine ?? 20);
   const pagine: PaginaRasterizzata[] = [];
@@ -732,6 +734,23 @@ export async function correggiOrientamento(
       massimo = punteggio;
       migliore = g;
     }
+  }
+
+  /**
+   * Girare la pagina è una decisione, e va presa solo con una prova netta.
+   *
+   * Su una pagina davvero coricata il divario non lascia dubbi: la FedEx di
+   * agosto fa 30.857 a 90 gradi contro 5.030 da dritta, sei volte tanto. Su una
+   * scansione sbiadita, invece, il motore legge male in tutti e quattro i versi
+   * e i punteggi si accalcano in basso: quella di giugno faceva 4.822 a 180
+   * contro 3.182 da dritta — mezzo punto di differenza su valori che, sulle
+   * pagine leggibili, stanno sopra i ventimila. Lì ha vinto il rumore, la
+   * pagina è stata capovolta e non si è riconosciuta più una riga.
+   *
+   * Da dritta ci si muove solo con il doppio del punteggio.
+   */
+  if (migliore !== 0 && massimo < punteggi[0] * 2) {
+    return { pagina, gradi: 0, punteggi };
   }
 
   if (migliore === 0) return { pagina, gradi: 0, punteggi };

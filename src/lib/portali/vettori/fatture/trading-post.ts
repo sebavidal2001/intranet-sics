@@ -24,8 +24,17 @@ import { dataIt, interoIt, numeroIt, normalizzaRiferimento, righe } from "./test
 // confermano che quegli 8,90 sono il nolo e 2,75 l'addizionale, quindi gli
 // importi si leggono **da destra** — dove l'ordine è stabile — e non da
 // sinistra, dove basta una colonna vuota per far scivolare tutto di uno.
+//
+// 1370 22/05 87433/FO D BORGHI & SAVE FORLI FO 1 1,0 3 8,90 8,90 0,98 5,00 G
+//
+// Con un addebito vario la coda si allunga di un importo e di una sigla: `G` è
+// la giacenza, e i 5,00 sono il diritto fisso che la accompagna. È l'unico caso
+// in cui l'ultimo importo **non** è l'addizionale, e si riconosce proprio dalla
+// sigla: senza di essa, quattro importi in coda resterebbero una riga che non
+// si lascia leggere, perché indovinare quale colonna sia saltata significa
+// scegliere a caso fra un nolo e un diritto.
 const RIGA =
-  /^(\S+)\s+(\d{2}\/\d{2})\s+(\S+\/[A-Z]{2})\s+([MD])\s+(.+?)\s+(\d+)\s+([\d.]+,\d)\s+(?:([\d.]+,\d{3})\s+)?(\d+)\s+((?:[\d.]+,\d{2}\s+){1,2}[\d.]+,\d{2})\s*$/;
+  /^(\S+)\s+(\d{2}\/\d{2})\s+(\S+\/[A-Z]{2})\s+([MD])\s+(.+?)\s+(\d+)\s+([\d.]+,\d)\s+(?:([\d.]+,\d{3})\s+)?(\d+)\s+((?:[\d.]+,\d{2}\s+){1,3}[\d.]+,\d{2})(?:\s+([A-Z](?:\s+[A-Z])*))?\s*$/;
 
 export function leggiTradingPost(testo: string): FatturaLetta {
   const linee = righe(testo);
@@ -57,11 +66,20 @@ export function leggiTradingPost(testo: string): FatturaLetta {
       volume,
       quantita,
       importiCoda,
+      addebitiVari,
     ] = m;
 
     // Da destra: l'ultimo importo è l'addizionale, il penultimo il nolo. Quando
     // ce n'è un terzo davanti, è la tariffa unitaria.
     const importi = importiCoda.trim().split(/\s+/);
+    // Con una sigla di addebito vario in coda l'ultimo importo è il diritto
+    // fisso, e l'addizionale arretra di uno. Senza sigla, quattro importi non
+    // si sanno attribuire: la riga va mostrata, non interpretata.
+    const dirittoFisso = addebitiVari ? importi.pop()! : null;
+    if (!addebitiVari && importi.length > 3) {
+      nonLette.push(riga);
+      continue;
+    }
     const addizionale = importi.at(-1)!;
     const nolo = importi.at(-2)!;
     const tariffa = importi.length >= 3 ? importi.at(-3)! : null;
@@ -82,15 +100,20 @@ export function leggiTradingPost(testo: string): FatturaLetta {
       pesoVolumetrico: null, // in fattura c'è il volume, non il peso volumetrico
       pesoTassato: interoIt(quantita),
       nolo: numeroIt(nolo),
-      supplementi: numeroIt(addizionale) ?? 0,
+      supplementi: (numeroIt(addizionale) ?? 0) + (numeroIt(dirittoFisso ?? "") ?? 0),
       carburante: 0,
-      totale: (numeroIt(nolo) ?? 0) + (numeroIt(addizionale) ?? 0),
+      totale:
+        (numeroIt(nolo) ?? 0) +
+        (numeroIt(addizionale) ?? 0) +
+        (numeroIt(dirittoFisso ?? "") ?? 0),
       dettaglio: {
         provincia: controparte.trim().match(/\b([A-Z]{2})$/)?.[1] ?? "",
         sigla,
         tariffa: numeroIt(tariffa ?? "") ?? 0,
         volumeMc: numeroIt(volume ?? "") ?? 0,
         addizionaleGestione: numeroIt(addizionale) ?? 0,
+        dirittoFisso: numeroIt(dirittoFisso ?? "") ?? 0,
+        addebitiVari: addebitiVari ? addebitiVari.replace(/\s+/g, "") : "",
       },
     });
   }
@@ -166,8 +189,24 @@ function leggiTotaliTradingPost(linee: string[]): TotaliDichiarati {
     const l = linee[i].trim();
 
     // 60 1.200,20 859,00 FUEL
-    const corpo = l.match(/^(\d+)\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+FUEL\s*$/);
-    if (corpo) {
+    //
+    // Quando la fattura ha diritti fissi, però, il piede si spezza e la parola
+    // FUEL scivola sotto, con l'importo dei diritti in mezzo:
+    //
+    //   45 839,40 507,30
+    //   5,00
+    //   FUEL
+    //
+    // Senza questa seconda forma il piede non si legge, e allora **nessuno**
+    // dei totali è disponibile: la fattura non è più confrontabile con le
+    // proprie righe e resta fuori dall'archivio. È successo a due fatture su
+    // dieci. La parola FUEL resta obbligatoria, entro due righe: è lei a dire
+    // che quei numeri sono il piede e non una riga di spedizione.
+    const corpo = l.match(/^(\d+)\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})(\s+FUEL)?\s*$/);
+    const codaFuel = corpo?.[4]
+      ? { fisso: null as string | null }
+      : cercaFuelSotto(linee, i);
+    if (corpo && codaFuel) {
       t.colli = interoIt(corpo[1]);
       t.peso = numeroIt(corpo[2]);
       t.nolo = numeroIt(corpo[3]);
@@ -178,6 +217,10 @@ function leggiTotaliTradingPost(linee: string[]): TotaliDichiarati {
         else if (/^[\d.]+,\d{2}$/.test(p) && t.supplementi == null)
           t.supplementi = numeroIt(p);
       }
+      // I diritti fissi sono un supplemento come l'addizionale: stanno in una
+      // colonna diversa del piede, non in un conto diverso.
+      const fisso = numeroIt(codaFuel.fisso ?? "");
+      if (fisso != null) t.supplementi = (t.supplementi ?? 0) + fisso;
       continue;
     }
 
@@ -187,4 +230,27 @@ function leggiTotaliTradingPost(linee: string[]): TotaliDichiarati {
   }
 
   return t;
+}
+
+/**
+ * Cerca la parola FUEL nelle due righe sotto, e restituisce l'importo che nel
+ * frattempo si è incontrato: sono i diritti fissi, l'unica voce che si infila
+ * lì in mezzo. Restituisce `null` se FUEL non c'è: allora quei tre numeri non
+ * erano il piede della fattura.
+ */
+function cercaFuelSotto(
+  linee: string[],
+  i: number
+): { fisso: string | null } | null {
+  let fisso: string | null = null;
+  for (let k = i + 1; k <= i + 2 && k < linee.length; k++) {
+    const p = linee[k].trim();
+    if (p === "FUEL") return { fisso };
+    if (/^[\d.]+,\d{2}$/.test(p) && fisso == null) {
+      fisso = p;
+      continue;
+    }
+    return null;
+  }
+  return null;
 }
