@@ -52,6 +52,7 @@ export class FatturaNonLeggibile extends Error {
       | "vettore_sconosciuto"
       | "senza_testo"
       | "nessuna_riga"
+      | "nota_di_credito"
   ) {
     super(message);
     this.name = "FatturaNonLeggibile";
@@ -105,6 +106,17 @@ export function leggiFattura(testo: string): FatturaLetta {
     );
   }
   if (letta.righe.length === 0) {
+    // Una nota di credito non ha spedizioni, e non è un documento mal letto:
+    // è un documento di un tipo che il portale non tratta. Dirlo evita che
+    // l'amministrazione vada a cercare un guasto nel lettore — e mette nero su
+    // bianco che quello storno, per ora, il controllo non lo vede.
+    if (/STORNO|NOTA\s+DI\s+CREDITO|ACCREDITO\s+N\./i.test(testo)) {
+      throw new FatturaNonLeggibile(
+        "Questo documento è una nota di credito, non una fattura di spedizioni: " +
+          "il portale non la archivia, e lo storno va tenuto presente a mano sul mese che corregge.",
+        "nota_di_credito"
+      );
+    }
     throw new FatturaNonLeggibile(
       "Nessuna spedizione riconosciuta nella fattura: il tracciato del vettore è probabilmente cambiato.",
       "nessuna_riga"
