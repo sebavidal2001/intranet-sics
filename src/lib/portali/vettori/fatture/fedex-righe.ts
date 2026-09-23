@@ -64,15 +64,66 @@ export interface BloccoSpedizione {
   testo: string;
 }
 
+/**
+ * La riga del riepilogo IVA in coda al documento:
+ *
+ *   Codice IVA | Aliquota | Addebiti | Sconto | Importo netto | Iva | Totale
+ *   020          22.00%     127,22     -83,15   44,07           9,70  53,77
+ *
+ * Conta perché l'imponibile è il numero che la somma delle righe deve fare, e
+ * finora veniva **ricostruito** dividendo il totale per l'aliquota. Il conto
+ * torna, ma è una deduzione: basta che il riconoscimento ottico sbagli una
+ * cifra dell'importo dovuto e il termine di paragone della quadratura è
+ * sbagliato — senza che niente lo dica.
+ *
+ * Letto direttamente, invece, si controlla da solo: **addebiti meno sconto
+ * deve fare l'imponibile**. Se i tre numeri non tornano fra loro non è il
+ * riepilogo IVA, o è stato letto male, e non lo si usa.
+ */
+export interface RiepilogoIva {
+  addebiti: number;
+  sconto: number;
+  imponibile: number;
+}
+
 export interface LetturaPerRighe {
   numero: string | null;
   data: string | null;
   /** Totale stampato, **IVA compresa**. */
   importoDovuto: number | null;
   aliquotaIva: number | null;
+  /** L'imponibile come il documento lo dichiara, quando la riga si legge. */
+  riepilogoIva: RiepilogoIva | null;
   blocchi: BloccoSpedizione[];
   /** Righe che cominciavano con una lettera di vettura ma non si sono lasciate leggere. */
   nonLette: string[];
+}
+
+/**
+ * Cerca nei numeri della riga la terna addebiti / sconto / imponibile.
+ *
+ * Non si va per posizione: il riconoscimento ottico salta volentieri una
+ * colonna — sulla fattura di maggio l'IVA di 2,93 non compare affatto — e
+ * contare le celle porterebbe a prendere l'IVA per l'imponibile. Si cerca
+ * invece la terna che soddisfa l'aritmetica del documento, che è una prova e
+ * non una scommessa. Lo sconto si prende in valore assoluto: il segno meno,
+ * stampato piccolo e attaccato alla cifra, è la prima cosa che si perde.
+ */
+export function terzinaRiepilogo(numeri: number[]): RiepilogoIva | null {
+  for (let i = 0; i < numeri.length; i++) {
+    for (let j = i + 1; j < numeri.length; j++) {
+      for (let k = j + 1; k < numeri.length; k++) {
+        const addebiti = numeri[i];
+        const sconto = Math.abs(numeri[j]);
+        const imponibile = numeri[k];
+        if (addebiti <= 0 || imponibile <= 0) continue;
+        if (Math.abs(addebiti - sconto - imponibile) <= 0.02) {
+          return { addebiti, sconto, imponibile };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 const testoDi = (riga: Parola[]) => riga.map((p) => p.testo).join(" ");
@@ -95,6 +146,7 @@ export function leggiPerRighe(pagine: PaginaRiconosciuta[]): LetturaPerRighe {
   let data: string | null = null;
   let importoDovuto: number | null = null;
   let aliquotaIva: number | null = null;
+  let riepilogoIva: RiepilogoIva | null = null;
 
   for (const riga of righe) {
     const testo = testoDi(riga);
@@ -128,6 +180,17 @@ export function leggiPerRighe(pagine: PaginaRiconosciuta[]): LetturaPerRighe {
       }
     }
 
+    // La stessa dicitura «Imponibile IVA 22.00%» compare sotto ogni spedizione
+    // e una volta sola nel riepilogo in coda. A distinguerle è quello che le
+    // segue: solo nel riepilogo ci sono gli importi, e solo lì tornano fra
+    // loro.
+    if (riepilogoIva === null && ALIQUOTA.test(testo)) {
+      const numeri = riga
+        .map((p) => leggiNumero(p.testo, { attesoNumerico: true }).valore)
+        .filter((v): v is number => v !== null && Math.abs(v) > 0.009 && Math.abs(v) < 1_000_000);
+      riepilogoIva = terzinaRiepilogo(numeri);
+    }
+
     // ---- righe accessorie del blocco aperto ----
     const ultimo = blocchi[blocchi.length - 1];
     if (ultimo) {
@@ -157,6 +220,7 @@ export function leggiPerRighe(pagine: PaginaRiconosciuta[]): LetturaPerRighe {
     data,
     importoDovuto,
     aliquotaIva,
+    riepilogoIva,
     blocchi: unifica(blocchi),
     nonLette,
   };
@@ -375,7 +439,7 @@ export function verso_righe(lettura: LetturaPerRighe): {
   // Il totale stampato è IVA compresa: si riporta al netto per poterlo
   // confrontare con la somma delle righe.
   const iva = lettura.aliquotaIva ?? 0.22;
-  const netto =
+  const dedotto =
     lettura.importoDovuto === null
       ? null
       : Math.round((lettura.importoDovuto / (1 + iva)) * 100) / 100;
@@ -383,6 +447,31 @@ export function verso_righe(lettura: LetturaPerRighe): {
   if (lettura.importoDovuto !== null && lettura.aliquotaIva === null) {
     avvertenze.push(
       "Aliquota IVA non letta sul documento: per riportare il totale al netto si è usato il 22%."
+    );
+  }
+
+  /**
+   * Fra l'imponibile dichiarato e quello dedotto vince il dichiarato.
+   *
+   * Sono due numeri che dovrebbero dire la stessa cosa per strade diverse: uno
+   * è scritto nel riepilogo IVA, l'altro esce da una divisione. Quando ci sono
+   * entrambi si controllano a vicenda, ed è il caso migliore; quando divergono
+   * vuol dire che una delle due letture è sbagliata, e la differenza va detta
+   * invece di essere sciolta in silenzio scegliendo la più comoda.
+   */
+  const netto = lettura.riepilogoIva?.imponibile ?? dedotto;
+
+  if (lettura.riepilogoIva && dedotto !== null &&
+      Math.abs(lettura.riepilogoIva.imponibile - dedotto) > 0.02) {
+    avvertenze.push(
+      `L'imponibile dichiarato nel riepilogo IVA (${lettura.riepilogoIva.imponibile.toFixed(2)} €) ` +
+        `non coincide con quello ricavato dall'importo dovuto (${dedotto.toFixed(2)} €): ` +
+        "uno dei due numeri è stato letto male, si usa quello dichiarato."
+    );
+  }
+  if (!lettura.riepilogoIva && dedotto !== null) {
+    avvertenze.push(
+      "Riepilogo IVA non letto: l'imponibile con cui si quadra è ricavato dall'importo dovuto, non letto sul documento."
     );
   }
 
