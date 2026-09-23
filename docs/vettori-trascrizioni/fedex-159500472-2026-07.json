@@ -1,0 +1,100 @@
+{
+  "_nota": "Trascritta dal «Dettaglio Fattura» di ft fedex_07.pdf (due pagine di dettaglio). È la fattura su cui il riconoscimento ottico leggeva 5 spedizioni su 6 e la quadratura rifiutava dichiarando i 9,04 euro mancanti: la riga che mancava è la prima, AWB 873361578215.",
+  "vettore": "fedex",
+  "numero": "159500472",
+  "data": "2026-07-24",
+  "totaliDichiarati": {
+    "pesoRiferito": "tassato",
+    "totaleDocumento": 85.23,
+    "totaleRighe": 69.86
+  },
+  "righe": [
+    {
+      "data": "2026-06-22",
+      "numeroSpedizione": "873361578215",
+      "riferimento": null,
+      "controparte": "API SRL MOZZATE",
+      "direzione": "entrata",
+      "colli": 1,
+      "peso": 0.6,
+      "pesoTassato": 2.8,
+      "nolo": 7.22,
+      "carburante": 1.82,
+      "percentualeCarburante": 0.2522,
+      "dims": "28x20x20",
+      "pesoVolumetricoApplicato": true
+    },
+    {
+      "data": "2026-07-01",
+      "numeroSpedizione": "873808745461",
+      "riferimento": null,
+      "controparte": "API SRL MOZZATE",
+      "direzione": "entrata",
+      "colli": 1,
+      "peso": 5.0,
+      "pesoTassato": 5.0,
+      "nolo": 8.0,
+      "carburante": 1.94,
+      "percentualeCarburante": 0.243,
+      "dims": "34x24x24"
+    },
+    {
+      "data": "2026-07-02",
+      "numeroSpedizione": "873861749788",
+      "riferimento": "10369",
+      "controparte": "AIGNEP SPA BIONE",
+      "direzione": "entrata",
+      "colli": 1,
+      "peso": 1.0,
+      "pesoTassato": 1.9,
+      "nolo": 7.22,
+      "carburante": 1.75,
+      "percentualeCarburante": 0.243,
+      "dims": "30x20x13",
+      "pesoVolumetricoApplicato": true
+    },
+    {
+      "data": "2026-07-09",
+      "numeroSpedizione": "874146444270",
+      "riferimento": "10776",
+      "controparte": "AIGNEP SPA BIONE",
+      "direzione": "entrata",
+      "colli": 2,
+      "peso": 7.0,
+      "pesoTassato": 13.1,
+      "nolo": 10.12,
+      "carburante": 2.46,
+      "percentualeCarburante": 0.243,
+      "dims": "30x19x21"
+    },
+    {
+      "data": "2026-07-14",
+      "numeroSpedizione": "874349834378",
+      "riferimento": "11047",
+      "controparte": "AIGNEP SPA BIONE",
+      "direzione": "entrata",
+      "colli": 3,
+      "peso": 11.0,
+      "pesoTassato": 11.9,
+      "nolo": 10.12,
+      "carburante": 2.46,
+      "percentualeCarburante": 0.243,
+      "dims": "30x21x22"
+    },
+    {
+      "data": "2026-06-23",
+      "numeroSpedizione": "873375799476",
+      "riferimento": "9563",
+      "controparte": "AIGNEP SPA BIONE",
+      "direzione": "entrata",
+      "colli": 5,
+      "peso": 33.3,
+      "pesoTassato": 36.9,
+      "nolo": 13.38,
+      "carburante": 3.37,
+      "percentualeCarburante": 0.2522,
+      "dims": "30x20x22"
+    }
+  ],
+  "pdf": "ft fedex_07.pdf"
+}
