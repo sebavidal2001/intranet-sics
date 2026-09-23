@@ -17,6 +17,7 @@ import {
 import { logError } from "@/lib/logger";
 import { MisureFattura } from "@/lib/portali/vettori/misure";
 import { leggiFedexOcr, type LetturaOcr } from "@/lib/portali/vettori/fatture/fedex";
+import { leggiFatturaConModello, type LetturaConModello } from "@/lib/portali/vettori/fatture/llm";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -111,24 +112,45 @@ export async function POST(request: NextRequest) {
      */
     let fattura;
     let ocr: LetturaOcr | null = null;
+    let lettura: LetturaConModello | null = null;
     try {
       fattura = leggiFattura(testo);
     } catch (e) {
       if (!(e instanceof FatturaNonLeggibile) || e.motivo !== "senza_testo") throw e;
-      ocr = await leggiFedexOcr(bytes);
-      if (ocr.fattura.righe.length === 0) {
-        return NextResponse.json(
-          {
-            error:
-              "Il PDF non contiene testo e il riconoscimento ottico non ha trovato spedizioni. " +
-              (ocr.spiegazioni[0] ?? ""),
-            motivo: "senza_testo",
-            spiegazioni: ocr.spiegazioni,
-          },
-          { status: 422 }
-        );
+
+      /**
+       * Senza testo, prima il modello e poi il riconoscimento ottico.
+       *
+       * Fra le due interpretazioni di un'immagine si sceglie quella che sui
+       * documenti veri funziona meglio: misurato sulle tre fatture del 2026 che
+       * nessun lettore prendeva, il modello ricostruisce le FedEx riga per riga
+       * — compresa quella da 9,04 € che l'OCR perdeva — mentre Tesseract ne
+       * recupera una parte. L'OCR resta come ripiego per quando la lettura
+       * assistita è spenta, la chiave non c'è o il servizio non risponde: è
+       * locale e non dipende da nessuno.
+       *
+       * Nessuna delle due scorciatoie salta la quadratura, che poco più sotto
+       * decide se la fattura si può archiviare.
+       */
+      lettura = await leggiFatturaConModello(bytes);
+      if (lettura.fattura && lettura.fattura.righe.length > 0) {
+        fattura = lettura.fattura;
+      } else {
+        ocr = await leggiFedexOcr(bytes);
+        if (ocr.fattura.righe.length === 0) {
+          return NextResponse.json(
+            {
+              error:
+                "Il PDF non contiene testo, e né la lettura assistita né il riconoscimento " +
+                "ottico hanno trovato spedizioni. " + (ocr.spiegazioni[0] ?? ""),
+              motivo: "senza_testo",
+              spiegazioni: [...lettura.spiegazioni, ...ocr.spiegazioni],
+            },
+            { status: 422 }
+          );
+        }
+        fattura = ocr.fattura;
       }
-      fattura = ocr.fattura;
     }
     let misureInput: unknown;
     try { misureInput = JSON.parse(String(form.get("misure") ?? "[]")); }
@@ -164,7 +186,7 @@ export async function POST(request: NextRequest) {
       hashFile: hash,
       utenteId: guard.user.id,
       misure: misure.data,
-      metodoLettura: ocr ? "ocr" : "testo",
+      metodoLettura: ocr || lettura?.fattura ? "ocr" : "testo",
       numeroFattura: campiOperatore.data.numeroFattura,
       dataFattura: campiOperatore.data.dataFattura,
     });
