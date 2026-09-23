@@ -108,6 +108,42 @@ NEXT_PUBLIC_APP_URL=https://intranet.azienda.it
 
 ---
 
+## Nginx: caricamenti grandi e attese lunghe
+
+Il proxy davanti all'applicazione ha due impostazioni che **non sono un
+dettaglio di prestazioni**: senza, due funzioni del portale non partono affatto.
+
+```nginx
+# /etc/nginx/sites-enabled/intranet.s-ics.com
+client_max_body_size 16m;          # fuori dal blocco location
+
+location / {
+    proxy_pass http://localhost:3000;
+    proxy_read_timeout 180s;
+    proxy_send_timeout 180s;
+}
+```
+
+**`client_max_body_size`.** Nginx di suo accetta body fino a **1 MB**: oltre
+quella soglia rifiuta con 413 *prima* di passare la richiesta all'applicazione.
+Le fatture dei corrieri che arrivano come scansione pesano qualche megabyte —
+quella FedEx di luglio 2,7 MB — e l'applicazione ne accetta 15. Il risultato,
+dal browser, è il messaggio più inutile possibile: «non è stato possibile
+contattare il server». In `/var/log/nginx/error.log` invece si legge chiaro:
+`client intended to send too large body: 2752962 bytes`.
+
+**`proxy_read_timeout`.** Il default è 60 secondi. Leggere una fattura senza
+testo vuol dire rasterizzare le pagine e interrogare un modello: cinque secondi
+con quello economico, fino a una cinquantina quando la quadratura non torna e si
+passa a quello più capace. Troppo vicino al limite per lasciarlo lì.
+
+> [!warning] Il primo posto da guardare quando il browser dice «non è stato
+> possibile contattare il server» è `/var/log/nginx/error.log`, non i log
+> dell'applicazione: se la richiesta è stata fermata dal proxy, nei log di PM2
+> non c'è niente, perché all'applicazione non è mai arrivata.
+
+---
+
 ## Procedura di deploy
 
 ```bash
