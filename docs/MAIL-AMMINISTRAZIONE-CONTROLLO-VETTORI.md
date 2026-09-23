@@ -33,7 +33,9 @@ Post. Rispetto al foglio cambiano tre cose:
 
 Ad oggi ci sono dentro **tutte le fatture del 2026** che ci avete dato: 28
 documenti — 8 GLS, 8 TNT, 8 Trading Post, 4 FedEx — per **866 spedizioni** e
-**16.495,38 €**. Ogni corriere è coperto per tutti i mesi in cui ha fatturato.
+**16.495,38 €**. Ogni corriere è coperto per tutti i mesi in cui ha fatturato,
+comprese le tre fatture che arrivano come immagine e che fino a pochi giorni fa
+nessun programma riusciva a leggere.
 
 ## 2. Come si usa
 
@@ -59,6 +61,22 @@ importante: **verificare il peso volumetrico**. Oggi, quando il corriere fattura
 a volume, noi possiamo solo prendere per buono il suo numero — con le misure
 diventa un dato nostro. È l'unica parte che richiede lavoro manuale, e si può
 fare solo sulle spedizioni che contano.
+
+**Le fatture che sono solo un'immagine.** GLS, TNT e Trading Post arrivano come
+documenti, e il programma li legge direttamente. Alcune no: la Trading Post di
+gennaio è una scansione storta, le FedEx sono disegni senza una riga di testo
+dentro. Quelle vengono lette da un sistema di riconoscimento automatico, e il
+risultato passa **per lo stesso identico controllo**: se la somma delle righe
+non torna con i totali stampati, la fattura non si archivia. Funziona: la FedEx
+di luglio, che prima nessuno riusciva a leggere per intero, ora entra con tutte
+e sei le spedizioni al primo tentativo.
+
+> Su questo vi devo un'informazione, non una rassicurazione: per leggerle, le
+> pagine di quelle fatture vengono inviate a un fornitore esterno di servizi di
+> riconoscimento. Contengono nomi di clienti e fornitori, indirizzi e importi.
+> Riguarda solo le fatture-immagine, che nel 2026 sono state tre su ventotto;
+> tutte le altre restano sui nostri server. Se preferite che non esca nulla, si
+> può spegnere: quelle tre fatture andranno battute a mano.
 
 **Simulare prima di spedire.** Nella pagina *Simulazione* si mette peso, misure
 e destinazione e si vede quanto costerebbe con ciascun corriere. Serve per
@@ -122,12 +140,23 @@ sarebbe un confronto inventato.
 
 ## 4. Cosa dicono i numeri del 2026
 
-Sulle 866 righe controllate: **259 in linea, 95 da verificare, 276 anomalie,
-236 non valutabili**. La bolla è stata ritrovata su 844 righe su 866.
+Sulle 866 righe controllate: **264 in linea, 95 da verificare, 275 anomalie,
+232 non valutabili**. La bolla è stata ritrovata su 844 righe su 866.
 
-Le 276 anomalie non sono 276 casi diversi: **247 sono GLS**, e sono lo stesso
-fenomeno ripetuto. Su TNT e Trading Post, per confronto, il costo che calcoliamo
-coincide **al centesimo** con quello fatturato nella metà delle righe.
+Le 275 anomalie non sono 275 casi diversi: **247 sono GLS**, e sono lo stesso
+fenomeno ripetuto. Sugli altri tre corrieri il conto torna. Su TNT e Trading
+Post il costo che calcoliamo coincide **al centesimo** con quello fatturato
+nella metà delle righe. Su FedEx c'è il riscontro più netto: sulla fattura di
+luglio, l'unica che abbiamo letto per intero con il sistema nuovo, l'importo
+calcolato coincide **esattamente su tutte e sei le spedizioni**, perché le
+tariffe applicate sono quelle della tabella che abbiamo, fascia per fascia.
+
+Vale la pena dirlo chiaro, perché è la prova che il metodo di calcolo regge: se
+sbagliasse in sé, sbaglierebbe anche lì. Le poche differenze che restano sulle
+altre FedEx — tre righe in tutto, meno di dieci euro — non sono sovrapprezzi:
+sono spedizioni in cui non eravamo riusciti a leggere il **peso fatturato a
+volume**, così il conto è partito dal peso della merce e ha pescato la fascia
+sbagliata. Le rileggeremo con il sistema nuovo e spariranno.
 
 Su GLS invece, dentro la colonna *Nolo*, troviamo **costantemente 1,15 € o
 1,75 € in più** della tariffa di fascia, su tutte le fasce di peso; e circa
@@ -138,8 +167,8 @@ sono esattamente l'oversized a collo. Tolte le voci che riconosciamo, resta un
 residuo di circa **0,75 € a spedizione** che non sappiamo a cosa attribuire.
 
 In totale, sul 2026, la differenza fra fatturato e atteso vale **1.342 € su GLS**
-(a fronte di 9.520 € di fatturato confrontabile), 174 € su Trading Post, 109 €
-su TNT e 10 € su FedEx.
+(a fronte di 9.520 € di fatturato confrontabile), 174 € su Trading Post e 109 €
+su TNT. Su FedEx, dove la lettura è completa, la differenza è zero.
 
 Vale la pena dire che **questa differenza la vedevate già voi**: nei vostri fogli
 degli arrivi GLS il «costo previsto» sta a quello fatturato come 2.791 € a
@@ -175,11 +204,12 @@ degli arrivi GLS il «costo previsto» sta a quello fatturato come 2.791 € a
 ### Su come vengono registrate le spedizioni
 
 7. **Sugli arrivi il vettore non viene indicato nel gestionale.** Lo capiamo —
-   la bolla è del fornitore e il trasporto lo organizza lui — ma questo lascia
-   **326 spedizioni che paghiamo noi senza sapere con chi sono viaggiate**.
-   Sarebbe possibile compilare il campo vettore anche sui DDT di acquisto? È un
-   campo solo, sul documento che già registrate, e chiuderebbe il problema alla
-   radice.
+   la bolla è del fornitore e il trasporto lo organizza lui. Dai vostri fogli ne
+   abbiamo recuperati 131, perché i fogli sono divisi per corriere e quindi il
+   dato ce l'avete voi; ma restano **326 spedizioni che paghiamo noi senza
+   sapere con chi sono viaggiate**. Sarebbe possibile compilare il campo vettore
+   anche sui DDT di acquisto? È un campo solo, sul documento che già
+   registrate, e chiuderebbe il problema alla radice invece che a valle.
 8. **Nel foglio ARRIVI TNT-FEDEX** le due colonne non sono distinte. Ci sono
    davvero spedizioni FedEx là dentro, o di fatto sono tutte TNT? Da questo
    dipendono 83 bolle a cui oggi non sappiamo attribuire il corriere.
@@ -191,13 +221,12 @@ degli arrivi GLS il «costo previsto» sta a quello fatturato come 2.791 € a
 ### Sui documenti
 
 10. **Tre fatture arrivano come immagine** e non come documento: la Trading
-    Post di gennaio (una scansione ruotata) e le FedEx di giugno e luglio. Le
-    abbiamo caricate lo stesso, trascrivendole a mano dal documento e lasciando
-    che fosse la quadratura a verificare la trascrizione — sulla Trading Post
-    tornano numero di spedizioni, colli, chili e nolo, sulle FedEx il totale al
-    centesimo. Funziona, ma è lavoro che si può evitare: **si può chiedere ai
-    corrieri il PDF originale** invece della scansione? FedEx lo mette a
-    disposizione sul suo portale di fatturazione.
+    Post di gennaio (una scansione storta) e le FedEx di giugno e luglio. Ora il
+    programma le legge lo stesso, e bene — ma resta il modo peggiore di leggere
+    una fattura, perché su un'immagine si interpreta, mentre su un documento si
+    legge e basta. **Si può chiedere ai corrieri il file originale** invece
+    della scansione? FedEx lo mette a disposizione sul suo portale di
+    fatturazione; a Trading Post basta probabilmente chiederlo.
 11. **Le note di credito** (abbiamo trovato due storni da 9,88 € di Trading
     Post): oggi il portale non le archivia. Come le gestite voi sul foglio —
     le scalate dal mese o le tenete a parte?
@@ -210,7 +239,9 @@ leggendo i criteri di calcolo qualcosa vi sembra diverso da come lo fate voi,
 ditemelo: correggere il programma è veloce, correggere un controllo sbagliato
 fatto per mesi molto meno.
 
-Restiamo a disposizione per vedere insieme il portale quando vi è comodo.
+La cosa più utile, se avete un'ora, è vederlo insieme davanti allo schermo
+partendo da una fattura vera: le domande qui sopra vengono molto meglio
+guardando le righe.
 
 Un caro saluto,
 Sebastiano
