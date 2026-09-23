@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   FileText,
   Shield,
+  Sparkles,
   LogOut,
   Home,
 } from "lucide-react";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/superadmin/portali", icon: LayoutGrid, label: "Portali & permessi" },
   { href: "/superadmin/homepage", icon: FileText, label: "Homepage" },
   { href: "/superadmin/ruoli-config", icon: Shield, label: "Ruoli & Reparti" },
+  { href: "/superadmin/ai", icon: Sparkles, label: "Configurazione AI" },
 ];
 
 export function SuperadminSidebar() {
