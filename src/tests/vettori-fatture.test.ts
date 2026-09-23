@@ -14,6 +14,7 @@ import {
   percentualeIt,
 } from "@/lib/portali/vettori/fatture/testo";
 import { erroreEstremiMancanti, risolviEstremiFattura } from "@/lib/portali/vettori/acquisizione";
+import { terzinaRiepilogo } from "@/lib/portali/vettori/fatture/fedex-righe";
 
 /**
  * I parser sono verificati sulle fatture VERE di luglio e agosto 2026.
@@ -382,6 +383,43 @@ describe("Trading Post — la giacenza e il diritto fisso (maggio 2026)", () => 
     const somma = f.righe.reduce((a, r) => a + (r.totale ?? 0), 0);
     expect(somma).toBeCloseTo(f.totali.totaleDocumento!, 2);
     expect(f.totali.totaleDocumento).toBe(568.17);
+  });
+});
+
+/**
+ * Il riepilogo IVA di FedEx: quattro numeri in fila di cui uno solo è
+ * l'imponibile, e la colonna che lo direbbe l'OCR la salta volentieri.
+ */
+describe("FedEx — l'imponibile si riconosce dall'aritmetica, non dalla posizione", () => {
+  it("trova la terna nella riga di maggio, dove l'IVA non è stata letta", () => {
+    // «Imponibile IVA 22.00% 39,75 -26,42 13,33 16,26»: manca il 2,93 di IVA.
+    expect(terzinaRiepilogo([22, 39.75, -26.42, 13.33, 16.26])).toEqual({
+      addebiti: 39.75,
+      sconto: 26.42,
+      imponibile: 13.33,
+    });
+  });
+
+  it("regge anche quando il segno meno dello sconto si perde", () => {
+    // È quello che succede davvero sulla fattura di agosto.
+    expect(terzinaRiepilogo([22, 72.35, 47.24, 25.11, 30.63])).toEqual({
+      addebiti: 72.35,
+      sconto: 47.24,
+      imponibile: 25.11,
+    });
+  });
+
+  it("non prende per imponibile il totale IVA compresa", () => {
+    const esito = terzinaRiepilogo([22, 127.22, -83.15, 44.07, 9.7, 53.77]);
+    expect(esito?.imponibile).toBe(44.07);
+    expect(esito?.imponibile).not.toBe(53.77);
+  });
+
+  it("su numeri che non tornano non inventa una terna", () => {
+    // La dicitura «Imponibile IVA 22.00%» compare anche sotto ogni spedizione,
+    // dove di numeri ce n'è uno solo o nessuno.
+    expect(terzinaRiepilogo([22])).toBeNull();
+    expect(terzinaRiepilogo([22, 10, 3, 5])).toBeNull();
   });
 });
 
