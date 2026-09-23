@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
       hashFile: hash,
       utenteId: guard.user.id,
       misure: misure.data,
-      metodoLettura: ocr || lettura?.fattura ? "ocr" : "testo",
+      metodoLettura: lettura?.fattura ? "modello" : ocr ? "ocr" : "testo",
       numeroFattura: campiOperatore.data.numeroFattura,
       dataFattura: campiOperatore.data.dataFattura,
     });

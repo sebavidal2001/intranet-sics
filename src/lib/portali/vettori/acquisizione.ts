@@ -94,7 +94,7 @@ export interface PayloadAcquisizione {
   mese: number | null;
   nome_file: string | null;
   hash_file: string | null;
-  metodo_lettura: "testo" | "ocr" | "manuale";
+  metodo_lettura: "testo" | "ocr" | "modello" | "manuale";
   quadratura_ok: boolean;
   quadratura_note: string | null;
   utente_id: string | null;
@@ -274,7 +274,7 @@ export async function preparaAcquisizione(params: {
   nomeFile: string | null;
   hashFile: string | null;
   utenteId: string | null;
-  metodoLettura?: "testo" | "ocr" | "manuale";
+  metodoLettura?: "testo" | "ocr" | "modello" | "manuale";
   misure?: MisuraRiga[];
   numeroFattura?: string;
   dataFattura?: string;
