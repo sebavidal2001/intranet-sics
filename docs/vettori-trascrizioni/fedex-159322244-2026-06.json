@@ -1,0 +1,71 @@
+{
+  "_nota": "Trascritta dal «Dettaglio Fattura» di ft Fedex_06.pdf, dove ogni spedizione porta la scomposizione: spese di trasporto, sconto, supplemento carburante. Il nolo è spese + sconto, come lo legge il lettore FedEx sulle fatture che riesce a leggere da solo.",
+  "vettore": "fedex",
+  "numero": "159322244",
+  "data": "2026-06-24",
+  "totaliDichiarati": {
+    "pesoRiferito": "tassato",
+    "totaleDocumento": 53.77,
+    "totaleRighe": 44.07
+  },
+  "righe": [
+    {
+      "data": "2026-06-11",
+      "numeroSpedizione": "872934200260",
+      "riferimento": null,
+      "controparte": "MEC FLUID 2 SRL ESTE",
+      "direzione": "uscita",
+      "colli": 1,
+      "peso": 1.0,
+      "pesoTassato": 1.0,
+      "nolo": 6.18,
+      "carburante": 1.56,
+      "percentualeCarburante": 0.2522,
+      "dims": "18x14x14"
+    },
+    {
+      "data": "2026-05-26",
+      "numeroSpedizione": "872214913339",
+      "riferimento": null,
+      "controparte": "AIGNEP SPA BIONE",
+      "direzione": "entrata",
+      "colli": 4,
+      "peso": 9.0,
+      "pesoTassato": 30.0,
+      "nolo": 11.33,
+      "carburante": 2.31,
+      "percentualeCarburante": 0.2038,
+      "dims": "30x19x21"
+    },
+    {
+      "data": "2026-06-09",
+      "numeroSpedizione": "872779910135",
+      "riferimento": "8697",
+      "controparte": "AIGNEP SPA BIONE",
+      "direzione": "entrata",
+      "colli": 2,
+      "peso": 15.0,
+      "pesoTassato": 15.0,
+      "nolo": 10.12,
+      "carburante": 2.55,
+      "percentualeCarburante": 0.2522,
+      "dims": "32x20x21"
+    },
+    {
+      "data": "2026-06-15",
+      "numeroSpedizione": "873069083956",
+      "riferimento": null,
+      "controparte": "API SRL MOZZATE",
+      "direzione": "entrata",
+      "colli": 1,
+      "peso": 3.0,
+      "pesoTassato": 4.9,
+      "nolo": 8.0,
+      "carburante": 2.02,
+      "percentualeCarburante": 0.2522,
+      "dims": "34x24x24",
+      "pesoVolumetricoApplicato": true
+    }
+  ],
+  "pdf": "ft Fedex_06.pdf"
+}
