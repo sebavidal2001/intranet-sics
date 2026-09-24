@@ -1,6 +1,11 @@
 # BI — Ordini di acquisto e valutazione dell'ufficio acquisti
 
-Stato: **da iniziare** (24/09/2026). Decisioni prese con Sebastiano:
+Stato (24/09/2026 sera): **Fasi 0-3 fatte nel codice** (commit `49d6491`), migration
+118 applicata su VM e Supabase, primo caricamento fatto a mano (24.284 righe).
+**Manca l'attivazione notturna**: deploy del codice, poi ACQUISTI.sql e config su
+SRVWOA, dataset nel receiver, unita' systemd sulla VM (vedi "Attivazione" in fondo).
+
+Decisioni prese con Sebastiano:
 
 1. La valutazione è **anche per singolo buyer**, se il gestionale registra chi
    emette l'ordine fornitore.
@@ -72,6 +77,26 @@ Da fare via WinRM su SRVWOA con `Start-Process` e file SQL senza BOM
 - Rilevatori nuovi (famiglia da aggiungere a `FAMIGLIE_RILEVATORI` in `tipi.ts`):
   fornitori in ritardo crescente, ordini scaduti, differenze di prezzo.
   La famiglia `costi_acquisto` esiste già (dal 24/09/2026).
+
+## Esito dell'esplorazione (Fase 0, 24/09/2026)
+
+| Domanda | Risposta |
+|---|---|
+| Profilo ordine fornitore | `OF` (~2.000/anno), piu' `OFT` triangolazione e `OFR` riparazione. DDT d'acquisto = `BF`, fatture = `FF` |
+| Date | `riga_documento.data_prevista_consegna` (100%), `data_confermata` (97%), `data_richiesta_consegna` (quasi mai) |
+| Ordine → arrivo | righe `BF` con `id_riga_doc_provenienza` = riga `OF`: 98% delle righe BF |
+| Chi emette | `documento.id_utente_crea` → `dba.utenti.ut_utente/ut_descrizione` |
+| Legame con ordini cliente | **nessuno** (provenienza e commessa vuote sulle righe OF) |
+
+## Attivazione (dopo il deploy)
+
+1. SRVWOA: copiare `scripts/bi-bridge/query/ACQUISTI.sql` in `C:\Impresa\Viste_BI\`,
+   `config.json`, `Invoke-BIPipeline.ps1`, `Invoke-BIPipeline-Cruscotto.ps1` in `C:\Impresa\BI_Bridge\`.
+2. VM: in `/etc/impresa-bi/config.json` il dataset
+   `"acquisti_righe": {"columns": 24, "profile": "acquisti", "header_first_field": "id_riga"}`,
+   poi `systemctl restart impresa-bi-ingest`.
+3. VM: `acquisti-ingest.sh` in `/opt/impresa-bi/`, le due unita' in `/etc/systemd/system/`,
+   `systemctl enable --now impresa-bi-acquisti.path`.
 
 ## Collegato a
 
