@@ -151,6 +151,8 @@ function normalizza(riga: RigaGrezza, importoCampo: string): RigaFatto {
     causaleCodice: testo(riga["Causale Magazzino Codice"]) || undefined,
     causaleDescrizione: testo(riga["Causale Magazzino Descrizione"]) || undefined,
     rigaEvasa: testo(riga["Riga evasa"]) || undefined,
+    dataConsegnaRichiesta: soloData(riga["Data Consegna Richiesta"]) || undefined,
+    dataConsegnaConfermata: soloData(riga["Data Consegna Confermata"]) || undefined,
   };
 }
 
@@ -494,8 +496,11 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * il pericolo e' lo stesso: senza incremento, per sei ore dopo il deploy la
  * cache servirebbe i vecchi costi correnti spacciandoli per storici, senza
  * dare errore.
+ *
+ * 4 (24/09/2026): `dataConsegnaRichiesta` e `dataConsegnaConfermata` sulle
+ * righe dell'ordinato, per il rilevatore delle consegne.
  */
-const VERSIONE_FORMA = 3;
+const VERSIONE_FORMA = 4;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.

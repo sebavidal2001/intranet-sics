@@ -57,6 +57,7 @@ import type {
   VoceBriefing,
   UnitaMisura,
 } from "./tipi";
+import { FAMIGLIE_RILEVATORI } from "./tipi";
 
 function haChiave() {
   return Boolean(process.env.OPENROUTER_API_KEY);
@@ -183,6 +184,14 @@ function azioneDeterministica(s: Segnale): string | null {
       return "Verificare la pipeline di caricamento prima di usare questi numeri.";
     case "portafoglio":
       return "Verificare la capacità di consegna sul mese di picco.";
+    case "margine":
+      return "Rivedere i prezzi praticati ai clienti indicati.";
+    case "clienti_ritornati":
+      return "Passare la lista agli agenti: sono clienti da seguire adesso.";
+    case "consegne":
+      return "Verificare con la logistica i clienti con più valore confermato in ritardo.";
+    case "costi_acquisto":
+      return "Verificare con gli acquisti i rincari e aggiornare i listini di vendita.";
     default:
       return null;
   }
@@ -194,11 +203,13 @@ export async function generaBriefing(opzioni: {
   destinatario: string;
   ruolo: RuoloBriefing;
   massimoVoci?: number;
+  /** Voci gia' scelte (vedi `selezionaVoci`); senza, i primi per punteggio. */
+  selezione?: Segnale[];
 }): Promise<Briefing> {
   const { segnali, snapshot, destinatario, ruolo } = opzioni;
   const massimo = opzioni.massimoVoci ?? 3;
 
-  const selezionati = segnali.slice(0, massimo);
+  const selezionati = opzioni.selezione ?? segnali.slice(0, massimo);
   const scartati = Math.max(0, segnali.length - selezionati.length);
 
   const deterministiche = (): VoceBriefing[] =>
@@ -800,15 +811,6 @@ interface DestinazioneStrumentoAnalisi {
   configurazione?: ConfigurazioneAnno | null;
 }
 
-const FAMIGLIE_RILEVATORI: FamigliaRilevatore[] = [
-  "scostamento_budget",
-  "rottura_serie",
-  "clienti_dormienti",
-  "concentrazione",
-  "pipeline",
-  "portafoglio",
-  "qualita_dato",
-];
 
 function argomentiOggetto(argomento: unknown): Record<string, unknown> {
   const valore: unknown = typeof argomento === "string" ? JSON.parse(argomento || "{}") : argomento;

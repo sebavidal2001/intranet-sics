@@ -35,7 +35,7 @@ interface SegnaleGrezzo {
   selezionato: boolean;
 }
 
-const ETICHETTE_FAMIGLIA: Record<string, string> = {
+const ETICHETTE_FAMIGLIA: Record<FamigliaRilevatore, string> = {
   scostamento_budget: "Scostamento budget",
   rottura_serie: "Rottura di serie",
   clienti_dormienti: "Clienti dormienti",
@@ -43,6 +43,10 @@ const ETICHETTE_FAMIGLIA: Record<string, string> = {
   pipeline: "Pipeline preventivi",
   portafoglio: "Portafoglio",
   qualita_dato: "Qualità del dato",
+  margine: "Margine",
+  clienti_ritornati: "Clienti ritornati",
+  consegne: "Consegne",
+  costi_acquisto: "Costi d'acquisto",
 };
 
 export function BriefingView() {
@@ -55,11 +59,11 @@ export function BriefingView() {
   const [riscontri, setRiscontri] = useState<Record<string, boolean>>({});
   const [esportando, setEsportando] = useState(false);
 
-  const carica = useCallback(async () => {
+  const carica = useCallback(async (rigenera = false) => {
     setCaricamento(true);
     setErrore(null);
     try {
-      const r = await fetch("/api/bi/briefing?grezzo=1");
+      const r = await fetch(`/api/bi/briefing?grezzo=1${rigenera ? "&rigenera=1" : ""}`);
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Errore");
       setBriefing(j.briefing);
@@ -148,7 +152,7 @@ export function BriefingView() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => void carica()}
+            onClick={() => void carica(true)}
             disabled={caricamento}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-border hover:bg-bg-page transition-colors disabled:opacity-50"
           >

@@ -19,13 +19,14 @@
  *    di essere raccontato.
  */
 
-import { esegui } from "./semantico";
+import { esegui, quantitaOrientata } from "./semantico";
 import {
   budgetProgressivoAl,
   distribuisci,
 } from "./budget";
 import { costruisciCalendario, dataDaIso, iso, settimanaIso } from "./calendario";
 import { chiusureEffettive } from "./chiusure-dedotte";
+import { fattoreNovita } from "./selezione-briefing";
 import type {
   ConfigurazioneAnno,
   DistribuzioneBudget,
@@ -54,6 +55,28 @@ export const SOGLIE = {
   giorniPreventivoVecchio: 90,
   /** Ore oltre cui il run dati è considerato in ritardo. */
   oreRunInRitardo: 30,
+
+  // Famiglie con una scala propria. Misurate sui dati 2025-2026: con la soglia
+  // unica di 15.000 € margine e clienti ritornati non sarebbero MAI usciti (il
+  // calo di margine del cliente piu' colpito valeva 3.000 € a trimestre), e il
+  // briefing avrebbe continuato a parlare solo di budget e dormienti.
+
+  /** Margine: punti persi dal cliente e margine perso minimo, totale e per cliente. */
+  marginePuntiPersi: 3,
+  margineMinimoEuro: 3_000,
+  margineMinimoClienteEuro: 500,
+  /** Clienti ritornati: silenzio che rende "ritorno" un ordine, e valore minimo. */
+  giorniSilenzioRitorno: 180,
+  giorniFinestraRitorni: 45,
+  ritorniMinimoEuro: 5_000,
+  /** Consegne: quota del valore confermata oltre la data chiesta, o peggioramento. */
+  consegneQuotaPct: 25,
+  consegnePeggioramentoPunti: 5,
+  /** Costi d'acquisto: rincaro minimo per articolo e impatto minimo totale. */
+  costoRincaroPct: 5,
+  costiImpattoMinimoEuro: 10_000,
+  /** Un articolo conta solo se venduto in almeno tanti documenti: esclude le commesse. */
+  costoDocumentiMinimi: 3,
 };
 
 function arr(n: number) {
@@ -148,7 +171,7 @@ function rilevaScostamentoBudget(ctx: ContestoRilevatori): Segnale[] {
     const sottoBep = bepProg !== null && effettivo < bepProg;
 
     segnali.push({
-      id: `budget-${metrica}-${ctx.oggi}`,
+      id: `budget-${metrica}`,
       famiglia: "scostamento_budget",
       titolo: `${metrica === "ordinato" ? "Ordinato" : "Fatturato"} progressivo ${
         delta >= 0 ? "sopra" : "sotto"
@@ -394,7 +417,7 @@ function rilevaClientiDormienti(ctx: ContestoRilevatori): Segnale[] {
 
   return [
     {
-      id: `dormienti-${ctx.oggi}`,
+      id: "dormienti",
       famiglia: "clienti_dormienti",
       titolo: `${dormienti.length} clienti non ordinano da oltre ${SOGLIE.giorniDormiente} giorni`,
       descrizione:
@@ -500,7 +523,7 @@ function rilevaPipeline(ctx: ContestoRilevatori): Segnale[] {
 
   return [
     {
-      id: `pipeline-vecchi-${ctx.oggi}`,
+      id: "pipeline-vecchi",
       famiglia: "pipeline",
       titolo: `${documentiVecchi} preventivi aperti da oltre ${SOGLIE.giorniPreventivoVecchio} giorni`,
       descrizione:
@@ -650,6 +673,439 @@ function rilevaQualitaDato(ctx: ContestoRilevatori): Segnale[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Utilita' per i rilevatori con finestre mobili
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Data ISO spostata di `giorni` (negativi = indietro). */
+function spostaGiorni(data: string, giorni: number): string {
+  const d = dataDaIso(data);
+  d.setUTCDate(d.getUTCDate() + giorni);
+  return iso(d);
+}
+
+function chiaveCliente(r: RigaFatto): string {
+  return r.codiceCliente || r.cliente;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RILEVATORE 8 — Margine in calo per cliente
+// Ultimi 90 giorni contro i 12 mesi precedenti, sulle sole righe con costo
+// noto. Il margine perso e' quello che il cliente avrebbe dato con la
+// percentuale di prima sul fatturato di adesso: una cifra in euro, non punti.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function rilevaMargine(ctx: ContestoRilevatori): Segnale[] {
+  const inizioRecente = spostaGiorni(ctx.oggi, -90);
+  const inizioBase = spostaGiorni(ctx.oggi, -455);
+
+  const perCliente = new Map<
+    string,
+    { cliente: string; agente: string; fr: number; mr: number; fp: number; mp: number }
+  >();
+  for (const r of righeScope(ctx, ctx.snapshot.dataset.fatturato)) {
+    if (r.costoUnitario == null || !r.data || r.data <= inizioBase || r.data > ctx.oggi) continue;
+    const margine = r.importo - quantitaOrientata(r) * r.costoUnitario;
+    const c = perCliente.get(chiaveCliente(r)) ?? {
+      cliente: r.cliente,
+      agente: r.agente,
+      fr: 0,
+      mr: 0,
+      fp: 0,
+      mp: 0,
+    };
+    if (r.data > inizioRecente) {
+      c.fr += r.importo;
+      c.mr += margine;
+      c.agente = r.agente;
+    } else {
+      c.fp += r.importo;
+      c.mp += margine;
+    }
+    perCliente.set(chiaveCliente(r), c);
+  }
+
+  const inCalo = [...perCliente.values()]
+    .filter((c) => c.fr >= 5_000 && c.fp >= 10_000)
+    .map((c) => ({
+      cliente: c.cliente,
+      agente: c.agente,
+      fatturato90g: arr(c.fr),
+      marginePct90g: pct(c.mr, c.fr),
+      marginePctPrima: pct(c.mp, c.fp),
+      marginePerso: arr(c.fr * (c.mp / c.fp) - c.mr),
+    }))
+    .filter(
+      (c) =>
+        c.marginePctPrima - c.marginePct90g >= SOGLIE.marginePuntiPersi &&
+        c.marginePerso >= SOGLIE.margineMinimoClienteEuro
+    )
+    .sort((a, b) => b.marginePerso - a.marginePerso);
+
+  const perso = arr(inCalo.reduce((t, c) => t + c.marginePerso, 0));
+  if (inCalo.length === 0 || perso < SOGLIE.margineMinimoEuro) return [];
+
+  const primi = inCalo.slice(0, 5);
+  return [
+    {
+      id: "margine-clienti",
+      famiglia: "margine",
+      titolo: `Margine in calo su ${inCalo.length} clienti: ${perso} € persi in 90 giorni`,
+      descrizione:
+        `Negli ultimi 90 giorni ${inCalo.length} clienti hanno reso almeno ` +
+        `${SOGLIE.marginePuntiPersi} punti di margine in meno rispetto ai 12 mesi precedenti, ` +
+        `per ${perso} € di margine in meno sul fatturato del periodo. I principali: ` +
+        primi
+          .map((c) => `${c.cliente} ${c.marginePctPrima}% → ${c.marginePct90g}% (${c.marginePerso} €)`)
+          .join("; ") +
+        `. Margine al costo valido alla data di vendita, sulle sole righe con costo noto.`,
+      magnitudineEuro: perso,
+      persistenza: 0.7,
+      azionabilita: 0.8,
+      direzione: "negativo",
+      punteggio: 0,
+      prove: [
+        {
+          descrizione: "Margine % per cliente, ultimi 90 giorni",
+          spec: {
+            metrica: "margine_pct",
+            raggruppa: ["cliente"],
+            periodo: { dal: spostaGiorni(inizioRecente, 1), al: ctx.oggi },
+            filtri: filtriScope(ctx),
+            ordina: "valore_desc",
+          },
+        },
+      ],
+      dettaglio: { clienti: primi, totaleClienti: inCalo.length, marginePerso: perso },
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RILEVATORE 9 — Clienti ritornati (e nuovi)
+// La notizia buona: chi ha ordinato di nuovo dopo almeno sei mesi di silenzio.
+// "Nuovo" si dice solo se lo storico e' abbastanza lungo da escludere che il
+// cliente ordinasse gia' prima dell'inizio dei dati.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface EventoCliente {
+  cliente: string;
+  agente: string;
+  tipo: "ritorno" | "nuovo";
+  giorniSilenzio: number | null;
+  valore: number;
+}
+
+function rilevaClientiRitornati(ctx: ContestoRilevatori): Segnale[] {
+  const righe = righeScope(ctx, ctx.snapshot.dataset.ordinato).filter(
+    (r) => r.data && r.data <= ctx.oggi
+  );
+  if (righe.length === 0) return [];
+  const primaData = righe.reduce((m, r) => (r.data < m ? r.data : m), righe[0].data);
+  const inizioFinestra = spostaGiorni(ctx.oggi, -SOGLIE.giorniFinestraRitorni);
+  const storicoSufficiente =
+    giorniTra(primaData, inizioFinestra) >= SOGLIE.giorniSilenzioRitorno;
+
+  const perCliente = new Map<
+    string,
+    { cliente: string; agente: string; date: Set<string>; recente: number }
+  >();
+  for (const r of righe) {
+    const c = perCliente.get(chiaveCliente(r)) ?? {
+      cliente: r.cliente,
+      agente: r.agente,
+      date: new Set<string>(),
+      recente: 0,
+    };
+    c.date.add(r.data);
+    if (r.data > inizioFinestra) {
+      c.recente += r.importo;
+      c.agente = r.agente;
+    }
+    perCliente.set(chiaveCliente(r), c);
+  }
+
+  const eventi: EventoCliente[] = [];
+  for (const c of perCliente.values()) {
+    if (c.recente <= 0) continue;
+    const date = [...c.date].sort();
+    const primaRecente = date.find((d) => d > inizioFinestra);
+    if (!primaRecente) continue;
+    const precedenti = date.filter((d) => d < primaRecente);
+    if (precedenti.length === 0) {
+      if (storicoSufficiente) {
+        eventi.push({ cliente: c.cliente, agente: c.agente, tipo: "nuovo", giorniSilenzio: null, valore: arr(c.recente) });
+      }
+      continue;
+    }
+    const silenzio = giorniTra(precedenti[precedenti.length - 1], primaRecente);
+    if (silenzio >= SOGLIE.giorniSilenzioRitorno) {
+      eventi.push({ cliente: c.cliente, agente: c.agente, tipo: "ritorno", giorniSilenzio: silenzio, valore: arr(c.recente) });
+    }
+  }
+
+  const valore = arr(eventi.reduce((t, e) => t + e.valore, 0));
+  if (eventi.length === 0 || valore < SOGLIE.ritorniMinimoEuro) return [];
+
+  eventi.sort((a, b) => b.valore - a.valore);
+  const ritorni = eventi.filter((e) => e.tipo === "ritorno").length;
+  const nuovi = eventi.length - ritorni;
+  return [
+    {
+      id: "clienti-ritornati",
+      famiglia: "clienti_ritornati",
+      titolo: `${eventi.length} clienti tornati o nuovi negli ultimi ${SOGLIE.giorniFinestraRitorni} giorni`,
+      descrizione:
+        `Negli ultimi ${SOGLIE.giorniFinestraRitorni} giorni hanno ordinato ${ritorni} clienti ` +
+        `fermi da almeno ${SOGLIE.giorniSilenzioRitorno} giorni` +
+        (nuovi > 0 ? ` e ${nuovi} clienti mai visti prima` : "") +
+        `, per ${valore} € di ordinato. I principali: ` +
+        eventi
+          .slice(0, 5)
+          .map(
+            (e) =>
+              `${e.cliente} ${e.valore} € (${
+                e.tipo === "nuovo" ? "nuovo" : `fermo da ${e.giorniSilenzio} giorni`
+              }, ${e.agente})`
+          )
+          .join("; ") +
+        ".",
+      magnitudineEuro: valore,
+      persistenza: 0.5,
+      azionabilita: 0.8,
+      direzione: "positivo",
+      punteggio: 0,
+      prove: [
+        {
+          descrizione: `Ordinato per cliente, ultimi ${SOGLIE.giorniFinestraRitorni} giorni`,
+          spec: {
+            metrica: "ordinato",
+            raggruppa: ["cliente"],
+            periodo: { dal: spostaGiorni(inizioFinestra, 1), al: ctx.oggi },
+            filtri: filtriScope(ctx),
+            ordina: "valore_desc",
+          },
+        },
+      ],
+      dettaglio: { clienti: eventi.slice(0, 15), ritorni, nuovi, valore },
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RILEVATORE 10 — Consegne confermate oltre la data chiesta
+// Ordini degli ultimi 60 giorni contro i 12 mesi precedenti. E' una promessa
+// fatta al cliente gia' spostata in avanti al momento della conferma.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function rilevaConsegne(ctx: ContestoRilevatori): Segnale[] {
+  const inizioRecente = spostaGiorni(ctx.oggi, -60);
+  const inizioBase = spostaGiorni(inizioRecente, -365);
+
+  const conDate = righeScope(ctx, ctx.snapshot.dataset.ordinato).filter(
+    (r) =>
+      r.importo > 0 &&
+      r.data > inizioBase &&
+      r.data <= ctx.oggi &&
+      Boolean(r.dataConsegnaRichiesta) &&
+      Boolean(r.dataConsegnaConfermata)
+  );
+  const recenti = conDate.filter((r) => r.data > inizioRecente);
+  const base = conDate.filter((r) => r.data <= inizioRecente);
+  if (recenti.length === 0) return [];
+
+  const ritardo = (r: RigaFatto) =>
+    giorniTra(r.dataConsegnaRichiesta as string, r.dataConsegnaConfermata as string);
+  const misura = (righe: RigaFatto[]) => {
+    const tardive = righe.filter((r) => ritardo(r) > 0);
+    const valore = righe.reduce((t, r) => t + r.importo, 0);
+    const valoreTardivo = tardive.reduce((t, r) => t + r.importo, 0);
+    const giorni =
+      valoreTardivo > 0
+        ? tardive.reduce((t, r) => t + ritardo(r) * r.importo, 0) / valoreTardivo
+        : 0;
+    return { quota: pct(valoreTardivo, valore), valoreTardivo: arr(valoreTardivo), giorniMedi: arr(giorni) };
+  };
+  const ora = misura(recenti);
+  const prima = base.length > 0 ? misura(base) : null;
+  const peggioramento = prima ? arr(ora.quota - prima.quota) : 0;
+
+  if (ora.valoreTardivo < SOGLIE.magnitudineMinimaEuro) return [];
+  if (ora.quota < SOGLIE.consegneQuotaPct && peggioramento < SOGLIE.consegnePeggioramentoPunti) {
+    return [];
+  }
+
+  const perCliente = new Map<string, { cliente: string; valore: number; giorni: number }>();
+  for (const r of recenti) {
+    const g = ritardo(r);
+    if (g <= 0) continue;
+    const c = perCliente.get(chiaveCliente(r)) ?? { cliente: r.cliente, valore: 0, giorni: 0 };
+    c.valore += r.importo;
+    c.giorni = Math.max(c.giorni, g);
+    perCliente.set(chiaveCliente(r), c);
+  }
+  const primi = [...perCliente.values()]
+    .sort((a, b) => b.valore - a.valore)
+    .slice(0, 5)
+    .map((c) => ({ cliente: c.cliente, valore: arr(c.valore), ritardoMassimoGiorni: c.giorni }));
+
+  const peggiora = peggioramento >= SOGLIE.consegnePeggioramentoPunti;
+  return [
+    {
+      id: "consegne-ritardo",
+      famiglia: "consegne",
+      titolo: `Il ${ora.quota}% dell'ordinato recente è confermato oltre la data chiesta`,
+      descrizione:
+        `Negli ordini degli ultimi 60 giorni ${ora.valoreTardivo} € (${ora.quota}% del valore con ` +
+        `entrambe le date) hanno una consegna confermata dopo quella chiesta dal cliente, ` +
+        `in media di ${ora.giorniMedi} giorni` +
+        (prima ? ` (nei 12 mesi precedenti: ${prima.quota}%, ${prima.giorniMedi} giorni)` : "") +
+        `. Clienti con più valore spostato: ` +
+        primi
+          .map((c) => `${c.cliente} ${c.valore} € (fino a ${c.ritardoMassimoGiorni} giorni)`)
+          .join("; ") +
+        ".",
+      magnitudineEuro: ora.valoreTardivo,
+      persistenza: peggiora ? 0.8 : 0.5,
+      azionabilita: 0.7,
+      direzione: peggiora ? "negativo" : "neutro",
+      punteggio: 0,
+      prove: [
+        {
+          descrizione: "Ordinato per cliente, ultimi 60 giorni",
+          spec: {
+            metrica: "ordinato",
+            raggruppa: ["cliente"],
+            periodo: { dal: spostaGiorni(inizioRecente, 1), al: ctx.oggi },
+            filtri: filtriScope(ctx),
+            ordina: "valore_desc",
+          },
+        },
+      ],
+      dettaglio: { ora, prima, peggioramentoPunti: peggioramento, clienti: primi },
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RILEVATORE 11 — Costi d'acquisto in salita
+// Per ogni articolo venduto sia negli ultimi 90 giorni sia un anno prima, il
+// costo alla data delle vendite recenti contro quello di allora. L'impatto e'
+// il rincaro per la quantita' venduta negli ultimi 12 mesi: quanto margine si
+// perde a volumi costanti se i prezzi di vendita restano fermi.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Rincaro {
+  articolo: string;
+  descrizione: string;
+  costoPrima: number;
+  costoOra: number;
+  variazionePct: number;
+  impatto: number;
+}
+
+function rilevaCostiAcquisto(ctx: ContestoRilevatori): Segnale[] {
+  const inizioRecente = spostaGiorni(ctx.oggi, -90);
+  const inizioAnno = spostaGiorni(ctx.oggi, -365);
+  // "Un anno fa": le vendite fra 15 e 9 mesi prima di oggi.
+  const baseDal = spostaGiorni(ctx.oggi, -455);
+  const baseAl = spostaGiorni(ctx.oggi, -275);
+
+  const perArticolo = new Map<
+    string,
+    {
+      descrizione: string;
+      recente: { data: string; costo: number } | null;
+      base: { data: string; costo: number } | null;
+      quantita: number;
+      documenti: Set<string>;
+    }
+  >();
+  for (const r of righeScope(ctx, ctx.snapshot.dataset.fatturato)) {
+    if (r.costoUnitario == null || !r.articolo || !r.data || r.data > ctx.oggi) continue;
+    const a = perArticolo.get(r.articolo) ?? {
+      descrizione: r.descrizioneArticolo,
+      recente: null,
+      base: null,
+      quantita: 0,
+      documenti: new Set<string>(),
+    };
+    if (r.data > inizioAnno) {
+      a.quantita += quantitaOrientata(r);
+      if (r.documento) a.documenti.add(r.documento);
+    }
+    if (r.data > inizioRecente && (!a.recente || r.data > a.recente.data)) {
+      a.recente = { data: r.data, costo: r.costoUnitario };
+    }
+    if (r.data > baseDal && r.data <= baseAl && (!a.base || r.data > a.base.data)) {
+      a.base = { data: r.data, costo: r.costoUnitario };
+    }
+    perArticolo.set(r.articolo, a);
+  }
+
+  const rincari: Rincaro[] = [];
+  let ribassi = 0;
+  for (const [articolo, a] of perArticolo) {
+    if (!a.recente || !a.base || a.base.costo <= 0 || a.quantita <= 0) continue;
+    if (a.documenti.size < SOGLIE.costoDocumentiMinimi) continue;
+    const variazione = pct(a.recente.costo - a.base.costo, a.base.costo);
+    if (variazione <= -SOGLIE.costoRincaroPct) ribassi += 1;
+    if (variazione < SOGLIE.costoRincaroPct) continue;
+    rincari.push({
+      articolo,
+      descrizione: a.descrizione.slice(0, 60),
+      costoPrima: arr(a.base.costo),
+      costoOra: arr(a.recente.costo),
+      variazionePct: variazione,
+      impatto: arr((a.recente.costo - a.base.costo) * a.quantita),
+    });
+  }
+
+  const impatto = arr(rincari.reduce((t, r) => t + r.impatto, 0));
+  if (rincari.length === 0 || impatto < SOGLIE.costiImpattoMinimoEuro) return [];
+  rincari.sort((a, b) => b.impatto - a.impatto);
+
+  return [
+    {
+      id: "costi-acquisto",
+      famiglia: "costi_acquisto",
+      titolo: `${rincari.length} articoli costano oltre il ${SOGLIE.costoRincaroPct}% in più di un anno fa`,
+      descrizione:
+        `Fra gli articoli venduti con continuità, ${rincari.length} hanno un costo d'acquisto ` +
+        `salito di almeno il ${SOGLIE.costoRincaroPct}% rispetto a un anno fa` +
+        (ribassi > 0 ? ` (${ribassi} sono invece scesi)` : "") +
+        `. Sui volumi degli ultimi 12 mesi il rincaro vale ${impatto} € di margine. I più pesanti: ` +
+        rincari
+          .slice(0, 5)
+          .map(
+            (r) =>
+              `${r.descrizione} ${r.costoPrima} → ${r.costoOra} € (+${r.variazionePct}%, ${r.impatto} €)`
+          )
+          .join("; ") +
+        ".",
+      magnitudineEuro: impatto,
+      persistenza: 0.8,
+      azionabilita: 0.7,
+      direzione: "negativo",
+      punteggio: 0,
+      prove: [
+        {
+          descrizione: "Costo del venduto per articolo, ultimi 12 mesi",
+          spec: {
+            metrica: "costo_venduto",
+            raggruppa: ["articolo"],
+            periodo: { dal: spostaGiorni(inizioAnno, 1), al: ctx.oggi },
+            filtri: filtriScope(ctx),
+            ordina: "valore_desc",
+            limite: 50,
+          },
+        },
+      ],
+      dettaglio: { articoli: rincari.slice(0, 15), totaleArticoli: rincari.length, ribassi, impatto },
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // STADIO 2 — Rilevanza
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -664,15 +1120,25 @@ export function calcolaPunteggi(
   segnali: Segnale[],
   opzioni: {
     idGiaVisti?: Set<string>;
+    /** Giorni dall'ultima uscita di ogni segnale: raffreddamento graduale. */
+    giorniDallUltima?: Map<string, number>;
     pesiFamiglia?: Record<string, number>;
   } = {}
 ): Segnale[] {
-  const { idGiaVisti = new Set(), pesiFamiglia = {} } = opzioni;
+  const { idGiaVisti = new Set(), giorniDallUltima, pesiFamiglia = {} } = opzioni;
 
   return segnali
     .map((s) => {
       const magnitudine = Math.log10(Math.max(1, Math.min(s.magnitudineEuro, 1e9)));
-      const novita = idGiaVisti.has(s.id) ? 0.25 : 1; // cooldown
+      // La qualita' del dato non si raffredda: finche' il dato e' rotto va detto.
+      const novita =
+        s.famiglia === "qualita_dato"
+          ? 1
+          : giorniDallUltima
+            ? fattoreNovita(giorniDallUltima.get(s.id))
+            : idGiaVisti.has(s.id)
+              ? 0.25
+              : 1;
       const peso = pesiFamiglia[s.famiglia] ?? 1;
       const punteggio =
         magnitudine * (0.4 + 0.6 * s.persistenza) * (0.4 + 0.6 * s.azionabilita) * novita * peso;
@@ -691,6 +1157,10 @@ export function rilevaTutto(ctx: ContestoRilevatori): Segnale[] {
     rilevaConcentrazione,
     rilevaPipeline,
     rilevaPortafoglio,
+    rilevaMargine,
+    rilevaClientiRitornati,
+    rilevaConsegne,
+    rilevaCostiAcquisto,
   ];
 
   const out: Segnale[] = [];

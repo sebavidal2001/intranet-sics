@@ -1,21 +1,14 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { preliminari, snapshotPerimetrato } from "../_comune";
-import {
-  leggiConfigurazione,
-  leggiBriefingArchiviati,
-  archiviaBriefing,
-  pesiDaRiscontri,
-  registraRiscontro,
-} from "@/lib/prototipo-bi/archivio";
-import { costruisciContesto, rilevaTutto, calcolaPunteggi } from "@/lib/prototipo-bi/rilevatori";
-import { generaBriefing } from "@/lib/prototipo-bi/analista";
+import { registraRiscontro } from "@/lib/prototipo-bi/archivio";
+import { briefingDelGiorno } from "@/lib/prototipo-bi/briefing-del-giorno";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /**
- * Genera il briefing del giorno.
+ * Il briefing del giorno, uno per persona e archiviato.
+ * `?rigenera=1` lo rifa' da capo invece di restituire quello di stamattina.
  * `?grezzo=1` restituisce anche tutti i segnali valutati e scartati: serve a
  * capire, in fase di taratura, cosa il sistema ha visto e non ha detto.
  */
@@ -25,39 +18,20 @@ export async function GET(request: NextRequest) {
 
   try {
     const snapshot = await snapshotPerimetrato(pre.accesso);
-    const anno = Number((snapshot.dataMassima ?? "").slice(0, 4)) || new Date().getFullYear();
-    const config = await leggiConfigurazione(anno);
-
-    const ctx = costruisciContesto(snapshot, config, pre.accesso.agenteScope);
-    const grezzi = rilevaTutto(ctx);
-
-    // Cooldown: i segnali già usciti negli ultimi 3 briefing perdono priorità.
-    const archiviati = await leggiBriefingArchiviati();
-    const idGiaVisti = new Set(
-      archiviati.slice(0, 3).flatMap((b) => b.voci.map((v) => v.segnaleId))
-    );
-    const pesi = await pesiDaRiscontri();
-
-    const ordinati = calcolaPunteggi(grezzi, { idGiaVisti, pesiFamiglia: pesi });
-
-    const briefing = await generaBriefing({
-      segnali: ordinati,
+    const rigenera = request.nextUrl.searchParams.get("rigenera") === "1";
+    const { briefing, segnali, configurazioneBudget } = await briefingDelGiorno(
+      pre.accesso,
       snapshot,
-      destinatario: pre.accesso.nome,
-      ruolo: pre.accesso.ruolo,
-      massimoVoci: 3,
-    });
-
-    const salva = request.nextUrl.searchParams.get("salva") === "1";
-    if (salva) await archiviaBriefing(briefing, pre.accesso.userId);
+      { rigenera }
+    );
 
     const grezzo = request.nextUrl.searchParams.get("grezzo") === "1";
     return NextResponse.json({
       briefing,
-      configurazioneBudget: Boolean(config),
+      configurazioneBudget,
       ...(grezzo
         ? {
-            segnali: ordinati.map((s) => ({
+            segnali: segnali.map((s) => ({
               id: s.id,
               famiglia: s.famiglia,
               titolo: s.titolo,

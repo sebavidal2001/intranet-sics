@@ -1,14 +1,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { preliminari, errore, snapshotPerimetrato } from "../_comune";
-import {
-  leggiConfigurazione,
-  pesiDaRiscontri,
-  leggiBriefingArchiviati,
-} from "@/lib/prototipo-bi/archivio";
+import { leggiConfigurazione } from "@/lib/prototipo-bi/archivio";
 import { distribuisci } from "@/lib/prototipo-bi/budget";
-import { costruisciContesto, rilevaTutto, calcolaPunteggi } from "@/lib/prototipo-bi/rilevatori";
-import { generaBriefing } from "@/lib/prototipo-bi/analista";
+import { briefingDelGiorno } from "@/lib/prototipo-bi/briefing-del-giorno";
 import {
   esportaBudgetExcel,
   esportaTabelleExcel,
@@ -96,26 +91,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.tipo === "report-word") {
-      const anno = Number((snapshot.dataMassima ?? "").slice(0, 4)) || new Date().getFullYear();
-      const config = await leggiConfigurazione(anno);
-      const ctx = costruisciContesto(snapshot, config, pre.accesso.agenteScope);
-
-      const archiviati = await leggiBriefingArchiviati();
-      const idGiaVisti = new Set(
-        archiviati.slice(0, 3).flatMap((b) => b.voci.map((v) => v.segnaleId))
-      );
-      const ordinati = calcolaPunteggi(rilevaTutto(ctx), {
-        idGiaVisti,
-        pesiFamiglia: await pesiDaRiscontri(),
-      });
-
-      const briefing = await generaBriefing({
-        segnali: ordinati,
-        snapshot,
-        destinatario: pre.accesso.nome,
-        ruolo: pre.accesso.ruolo,
-        massimoVoci: 3,
-      });
+      // Lo stesso briefing che la persona ha appena letto nella pagina.
+      const { briefing } = await briefingDelGiorno(pre.accesso, snapshot);
 
       const approfondimenti: { titolo: string; spec: SpecQuery }[] = [];
       const approfondimentiSql: { titolo: string; righe: Record<string, unknown>[] }[] = [];

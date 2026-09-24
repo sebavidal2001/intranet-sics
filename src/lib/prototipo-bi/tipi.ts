@@ -32,6 +32,10 @@ export interface RigaFatto {
   causaleCodice?: string;
   causaleDescrizione?: string;
   rigaEvasa?: string;
+  /** Solo sull'ordinato: data di consegna chiesta dal cliente. */
+  dataConsegnaRichiesta?: string;
+  /** Solo sull'ordinato: data di consegna confermata al cliente. */
+  dataConsegnaConfermata?: string;
 
   /**
    * Costo unitario di acquisto VALIDO ALLA DATA DI QUESTA RIGA, dallo storico
@@ -370,14 +374,26 @@ export interface SerieAnalisiEseguita extends SerieAnalisi {
 // Analista: segnali e briefing
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type FamigliaRilevatore =
-  | "scostamento_budget"
-  | "rottura_serie"
-  | "clienti_dormienti"
-  | "concentrazione"
-  | "pipeline"
-  | "portafoglio"
-  | "qualita_dato";
+/**
+ * Unico elenco delle famiglie: il tipo ne deriva, e chi deve conoscerle tutte
+ * (l'analista, le etichette dell'interfaccia) lo importa invece di ricopiarlo.
+ * Una lista ricopiata resta valida anche quando e' incompleta.
+ */
+export const FAMIGLIE_RILEVATORI = [
+  "scostamento_budget",
+  "rottura_serie",
+  "clienti_dormienti",
+  "concentrazione",
+  "pipeline",
+  "portafoglio",
+  "qualita_dato",
+  "margine",
+  "clienti_ritornati",
+  "consegne",
+  "costi_acquisto",
+] as const;
+
+export type FamigliaRilevatore = (typeof FAMIGLIE_RILEVATORI)[number];
 
 export interface Segnale {
   id: string;

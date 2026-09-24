@@ -250,12 +250,15 @@ export async function etaSnapshot(): Promise<number | null> {
 
 // ── Briefing archiviati (per il cooldown e lo storico) ──────────────────────
 
-export async function leggiBriefingArchiviati(): Promise<Briefing[]> {
-  const { data, error } = await db()
-    .from("briefing")
-    .select("contenuto")
-    .order("generato_il", { ascending: false })
-    .limit(60);
+/**
+ * Briefing archiviati, dal piu' recente. Con `destinatarioId` solo quelli di
+ * quella persona: il raffreddamento dei segnali e' personale, cio' che ha
+ * letto un altro non e' una notizia vecchia per me.
+ */
+export async function leggiBriefingArchiviati(destinatarioId?: string): Promise<Briefing[]> {
+  let q = db().from("briefing").select("contenuto");
+  if (destinatarioId) q = q.eq("destinatario_id", destinatarioId);
+  const { data, error } = await q.order("generato_il", { ascending: false }).limit(60);
   esplodi(error);
   return (data ?? []).map((r) => r.contenuto as Briefing);
 }
