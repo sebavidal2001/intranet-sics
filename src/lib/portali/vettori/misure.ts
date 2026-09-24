@@ -129,12 +129,27 @@ export function datiFisici(riga: RigaFattura, sped: SpedizioneLogica | null | un
   const volumeFattura = Number(riga.dettaglio.volumeMc) > 0 ? Number(riga.dettaglio.volumeMc) : null;
   const volume = misure?.volumeMc ?? (colliMisurati ? null : volumeBolla ?? volumeFattura ?? (riga.pesoVolumetrico && riga.pesoVolumetrico > 0 ? riga.pesoVolumetrico / divisore : null));
   const fonte = misure?.colli?.length || misure?.volumeMc ? "Misure inserite nel controllo" : colliMisurati ? "Misure di magazzino" : volumeBolla ? "Volume della bolla" : volumeFattura ? "Volume dichiarato in fattura" : volume ? "Peso volumetrico dichiarato dal vettore" : "Misure mancanti";
+  /**
+   * Zero non è un peso: è la casella lasciata vuota.
+   *
+   * La precedenza qui sotto mette la bolla prima della fattura, ed è giusto —
+   * il peso pesato da noi vale più di quello dichiarato dal vettore. Ma sugli
+   * arrivi da fornitore il gestionale non registra né peso né colli, e li
+   * scrive **zero**: quasi duemila bolle su quattromila. Con `??` lo zero è un
+   * valore come un altro, quindi vinceva lui, il peso tassabile finiva a zero e
+   * la riga usciva «non valutabile» — pur avendo il peso stampato in fattura
+   * sotto gli occhi. Il difetto è emerso quando la lettura ha cominciato ad
+   * agganciare più righe alla loro bolla: prima restava nascosto perché senza
+   * bolla il peso della fattura veniva usato comunque.
+   */
+  const positivo = (v: number | null | undefined) => (typeof v === "number" && v > 0 ? v : null);
+
   return { fonte, note: [
     ...(candidati.length > 1 ? ["Più rilevazioni compatibili: inserire le misure corrette nel controllo."] : []),
     ...(fonte.includes("fattura") || fonte.includes("vettore") ? ["Dato dichiarato dal vettore: inserire le misure per verificare indipendentemente il peso volumetrico."] : []),
   ], dati: {
-    colli: colliMisurati?.reduce((s, c) => s + c.quantita, 0) ?? rilevata?.colli ?? riga.colli ?? sped?.colli ?? 1,
-    pesoReale: misure?.pesoKg ?? rilevata?.peso_kg ?? sped?.peso ?? riga.peso ?? riga.pesoTassato ?? 0,
+    colli: colliMisurati?.reduce((s, c) => s + c.quantita, 0) ?? positivo(rilevata?.colli) ?? positivo(riga.colli) ?? positivo(sped?.colli) ?? 1,
+    pesoReale: misure?.pesoKg ?? positivo(rilevata?.peso_kg) ?? positivo(sped?.peso) ?? positivo(riga.peso) ?? positivo(riga.pesoTassato) ?? 0,
     volumeMc: volume, misureColli: colliMisurati,
     condizioni: [...(misure?.condizioni ?? rilevata?.condizioni ?? []).filter((c) => misure?.nonSovrapponibile === undefined || c !== "non_sovrapponibile"), ...(misure?.nonSovrapponibile ? ["non_sovrapponibile"] : [])] as DatiSpedizione["condizioni"],
   } };
