@@ -33,6 +33,15 @@ const CampiOperatore = z.object({
     (valore) => valore === null || valore === "" ? undefined : valore,
     z.string().date("La data della fattura deve avere il formato AAAA-MM-GG.").optional()
   ),
+  /**
+   * Acquisizione di una fattura che non quadra, chiesta dall'amministrazione.
+   * Serve il motivo: resta scritto nelle note della fattura accanto alla
+   * quadratura fallita, e la fattura resta segnalata ovunque compaia.
+   */
+  motivoSenzaQuadratura: z.preprocess(
+    (valore) => valore === null || valore === "" ? undefined : valore,
+    z.string().trim().min(5, "Spiega in qualche parola perché acquisisci una fattura che non quadra.").max(500).optional()
+  ),
 });
 
 /**
@@ -71,6 +80,7 @@ export async function POST(request: NextRequest) {
     const campiOperatore = CampiOperatore.safeParse({
       numeroFattura: form.get("numeroFattura"),
       dataFattura: form.get("dataFattura"),
+      motivoSenzaQuadratura: form.get("motivoSenzaQuadratura"),
     });
     if (!campiOperatore.success) {
       return NextResponse.json(
@@ -165,13 +175,17 @@ export async function POST(request: NextRequest) {
       data: campiOperatore.data.dataFattura,
     });
 
-    // La quadratura è il gate. Una fattura che non quadra si può guardare, non
-    // acquisire: le righe che mancano non si vedono guardando quelle lette.
-    if (!soloAnteprima && !quadratura.ok) {
+    // La quadratura resta il gate, ma con una porta: l'amministrazione deve
+    // poter archiviare anche una fattura che non torna (una riga illeggibile,
+    // un totale stampato male) e tornarci dopo. Serve dirlo esplicitamente e
+    // con un motivo; la fattura entra con `quadratura_ok = false` e le righe
+    // che mancano restano un problema dichiarato, non nascosto.
+    const motivoSenzaQuadratura = campiOperatore.data.motivoSenzaQuadratura;
+    if (!soloAnteprima && !quadratura.ok && !motivoSenzaQuadratura) {
       return NextResponse.json(
         {
           error:
-            "La fattura non quadra con i totali stampati: non può essere acquisita.",
+            "La fattura non quadra con i totali stampati: per acquisirla comunque indica il motivo.",
           quadratura,
         },
         { status: 409 }
@@ -181,7 +195,13 @@ export async function POST(request: NextRequest) {
     const { payload, riepilogo } = await preparaAcquisizione({
       fattura,
       quadraturaOk: quadratura.ok,
-      quadraturaNote: [...quadratura.note, ...fattura.avvertenze].join(" ") || null,
+      quadraturaNote: [
+        ...(!quadratura.ok && motivoSenzaQuadratura
+          ? [`Acquisita senza quadratura: ${motivoSenzaQuadratura}.`]
+          : []),
+        ...quadratura.note,
+        ...fattura.avvertenze,
+      ].join(" ") || null,
       nomeFile: file.name,
       hashFile: hash,
       utenteId: guard.user.id,

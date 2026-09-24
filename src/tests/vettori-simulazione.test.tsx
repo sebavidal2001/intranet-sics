@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SimulazioneView } from "@/components/portali/vettori/simulazione-view";
+import { CorpoConfermaSimulazione } from "@/lib/portali/vettori/simulazione-conferma";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() });
 
@@ -82,5 +83,46 @@ describe("simulazione vettori", () => {
     const richiesta = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/simulazioni"));
     expect(JSON.parse(String(richiesta?.[1]?.body))).toMatchObject({ simulazione: { vettoreSceltoId: "v1", costoPrevisto: 31.4, riaddebitoPrevisto: 26.4 }, bolla: { numeroRiferimento: null, controparteNome: "Cliente Alfa" } });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  });
+
+  it("il corpo della conferma passa lo schema del server, con l'addebito deciso al banco", async () => {
+    // Con la risposta VERA di /simula (id uuid, listino con id) la conferma
+    // tornava «Dati non validi»: il mock sopra non aveva l'id del listino e il
+    // difetto non si vedeva. Qui il corpo passa per lo stesso schema della route.
+    const vero = {
+      ...risposta,
+      risultati: [{
+        ...risposta.risultati[0],
+        vettoreId: "00000000-0000-4000-8000-00000000a001",
+        listino: { id: "00000000-0000-4000-8000-00000000b001", etichetta: "Listino 2026", validoDal: "2026-01-01", validoAl: null },
+        differenzaDalMigliore: 0,
+      }],
+    };
+    const fetchMock = vi.fn().mockImplementation(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/cap/")) return { ok: true, status: 200, json: async () => capMilano };
+      if (url.endsWith("/simula")) return { ok: true, status: 200, json: async () => vero };
+      return { ok: true, status: 201, json: async () => ({ simulazioneId: "s1", spedizioneId: "b1", daNumerare: false }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SimulazioneView />);
+    compilaSpedizione();
+    await screen.findByText("Milano (MI)");
+    fireEvent.click(screen.getByRole("button", { name: "Confronta i vettori" }));
+    const gls = await screen.findByRole("article", { name: "Vettore GLS Italy" });
+    fireEvent.click(within(gls).getByRole("button", { name: "Scegli" }));
+    fireEvent.click(screen.getByRole("button", { name: "Conferma e crea la bolla" }));
+    expect(screen.getByLabelText(/Addebito al cliente/)).toHaveValue("26,40");
+    fireEvent.change(screen.getByLabelText("Numero bolla"), { target: { value: "2631" } });
+    fireEvent.change(screen.getByLabelText("Controparte"), { target: { value: "Cliente Alfa" } });
+    fireEvent.change(screen.getByLabelText(/Addebito al cliente/), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Crea bolla" }));
+
+    await screen.findByText("Bolla creata");
+    const richiesta = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/simulazioni"));
+    const corpo = JSON.parse(String(richiesta?.[1]?.body));
+    const parsed = CorpoConfermaSimulazione.safeParse(corpo);
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
+    expect(corpo.simulazione.riaddebitoPrevisto).toBe(20);
   });
 });

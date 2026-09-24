@@ -142,6 +142,7 @@ export function FattureView() {
   const [misure, setMisure] = useState<MisuraRiga[]>([]);
   const [numeroFattura, setNumeroFattura] = useState("");
   const [dataFattura, setDataFattura] = useState("");
+  const [motivoSenzaQuadratura, setMotivoSenzaQuadratura] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
   const invia = useCallback(async (
@@ -149,12 +150,12 @@ export function FattureView() {
     soloAnteprima: boolean,
     correzioni: MisuraRiga[] = [],
     ricalcolo = false,
-    estremi?: { numero: string; data: string }
+    estremi?: { numero: string; data: string; motivoSenzaQuadratura?: string }
   ) => {
     setErrore(null);
     setInCorso(soloAnteprima ? "lettura" : "salvataggio");
     if (soloAnteprima) {
-      if (!ricalcolo) { setAnteprima(null); setMisure([]); }
+      if (!ricalcolo) { setAnteprima(null); setMisure([]); setMotivoSenzaQuadratura(""); }
       setSalvata(null);
     }
     try {
@@ -163,6 +164,7 @@ export function FattureView() {
       body.append("misure", JSON.stringify(correzioni));
       if (estremi?.numero.trim()) body.append("numeroFattura", estremi.numero.trim());
       if (estremi?.data) body.append("dataFattura", estremi.data);
+      if (estremi?.motivoSenzaQuadratura?.trim()) body.append("motivoSenzaQuadratura", estremi.motivoSenzaQuadratura.trim());
       const res = await fetch(
         `/api/portali/vettori/fatture/acquisisci${soloAnteprima ? "?anteprima=1" : ""}`,
         { method: "POST", body }
@@ -541,20 +543,36 @@ export function FattureView() {
               <p className="text-xs text-text-muted max-w-xl">
                 {q.ok
                   ? "Acquisendo, la fattura entra in archivio con le righe agganciate alle bolle e i controlli calcolati. Le anomalie restano da decidere."
-                  : "Finché non quadra, la fattura non può essere acquisita: le righe che mancano non si vedono guardando quelle lette."}
+                  : "La fattura non quadra: le righe che mancano non si vedono guardando quelle lette. Puoi acquisirla comunque indicando il motivo; resterà segnalata come «non quadrata» in archivio e nelle spedizioni."}
               </p>
+              {!q.ok && (
+                <label htmlFor="motivo-senza-quadratura" className="w-full text-xs font-medium text-text-muted">
+                  {"Motivo dell'acquisizione senza quadratura"}
+                  <input
+                    id="motivo-senza-quadratura"
+                    value={motivoSenzaQuadratura}
+                    maxLength={500}
+                    placeholder="Es. manca una riga illeggibile, da integrare a mano"
+                    onChange={(e) => setMotivoSenzaQuadratura(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
+                  />
+                </label>
+              )}
               <Button
                 type="button"
-                disabled={!q.ok || inCorso !== null || !file || Boolean(errore) || !numeroFattura.trim() || !dataFattura}
-                onClick={() => file && void invia(file, false, misure, false, { numero: numeroFattura, data: dataFattura })}
+                variant={q.ok ? "default" : "outline"}
+                disabled={(!q.ok && motivoSenzaQuadratura.trim().length < 5) || inCorso !== null || !file || Boolean(errore) || !numeroFattura.trim() || !dataFattura}
+                onClick={() => file && void invia(file, false, misure, false, { numero: numeroFattura, data: dataFattura, motivoSenzaQuadratura: q.ok ? undefined : motivoSenzaQuadratura })}
               >
                 {inCorso === "salvataggio" ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Acquisisco…
                   </>
-                ) : (
+                ) : q.ok ? (
                   "Acquisisci la fattura"
+                ) : (
+                  "Acquisisci senza quadratura"
                 )}
               </Button>
             </div>

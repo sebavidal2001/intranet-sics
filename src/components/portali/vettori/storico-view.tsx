@@ -678,6 +678,16 @@ export function StoricoView({ iniziali, valori }: Props) {
                   <th className="text-right font-semibold px-3 py-2">Fatturato</th>
                   <th className="text-right font-semibold px-3 py-2">Atteso</th>
                   <th className="text-right font-semibold px-3 py-2">Scarto</th>
+                  {filtri.direzione === "uscita" && (
+                    <>
+                      <th className="text-right font-semibold px-3 py-2" title="Addebito del trasporto al cliente: fissato in simulazione o calcolato dagli scaglioni (solo porto franco con addebito in fattura)">
+                        Addebito cliente
+                      </th>
+                      <th className="text-center font-semibold px-3 py-2" title="Spunta manuale: addebito verificato in fase di fatturazione al cliente">
+                        Verificato
+                      </th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -685,8 +695,19 @@ export function StoricoView({ iniziali, valori }: Props) {
                   <Riga
                     key={r.id}
                     r={r}
+                    conAddebito={filtri.direzione === "uscita"}
                     aperta={aperta === r.id}
                     onApri={() => setAperta((v) => (v === r.id ? null : r.id))}
+                    onVerificato={(verificatoIl) =>
+                      setDati((correnti) => ({
+                        ...correnti,
+                        righe: correnti.righe.map((riga) =>
+                          riga.spedizione_id === r.spedizione_id
+                            ? { ...riga, riaddebito_verificato_il: verificatoIl }
+                            : riga
+                        ),
+                      }))
+                    }
                   />
                 ))}
               </tbody>
@@ -731,15 +752,41 @@ export function StoricoView({ iniziali, valori }: Props) {
 
 function Riga({
   r,
+  conAddebito,
   aperta,
   onApri,
+  onVerificato,
 }: {
   r: RigaStorico;
+  conAddebito: boolean;
   aperta: boolean;
   onApri: () => void;
+  onVerificato: (verificatoIl: string | null) => void;
 }) {
   const differenza = r.fatturato != null && r.atteso != null ? r.fatturato - r.atteso : null;
   const senzaFattura = r.stato_fatturazione === "non_fatturata";
+  const [salvaSpunta, setSalvaSpunta] = useState(false);
+  const [erroreSpunta, setErroreSpunta] = useState<string | null>(null);
+
+  async function spunta(verificato: boolean) {
+    if (!r.spedizione_id) return;
+    setSalvaSpunta(true);
+    setErroreSpunta(null);
+    try {
+      const res = await fetch("/api/portali/vettori/spedizioni/verifica-addebito", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spedizioneId: r.spedizione_id, verificato }),
+      });
+      const corpo = await res.json();
+      if (!res.ok) throw new Error(corpo.error ?? "Spunta non salvata.");
+      onVerificato(corpo.verificatoIl ?? null);
+    } catch (causa) {
+      setErroreSpunta(causa instanceof Error ? causa.message : "Spunta non salvata.");
+    } finally {
+      setSalvaSpunta(false);
+    }
+  }
 
   return (
     <>
@@ -755,6 +802,14 @@ function Riga({
           {r.stato_fattura === "bozza" && (
             <span className="ml-1.5 text-[9px] uppercase tracking-wider text-warning">bozza</span>
           )}
+          {r.fattura_quadrata === false && (
+            <span
+              className="ml-1.5 inline-flex rounded bg-warning/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-800"
+              title="La fattura è stata acquisita senza quadratura: i totali stampati non coincidono con le righe lette"
+            >
+              fattura non quadrata
+            </span>
+          )}
           {senzaFattura && (
             <span
               className="ml-1.5 inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
@@ -769,6 +824,11 @@ function Riga({
         </td>
         <td className="px-3 py-1.5 font-mono text-[12px] whitespace-nowrap">
           {r.riferimento ?? <span className="text-danger">senza bolla</span>}
+          {r.numero_protocollo && (
+            <span className="block font-sans text-[10px] text-text-muted" title="Nostro protocollo BF">
+              Prot. {r.numero_protocollo}
+            </span>
+          )}
         </td>
         <td className="px-3 py-1.5 max-w-[220px] truncate" title={r.controparte ?? ""}>
           {r.controparte ?? "—"}
@@ -802,12 +862,61 @@ function Riga({
             </span>
           )}
         </td>
+        {conAddebito && (
+          <>
+            <td
+              className="px-3 py-1.5 text-right tabular-nums font-tenorite whitespace-nowrap"
+              title={
+                r.addebito_cliente
+                  ? [r.addebito_cliente.regola, r.addebito_cliente.avvertenza].filter(Boolean).join(" · ")
+                  : r.porto_codice === "01"
+                    ? "Porto franco: il trasporto resta a nostro carico"
+                    : r.porto_codice === "02"
+                      ? "Porto assegnato: lo paga il cliente al vettore"
+                      : "Porto non indicato"
+              }
+            >
+              {r.addebito_cliente ? (
+                <>
+                  {r.addebito_cliente.importo === null ? (
+                    <span className="text-warning">da definire</span>
+                  ) : (
+                    eur(r.addebito_cliente.importo)
+                  )}
+                  {r.addebito_cliente.fonte === "simulazione" && (
+                    <span className="ml-1 text-[9px] uppercase tracking-wider text-primary-dark">sim.</span>
+                  )}
+                </>
+              ) : (
+                <span className="text-text-muted">—</span>
+              )}
+            </td>
+            <td className="px-3 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                aria-label={`Addebito verificato per la bolla ${r.riferimento ?? ""}`}
+                className="h-4 w-4 accent-primary disabled:opacity-40"
+                checked={Boolean(r.riaddebito_verificato_il)}
+                disabled={!r.spedizione_id || salvaSpunta}
+                title={
+                  !r.spedizione_id
+                    ? "Riga di fattura senza bolla: non c'è una spedizione da spuntare"
+                    : r.riaddebito_verificato_il
+                      ? `Verificato il ${r.riaddebito_verificato_il.slice(0, 10)}`
+                      : "Segna come verificato in fatturazione"
+                }
+                onChange={(e) => void spunta(e.target.checked)}
+              />
+              {erroreSpunta && <span role="alert" className="block max-w-[140px] whitespace-normal text-[10px] text-danger">{erroreSpunta}</span>}
+            </td>
+          </>
+        )}
       </tr>
 
       {aperta && (
         <tr className="border-t border-border/30 bg-bg-page/40">
           <td />
-          <td colSpan={10} className="px-3 py-3">
+          <td colSpan={conAddebito ? 12 : 10} className="px-3 py-3">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-[12px]">
               <Blocco titolo="Pesi">
                 <Voce nome="Reale" valore={`${num(r.peso, 1)} kg`} />

@@ -50,3 +50,34 @@ it("calcola davvero l'ultimo giorno del mese indicato nel nome file", () => {
     data: "2026-02-28",
   });
 });
+
+it("una fattura che non quadra si acquisisce solo dichiarando il motivo", async () => {
+  // Richiesta dell'amministrazione (24/09/2026): salvare anche se non corrisponde
+  // al prospetto, lasciando l'avviso dove ci sono problemi.
+  const risposta = {
+    nomeFile: "tnt.pdf",
+    origineMetadati: { numero: "documento", data: "documento" },
+    fattura: { vettore: "tnt", numero: "T-1", data: "2026-07-31", avvertenze: [], righeNonLette: [] },
+    quadratura: { ok: false, confronti: [], note: ["Il nolo non torna di 9,04 €."] },
+    righe: [],
+  };
+  const fetchMock = vi.fn().mockImplementation(async (url: string) => ({
+    ok: true,
+    json: async () => (String(url).includes("anteprima=1") ? risposta : { salvata: true, esito: { righe: 0, spedizioni_nuove: 0, anomalie: 0 } }),
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  const { container } = render(<FattureView />);
+  fireEvent.change(container.querySelector('input[type="file"]')!, {
+    target: { files: [new File(["pdf"], risposta.nomeFile, { type: "application/pdf" })] },
+  });
+
+  const salva = await screen.findByRole("button", { name: "Acquisisci senza quadratura" });
+  expect(salva).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Motivo dell'acquisizione senza quadratura"), { target: { value: "riga illeggibile, la integro a mano" } });
+  expect(salva).toBeEnabled();
+  fireEvent.click(salva);
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  const corpo = fetchMock.mock.calls[1][1].body as FormData;
+  expect(corpo.get("motivoSenzaQuadratura")).toBe("riga illeggibile, la integro a mano");
+});

@@ -182,6 +182,8 @@ export interface BollaDocumento {
   idSpedizione: string;
   idDocumenti: number[];
   numeroDocumento: string | null;
+  /** Nostro protocollo BF sugli arrivi; sulle partenze coincide col numero e resta null. */
+  numeroProtocollo: string | null;
   dataDocumento: string;
   dataCreazione: string | null;
   direzione: "entrata" | "uscita";
@@ -194,6 +196,11 @@ export interface BollaDocumento {
   vettoreEsito: VettoreEsito;
   vettoreRegola: string | null;
   numColli: number | null;
+  /** Porto del gestionale e se la spedizione la paghiamo noi (null = non deducibile). */
+  porto: string | null;
+  aNostroCarico: boolean | null;
+  /** Addebito al cliente fissato dalla simulazione. */
+  riaddebitoPrevisto: number | null;
   pesoLordoKg: number | null;
   pesoNettoKg: number | null;
   divisoreVolumetrico: number | null;
@@ -214,6 +221,8 @@ export interface BolleResponse {
   perPagina: number;
   totale: number;
   altrePagine: boolean;
+  /** Bolle escluse perche' il trasporto non e' a nostro carico (0 con «mostra tutte»). */
+  nonANostroCarico: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -282,6 +291,28 @@ export interface RigaStorico {
   avvertenze: string[] | null;
   anomalie: number;
   anomalie_aperte: number;
+  /** Dalla 117. NULL sulle righe di fattura che non hanno trovato la bolla. */
+  spedizione_id: string | null;
+  porto_codice: string | null;
+  /** Sugli arrivi: il nostro protocollo BF (la bolla e' il DDT del fornitore). */
+  numero_protocollo: string | null;
+  riaddebito_previsto: number | null;
+  riaddebito_verificato_il: string | null;
+  /** false = la fattura e' stata acquisita senza quadratura. NULL senza fattura. */
+  fattura_quadrata: boolean | null;
+  /** Calcolato dal server, non dal database: vedi `addebitoCliente`. */
+  addebito_cliente?: AddebitoCliente | null;
+}
+
+/**
+ * Quanto si addebita al cliente per il trasporto di una partenza.
+ *
+ * `simulazione`: l'importo fissato al banco quando e' stato scelto il vettore.
+ * `scaglioni`: calcolato dalla tabella di riaddebito (e dagli accordi cliente)
+ * col peso della spedizione. `importo` null = la tabella non risponde.
+ */
+export interface AddebitoCliente extends EsitoRiaddebito {
+  fonte: "simulazione" | "scaglioni";
 }
 
 export interface TotaliStorico {
@@ -470,7 +501,7 @@ export interface EsitoSimulazione {
   vettoreNome: string;
   disponibile: boolean;
   motivoIndisponibilita?: string;
-  listino?: { etichetta: string; validoDal: string; validoAl: string | null } | null;
+  listino?: { id?: string; etichetta: string; validoDal: string; validoAl: string | null } | null;
   calcolo?: CostoAtteso;
   /** Differenza in euro rispetto alla soluzione piu' conveniente. */
   differenzaDalMigliore?: number;

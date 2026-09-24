@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { waitFor } from "@testing-library/react";
 import { StoricoView } from "@/components/portali/vettori/storico-view";
 import type {
   EsitoStorico,
@@ -29,6 +30,12 @@ const nonFatturata: RigaStorico = {
   provincia: "MI",
   cap: "20100",
   porto_descrizione: "Franco",
+  spedizione_id: "sp1",
+  porto_codice: "01",
+  numero_protocollo: null,
+  riaddebito_previsto: null,
+  riaddebito_verificato_il: null,
+  fattura_quadrata: null,
   a_nostro_carico: true,
   colli: 2,
   peso: 148,
@@ -103,3 +110,39 @@ describe("StoricoView con spedizione senza fattura", () => {
     expect(screen.getByText("Non ancora eseguito")).toBeInTheDocument();
   });
 });
+
+describe("StoricoView: addebito al cliente e spunta di verifica", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const conAddebito: RigaStorico = {
+    ...nonFatturata,
+    id: "s2",
+    riferimento: "2631",
+    spedizione_id: "00000000-0000-4000-8000-000000000999",
+    porto_codice: "03",
+    addebito_cliente: { fonte: "scaglioni", importo: 22.5, pesoUsato: 20, basePeso: "tassabile", regola: "scaglione 10-30 kg", avvertenza: null },
+  };
+
+  it("mostra l'importo e salva la spunta sulla spedizione", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ verificatoIl: "2026-09-24T12:00:00Z" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<StoricoView iniziali={{ ...iniziali, righe: [conAddebito] }} valori={valori} />);
+
+    expect(screen.getByText("Addebito cliente")).toBeInTheDocument();
+    expect(screen.getByText(/22,50/)).toBeInTheDocument();
+    const spunta = screen.getByLabelText("Addebito verificato per la bolla 2631");
+    fireEvent.click(spunta);
+
+    await waitFor(() => expect(spunta).toBeChecked());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/portali/vettori/spedizioni/verifica-addebito",
+      expect.objectContaining({ body: JSON.stringify({ spedizioneId: conAddebito.spedizione_id, verificato: true }) })
+    );
+  });
+
+  it("una fattura acquisita senza quadratura resta segnalata sulla riga", () => {
+    render(<StoricoView iniziali={{ ...iniziali, righe: [{ ...conAddebito, fattura_quadrata: false }] }} valori={valori} />);
+    expect(screen.getByText("fattura non quadrata")).toBeInTheDocument();
+  });
+});
+

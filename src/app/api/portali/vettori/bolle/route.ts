@@ -40,17 +40,43 @@ export const dynamic = "force-dynamic";
 const Query = z.object({
   pagina: z.coerce.number().int().min(1).max(10_000).default(1),
   perPagina: z.coerce.number().int().min(20).max(200).default(80),
+  /** `1` mostra anche le bolle il cui trasporto non paghiamo noi. */
+  tutte: z.enum(["0", "1"]).default("0"),
+  cerca: z.string().trim().max(60).optional(),
 });
+
+/**
+ * Quali bolle arrivano al banco.
+ *
+ * L'amministrazione controlla le fatture dei vettori, quindi le bolle che
+ * contano sono quelle che il vettore fattura a noi: partenze in porto franco o
+ * franco con addebito in fattura, arrivi in porto assegnato. Le altre (2.340
+ * su 4.000 al 24/09/2026, quasi tutte partenze in assegnato) erano rumore.
+ * Restano visibili le bolle inserite a mano o dalla simulazione, e quelle di
+ * cui il porto non si conosce: nascondere un dubbio sarebbe peggio.
+ */
+const FILTRO_A_NOSTRO_CARICO =
+  "a_nostro_carico.is.true,a_nostro_carico.is.null,origine.in.(manuale,simulazione)";
+
+/** Solo lettere, cifre e pochi separatori: il testo finisce in un filtro PostgREST. */
+function testoRicerca(cerca: string | undefined): string | null {
+  const pulito = (cerca ?? "").replace(/[^\p{L}\p{N} ./-]/gu, "").trim();
+  return pulito.length > 0 ? pulito : null;
+}
 
 interface SpedizioneRow {
   id: string;
   direzione: "entrata" | "uscita";
   vettore_id: string | null;
   numero_riferimento: string | null;
+  numero_protocollo: string | null;
   data_documento: string;
   controparte_nome: string | null;
   zona_cap: string | null;
   zona_provincia: string | null;
+  porto_descrizione: string | null;
+  a_nostro_carico: boolean | null;
+  riaddebito_previsto: number | null;
   colli_bolla: number | null;
   peso_bolla: number | null;
   origine: OrigineSpedizione;
@@ -184,21 +210,36 @@ export async function GET(request: NextRequest) {
 
     await sincronizzaDocumentiRecenti();
 
-    const { pagina, perPagina } = parsed.data;
+    const { pagina, perPagina, tutte } = parsed.data;
+    const cerca = testoRicerca(parsed.data.cerca);
     const da = (pagina - 1) * perPagina;
     const admin = createAdminClient();
-    const [spedizioniResult, vettoriResult, codiciGestionaliResult] = await Promise.all([
-      admin
-        .schema("vettori")
-        .from("spedizioni")
-        .select(
-          "id,direzione,vettore_id,numero_riferimento,data_documento,controparte_nome,zona_cap,zona_provincia,colli_bolla,peso_bolla,origine,campi_forzati,congelata,creata_il",
-          { count: "exact" }
-        )
-        // Le spedizioni ignorate non arrivano al banco: sono le righe dei fogli
-        // Excel riconosciute come doppioni di una bolla gia' presente, e
-        // misurare i colli due volte sulla stessa merce non ha senso.
-        .neq("stato", "ignorata")
+    let elenco = admin
+      .schema("vettori")
+      .from("spedizioni")
+      .select(
+        "id,direzione,vettore_id,numero_riferimento,numero_protocollo,data_documento,controparte_nome,zona_cap,zona_provincia,porto_descrizione,a_nostro_carico,riaddebito_previsto,colli_bolla,peso_bolla,origine,campi_forzati,congelata,creata_il",
+        { count: "exact" }
+      )
+      // Le spedizioni ignorate non arrivano al banco: sono le righe dei fogli
+      // Excel riconosciute come doppioni di una bolla gia' presente, e
+      // misurare i colli due volte sulla stessa merce non ha senso.
+      .neq("stato", "ignorata");
+    let escluse = admin
+      .schema("vettori")
+      .from("spedizioni")
+      .select("id", { count: "exact", head: true })
+      .neq("stato", "ignorata")
+      .eq("a_nostro_carico", false)
+      .not("origine", "in", "(manuale,simulazione)");
+    if (tutte === "0") elenco = elenco.or(FILTRO_A_NOSTRO_CARICO);
+    if (cerca) {
+      const filtro = `numero_riferimento.ilike.*${cerca}*,numero_protocollo.ilike.*${cerca}*,controparte_nome.ilike.*${cerca}*`;
+      elenco = elenco.or(filtro);
+      escluse = escluse.or(filtro);
+    }
+    const [spedizioniResult, vettoriResult, codiciGestionaliResult, esclusiResult] = await Promise.all([
+      elenco
         .order("data_documento", { ascending: false })
         .order("creata_il", { ascending: false })
         .range(da, da + perPagina - 1),
@@ -212,9 +253,11 @@ export async function GET(request: NextRequest) {
         .schema("vettori")
         .from("codici_gestionale")
         .select("codice_gestionale,ragione_sociale,vettore_id,tipo,regola_testo"),
+      tutte === "0" ? escluse : Promise.resolve({ count: 0, error: null }),
     ]);
 
     if (spedizioniResult.error) throw new Error(spedizioniResult.error.message);
+    if (esclusiResult.error) throw new Error(esclusiResult.error.message);
     if (vettoriResult.error) throw new Error(vettoriResult.error.message);
     if (codiciGestionaliResult.error) throw new Error(codiciGestionaliResult.error.message);
     const spedizioni = (spedizioniResult.data ?? []) as unknown as SpedizioneRow[];
@@ -361,6 +404,7 @@ export async function GET(request: NextRequest) {
         idSpedizione: spedizione.id,
         idDocumenti: documentiPerSpedizione.get(spedizione.id) ?? [],
         numeroDocumento: spedizione.numero_riferimento,
+        numeroProtocollo: spedizione.numero_protocollo,
         dataDocumento: spedizione.data_documento,
         dataCreazione: spedizione.creata_il,
         direzione: spedizione.direzione,
@@ -377,6 +421,10 @@ export async function GET(request: NextRequest) {
         vettoreEsito,
         vettoreRegola: risoluzioneGestionale.regola,
         numColli: numeroPositivo(spedizione.colli_bolla),
+        porto: spedizione.porto_descrizione,
+        aNostroCarico: spedizione.a_nostro_carico,
+        riaddebitoPrevisto:
+          spedizione.riaddebito_previsto === null ? null : Number(spedizione.riaddebito_previsto),
         pesoLordoKg: numeroPositivo(spedizione.peso_bolla),
         pesoNettoKg: null,
         divisoreVolumetrico: vettore?.divisoreVolumetrico ?? null,
@@ -399,6 +447,7 @@ export async function GET(request: NextRequest) {
       perPagina,
       totale,
       altrePagine: da + documenti.length < totale,
+      nonANostroCarico: esclusiResult.count ?? 0,
     };
     return NextResponse.json(risposta, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

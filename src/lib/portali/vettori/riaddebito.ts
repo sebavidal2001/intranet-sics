@@ -1,13 +1,15 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   AccordoRiaddebitoCliente,
+  AddebitoCliente,
   BasePesoRiaddebito,
   EsitoRiaddebito,
+  RigaStorico,
   ScaglioneRiaddebito,
   VersioneRiaddebito,
 } from "./tipi";
 
-interface RigaScaglione {
+export interface RigaScaglione {
   valido_dal: string;
   valido_al: string | null;
   base_peso: BasePesoRiaddebito;
@@ -215,4 +217,124 @@ export async function caricaAccordiRiaddebito(): Promise<AccordoRiaddebitoClient
     .order("valido_dal", { ascending: false });
   if (error) throw new Error(`Lettura accordi cliente fallita: ${error.message}`);
   return ((data ?? []) as unknown as RigaAccordo[]).map(mappaAccordo);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Addebito al cliente nello storico spedizioni                       */
+/* ------------------------------------------------------------------ */
+
+/** La versione degli scaglioni in vigore alla data, da tutte le righe gia' lette. */
+export function versioneAllaData(
+  righe: ReadonlyArray<RigaScaglione>,
+  data: string
+): VersioneRiaddebito | null {
+  const valide = righe.filter((riga) => dataNelPeriodo(data, riga.valido_dal, riga.valido_al));
+  const validoDal = valide.map((riga) => riga.valido_dal).sort().at(-1);
+  if (!validoDal) return null;
+  const versione = valide
+    .filter((riga) => riga.valido_dal === validoDal)
+    .sort((a, b) => Number(a.peso_da) - Number(b.peso_da));
+  return {
+    validoDal,
+    validoAl: versione[0]?.valido_al ?? null,
+    basePeso: versione[0]?.base_peso ?? "tassabile",
+    scaglioni: versione.map((riga) => ({
+      pesoDa: Number(riga.peso_da),
+      pesoA: riga.peso_a === null ? null : Number(riga.peso_a),
+      importo: riga.importo === null ? null : Number(riga.importo),
+      nota: riga.nota,
+    })),
+  };
+}
+
+function accordoAllaData(
+  accordi: ReadonlyArray<AccordoRiaddebitoCliente>,
+  codiceCliente: string | null,
+  data: string
+): AccordoRiaddebitoCliente | null {
+  const codice = codiceCliente?.trim();
+  if (!codice) return null;
+  return accordi
+    .filter((accordo) => accordo.codiceCliente === codice && dataNelPeriodo(data, accordo.validoDal, accordo.validoAl))
+    .sort((a, b) => b.validoDal.localeCompare(a.validoDal))[0] ?? null;
+}
+
+/**
+ * Quanto si addebita al cliente per una riga dello storico.
+ *
+ * Solo le partenze hanno un addebito, e solo due casi lo producono:
+ * - l'importo fissato in simulazione, che vince su tutto perche' e' quello
+ *   deciso e comunicato;
+ * - il porto franco **con addebito in fattura** (`03`). In franco puro (`01`)
+ *   il trasporto e' a carico nostro e non si riaddebita; in assegnato (`02`)
+ *   lo paga il cliente al vettore.
+ *
+ * Senza peso non si inventa lo scaglione: l'importo resta null con il motivo.
+ */
+export function addebitoCliente(
+  riga: Pick<
+    RigaStorico,
+    "direzione" | "porto_codice" | "riaddebito_previsto" | "data_spedizione" | "peso" | "peso_tassato" | "controparte_codice"
+  >,
+  scaglioni: ReadonlyArray<RigaScaglione>,
+  accordi: ReadonlyArray<AccordoRiaddebitoCliente>
+): AddebitoCliente | null {
+  if (riga.direzione !== "uscita") return null;
+  if (riga.riaddebito_previsto !== null && riga.riaddebito_previsto !== undefined) {
+    return {
+      fonte: "simulazione",
+      importo: euro(Number(riga.riaddebito_previsto)),
+      pesoUsato: Number(riga.peso_tassato ?? riga.peso ?? 0),
+      basePeso: "tassabile",
+      regola: "fissato in simulazione",
+      avvertenza: null,
+    };
+  }
+  if (riga.porto_codice !== "03" || !riga.data_spedizione) return null;
+
+  const versione = versioneAllaData(scaglioni, riga.data_spedizione);
+  const pesoReale = Number(riga.peso ?? 0);
+  const pesoTassabile = Number(riga.peso_tassato ?? riga.peso ?? 0);
+  if (!versione) {
+    return {
+      fonte: "scaglioni",
+      importo: null,
+      pesoUsato: pesoTassabile,
+      basePeso: "tassabile",
+      regola: "nessuna tabella in vigore",
+      avvertenza: `Nessuna tabella di riaddebito valida al ${riga.data_spedizione}.`,
+    };
+  }
+  const pesoUsato = versione.basePeso === "reale" ? pesoReale : pesoTassabile;
+  if (!(pesoUsato > 0)) {
+    return {
+      fonte: "scaglioni",
+      importo: null,
+      pesoUsato: 0,
+      basePeso: versione.basePeso,
+      regola: "peso mancante",
+      avvertenza: "Peso della spedizione non disponibile: lo scaglione non si puo' scegliere.",
+    };
+  }
+  return {
+    fonte: "scaglioni",
+    ...calcolaRiaddebito({
+      data: riga.data_spedizione,
+      pesoReale,
+      pesoTassabile,
+      versione,
+      accordo: accordoAllaData(accordi, riga.controparte_codice, riga.data_spedizione),
+    }),
+  };
+}
+
+/** Tutte le righe degli scaglioni, per calcolare molte righe con una lettura sola. */
+export async function caricaTuttiGliScaglioni(): Promise<RigaScaglione[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .schema("vettori")
+    .from("riaddebito_scaglioni")
+    .select("valido_dal,valido_al,base_peso,peso_da,peso_a,importo,nota");
+  if (error) throw new Error(`Lettura riaddebito fallita: ${error.message}`);
+  return (data ?? []) as unknown as RigaScaglione[];
 }

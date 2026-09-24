@@ -30,22 +30,23 @@ interface VettoriSidebarProps {
   puoRegistrareArrivi: boolean
 }
 
-const VOCI_AMMINISTRAZIONE = [
-  { name: "Fatture", url: "/vettori/fatture", icon: FileText },
-  { name: "Spedizioni", url: "/vettori/spedizioni", icon: PackageSearch },
-  { name: "Anomalie", url: "/vettori/anomalie", icon: TriangleAlert },
-]
+type Visibilita = "tutti" | "banco" | "gestione";
 
-const VOCI_BOLLE = [
-  { name: "Bolle", url: "/vettori/bolle", icon: Ruler },
-]
-
-const VOCI_COMUNI = [
-  { name: "Simulazione", url: "/vettori/simulazione", icon: Calculator },
-  { name: "Analisi", url: "/vettori/analisi", icon: BarChart3 },
-]
-
-const VOCI_GESTIONE = [{ name: "Listini", url: "/vettori/listini", icon: Settings }]
+/**
+ * L'ordine segue la giornata dell'operatore, come l'ha descritta
+ * l'amministrazione (24/09/2026): prima si simula e si sceglie il vettore, poi
+ * si prepara la bolla, poi a distanza di giorni arrivano spedizioni e fatture,
+ * e da li' le anomalie. Analisi e listini sono consultazione e configurazione.
+ */
+const VOCI: ReadonlyArray<{ name: string; url: string; icon: typeof Calculator; visibile: Visibilita }> = [
+  { name: "Simulazione", url: "/vettori/simulazione", icon: Calculator, visibile: "tutti" },
+  { name: "Bolle", url: "/vettori/bolle", icon: Ruler, visibile: "banco" },
+  { name: "Spedizioni", url: "/vettori/spedizioni", icon: PackageSearch, visibile: "gestione" },
+  { name: "Fatture", url: "/vettori/fatture", icon: FileText, visibile: "gestione" },
+  { name: "Anomalie", url: "/vettori/anomalie", icon: TriangleAlert, visibile: "gestione" },
+  { name: "Analisi", url: "/vettori/analisi", icon: BarChart3, visibile: "tutti" },
+  { name: "Listini", url: "/vettori/listini", icon: Settings, visibile: "gestione" },
+];
 
 export function VettoriSidebar({
   livello,
@@ -57,12 +58,11 @@ export function VettoriSidebar({
 
   // Il magazzino vede le bolle e la simulazione: non ha motivo di avere
   // sotto gli occhi fatture, anomalie e listini mentre misura un collo.
-  const voci = [
-    ...VOCI_COMUNI,
-    ...(puoRegistrareArrivi ? VOCI_BOLLE : []),
-    ...(puoGestire ? VOCI_AMMINISTRAZIONE : []),
-    ...(puoGestire ? VOCI_GESTIONE : []),
-  ]
+  const voci = VOCI.filter(({ visibile }) =>
+    visibile === "tutti" ||
+    (visibile === "banco" && puoRegistrareArrivi) ||
+    (visibile === "gestione" && puoGestire)
+  )
 
   return (
     <aside

@@ -34,6 +34,8 @@ export const GruppoMisuraBollaInput = z.object({
 const ValoriTestataBolla = z.object({
   direzione: z.enum(["entrata", "uscita"]),
   numeroRiferimento: z.string().trim().min(1).max(100),
+  /** Sugli arrivi: il nostro protocollo BF, diverso dal DDT del fornitore. */
+  numeroProtocollo: z.string().trim().max(100).nullable().optional(),
   dataDocumento: DataISO,
   controparteNome: z.string().trim().min(1).max(240),
   vettoreId: z.string().uuid(),
@@ -251,9 +253,34 @@ export function pianificaFusioneCampi(
     if (attuali[campo] !== gestionali[campo]) {
       differenze[campo] = { spedizione: attuali[campo], gestionale: gestionali[campo] };
     }
-    if (!congelata && !forzati[campo]) aggiornamenti[campo] = gestionali[campo];
+    if (congelata || forzati[campo]) continue;
+    if (gestionaleNonSa(campo, gestionali[campo]) && !gestionaleNonSa(campo, attuali[campo])) continue;
+    aggiornamenti[campo] = gestionali[campo];
   }
   return { aggiornamenti, differenze };
+}
+
+/**
+ * Il gestionale che non sa non cancella chi sa.
+ *
+ * Sulle partenze il codice vettore manca spesso (386 bolle col mezzo `V` e
+ * nessun codice) o e' una regola che non indica un vettore; sugli arrivi
+ * colli e peso arrivano a zero. Se nel frattempo il dato l'ha messo qualcuno
+ * — il vettore scelto in simulazione, i colli contati al banco — la
+ * sincronizzazione notturna lo azzerava, e la bolla perdeva proprio quello
+ * che l'operatore aveva inserito per non doverlo ribattere.
+ */
+const CAMPI_CHE_IL_GESTIONALE_PUO_NON_SAPERE = new Set<CampoBollaForzabile>([
+  "vettore_id",
+  "colli_bolla",
+  "peso_bolla",
+]);
+
+function gestionaleNonSa(campo: CampoBollaForzabile, valore: ValoreCampo): boolean {
+  return (
+    CAMPI_CHE_IL_GESTIONALE_PUO_NON_SAPERE.has(campo) &&
+    (valore === null || valore === undefined || valore === 0)
+  );
 }
 
 function valoriDaInput(input: ValoriTestataBollaInput) {
@@ -266,6 +293,7 @@ function valoriDaInput(input: ValoriTestataBollaInput) {
     vettore_id: input.vettoreId,
     colli_bolla: input.colli,
     peso_bolla: input.pesoKg,
+    numero_protocollo: input.numeroProtocollo?.trim() || null,
   };
 }
 
@@ -317,6 +345,16 @@ export async function creaBollaManuale(
   if (error?.code === "23505") throw new ErroreBollaDuplicata();
   if (error) throw new Error(error.message);
   if (typeof data !== "string") throw new Error("La bolla e stata creata senza identificativo.");
+  // La RPC non conosce il protocollo (e' della 117): lo si aggiunge dopo.
+  const protocollo = input.numeroProtocollo?.trim();
+  if (protocollo) {
+    const { error: protocolloError } = await admin
+      .schema("vettori")
+      .from("spedizioni")
+      .update({ numero_protocollo: protocollo })
+      .eq("id", data);
+    if (protocolloError) throw new Error(protocolloError.message);
+  }
   return data;
 }
 
@@ -461,6 +499,29 @@ function differenzeGestionali(
   ).differenze;
 }
 
+/**
+ * Il nostro protocollo sugli arrivi.
+ *
+ * La bolla fornitore ha due numeri: il DDT del fornitore, che la fattura del
+ * vettore cita e che quindi resta la chiave di aggancio (`numero_riferimento`),
+ * e il nostro progressivo BF, con cui l'amministrazione la cerca. Sulle
+ * partenze coincidono e non serve.
+ */
+export function protocolloDaDocumenti(
+  spedizione: Pick<SpedizioneLogica, "direzione" | "idDocumenti">,
+  dettagli: Map<number, Pick<DettaglioDocumento, "numeroProgressivo">>
+): string | null {
+  if (spedizione.direzione !== "entrata") return null;
+  const numeri = [
+    ...new Set(
+      spedizione.idDocumenti
+        .map((id) => dettagli.get(id)?.numeroProgressivo?.trim())
+        .filter((numero): numero is string => Boolean(numero))
+    ),
+  ].sort();
+  return numeri.length > 0 ? numeri.join(", ") : null;
+}
+
 function valoriGestionali(spedizione: SpedizioneLogica, vettoreId: string | null) {
   return {
     direzione: spedizione.direzione,
@@ -562,7 +623,12 @@ export async function sincronizzaSpedizioniGestionali(
       const { data: nuova, error: insertError } = await admin
         .schema("vettori")
         .from("spedizioni")
-        .insert({ ...valori, origine: "gestionale", stato: "attesa" })
+        .insert({
+          ...valori,
+          numero_protocollo: protocolloDaDocumenti(spedizione, dettagli),
+          origine: "gestionale",
+          stato: "attesa",
+        })
         .select("id")
         .single();
       if (insertError) throw new Error(insertError.message);
@@ -621,17 +687,30 @@ export async function sincronizzaSpedizioniGestionali(
     }
 
     const forzati = campiForzatiDaDb(riga.campi_forzati);
+    const piano = pianificaFusioneCampi(
+      Object.fromEntries(
+        CAMPI_BOLLA_FORZABILI.map((campo) => [campo, valoreRiga(riga, campo)])
+      ) as ValoriForzabili,
+      Object.fromEntries(
+        CAMPI_BOLLA_FORZABILI.map((campo) => [campo, valori[campo]])
+      ) as ValoriForzabili,
+      forzati,
+      false
+    );
     const aggiornamento: Record<string, unknown> = {
       ...valori,
       origine: riga.origine,
       aggiornata_il: new Date().toISOString(),
     };
     for (const campo of CAMPI_BOLLA_FORZABILI) {
-      if (forzati[campo]) aggiornamento[campo] = valoreRiga(riga, campo);
+      aggiornamento[campo] =
+        campo in piano.aggiornamenti ? piano.aggiornamenti[campo] : valoreRiga(riga, campo);
     }
-    if (forzati.numero_riferimento) {
+    if (!("numero_riferimento" in piano.aggiornamenti)) {
       aggiornamento.numero_riferimento_norm = riga.numero_riferimento_norm;
     }
+    const protocollo = protocolloDaDocumenti(spedizione, dettagli);
+    if (protocollo) aggiornamento.numero_protocollo = protocollo;
     const { error: updateError } = await admin
       .schema("vettori")
       .from("spedizioni")

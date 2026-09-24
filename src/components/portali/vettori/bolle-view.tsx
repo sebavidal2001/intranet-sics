@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -48,6 +48,8 @@ interface GruppoDraft {
 interface TestataDraft {
   direzione: "entrata" | "uscita";
   numeroRiferimento: string;
+  /** Solo sugli arrivi: il nostro protocollo BF. */
+  numeroProtocollo: string;
   dataDocumento: string;
   controparteNome: string;
   vettoreId: string;
@@ -156,9 +158,15 @@ function daMisura(misura: BollaMisura): GruppoDraft {
   };
 }
 
+let gruppiCreati = 0;
+
 function nuovoGruppo(quantita = 1): GruppoDraft {
+  // `randomUUID` c'e' solo in contesto sicuro (HTTPS): altrove il ripiego era
+  // `Date.now()`, e i gruppi creati nello stesso millisecondo — «Una riga per
+  // collo» ne crea diversi insieme — avevano la stessa chiave.
+  gruppiCreati += 1;
   return {
-    chiave: `nuovo-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+    chiave: `nuovo-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${gruppiCreati}`}`,
     id: null,
     quantita: String(quantita),
     lunghezzaCm: "",
@@ -182,6 +190,7 @@ function draftDaDocumento(documento: BollaDocumento): TestataDraft {
   return {
     direzione: documento.direzione,
     numeroRiferimento: documento.numeroDocumento ?? "",
+    numeroProtocollo: documento.numeroProtocollo ?? "",
     dataDocumento: documento.dataDocumento,
     controparteNome: documento.soggetto ?? "",
     vettoreId: documento.vettoreId ?? "",
@@ -199,12 +208,41 @@ function nuovoDraft(vettori: BollaVettoreOpzione[]): TestataDraft {
   return {
     direzione: "entrata",
     numeroRiferimento: "",
+    numeroProtocollo: "",
     dataDocumento: new Date().toISOString().slice(0, 10),
     controparteNome: "",
     vettoreId: vettori[0]?.id ?? "",
     colli: "1",
     pesoKg: "",
   };
+}
+
+/** La testata come la vuole l'API: numeri veri, e il protocollo solo sugli arrivi. */
+function comandoTestata(draft: TestataDraft) {
+  return {
+    ...draft,
+    numeroProtocollo: draft.direzione === "entrata" ? draft.numeroProtocollo.trim() || null : null,
+    colli: Number(draft.colli),
+    pesoKg: Number(draft.pesoKg),
+  };
+}
+
+const euro = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
+
+/** Un gruppo che l'operatore ha iniziato a compilare: non va perso a un ricaricamento. */
+function gruppoIniziato(gruppo: GruppoDraft): boolean {
+  return Boolean(gruppo.lunghezzaCm || gruppo.larghezzaCm || gruppo.altezzaCm || gruppo.pesoRealeKg);
+}
+
+/** Il gruppo salvato e' diverso da quello a schermo? */
+function gruppoModificato(gruppo: GruppoDraft, salvate: BollaMisura[]): boolean {
+  if (!gruppo.id) return gruppoIniziato(gruppo);
+  const originale = salvate.find((misura) => misura.id === gruppo.id);
+  if (!originale) return true;
+  const confronto = daMisura(originale);
+  return (["quantita", "lunghezzaCm", "larghezzaCm", "altezzaCm", "pesoRealeKg"] as const).some(
+    (campo) => Number(confronto[campo] || 0) !== Number(gruppo[campo] || 0)
+  );
 }
 
 async function inviaComando(comando: unknown): Promise<unknown> {
@@ -230,34 +268,81 @@ export function BolleView() {
   const [errore, setErrore] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("tutte");
   const [creazioneAperta, setCreazioneAperta] = useState(false);
+  const [mostraTutte, setMostraTutte] = useState(false);
+  const [cerca, setCerca] = useState("");
+  const [cercaApplicata, setCercaApplicata] = useState("");
+  const [nonANostroCarico, setNonANostroCarico] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCercaApplicata(cerca.trim()), 350);
+    return () => window.clearTimeout(timer);
+  }, [cerca]);
+
+  const paginaCaricata = useRef(1);
+
+  const leggiPagina = useCallback(async (paginaRichiesta: number): Promise<BolleResponse> => {
+    const parametri = new URLSearchParams({
+      pagina: String(paginaRichiesta),
+      perPagina: "80",
+      tutte: mostraTutte ? "1" : "0",
+    });
+    if (cercaApplicata) parametri.set("cerca", cercaApplicata);
+    const response = await fetch(`/api/portali/vettori/bolle?${parametri}`, { cache: "no-store" });
+    const payload: unknown = await response.json();
+    if (!response.ok || !isBolleResponse(payload)) {
+      throw new Error(messaggioErrore(payload, "Risposta non valida dal server."));
+    }
+    return payload;
+  }, [mostraTutte, cercaApplicata]);
+
+  const applica = useCallback((payload: BolleResponse) => {
+    setVettori(payload.vettori);
+    setPuoScongelare(payload.puoScongelare);
+    setPagina(payload.pagina);
+    paginaCaricata.current = payload.pagina;
+    setTotale(payload.totale);
+    setAltrePagine(payload.altrePagine);
+    setNonANostroCarico(typeof payload.nonANostroCarico === "number" ? payload.nonANostroCarico : 0);
+  }, []);
 
   const carica = useCallback(async (paginaRichiesta: number, aggiungi: boolean) => {
     aggiungi ? setCaricamentoAltri(true) : setCaricamento(true);
     setErrore(null);
     try {
-      const response = await fetch(
-        `/api/portali/vettori/bolle?pagina=${paginaRichiesta}&perPagina=80`,
-        { cache: "no-store" }
-      );
-      const payload: unknown = await response.json();
-      if (!response.ok || !isBolleResponse(payload)) {
-        throw new Error(messaggioErrore(payload, "Risposta non valida dal server."));
-      }
-      setDocumenti((correnti) =>
-        aggiungi ? [...correnti, ...payload.documenti] : payload.documenti
-      );
-      setVettori(payload.vettori);
-      setPuoScongelare(payload.puoScongelare);
-      setPagina(payload.pagina);
-      setTotale(payload.totale);
-      setAltrePagine(payload.altrePagine);
+      const payload = await leggiPagina(paginaRichiesta);
+      setDocumenti((correnti) => aggiungi ? [...correnti, ...payload.documenti] : payload.documenti);
+      applica(payload);
     } catch (causa) {
       setErrore(causa instanceof Error ? causa.message : "Non e stato possibile caricare le bolle.");
     } finally {
       setCaricamento(false);
       setCaricamentoAltri(false);
     }
-  }, []);
+  }, [leggiPagina, applica]);
+
+  /**
+   * Dopo un salvataggio si rileggono le pagine gia' aperte SENZA passare dallo
+   * stato di caricamento. Prima si ricaricava come all'apertura: lo spinner
+   * smontava tutte le schede, e con loro la scheda aperta, i gruppi di colli
+   * non ancora salvati e il punto in cui si era arrivati a scorrere. Era la
+   * causa della BC 2631 con un collo solo su due (24/09/2026).
+   */
+  const aggiornaSenzaSmontare = useCallback(async () => {
+    try {
+      const raccolti: BollaDocumento[] = [];
+      let ultima: BolleResponse | null = null;
+      for (let numeroPagina = 1; numeroPagina <= paginaCaricata.current; numeroPagina += 1) {
+        ultima = await leggiPagina(numeroPagina);
+        raccolti.push(...ultima.documenti);
+      }
+      if (ultima) {
+        setDocumenti(raccolti);
+        applica({ ...ultima, pagina: paginaCaricata.current });
+      }
+    } catch (causa) {
+      setErrore(causa instanceof Error ? causa.message : "Non e stato possibile aggiornare le bolle.");
+    }
+  }, [leggiPagina, applica]);
 
   useEffect(() => {
     void carica(1, false);
@@ -310,9 +395,31 @@ export function BolleView() {
             Congelate · {congelate}
           </FiltroButton>
         </div>
-        <p className="text-xs text-text-muted" aria-live="polite">
-          {totale} bolle · aggiornate all’apertura della pagina
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <label htmlFor="cerca-bolle" className="sr-only">Cerca bolla</label>
+          <Input
+            id="cerca-bolle"
+            type="search"
+            placeholder="Numero, protocollo o controparte"
+            value={cerca}
+            onChange={(evento) => setCerca(evento.target.value)}
+            className="w-64 bg-bg"
+          />
+          <p className="text-xs text-text-muted" aria-live="polite">
+            {totale} bolle · aggiornate all’apertura della pagina
+          </p>
+        </div>
+      </div>
+      <div className="-mt-2 mb-5 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        <label className="inline-flex items-center gap-2">
+          <input type="checkbox" className="h-4 w-4 accent-primary" checked={mostraTutte} onChange={(evento) => setMostraTutte(evento.target.checked)} />
+          Mostra anche le bolle che non paghiamo noi
+        </label>
+        <span>
+          {mostraTutte
+            ? "· sono comprese le partenze in porto assegnato e gli arrivi franco."
+            : `· in elenco solo partenze in franco o franco addebito in fattura e arrivi in assegnato${nonANostroCarico > 0 ? ` (${numero.format(nonANostroCarico)} escluse)` : ""}.`}
+        </span>
       </div>
 
       {errore ? (
@@ -347,7 +454,7 @@ export function BolleView() {
               documento={documento}
               vettori={vettori}
               puoScongelare={puoScongelare}
-              onAggiornata={() => carica(1, false)}
+              onAggiornata={aggiornaSenzaSmontare}
             />
           ))}
         </div>
@@ -393,9 +500,7 @@ function NuovaBollaForm({ vettori, onAnnulla, onCreata }: { vettori: BollaVettor
     const valoriMisura = valoriDraft(misura);
     const comando = {
       operazione: "crea_bolla",
-      ...draft,
-      colli: Number(draft.colli),
-      pesoKg: Number(draft.pesoKg),
+      ...comandoTestata(draft),
       misure: [valoriMisura],
     };
     if (
@@ -452,9 +557,15 @@ function TestataFields({ draft, vettori, onChange, prefisso, forzati, onRipristi
           <option value="entrata">Entrata</option><option value="uscita">Uscita</option>
         </select>
       </CampoTestata>
-      <CampoTestata label="Numero bolla" campo="numero_riferimento" forzati={forzati} onRipristina={onRipristina}>
+      <CampoTestata label={draft.direzione === "entrata" ? "N. DDT fornitore" : "Numero bolla"} campo="numero_riferimento" forzati={forzati} onRipristina={onRipristina}>
         <Input id={`${prefisso}-numero`} value={draft.numeroRiferimento} maxLength={100} onChange={(evento) => cambia("numeroRiferimento", evento.target.value)} />
       </CampoTestata>
+      {draft.direzione === "entrata" ? (
+        <label htmlFor={`${prefisso}-protocollo`} className="min-w-0 text-xs font-medium text-text-muted">
+          <span className="flex min-h-5 items-center">Nostro protocollo BF · opz.</span>
+          <Input id={`${prefisso}-protocollo`} value={draft.numeroProtocollo} maxLength={100} onChange={(evento) => cambia("numeroProtocollo", evento.target.value)} />
+        </label>
+      ) : null}
       <CampoTestata label="Data documento" campo="data_documento" forzati={forzati} onRipristina={onRipristina}>
         <Input id={`${prefisso}-data`} type="date" value={draft.dataDocumento} onChange={(evento) => cambia("dataDocumento", evento.target.value)} />
       </CampoTestata>
@@ -501,9 +612,60 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
   const [modificaTestata, setModificaTestata] = useState(false);
   const [gruppi, setGruppi] = useState<GruppoDraft[]>(() => documento.misure.length > 0 ? documento.misure.map(daMisura) : [nuovoGruppo(Math.max(1, Math.round(documento.numColli ?? 1)))]);
 
+  // Al ricaricamento si riparte da quello che c'e' in archivio, MA i gruppi
+  // nuovi gia' iniziati restano. Prima venivano buttati: salvando il primo
+  // gruppo di una bolla con due colli diversi, il secondo spariva prima di
+  // poterlo salvare (segnalato sulla BC 2631, 24/09/2026).
   useEffect(() => {
-    setGruppi(documento.misure.length > 0 ? documento.misure.map(daMisura) : [nuovoGruppo(Math.max(1, Math.round(documento.numColli ?? 1)))]);
+    setGruppi((correnti) => {
+      const salvati = documento.misure.map(daMisura);
+      const inCorso = correnti.filter((gruppo) => gruppo.id === null && gruppoIniziato(gruppo));
+      if (salvati.length + inCorso.length === 0) return [nuovoGruppo(Math.max(1, Math.round(documento.numColli ?? 1)))];
+      return [...salvati, ...inCorso];
+    });
   }, [documento.misure, documento.numColli]);
+
+  const [salvataggioGruppi, setSalvataggioGruppi] = useState(false);
+  const [erroreGruppi, setErroreGruppi] = useState<string | null>(null);
+  const daSalvare = gruppi.filter((gruppo) => gruppoModificato(gruppo, documento.misure));
+
+  /** Salva in un colpo solo tutti i gruppi nuovi o cambiati, poi ricarica una volta. */
+  const salvaTutti = async () => {
+    const comandi = daSalvare.map((gruppo) => ({
+      chiave: gruppo.chiave,
+      comando: gruppo.id
+        ? { operazione: "aggiorna" as const, id: gruppo.id, spedizioneId: documento.idSpedizione, ...valoriDraft(gruppo) }
+        : { operazione: "crea" as const, spedizioneId: documento.idSpedizione, ...valoriDraft(gruppo) },
+    }));
+    const nonValido = comandi.findIndex(({ comando }) => !MutazioneBollaMisura.safeParse(comando).success);
+    if (nonValido >= 0) {
+      setErroreGruppi(`Gruppo ${gruppi.findIndex((gruppo) => gruppo.chiave === comandi[nonValido].chiave) + 1}: completa quantità e dimensioni con valori maggiori di zero.`);
+      return;
+    }
+    setSalvataggioGruppi(true); setErroreGruppi(null);
+    const salvati = new Set<string>();
+    try {
+      for (const { chiave, comando } of comandi) {
+        await inviaComando(comando);
+        salvati.add(chiave);
+      }
+    } catch (causa) {
+      setErroreGruppi(causa instanceof Error ? causa.message : "Salvataggio non riuscito.");
+    } finally {
+      setGruppi((correnti) => correnti.filter((gruppo) => gruppo.id !== null || !salvati.has(gruppo.chiave)));
+      setSalvataggioGruppi(false);
+      if (salvati.size > 0) await onAggiornata();
+    }
+  };
+
+  /** «Quantità 2» vuol dire due colli uguali; se non lo sono, una riga per collo. */
+  const dividi = (chiave: string) => setGruppi((correnti) => correnti.flatMap((gruppo) => {
+    if (gruppo.chiave !== chiave) return [gruppo];
+    const quanti = Math.max(1, Math.round(Number(gruppo.quantita) || 1));
+    return Array.from({ length: quanti }, (_, indice) => indice === 0
+      ? { ...gruppo, quantita: "1" }
+      : { ...nuovoGruppo(1), lunghezzaCm: gruppo.lunghezzaCm, larghezzaCm: gruppo.larghezzaCm, altezzaCm: gruppo.altezzaCm });
+  }));
 
   const misureValide = useMemo(() => gruppi.flatMap((gruppo) => {
     const valori = valoriDraft(gruppo);
@@ -532,7 +694,7 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
             <OrigineBadge origine={documento.origine} />
           </div>
           <p className="mt-1 break-words text-sm font-medium text-text">{documento.soggetto ?? "Controparte non indicata"}</p>
-          <p className="mt-0.5 text-xs text-text-muted">{documento.direzione === "entrata" ? "Entrata" : "Uscita"} · {mostraData(documento.dataDocumento)}</p>
+          <p className="mt-0.5 text-xs text-text-muted">{documento.direzione === "entrata" ? "Entrata" : "Uscita"} · {mostraData(documento.dataDocumento)}{documento.direzione === "entrata" && documento.numeroProtocollo ? ` · Prot. BF ${documento.numeroProtocollo}` : ""}{documento.porto ? ` · ${documento.porto}` : ""}</p>
         </div>
         <dl className="grid grid-cols-2 gap-x-5 gap-y-1 text-sm lg:block">
           <div className="min-w-0"><dt className="text-xs text-text-muted">Vettore</dt><dd className="break-words font-medium text-text">{vettoreDescrizione}</dd></div>
@@ -557,14 +719,14 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
           {modificaTestata && !documento.congelata ? <ModificaBollaForm documento={documento} vettori={vettori} onAggiornata={async () => { setModificaTestata(false); await onAggiornata(); }} /> : <RiepilogoTestata documento={documento} vettori={vettori} />}
 
           <div className="mb-4 mt-7 flex flex-wrap items-end justify-between gap-3 border-t border-border pt-5">
-            <div><h3 className="font-tenorite text-base font-bold text-text">Gruppi di colli omogenei</h3><p className="mt-1 text-xs text-text-muted">Un gruppo per ogni combinazione di lunghezza, larghezza e altezza.</p></div>
+            <div><h3 className="font-tenorite text-base font-bold text-text">Misure dei colli</h3><p className="mt-1 max-w-[70ch] text-xs text-text-muted">Colli tutti uguali: una riga con la quantità. Colli diversi: una riga per ciascuno — «Una riga per collo» divide il gruppo. Poi «Salva tutte le misure».</p></div>
             <div className="text-right"><p className="text-xs text-text-muted">Volume rilevato</p><p className="font-tenorite text-lg font-bold tabular-nums text-text">{numero.format(riepilogo.volumeM3)} m³</p></div>
           </div>
           <div className="space-y-3">
-            {gruppi.map((gruppo, indice) => <GruppoMisuraForm key={gruppo.chiave} indice={indice} spedizioneId={documento.idSpedizione} gruppo={gruppo} congelata={documento.congelata} onChange={(prossimo) => setGruppi((correnti) => correnti.map((riga) => riga.chiave === gruppo.chiave ? prossimo : riga))} onRimuoviLocale={() => setGruppi((correnti) => correnti.filter((riga) => riga.chiave !== gruppo.chiave))} onAggiornata={onAggiornata} />)}
+            {gruppi.map((gruppo, indice) => <GruppoMisuraForm key={gruppo.chiave} indice={indice} spedizioneId={documento.idSpedizione} gruppo={gruppo} congelata={documento.congelata} modificato={gruppoModificato(gruppo, documento.misure)} onChange={(prossimo) => setGruppi((correnti) => correnti.map((riga) => riga.chiave === gruppo.chiave ? prossimo : riga))} onRimuoviLocale={() => setGruppi((correnti) => correnti.filter((riga) => riga.chiave !== gruppo.chiave))} onDividi={() => dividi(gruppo.chiave)} onAggiornata={onAggiornata} />)}
           </div>
           {documento.numColli !== null && colliMisurati > 0 && colliMisurati !== documento.numColli ? <p className="mt-3 text-xs font-medium text-amber-800" role="status">I gruppi validi coprono {colliMisurati} colli, mentre la bolla ne dichiara {numero.format(documento.numColli)}.</p> : null}
-          {!documento.congelata ? <Button type="button" size="sm" variant="outline" className="mt-4" onClick={() => setGruppi((correnti) => [...correnti, nuovoGruppo(correnti.length === 0 ? Math.round(documento.numColli ?? 1) : 1)])}><Plus className="h-4 w-4" aria-hidden="true" />Aggiungi gruppo</Button> : null}
+          {!documento.congelata ? <div className="mt-4 flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="outline" onClick={() => setGruppi((correnti) => [...correnti, nuovoGruppo(correnti.length === 0 ? Math.round(documento.numColli ?? 1) : 1)])}><Plus className="h-4 w-4" aria-hidden="true" />Aggiungi collo diverso</Button><Button type="button" size="sm" disabled={salvataggioGruppi || daSalvare.length === 0} onClick={() => void salvaTutti()}>{salvataggioGruppi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}Salva tutte le misure{daSalvare.length > 0 ? ` (${daSalvare.length})` : ""}</Button>{erroreGruppi ? <p role="alert" className="w-full text-xs font-medium text-danger">{erroreGruppi}</p> : null}</div> : null}
         </div>
       ) : null}
     </article>
@@ -587,7 +749,7 @@ function NumeroDaAssegnare({ documento, onAggiornata }: { documento: BollaDocume
     setSalvataggio(true); setErrore(null);
     const draft = draftDaDocumento(documento);
     try {
-      await inviaComando({ operazione: "aggiorna_bolla", spedizioneId: documento.idSpedizione, ...draft, numeroRiferimento: numeroBolla.trim(), colli: Number(draft.colli), pesoKg: Number(draft.pesoKg) });
+      await inviaComando({ operazione: "aggiorna_bolla", spedizioneId: documento.idSpedizione, ...comandoTestata(draft), numeroRiferimento: numeroBolla.trim() });
       await onAggiornata();
     } catch (causa) { setErrore(causa instanceof Error ? causa.message : "Numero non salvato."); }
     finally { setSalvataggio(false); }
@@ -596,7 +758,7 @@ function NumeroDaAssegnare({ documento, onAggiornata }: { documento: BollaDocume
 }
 
 function OrigineBadge({ origine }: { origine: BollaDocumento["origine"] }) {
-  const label = origine === "excel_storico" ? "Excel storico" : origine === "gestionale" ? "Gestionale" : "Manuale";
+  const label = origine === "excel_storico" ? "Excel storico" : origine === "gestionale" ? "Gestionale" : origine === "simulazione" ? "Simulazione" : "Manuale";
   return <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-text-muted">{label}</span>;
 }
 
@@ -642,7 +804,12 @@ function RiepilogoTestata({ documento, vettori }: { documento: BollaDocumento; v
     { campo: "peso_bolla", valore: documento.pesoLordoKg === null ? "—" : `${numero.format(documento.pesoLordoKg)} kg` },
   ];
   const nomeVettoreOriginale = (id: string | number | boolean | null) => typeof id === "string" ? vettori.find((vettore) => vettore.id === id)?.nome ?? id : String(id ?? "vuoto");
-  return <dl className="grid gap-x-5 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">{valori.map(({ campo, valore }) => { const forzato = documento.campiForzati[campo]; return <div key={campo} className="min-w-0"><dt className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">{ETICHETTE_CAMPI[campo]}{forzato ? <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 font-semibold text-amber-800"><History className="h-3 w-3" />Forzato</span> : null}</dt><dd className="mt-0.5 break-words text-sm font-medium text-text">{valore}</dd>{forzato ? <dd className="mt-1 break-words text-[11px] text-amber-800">Gestionale: {campo === "vettore_id" ? nomeVettoreOriginale(forzato.valorePrecedente) : String(forzato.valorePrecedente ?? "vuoto")}</dd> : null}</div>; })}</dl>;
+  const extra: Array<{ etichetta: string; valore: string }> = [
+    ...(documento.direzione === "entrata" ? [{ etichetta: "Nostro protocollo BF", valore: documento.numeroProtocollo ?? "—" }] : []),
+    { etichetta: "Porto", valore: documento.porto ?? "Non indicato" },
+    ...(documento.riaddebitoPrevisto !== null ? [{ etichetta: "Addebito al cliente (simulazione)", valore: euro.format(documento.riaddebitoPrevisto) }] : []),
+  ];
+  return <dl className="grid gap-x-5 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">{extra.map(({ etichetta, valore }) => <div key={etichetta} className="min-w-0"><dt className="text-xs text-text-muted">{etichetta}</dt><dd className="mt-0.5 break-words text-sm font-medium text-text">{valore}</dd></div>)}{valori.map(({ campo, valore }) => { const forzato = documento.campiForzati[campo]; return <div key={campo} className="min-w-0"><dt className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">{ETICHETTE_CAMPI[campo]}{forzato ? <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 font-semibold text-amber-800"><History className="h-3 w-3" />Forzato</span> : null}</dt><dd className="mt-0.5 break-words text-sm font-medium text-text">{valore}</dd>{forzato ? <dd className="mt-1 break-words text-[11px] text-amber-800">Gestionale: {campo === "vettore_id" ? nomeVettoreOriginale(forzato.valorePrecedente) : String(forzato.valorePrecedente ?? "vuoto")}</dd> : null}</div>; })}</dl>;
 }
 
 function ModificaBollaForm({ documento, vettori, onAggiornata }: { documento: BollaDocumento; vettori: BollaVettoreOpzione[]; onAggiornata: () => Promise<void> }) {
@@ -651,7 +818,7 @@ function ModificaBollaForm({ documento, vettori, onAggiornata }: { documento: Bo
   const [errore, setErrore] = useState<string | null>(null);
   const salva = async () => {
     setSalvataggio(true); setErrore(null);
-    try { await inviaComando({ operazione: "aggiorna_bolla", spedizioneId: documento.idSpedizione, ...draft, colli: Number(draft.colli), pesoKg: Number(draft.pesoKg) }); await onAggiornata(); }
+    try { await inviaComando({ operazione: "aggiorna_bolla", spedizioneId: documento.idSpedizione, ...comandoTestata(draft) }); await onAggiornata(); }
     catch (causa) { setErrore(causa instanceof Error ? causa.message : "Salvataggio non riuscito."); }
     finally { setSalvataggio(false); }
   };
@@ -664,23 +831,35 @@ function ModificaBollaForm({ documento, vettori, onAggiornata }: { documento: Bo
   return <div><TestataFields draft={draft} vettori={vettori} onChange={setDraft} prefisso={`modifica-${documento.idSpedizione}`} forzati={documento.campiForzati} onRipristina={(campo) => void ripristina(campo)} />{errore ? <p role="alert" className="mt-3 text-sm font-medium text-danger">{errore}</p> : null}<div className="mt-4 flex justify-end"><Button type="button" size="sm" disabled={salvataggio} onClick={() => void salva()}>{salvataggio ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Salva modifiche</Button></div></div>;
 }
 
-function GruppoMisuraForm({ indice, spedizioneId, gruppo, congelata, onChange, onRimuoviLocale, onAggiornata }: { indice: number; spedizioneId: string; gruppo: GruppoDraft; congelata: boolean; onChange: (gruppo: GruppoDraft) => void; onRimuoviLocale: () => void; onAggiornata: () => Promise<void> }) {
+function GruppoMisuraForm({ indice, spedizioneId, gruppo, congelata, modificato, onChange, onRimuoviLocale, onDividi, onAggiornata }: { indice: number; spedizioneId: string; gruppo: GruppoDraft; congelata: boolean; modificato: boolean; onChange: (gruppo: GruppoDraft) => void; onRimuoviLocale: () => void; onDividi: () => void; onAggiornata: () => Promise<void> }) {
   const [salvataggio, setSalvataggio] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
   const [confermaElimina, setConfermaElimina] = useState(false);
-  const prefisso = `gruppo-${spedizioneId}-${indice}`;
+  const prefisso = `gruppo-${spedizioneId}-${gruppo.chiave}`;
   const invia = async (elimina = false) => {
     const valori = valoriDraft(gruppo);
     const comando = elimina ? { operazione: "elimina" as const, id: gruppo.id, spedizioneId } : gruppo.id ? { operazione: "aggiorna" as const, id: gruppo.id, spedizioneId, ...valori } : { operazione: "crea" as const, spedizioneId, ...valori };
     const parsed = MutazioneBollaMisura.safeParse(comando);
     if (!parsed.success) { setErrore("Completa quantità e dimensioni con valori maggiori di zero."); return; }
     setSalvataggio(true); setErrore(null);
-    try { await inviaComando(parsed.data); await onAggiornata(); }
+    try {
+      await inviaComando(parsed.data);
+      // Il gruppo nuovo ora sta in archivio: la bozza locale va tolta, se no
+      // al ricaricamento comparirebbe due volte.
+      if (!gruppo.id) onRimuoviLocale();
+      await onAggiornata();
+    }
     catch (causa) { setErrore(causa instanceof Error ? causa.message : "Salvataggio non riuscito."); }
     finally { setSalvataggio(false); setConfermaElimina(false); }
   };
+  const quantita = Math.round(Number(gruppo.quantita) || 0);
   return (
-    <div className="rounded-xl border border-border bg-bg p-4">
+    <div className={`rounded-xl border bg-bg p-4 ${modificato && !congelata ? "border-warning/60" : "border-border"}`}>
+      <p className="mb-2 flex flex-wrap items-center gap-2 text-xs font-medium text-text-muted">
+        {quantita > 1 ? `${quantita} colli uguali` : `Collo ${indice + 1}`}
+        {modificato && !congelata ? <span className="rounded-full bg-warning/15 px-2 py-0.5 font-semibold text-amber-800">Da salvare</span> : null}
+        {!congelata && quantita > 1 ? <button type="button" className="text-primary underline underline-offset-2 hover:text-primary-dark" onClick={onDividi}>Una riga per collo</button> : null}
+      </p>
       <GruppoFields prefisso={prefisso} gruppo={gruppo} disabled={congelata} onChange={onChange} azioni={<div className="flex gap-2 sm:col-span-2 xl:col-span-1">{!congelata ? <><Button type="button" size="sm" disabled={salvataggio} onClick={() => void invia()}>{salvataggio ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Salva</Button>{gruppo.id ? (confermaElimina ? <Button type="button" size="sm" variant="danger" disabled={salvataggio} onClick={() => void invia(true)}>Conferma</Button> : <Button type="button" size="icon" variant="ghost" aria-label={`Elimina gruppo ${indice + 1}`} onClick={() => setConfermaElimina(true)}><Trash2 className="h-4 w-4 text-danger" /></Button>) : <Button type="button" size="icon" variant="ghost" aria-label={`Rimuovi gruppo ${indice + 1}`} onClick={onRimuoviLocale}><Trash2 className="h-4 w-4 text-text-muted" /></Button>}</> : <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600"><FileLock2 className="h-4 w-4" />Sola lettura</span>}</div>} />
       {errore ? <p className="mt-2 text-xs font-medium text-danger" role="alert">{errore}</p> : null}
     </div>

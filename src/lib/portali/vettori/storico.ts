@@ -1,4 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  addebitoCliente,
+  caricaAccordiRiaddebito,
+  caricaTuttiGliScaglioni,
+} from "@/lib/portali/vettori/riaddebito";
 import type {
   EsitoStorico,
   FiltriStorico,
@@ -51,7 +56,52 @@ export async function elencoSpedizioni(f: FiltriStorico = {}): Promise<EsitoStor
     p_per_pagina: f.perPagina ?? 100,
   });
   if (error) throw new Error(`Lettura storico fallita: ${error.message}`);
-  return data as EsitoStorico;
+  const esito = data as EsitoStorico;
+
+  // L'addebito al cliente si calcola qui e non in SQL: le regole (scaglioni,
+  // accordi per cliente, importo fissato in simulazione) sono gia' scritte e
+  // testate in `riaddebito.ts`, e riscriverle in SQL vorrebbe dire tenerne due
+  // copie. Due letture in piu' per pagina, non per riga.
+  if (esito.righe.some((riga) => riga.direzione === "uscita")) {
+    const [scaglioni, accordi] = await Promise.all([
+      caricaTuttiGliScaglioni(),
+      caricaAccordiRiaddebito(),
+    ]);
+    esito.righe = esito.righe.map((riga) => ({
+      ...riga,
+      addebito_cliente: addebitoCliente(riga, scaglioni, accordi),
+    }));
+  }
+  return esito;
+}
+
+/**
+ * La spunta «addebito verificato in fatturazione».
+ *
+ * Si mette sulla spedizione, non sulla riga di fattura: e' la bolla che si
+ * fattura al cliente, e una spedizione ancora senza fattura del vettore si
+ * puo' gia' verificare. La colonna non e' fra quelle che il congelamento
+ * protegge, quindi funziona anche sulle bolle agganciate a una fattura.
+ */
+export async function segnaAddebitoVerificato(
+  spedizioneId: string,
+  verificato: boolean,
+  utenteId: string
+): Promise<{ verificatoIl: string | null }> {
+  const admin = createAdminClient();
+  const verificatoIl = verificato ? new Date().toISOString() : null;
+  const { data, error } = await admin
+    .schema(SCHEMA)
+    .from("spedizioni")
+    .update({
+      riaddebito_verificato_il: verificatoIl,
+      riaddebito_verificato_da: verificato ? utenteId : null,
+    })
+    .eq("id", spedizioneId)
+    .select("id");
+  if (error) throw new Error(`Spunta non salvata: ${error.message}`);
+  if ((data ?? []).length === 0) throw new Error("Spedizione non trovata.");
+  return { verificatoIl };
 }
 
 export async function valoriFiltro(): Promise<ValoriFiltroStorico> {
@@ -72,6 +122,7 @@ const INTESTAZIONI = [
   "Peso tassato", "Peso applicato", "Nolo", "Supplementi", "Adeguamento",
   "Carburante", "Fatturato", "Atteso", "Differenza", "Scostamento %",
   "Esito", "Abbinamento", "Listino", "Zona", "Anomalie aperte", "Stato fatturazione", "Stato fattura",
+  "Protocollo BF", "Addebito cliente", "Fonte addebito", "Addebito verificato il", "Fattura quadrata",
 ];
 
 /**
@@ -135,6 +186,11 @@ export function versoCsv(righe: RigaStorico[]): string {
           ? "Fattura in bozza"
           : "Fatturata",
       r.stato_fattura ?? "",
+      r.numero_protocollo ?? "",
+      num(r.addebito_cliente?.importo),
+      r.addebito_cliente ? r.addebito_cliente.regola : "",
+      r.riaddebito_verificato_il?.slice(0, 10) ?? "",
+      r.fattura_quadrata === false ? "No" : r.fattura_quadrata === true ? "Sì" : "",
     ]
       .map(campo)
       .join(";")

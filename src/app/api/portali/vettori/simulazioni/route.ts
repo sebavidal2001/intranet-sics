@@ -1,111 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireVettori } from "@/lib/portali/vettori/api-guard";
 import { determinaProvincia, risolviCap } from "@/lib/portali/vettori/cap";
 import { normalizzaRiferimento } from "@/lib/portali/vettori/fatture/testo";
 import type { ConfermaSimulazione } from "@/lib/portali/vettori/tipi";
 import { logError } from "@/lib/logger";
+import {
+  CorpoConfermaSimulazione,
+  type SimulazioneConfermataInput,
+} from "@/lib/portali/vettori/simulazione-conferma";
 
 export const dynamic = "force-dynamic";
-
-const CONDIZIONI = [
-  "bancale",
-  "non_sovrapponibile",
-  "movimentazione_manuale",
-  "oversized",
-  "ztl",
-  "etichetta_manuale",
-  "triangolazione",
-  "fuori_provincia",
-  "giacenza",
-  "assegno",
-] as const;
-
-const Gruppo = z.object({
-  quantita: z.number().int().min(1).max(999),
-  lunghezzaCm: z.number().positive().max(2000),
-  larghezzaCm: z.number().positive().max(2000),
-  altezzaCm: z.number().positive().max(2000),
-  pesoRealeKg: z.number().positive().max(100_000).nullable().optional(),
-}).strict();
-
-const VoceCalcolo = z.object({
-  codice: z.string(),
-  descrizione: z.string(),
-  importo: z.number().finite(),
-}).strict();
-
-const Costo = z.object({
-  pesoReale: z.number().min(0),
-  pesoVolumetrico: z.number().min(0),
-  pesoTassabile: z.number().min(0),
-  pesoApplicato: z.enum(["reale", "volumetrico", "minimo"]),
-  nolo: z.number().min(0),
-  fasciaDescrizione: z.string(),
-  supplementi: z.array(VoceCalcolo),
-  imponibileNolo: z.number().min(0),
-  adeguamento: z.number().min(0),
-  carburante: z.number().min(0),
-  fuoriBase: z.number().min(0),
-  totale: z.number().min(0),
-  avvertenze: z.array(z.string()),
-}).strict();
-
-const Riaddebito = z.object({
-  importo: z.number().min(0).nullable(),
-  pesoUsato: z.number().min(0),
-  basePeso: z.enum(["reale", "tassabile"]),
-  regola: z.string(),
-  avvertenza: z.string().nullable(),
-}).strict();
-
-const Esito = z.object({
-  vettoreId: z.string().uuid(),
-  vettoreCodice: z.string().min(1),
-  vettoreNome: z.string().min(1),
-  disponibile: z.boolean(),
-  motivoIndisponibilita: z.string().optional(),
-  listino: z.object({
-    etichetta: z.string(),
-    validoDal: z.string().date(),
-    validoAl: z.string().date().nullable(),
-  }).strict().nullable().optional(),
-  calcolo: Costo.optional(),
-  differenzaDalMigliore: z.number().finite().optional(),
-  riaddebito: Riaddebito.optional(),
-  margine: z.number().finite().nullable().optional(),
-}).strict();
-
-const Simulazione = z.object({
-  direzione: z.enum(["entrata", "uscita"]).default("uscita"),
-  cap: z.string().trim().regex(/^\d{5}$/).nullable().optional(),
-  provincia: z.string().trim().regex(/^[A-Za-z]{2}$/).nullable().optional(),
-  fonteProvincia: z.enum(["cap", "prefisso", "manuale"]).nullable().optional(),
-  controparteCodice: z.string().trim().min(1).max(100).nullable().optional(),
-  colli: z.number().int().min(1).max(999),
-  pesoKg: z.number().positive().max(100_000),
-  gruppi: z.array(Gruppo).max(999).default([]),
-  lunghezzaCm: z.number().positive().max(2000).nullable().optional(),
-  larghezzaCm: z.number().positive().max(2000).nullable().optional(),
-  altezzaCm: z.number().positive().max(2000).nullable().optional(),
-  data: z.string().date(),
-  condizioni: z.array(z.enum(CONDIZIONI)).max(CONDIZIONI.length).default([]),
-  vettoreSceltoId: z.string().uuid(),
-  costoPrevisto: z.number().min(0),
-  riaddebitoPrevisto: z.number().min(0).nullable(),
-  esiti: z.array(Esito).min(1).max(100),
-}).strict();
-
-const Body = z.object({
-  simulazione: Simulazione,
-  bolla: z.object({
-    numeroRiferimento: z.string().trim().min(1).max(200).nullable(),
-    dataDocumento: z.string().date(),
-    controparteNome: z.string().trim().min(1).max(500),
-    controparteCodice: z.string().trim().min(1).max(100).nullable(),
-  }).strict(),
-}).strict();
 
 interface MisuraDb {
   quantita: number;
@@ -116,7 +21,7 @@ interface MisuraDb {
   volume_m3: number;
 }
 
-function misureDaInput(input: z.infer<typeof Simulazione>): MisuraDb[] {
+function misureDaInput(input: SimulazioneConfermataInput): MisuraDb[] {
   const gruppi = input.gruppi.length > 0
     ? input.gruppi
     : input.lunghezzaCm && input.larghezzaCm && input.altezzaCm
@@ -170,6 +75,45 @@ async function agganciaMisure(
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Porta sulla spedizione quello che l'operatore ha deciso al banco.
+ *
+ * L'amministrazione lo ha chiesto esplicitamente: i dati della simulazione
+ * (colli, vettore, addebito al cliente) devono ritrovarsi nella bolla che il
+ * gestionale importa, senza ribatterli. Le misure passano da `agganciaMisure`;
+ * qui restano il vettore e l'addebito.
+ *
+ * Il vettore si scrive solo dove manca: se il gestionale ne ha gia' uno, e'
+ * quello registrato sul documento e non lo si sovrascrive con una stima. Una
+ * spedizione congelata da una fattura non cambia vettore (lo impedisce anche
+ * il trigger), ma l'addebito si', perche' non entra nel costo.
+ */
+async function completaSpedizione(
+  spedizioneId: string,
+  vettoreId: string,
+  riaddebito: number | null
+): Promise<void> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .schema("vettori")
+    .from("spedizioni")
+    .select("vettore_id,congelata")
+    .eq("id", spedizioneId)
+    .single();
+  if (error) throw new Error(error.message);
+  const riga = data as { vettore_id: string | null; congelata: boolean };
+  const aggiornamento: Record<string, unknown> = {};
+  if (!riga.vettore_id && !riga.congelata) aggiornamento.vettore_id = vettoreId;
+  if (riaddebito !== null) aggiornamento.riaddebito_previsto = riaddebito;
+  if (Object.keys(aggiornamento).length === 0) return;
+  const { error: updateError } = await admin
+    .schema("vettori")
+    .from("spedizioni")
+    .update({ ...aggiornamento, aggiornata_il: new Date().toISOString() })
+    .eq("id", spedizioneId);
+  if (updateError) throw new Error(updateError.message);
+}
+
 /** Conferma la decisione e collega le misure alla spedizione, nuova o gia esistente. */
 export async function POST(request: NextRequest) {
   try {
@@ -181,8 +125,11 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: "Corpo della richiesta non valido." }, { status: 400 });
     }
-    const parsed = Body.safeParse(corpo);
+    const parsed = CorpoConfermaSimulazione.safeParse(corpo);
     if (!parsed.success) {
+      // Un 400 qui e' quasi sempre uno scollamento fra la risposta di /simula e
+      // questo schema, non un errore dell'operatore: va lasciato nel log.
+      logError("vettori.simulazioni", "conferma rifiutata dallo schema", parsed.error.issues.slice(0, 5));
       return NextResponse.json(
         { error: "Dati non validi.", dettagli: parsed.error.flatten().fieldErrors },
         { status: 400 }
@@ -277,6 +224,11 @@ export async function POST(request: NextRequest) {
 
     if (spedizioneEsistente) {
       await agganciaMisure(spedizioneEsistente, misure, guard.user.id);
+      await completaSpedizione(
+        spedizioneEsistente,
+        simulazione.vettoreSceltoId,
+        simulazione.riaddebitoPrevisto
+      );
       const risposta: ConfermaSimulazione = {
         simulazioneId,
         spedizioneId: spedizioneEsistente,
@@ -317,6 +269,11 @@ export async function POST(request: NextRequest) {
       .update({ spedizione_id: spedizioneId })
       .eq("id", simulazioneId);
     if (collegamentoError) throw new Error(collegamentoError.message);
+    await completaSpedizione(
+      spedizioneId,
+      simulazione.vettoreSceltoId,
+      simulazione.riaddebitoPrevisto
+    );
 
     const risposta: ConfermaSimulazione = {
       simulazioneId,
