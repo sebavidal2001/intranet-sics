@@ -78,47 +78,99 @@ function testo(v: unknown, fallback = ""): string {
   return s || fallback;
 }
 
+interface ErrorePostgrest {
+  message?: string;
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+}
+
+/**
+ * Il messaggio di un errore PostgREST puo' essere VUOTO: e' cio' che finiva nel
+ * log come "Conteggio prodotti:" e basta, nove volte, senza nessun indizio. Si
+ * compone quel che c'e', e in ultima istanza lo stato HTTP.
+ */
+export function descriviErrore(errore: ErrorePostgrest | null, stato?: number): string {
+  const parti = [errore?.message, errore?.code, errore?.details, errore?.hint]
+    .map((p) => (p ?? "").trim())
+    .filter(Boolean);
+  if (stato) parti.push(`HTTP ${stato}`);
+  return parti.length > 0 ? parti.join(" · ") : "errore senza descrizione";
+}
+
+const TENTATIVI = 3;
+
+/**
+ * Riprova le letture che falliscono per un momento: durante l'ingest notturno
+ * del Cruscotto le tabelle `prodotti` e `prodotti_giacenze` vengono riscritte,
+ * e una richiesta che cade in quella finestra non dice niente dei dati.
+ */
+async function conRiprova<T extends { error: ErrorePostgrest | null; status?: number }>(
+  descrizione: string,
+  richiesta: () => PromiseLike<T>
+): Promise<T> {
+  let ultimo = "";
+  for (let tentativo = 1; tentativo <= TENTATIVI; tentativo++) {
+    const esito = await richiesta();
+    if (!esito.error) return esito;
+    ultimo = descriviErrore(esito.error, esito.status);
+    if (tentativo < TENTATIVI) await new Promise((r) => setTimeout(r, 500 * tentativo));
+  }
+  throw new Error(`${descrizione}: ${ultimo} (dopo ${TENTATIVI} tentativi)`);
+}
+
 async function scaricaPaginato(tabella: string, campi: string): Promise<Riga[]> {
   const sb = createAdminClient().schema("preventivatore");
-  const conteggio = await sb.from(tabella).select("*", { count: "exact", head: true });
-  if (conteggio.error) throw new Error(`Conteggio ${tabella}: ${conteggio.error.message}`);
-  const totale = conteggio.count ?? 0;
-  if (!totale) return [];
+  const intervallo = (pagina: number) => [pagina * PAGINA, pagina * PAGINA + PAGINA - 1] as const;
+
+  // Il conteggio viaggia con la PRIMA PAGINA, non con una richiesta HEAD a
+  // parte: una HEAD non ha corpo, quindi quando fallisce l'errore arriva senza
+  // messaggio. E si risparmia un giro.
+  const prima = await conRiprova(`Lettura ${tabella} pagina 0`, () =>
+    sb.from(tabella).select(campi, { count: "exact" }).range(...intervallo(0))
+  );
+  const totale = prima.count ?? 0;
+  const blocchi: Riga[][] = [(prima.data ?? []) as unknown as Riga[]];
 
   const pagine = Math.ceil(totale / PAGINA);
-  const blocchi: Riga[][] = [];
-  for (let base = 0; base < pagine; base += 6) {
+  for (let base = 1; base < pagine; base += 6) {
     const lotto = await Promise.all(
       Array.from({ length: Math.min(6, pagine - base) }, (_, offset) => {
         const pagina = base + offset;
-        return sb
-          .from(tabella)
-          .select(campi)
-          .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
+        return conRiprova(`Lettura ${tabella} pagina ${pagina}`, () =>
+          sb.from(tabella).select(campi).range(...intervallo(pagina))
+        );
       })
     );
-    for (const esito of lotto) {
-      if (esito.error) throw new Error(`Lettura ${tabella}: ${esito.error.message}`);
-      blocchi.push((esito.data ?? []) as unknown as Riga[]);
-    }
+    for (const esito of lotto) blocchi.push((esito.data ?? []) as unknown as Riga[]);
   }
   return blocchi.flat();
 }
 
 async function caricaBase(): Promise<CacheArticoli> {
   if (cache && Date.now() - cache.caricatoIl < CACHE_MS) return cache;
-  const [prodotti, giacenze] = await Promise.all([
-    scaricaPaginato(
-      "prodotti",
-      "codice,descrizione,categoria,gruppo,fornitore,ult_costo,data_ult_costo,attivo,aggiornato_il"
-    ),
-    scaricaPaginato(
-      "prodotti_giacenze",
-      "codice,magazzino,esistenza,disponibilita,qta_ord_clienti,qta_ord_fornitori,qta_imp_produzione,qta_ord_produzione,aggiornato_il"
-    ),
-  ]);
-  cache = { prodotti, giacenze, caricatoIl: Date.now() };
-  return cache;
+  try {
+    const [prodotti, giacenze] = await Promise.all([
+      scaricaPaginato(
+        "prodotti",
+        "codice,descrizione,categoria,gruppo,fornitore,ult_costo,data_ult_costo,attivo,aggiornato_il"
+      ),
+      scaricaPaginato(
+        "prodotti_giacenze",
+        "codice,magazzino,esistenza,disponibilita,qta_ord_clienti,qta_ord_fornitori,qta_imp_produzione,qta_ord_produzione,aggiornato_il"
+      ),
+    ]);
+    cache = { prodotti, giacenze, caricatoIl: Date.now() };
+    return cache;
+  } catch (e) {
+    // Meglio i dati di qualche minuto fa di una pagina d'errore: la data di
+    // aggiornamento mostrata in pagina viene dalle righe, quindi resta vera.
+    if (cache) {
+      console.warn("[prototipo-bi.articoli] rilettura fallita, servo la copia precedente:", e instanceof Error ? e.message : e);
+      return cache;
+    }
+    throw e;
+  }
 }
 
 export async function ottieniCruscottoArticoli(
