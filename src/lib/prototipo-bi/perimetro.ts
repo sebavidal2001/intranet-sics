@@ -107,7 +107,9 @@ export function applicaPerimetro(snapshot: Snapshot, perimetro: Perimetro): Snap
     conteggi[chiave] = filtrate.length;
   }
 
-  return { ...snapshot, dataset, conteggi };
+  // Gli acquisti non hanno agente ne' business unit: con un perimetro ristretto
+  // non c'e' una parte che spetti, e il default sicuro e' niente.
+  return { ...snapshot, dataset, conteggi, acquisti: snapshot.acquisti ? [] : undefined };
 }
 
 /**

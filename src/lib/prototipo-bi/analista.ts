@@ -192,6 +192,10 @@ function azioneDeterministica(s: Segnale): string | null {
       return "Verificare con la logistica i clienti con più valore confermato in ritardo.";
     case "costi_acquisto":
       return "Verificare con gli acquisti i rincari e aggiornare i listini di vendita.";
+    case "fornitori":
+      return "Sollecitare i fornitori indicati e valutare alternative per gli articoli critici.";
+    case "carico_acquisti":
+      return "Rivedere la distribuzione degli ordini fra i buyer e smaltire le righe scadute.";
     default:
       return null;
   }

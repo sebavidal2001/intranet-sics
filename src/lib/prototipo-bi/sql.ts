@@ -29,6 +29,18 @@ ARTICOLI E ACQUISTI — schema powerbi:
 - bi_copertura_costi: "Tipo Documento", "Mese", "Righe", "Righe Con Costo",
   "Righe Senza Costo", "Copertura %", "Ricavo Totale", "Ricavo Con Costo".
 
+ORDINI DI ACQUISTO A FORNITORE — schema public, colonne SENZA virgolette:
+- bi_acquisti: una riga per riga d'ordine a fornitore (profilo OF/OFT/OFR) dal 2024.
+  id_riga, profilo, numero_ordine, data_ordine, creato_il, codice_fornitore, fornitore,
+  buyer_utente, buyer (chi ha creato l'ordine; "acquisti" è un utente condiviso),
+  codice_articolo, descrizione, gruppo_articoli, quantita, qta_evasa, prezzo_netto,
+  valore, data_prevista, data_confermata (promessa del fornitore), data_richiesta,
+  riga_evasa, chiusa_forzata (boolean), primo_arrivo, ultimo_arrivo (DDT del
+  fornitore collegati), qta_arrivata.
+  Puntuale = primo_arrivo <= coalesce(data_confermata, data_prevista).
+  Scaduta = not riga_evasa and not chiusa_forzata and qta_arrivata < quantita
+  and coalesce(data_confermata, data_prevista) < current_date.
+
 COSA È CONSENTITO
 SELECT e WITH, inclusi CTE, join, subquery, CASE, HAVING, funzioni finestra,
 ranking, aggregazioni e condizioni fra parentesi.
@@ -89,6 +101,7 @@ const VISTE_AUTORIZZATE = new Set([
   "public.bi_preventivi_backoffice",
   "public.bi_controllo_banco",
   "public.bi_consegnato_futuro_per_mese",
+  "public.bi_acquisti",
   "powerbi.bi_cruscotto_articoli_corrente",
   "powerbi.bi_ultimo_costo_storico",
   "powerbi.bi_variazioni_ultimo_costo",

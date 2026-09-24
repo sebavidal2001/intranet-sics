@@ -47,6 +47,8 @@ const ETICHETTE_FAMIGLIA: Record<FamigliaRilevatore, string> = {
   clienti_ritornati: "Clienti ritornati",
   consegne: "Consegne",
   costi_acquisto: "Costi d'acquisto",
+  fornitori: "Fornitori",
+  carico_acquisti: "Carico acquisti",
 };
 
 export function BriefingView() {

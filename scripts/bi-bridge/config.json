@@ -64,6 +64,14 @@
                         "ExpectedColumns":  3,
                         "Profilo":  "costi",
                         "HeaderPattern":  "^codice_articolo$"
+                    },
+                    {
+                        "SqlFile":  "ACQUISTI.sql",
+                        "OutputFile":  "acquisti_righe.csv",
+                        "Dataset":  "acquisti_righe",
+                        "ExpectedColumns":  24,
+                        "Profilo":  "acquisti",
+                        "HeaderPattern":  "^id_riga$"
                     }
                 ]
 }

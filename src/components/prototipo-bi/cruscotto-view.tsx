@@ -64,6 +64,7 @@ import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti
 import { PannelloImpostazioni, useImpostazioni } from "./impostazioni";
 import { VistaConversione } from "./vista-conversione";
 import { VistaBackoffice } from "./vista-backoffice";
+import { VistaAcquisti } from "./vista-acquisti";
 import type { Dimensione, RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 type Vista =
@@ -73,7 +74,8 @@ type Vista =
   | "preventivi"
   | "conversione"
   | "backoffice"
-  | "margine";
+  | "margine"
+  | "acquisti";
 
 const VISTE: { chiave: Vista; etichetta: string; nota: string }[] = [
   { chiave: "sintesi", etichetta: "Sintesi", nota: "dove siamo rispetto all'obiettivo" },
@@ -83,6 +85,7 @@ const VISTE: { chiave: Vista; etichetta: string; nota: string }[] = [
   { chiave: "preventivi", etichetta: "Preventivi", nota: "cosa c'è in canna" },
   { chiave: "conversione", etichetta: "Conversione", nota: "che fine fanno i preventivi" },
   { chiave: "backoffice", etichetta: "Back office", nota: "carico e tempi degli addetti" },
+  { chiave: "acquisti", etichetta: "Acquisti", nota: "fornitori puntuali, carico dei buyer" },
 ];
 
 /** Secondi per schermata nella modalità presentazione. */
@@ -273,7 +276,7 @@ export function CruscottoView({
     // Conversione e back office interrogano autonomamente i propri grafici,
     // ma la fascia KPI generale resta visibile. Prima tornavamo `{}` qui:
     // l'effetto era una fila di zeri non calcolati su entrambe le pagine.
-    if (vista === "conversione" || vista === "backoffice") return comuni;
+    if (vista === "conversione" || vista === "backoffice" || vista === "acquisti") return comuni;
 
     if (vista === "margine") {
       // Il margine vive solo sul fatturato: e' li' che esiste un costo da
@@ -959,7 +962,9 @@ export function CruscottoView({
         </div>
 
         {/* ── Filtri incrociati attivi ───────────────────────────────────── */}
-        <div className="flex items-center gap-2 flex-wrap mb-4 min-h-[30px]">
+        {/* Nella scheda Acquisti filtri e KPI delle vendite non valgono: buyer e
+            fornitori non sono agenti e clienti. Si nascondono invece di mentire. */}
+        <div className={`flex items-center gap-2 flex-wrap mb-4 min-h-[30px] ${vista === "acquisti" ? "hidden" : ""}`}>
           <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
             <Filter className="w-3.5 h-3.5" aria-hidden />
             {filtri.length === 0
@@ -1017,7 +1022,9 @@ export function CruscottoView({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="rounded-2xl bg-slate-900 text-white p-5 lg:p-6 mb-5 grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-6"
+          className={`rounded-2xl bg-slate-900 text-white p-5 lg:p-6 mb-5 grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-6 ${
+            vista === "acquisti" ? "hidden" : ""
+          }`}
         >
           <KpiEroe
             scuro
@@ -1633,6 +1640,9 @@ export function CruscottoView({
             filtroDi={filtroDi}
           />
         )}
+
+        {/* ── ACQUISTI ───────────────────────────────────────────────────── */}
+        {vista === "acquisti" && <VistaAcquisti anno={anno} periodo={periodo} />}
       </div>
 
       {/* Dalla riga di un cliente alle sue fatture, con il margine di ognuna. */}

@@ -17,6 +17,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { salvaSnapshotInCache, leggiSnapshotDaCache, etaSnapshot } from "./archivio";
 import { etichettaBusinessUnit, controllaTassonomia } from "./business-unit";
 import type { ChiaveDataset, RigaFatto, Snapshot } from "./tipi";
+import { daVista, type RigaAcquisto } from "./acquisti";
 
 /** Viste di origine. `importoCampo` cambia solo per i preventivi. */
 const VISTE: Record<ChiaveDataset, { vista: string; importoCampo: string }> = {
@@ -201,6 +202,29 @@ async function scaricaVista(
 ): Promise<RigaFatto[]> {
   const grezze = await scaricaPaginato<RigaGrezza>(vista);
   return grezze.map((r) => normalizza(r, importoCampo));
+}
+
+/**
+ * Ordini di acquisto (migration 118). Un guasto qui non deve fermare il BI
+ * delle vendite: si restituisce `undefined` e lo si dice nel log, e la scheda
+ * Acquisti mostrera' che i dati mancano invece di mostrare zeri.
+ */
+async function caricaAcquisti(): Promise<{ righe: RigaAcquisto[]; al: string | null } | undefined> {
+  try {
+    const grezze = await scaricaPaginato<RigaGrezza>("bi_acquisti");
+    // La data dello STATO degli ordini (arrivi, evasioni) e' quella del
+    // caricamento, non quella dell'ultima vendita: se la pipeline delle vendite
+    // resta indietro, una riga arrivata ieri non deve risultare scaduta.
+    let al: string | null = null;
+    for (const g of grezze) {
+      const d = String(g["aggiornato_il"] ?? "").slice(0, 10);
+      if (d && (!al || d > al)) al = d;
+    }
+    return { righe: grezze.map(daVista), al };
+  } catch (e) {
+    console.warn("[BI] ordini di acquisto non caricati:", e instanceof Error ? e.message : e);
+    return undefined;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +418,7 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
   );
 
   const dataset = Object.fromEntries(risultati) as Record<ChiaveDataset, RigaFatto[]>;
+  const acquisti = await caricaAcquisti();
 
   // Il costo si aggancia a ogni riga che ha un articolo, prendendo la
   // variazione valida ALLA DATA DEL DOCUMENTO. Le righe senza corrispondenza
@@ -477,6 +502,8 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
     dataMassimaAssoluta: tutteLeDate[tutteLeDate.length - 1] ?? null,
     dataset,
     conteggi,
+    acquisti: acquisti?.righe,
+    acquistiAl: acquisti?.al ?? null,
     versioneForma: VERSIONE_FORMA,
     costiApprossimati: costi.approssimati,
   };
@@ -498,7 +525,8 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * dare errore.
  *
  * 4 (24/09/2026): `dataConsegnaRichiesta` e `dataConsegnaConfermata` sulle
- * righe dell'ordinato, per il rilevatore delle consegne.
+ * righe dell'ordinato, per il rilevatore delle consegne; e `acquisti`, le
+ * righe d'ordine a fornitore.
  */
 const VERSIONE_FORMA = 4;
 

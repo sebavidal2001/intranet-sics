@@ -66,46 +66,49 @@ try {
         throw "Pipeline terminata con stato $($status.status)"
     }
 
-    # ── Storico costi ──────────────────────────────────────────────────────
-    # Run SEPARATO, dopo il Cruscotto e non insieme a lui: due manifest
-    # distinti, quindi un guasto qui non impedisce il completamento del run
-    # Cruscotto (receiver.py rifiuta il manifest se manca un dataset del
-    # profilo, e con i due dataset insieme un errore sui costi avrebbe fermato
-    # l'aggiornamento di preventivatore.prodotti, cioe' il Preventivatore).
+    # ── Profili accessori: storico costi e ordini di acquisto ─────────────
+    # Run SEPARATI, dopo il Cruscotto e non insieme a lui: manifest distinti,
+    # quindi un guasto qui non impedisce il completamento del run Cruscotto
+    # (receiver.py rifiuta il manifest se manca un dataset del profilo, e con
+    # i dataset insieme un errore avrebbe fermato l'aggiornamento di
+    # preventivatore.prodotti, cioe' il Preventivatore).
     #
     # Per la stessa ragione l'errore NON viene propagato: a questo punto il
     # Cruscotto e' gia' stato estratto, validato e accettato dal Linux, e
     # dichiararlo fallito sarebbe falso. Resta scritto nel log e nello stato,
-    # e lo storico costi si ferma all'ultimo caricamento riuscito — che e'
-    # esattamente quello che deve fare: dati vecchi di un giorno, non dati
-    # sbagliati.
-    try {
-        Write-LauncherLog "Avvio profilo costi"
-        & $pipelinePath -ConfigPath $configPath -Profilo costi -StatusFile "last-run-costi.json"
-        $statoCostiPath = Join-Path $runtimeRoot "last-run-costi.json"
-        if (Test-Path -LiteralPath $statoCostiPath) {
-            $statoCosti = Get-Content -LiteralPath $statoCostiPath -Raw |
-                ConvertFrom-Json
-            Write-LauncherLog (
-                "Costi - run: {0}; stato: {1}; fase: {2}" -f `
-                $statoCosti.run_id, `
-                $statoCosti.status, `
-                $statoCosti.step
-            )
-            if ([string]$statoCosti.status -ne "SUCCESS") {
+    # e il profilo si ferma all'ultimo caricamento riuscito — dati vecchi di
+    # un giorno, non dati sbagliati. Ogni profilo ha il suo file di stato.
+    foreach ($profiloAccessorio in @("costi", "acquisti")) {
+        $fileStato = "last-run-$profiloAccessorio.json"
+        try {
+            Write-LauncherLog "Avvio profilo $profiloAccessorio"
+            & $pipelinePath -ConfigPath $configPath -Profilo $profiloAccessorio -StatusFile $fileStato
+            $statoPath = Join-Path $runtimeRoot $fileStato
+            if (Test-Path -LiteralPath $statoPath) {
+                $stato = Get-Content -LiteralPath $statoPath -Raw |
+                    ConvertFrom-Json
                 Write-LauncherLog (
-                    "Profilo costi NON riuscito: {0}" -f $statoCosti.message
-                ) "ERROR"
+                    "{0} - run: {1}; stato: {2}; fase: {3}" -f `
+                    $profiloAccessorio, `
+                    $stato.run_id, `
+                    $stato.status, `
+                    $stato.step
+                )
+                if ([string]$stato.status -ne "SUCCESS") {
+                    Write-LauncherLog (
+                        "Profilo {0} NON riuscito: {1}" -f $profiloAccessorio, $stato.message
+                    ) "ERROR"
+                }
+            }
+            else {
+                Write-LauncherLog "Profilo ${profiloAccessorio}: nessuno stato prodotto" "ERROR"
             }
         }
-        else {
-            Write-LauncherLog "Profilo costi: nessuno stato prodotto" "ERROR"
+        catch {
+            Write-LauncherLog (
+                "Profilo {0} fallito: {1}" -f $profiloAccessorio, $_.Exception.Message
+            ) "ERROR"
         }
-    }
-    catch {
-        Write-LauncherLog (
-            "Profilo costi fallito: {0}" -f $_.Exception.Message
-        ) "ERROR"
     }
 
     Write-LauncherLog "Launcher completato correttamente"

@@ -2,6 +2,8 @@
  * Tipi condivisi del prototipo.
  */
 
+import type { RigaAcquisto } from "./acquisti";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sorgente dati (snapshot delle viste public.bi_* — sola lettura)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,6 +147,15 @@ export interface Snapshot {
    * margine che cambia senso in silenzio e' peggio di un margine assente.
    */
   costiApprossimati?: boolean;
+  /**
+   * Righe d'ordine a fornitore (`public.bi_acquisti`). Assente se la vista non
+   * e' raggiungibile: il resto del BI deve continuare a funzionare. Vuoto per
+   * chi ha un perimetro ristretto — gli acquisti non hanno ne' agente ne'
+   * business unit, quindi non c'e' una parte che gli spetti.
+   */
+  acquisti?: RigaAcquisto[];
+  /** Giorno in cui gli ordini di acquisto sono stati estratti: il loro "oggi". */
+  acquistiAl?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -391,6 +402,8 @@ export const FAMIGLIE_RILEVATORI = [
   "clienti_ritornati",
   "consegne",
   "costi_acquisto",
+  "fornitori",
+  "carico_acquisti",
 ] as const;
 
 export type FamigliaRilevatore = (typeof FAMIGLIE_RILEVATORI)[number];

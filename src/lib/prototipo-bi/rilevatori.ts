@@ -27,6 +27,17 @@ import {
 import { costruisciCalendario, dataDaIso, iso, settimanaIso } from "./calendario";
 import { chiusureEffettive } from "./chiusure-dedotte";
 import { fattoreNovita } from "./selezione-briefing";
+import {
+  inizioSettimana,
+  nomeBuyer,
+  oggiAcquisti,
+  promessa,
+  puntuale,
+  righeAcquisti,
+  scaduta,
+  valoreResiduo,
+  type RigaAcquisto,
+} from "./acquisti";
 import type {
   ConfigurazioneAnno,
   DistribuzioneBudget,
@@ -77,6 +88,21 @@ export const SOGLIE = {
   costiImpattoMinimoEuro: 10_000,
   /** Un articolo conta solo se venduto in almeno tanti documenti: esclude le commesse. */
   costoDocumentiMinimi: 3,
+
+  // Acquisti (migration 118). Misurati il 24/09/2026: la puntualita' tipica di
+  // un fornitore buono e' 95-100%; CHIARAVALLI e' passato da 83% a 28%,
+  // COLUMBUS da 95% a 60%.
+  /** Arrivi minimi negli ultimi 90 giorni (il doppio nei 12 mesi prima). */
+  fornitoreArriviMinimi: 15,
+  fornitorePuntiPersi: 15,
+  fornitorePuntualitaMinimaPct: 80,
+  fornitoriMinimoEuro: 2_000,
+  /** Carico: crescita delle righe settimanali di un buyer sulla sua media. */
+  caricoCrescitaPct: 40,
+  caricoRigheSettimanaMinime: 30,
+  caricoScaduteMinime: 30,
+  /** Oltre questa quota delle righe l'ufficio dipende da una persona. */
+  caricoConcentrazionePct: 70,
 };
 
 function arr(n: number) {
@@ -1106,6 +1132,212 @@ function rilevaCostiAcquisto(ctx: ContestoRilevatori): Segnale[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RILEVATORE 12 — Fornitori che consegnano sempre meno puntuali
+// Righe ARRIVATE negli ultimi 90 giorni contro i 12 mesi precedenti. Un
+// fornitore entra solo con abbastanza arrivi in entrambi i periodi: tre righe
+// in ritardo su quattro non sono una tendenza.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function rilevaFornitori(ctx: ContestoRilevatori): Segnale[] {
+  const righe = righeAcquisti(ctx.snapshot);
+  if (righe.length === 0) return [];
+  const oggi = oggiAcquisti(ctx.snapshot);
+  const inizioRecente = spostaGiorni(oggi, -90);
+  const inizioBase = spostaGiorni(oggi, -455);
+
+  const perFornitore = new Map<string, { rec: RigaAcquisto[]; prima: RigaAcquisto[]; aperte: RigaAcquisto[] }>();
+  const gruppo = (f: string) => {
+    let g = perFornitore.get(f);
+    if (!g) {
+      g = { rec: [], prima: [], aperte: [] };
+      perFornitore.set(f, g);
+    }
+    return g;
+  };
+  for (const r of righe) {
+    if (puntuale(r) !== null && r.primoArrivo! <= oggi) {
+      if (r.primoArrivo! > inizioRecente) gruppo(r.fornitore).rec.push(r);
+      else if (r.primoArrivo! > inizioBase) gruppo(r.fornitore).prima.push(r);
+    }
+    if (scaduta(r, oggi)) gruppo(r.fornitore).aperte.push(r);
+  }
+
+  const quota = (l: RigaAcquisto[]) => pct(l.filter((r) => puntuale(r)).length, l.length);
+  const inCalo = [...perFornitore.entries()]
+    .filter(([, g]) => g.rec.length >= SOGLIE.fornitoreArriviMinimi && g.prima.length >= SOGLIE.fornitoreArriviMinimi * 2)
+    .map(([fornitore, g]) => {
+      const tardive = g.rec.filter((r) => puntuale(r) === false);
+      return {
+        fornitore,
+        puntualitaOra: quota(g.rec),
+        puntualitaPrima: quota(g.prima),
+        arrivi: g.rec.length,
+        ritardoMedio: tardive.length
+          ? arr(tardive.reduce((t, r) => t + giorniTra(promessa(r)!, r.primoArrivo!), 0) / tardive.length)
+          : 0,
+        valoreInRitardo: arr(tardive.reduce((t, r) => t + r.valore, 0)),
+        valoreScaduto: arr(g.aperte.reduce((t, r) => t + valoreResiduo(r), 0)),
+      };
+    })
+    .filter(
+      (f) =>
+        f.puntualitaPrima - f.puntualitaOra >= SOGLIE.fornitorePuntiPersi &&
+        f.puntualitaOra < SOGLIE.fornitorePuntualitaMinimaPct
+    )
+    .sort((a, b) => b.valoreInRitardo + b.valoreScaduto - (a.valoreInRitardo + a.valoreScaduto));
+
+  if (inCalo.length === 0) return [];
+  const peso = arr(inCalo.reduce((t, f) => t + f.valoreInRitardo + f.valoreScaduto, 0));
+  if (peso < SOGLIE.fornitoriMinimoEuro) return [];
+
+  const primi = inCalo.slice(0, 4);
+  return [
+    {
+      id: "fornitori-puntualita",
+      famiglia: "fornitori",
+      titolo: `${inCalo.length} fornitori consegnano meno puntuali di prima`,
+      descrizione:
+        `Negli ultimi 90 giorni ${inCalo.length} fornitori hanno consegnato entro la data confermata ` +
+        `molto meno spesso che nei 12 mesi precedenti: ` +
+        primi
+          .map(
+            (f) =>
+              `${f.fornitore} ${f.puntualitaPrima}% → ${f.puntualitaOra}% su ${f.arrivi} righe` +
+              (f.ritardoMedio > 0 ? `, ${f.ritardoMedio} giorni di ritardo medio` : "") +
+              (f.valoreScaduto > 0 ? `, ${f.valoreScaduto} € ancora da ricevere e scaduti` : "")
+          )
+          .join("; ") +
+        ".",
+      magnitudineEuro: peso,
+      persistenza: 0.7,
+      azionabilita: 0.8,
+      direzione: "negativo",
+      punteggio: 0,
+      // Nessuna query certificata: gli acquisti non passano dal motore
+      // semantico delle vendite. La prova e' la scheda Acquisti del Cruscotto.
+      prove: [],
+      dettaglio: { fornitori: primi, totaleFornitori: inCalo.length },
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RILEVATORE 13 — Carico di lavoro dell'ufficio acquisti
+// Tre fatti, uno solo per volta nel titolo (il piu' pesante), tutti nel testo:
+//  · un buyer che nelle ultime 4 settimane lavorative ha emesso molte piu'
+//    righe della sua media delle 22 precedenti;
+//  · un arretrato di righe scadute da sollecitare;
+//  · il lavoro concentrato su una persona sola.
+// Le settimane senza nessun ordine (chiusure) non contano ne' nel recente ne'
+// nella media: agosto non e' un crollo del carico.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function rilevaCaricoAcquisti(ctx: ContestoRilevatori): Segnale[] {
+  const righe = righeAcquisti(ctx.snapshot);
+  if (righe.length === 0) return [];
+
+  const finoA = oggiAcquisti(ctx.snapshot);
+  const primaSettimana = inizioSettimana(spostaGiorni(finoA, -7 * 26));
+  const perSettimana = new Map<string, Map<string, { righe: number; valore: number }>>();
+  for (const r of righe) {
+    if (r.dataOrdine < primaSettimana || r.dataOrdine > finoA) continue;
+    const s = inizioSettimana(r.dataOrdine);
+    const m = perSettimana.get(s) ?? new Map<string, { righe: number; valore: number }>();
+    const b = m.get(nomeBuyer(r)) ?? { righe: 0, valore: 0 };
+    b.righe += 1;
+    b.valore += r.valore;
+    m.set(nomeBuyer(r), b);
+    perSettimana.set(s, m);
+  }
+  // L'ultima settimana e' quasi sempre parziale: si esclude.
+  const settimane = [...perSettimana.keys()].filter((s) => s < inizioSettimana(finoA)).sort();
+  if (settimane.length < 8) return [];
+  const recenti = settimane.slice(-4);
+  const base = settimane.slice(0, -4);
+
+  const fatti: string[] = [];
+  let peso = 0;
+  let titolo = "";
+
+  const buyers = new Set([...perSettimana.values()].flatMap((m) => [...m.keys()]));
+  const crescite: { buyer: string; ora: number; prima: number; valoreExtra: number }[] = [];
+  for (const b of buyers) {
+    const media = (lista: string[]) =>
+      lista.reduce((t, s) => t + (perSettimana.get(s)?.get(b)?.righe ?? 0), 0) / lista.length;
+    const ora = media(recenti);
+    const prima = media(base);
+    if (ora >= SOGLIE.caricoRigheSettimanaMinime && prima > 0 && ora >= prima * (1 + SOGLIE.caricoCrescitaPct / 100)) {
+      const valoreRecente = recenti.reduce((t, s) => t + (perSettimana.get(s)?.get(b)?.valore ?? 0), 0);
+      crescite.push({ buyer: b, ora: arr(ora), prima: arr(prima), valoreExtra: arr(valoreRecente * (1 - prima / ora)) });
+    }
+  }
+  crescite.sort((a, b) => b.ora / b.prima - a.ora / a.prima);
+  for (const c of crescite) {
+    fatti.push(
+      `${c.buyer} ha emesso in media ${c.ora} righe a settimana nelle ultime 4 settimane lavorative, ` +
+        `contro ${c.prima} delle 22 precedenti (+${pct(c.ora - c.prima, c.prima)}%)`
+    );
+    peso += c.valoreExtra;
+  }
+  if (crescite.length > 0) {
+    titolo = `Carico acquisti in crescita: ${crescite[0].buyer} +${pct(crescite[0].ora - crescite[0].prima, crescite[0].prima)}%`;
+  }
+
+  const scadute = righe.filter((r) => scaduta(r, finoA));
+  const valoreScaduto = arr(scadute.reduce((t, r) => t + valoreResiduo(r), 0));
+  if (scadute.length >= SOGLIE.caricoScaduteMinime) {
+    const perBuyer = new Map<string, number>();
+    for (const r of scadute) perBuyer.set(nomeBuyer(r), (perBuyer.get(nomeBuyer(r)) ?? 0) + 1);
+    const [primo] = [...perBuyer.entries()].sort((a, b) => b[1] - a[1]);
+    fatti.push(
+      `${scadute.length} righe d'ordine hanno la data promessa passata e la merce non arrivata ` +
+        `(${valoreScaduto} € da ricevere); ${primo[1]} sono di ${primo[0]}`
+    );
+    peso += valoreScaduto;
+    if (!titolo) titolo = `${scadute.length} righe d'ordine a fornitore da sollecitare`;
+  }
+
+  const ultime13 = settimane.slice(-13);
+  const totali = new Map<string, number>();
+  for (const s of ultime13) {
+    for (const [b, v] of perSettimana.get(s) ?? []) totali.set(b, (totali.get(b) ?? 0) + v.righe);
+  }
+  const tutte = [...totali.values()].reduce((t, n) => t + n, 0);
+  const [capo] = [...totali.entries()].sort((a, b) => b[1] - a[1]);
+  const quotaCapo = capo ? pct(capo[1], tutte) : 0;
+  if (capo && quotaCapo >= SOGLIE.caricoConcentrazionePct) {
+    fatti.push(
+      `negli ultimi 3 mesi il ${quotaCapo}% delle righe d'ordine le ha emesse ${capo[0]}: ` +
+        `l'ufficio dipende da una persona`
+    );
+    if (!titolo) titolo = `Il ${quotaCapo}% degli ordini a fornitore passa da ${capo[0]}`;
+  }
+
+  if (fatti.length === 0 || !titolo) return [];
+  // La concentrazione da sola non ha euro: pesa come il valore ordinato nel
+  // mese da quella persona, cosi' non sparisce sotto le soglie ne' le domina.
+  if (peso === 0 && capo) {
+    peso = recenti.reduce((t, s) => t + (perSettimana.get(s)?.get(capo[0])?.valore ?? 0), 0) * 0.1;
+  }
+
+  return [
+    {
+      id: "carico-acquisti",
+      famiglia: "carico_acquisti",
+      titolo,
+      descrizione: fatti.map((f) => f.charAt(0).toUpperCase() + f.slice(1)).join(". ") + ".",
+      magnitudineEuro: arr(peso),
+      persistenza: crescite.length > 0 ? 0.6 : 0.8,
+      azionabilita: 0.7,
+      direzione: "negativo",
+      punteggio: 0,
+      prove: [],
+      dettaglio: { crescite, righeScadute: scadute.length, valoreScaduto, quotaPrimoBuyer: quotaCapo, primoBuyer: capo?.[0] ?? null },
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // STADIO 2 — Rilevanza
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1161,6 +1393,8 @@ export function rilevaTutto(ctx: ContestoRilevatori): Segnale[] {
     rilevaClientiRitornati,
     rilevaConsegne,
     rilevaCostiAcquisto,
+    rilevaFornitori,
+    rilevaCaricoAcquisti,
   ];
 
   const out: Segnale[] = [];
