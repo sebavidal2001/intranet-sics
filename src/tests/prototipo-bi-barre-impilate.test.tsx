@@ -67,13 +67,15 @@ describe("scelta del grafico con anteprima", () => {
 
   it("mostra un'anteprima per ogni voce e sceglie al clic", () => {
     const onChange = vi.fn();
-    const { container } = render(
+    render(
       <SceltaGrafico etichetta="Visualizzazione" valore="barre" opzioni={["barre", "barreImpilate", "linee"]} onChange={onChange} />
     );
     fireEvent.click(screen.getByRole("button", { name: "Visualizzazione" }));
     expect(screen.getAllByRole("option")).toHaveLength(3);
-    // un'anteprima nel bottone e una per voce
-    expect(container.querySelectorAll("svg[viewBox='0 0 40 26']").length).toBe(4);
+    // un'anteprima nel bottone e una per voce; l'elenco sta nel body, fuori dal
+    // riquadro, perche' dentro veniva tagliato
+    expect(document.body.querySelectorAll("svg[viewBox='0 0 40 26']").length).toBe(4);
+    expect(screen.getByRole("listbox").closest("body > div")?.getAttribute("style")).toContain("position: fixed");
     fireEvent.click(screen.getByRole("option", { name: /Barre impilate/ }));
     expect(onChange).toHaveBeenCalledWith("barreImpilate");
   });

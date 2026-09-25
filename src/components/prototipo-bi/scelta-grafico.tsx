@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { NOMI_GRAFICI, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
+import { PannelloFluttuante } from "./fluttuante";
 
 const P = "var(--color-primary, #00a1be)";
 const S = "#f59e0b";
@@ -183,13 +184,17 @@ export function SceltaGrafico({
   const [aperto, setAperto] = useState(false);
   const [attivo, setAttivo] = useState(0);
   const contenitore = useRef<HTMLDivElement>(null);
+  const bottone = useRef<HTMLButtonElement>(null);
+  const pannello = useRef<HTMLDivElement>(null);
   const lista = opzioni.includes(valore) ? opzioni : [valore, ...opzioni];
 
   useEffect(() => {
     if (!aperto) return;
     setAttivo(Math.max(0, lista.indexOf(valore)));
+    // Il pannello sta nel body, non dentro il contenitore: vanno controllati entrambi.
     const fuori = (e: MouseEvent) => {
-      if (contenitore.current && !contenitore.current.contains(e.target as Node)) setAperto(false);
+      const t = e.target as Node;
+      if (!contenitore.current?.contains(t) && !pannello.current?.contains(t)) setAperto(false);
     };
     document.addEventListener("mousedown", fuori);
     return () => document.removeEventListener("mousedown", fuori);
@@ -203,6 +208,7 @@ export function SceltaGrafico({
   return (
     <div ref={contenitore} className="relative" title={title}>
       <button
+        ref={bottone}
         type="button"
         aria-label={etichetta}
         aria-haspopup="listbox"
@@ -235,12 +241,8 @@ export function SceltaGrafico({
         <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
       </button>
 
-      {aperto && (
-        <ul
-          role="listbox"
-          aria-label={etichetta}
-          className="absolute right-0 z-30 mt-1 max-h-80 w-60 overflow-y-auto rounded-xl border border-border bg-bg p-1 shadow-lg"
-        >
+      <PannelloFluttuante ancora={bottone} aperto={aperto} larghezza={240} allineaDestra pannelloRef={pannello}>
+        <ul role="listbox" aria-label={etichetta} className="min-h-0 flex-1 overflow-y-auto p-1">
           {lista.map((tipo, i) => (
             <li
               key={tipo}
@@ -258,7 +260,7 @@ export function SceltaGrafico({
             </li>
           ))}
         </ul>
-      )}
+      </PannelloFluttuante>
     </div>
   );
 }

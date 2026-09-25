@@ -26,6 +26,7 @@ import {
   type NodoBu,
 } from "@/lib/prototipo-bi/filtro-albero";
 import type { ChiaveMetrica, Dimensione, Filtro, Periodo, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import { PannelloFluttuante } from "./fluttuante";
 
 type Righe = { chiavi: Record<string, string>; etichetta: string; valore: number }[];
 
@@ -90,6 +91,8 @@ export function SelettoreValori({
   const [cerca, setCerca] = useState("");
   const [espansi, setEspansi] = useState<Set<string>>(new Set());
   const contenitore = useRef<HTMLDivElement>(null);
+  const bottone = useRef<HTMLButtonElement>(null);
+  const pannello = useRef<HTMLDivElement>(null);
 
   const spec = useMemo<SpecQuery>(
     () => ({
@@ -118,8 +121,10 @@ export function SelettoreValori({
   // Chiusura cliccando fuori.
   useEffect(() => {
     if (!aperto) return;
+    // Il pannello sta nel body, non dentro il contenitore: vanno controllati entrambi.
     const fuori = (e: MouseEvent) => {
-      if (contenitore.current && !contenitore.current.contains(e.target as Node)) setAperto(false);
+      const t = e.target as Node;
+      if (!contenitore.current?.contains(t) && !pannello.current?.contains(t)) setAperto(false);
     };
     document.addEventListener("mousedown", fuori);
     return () => document.removeEventListener("mousedown", fuori);
@@ -186,6 +191,7 @@ export function SelettoreValori({
   return (
     <div ref={contenitore} className="relative">
       <button
+        ref={bottone}
         type="button"
         aria-label={etichetta}
         aria-expanded={aperto}
@@ -196,12 +202,8 @@ export function SelettoreValori({
         <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
       </button>
 
-      {aperto && (
-        <div
-          role="dialog"
-          aria-label={`Scegli ${etichetta.toLowerCase()}`}
-          className="absolute z-30 mt-1 w-[min(22rem,90vw)] rounded-xl border border-border bg-bg p-2 shadow-lg"
-        >
+      <PannelloFluttuante ancora={bottone} aperto={aperto} larghezza={352} altezzaMassima={380} pannelloRef={pannello}>
+        <div role="dialog" aria-label={`Scegli ${etichetta.toLowerCase()}`} className="flex min-h-0 flex-1 flex-col p-2">
           <div className="mb-2 flex items-center gap-2">
             <label className="relative flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" aria-hidden />
@@ -225,7 +227,7 @@ export function SelettoreValori({
             </button>
           </div>
 
-          <div className="max-h-72 overflow-y-auto pr-1 text-sm">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1 text-sm">
             {errore && <p className="p-2 text-xs text-danger">{errore}</p>}
             {!righe && !errore && <p className="p-2 text-xs text-text-muted">Caricamento dei valori…</p>}
 
@@ -319,7 +321,7 @@ export function SelettoreValori({
             )}
           </div>
         </div>
-      )}
+      </PannelloFluttuante>
     </div>
   );
 }
