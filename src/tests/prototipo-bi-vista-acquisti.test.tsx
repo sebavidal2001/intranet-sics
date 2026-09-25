@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { VistaAcquisti } from "@/components/prototipo-bi/vista-acquisti";
 import { calcolaCruscottoAcquisti, type RigaAcquisto } from "@/lib/prototipo-bi/acquisti";
@@ -13,33 +13,29 @@ function riga(p: Partial<RigaAcquisto> & { dataOrdine: string }): RigaAcquisto {
 }
 
 // jsdom non ha i due osservatori che Recharts e framer-motion usano per
-// misurare e animare: senza, la vista non monta.
-function stubOsservatori() {
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      constructor(private cb: (e: unknown[]) => void) {}
-      observe() {
-        this.cb([{ contentRect: { width: 800, height: 400 } }]);
-      }
-      unobserve() {}
-      disconnect() {}
+// misurare e animare. Si definiscono PRIMA degli import (vi.hoisted): simularli
+// dentro il test non bastava, perche' sotto il carico della suite completa
+// framer-motion poteva cercarli prima, e il test falliva una volta su tre.
+vi.hoisted(() => {
+  const g = globalThis as Record<string, unknown>;
+  g.ResizeObserver ??= class {
+    constructor(private cb: (e: unknown[]) => void) {}
+    observe() {
+      this.cb([{ contentRect: { width: 800, height: 400 } }]);
     }
-  );
-  vi.stubGlobal(
-    "IntersectionObserver",
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-      takeRecords() {
-        return [];
-      }
+    unobserve() {}
+    disconnect() {}
+  };
+  g.IntersectionObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
     }
-  );
-}
+  };
+});
 
-beforeEach(stubOsservatori);
 afterEach(() => vi.unstubAllGlobals());
 
 describe("VistaAcquisti", () => {
@@ -53,7 +49,6 @@ describe("VistaAcquisti", () => {
     );
     const fetchFinta = vi.fn().mockResolvedValue({ ok: true, json: async () => dati });
     vi.stubGlobal("fetch", fetchFinta);
-    stubOsservatori();
 
     render(<VistaAcquisti anno={2026} periodo={{ dal: "2026-01-01", al: "2026-09-24" }} />);
 
