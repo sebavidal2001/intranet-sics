@@ -19,6 +19,7 @@
  */
 
 import { useAutoAggiornamento } from "./auto-aggiornamento";
+import { SelettoreValori } from "./selettore-valori";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -137,6 +138,39 @@ function messaggioErrore(valore: unknown, ripiego: string): string {
     return valore.error;
   }
   return ripiego;
+}
+
+// ── Filtri di pagina ↔ selettore di valori ─────────────────────────────────
+
+function elencoValori(v: string | string[] | undefined): string[] {
+  return (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
+}
+
+/** Il filtro che il selettore mostra: rami a matrioska o business unit intere. */
+function filtroBuPagina(f: FiltriPagina): Filtro | null {
+  const rami = elencoValori(f.rami);
+  if (rami.length) return { campo: "bu_categoria", op: "in", valore: rami };
+  const bu = elencoValori(f.bu);
+  return bu.length ? { campo: "bu", op: "in", valore: bu } : null;
+}
+
+function conFiltroBu(f: FiltriPagina, filtro: Filtro | null): FiltriPagina {
+  const valori = filtro ? (Array.isArray(filtro.valore) ? filtro.valore : [filtro.valore]) : [];
+  if (!filtro || valori.length === 0) return { ...f, bu: undefined, rami: undefined };
+  return filtro.campo === "bu_categoria"
+    ? { ...f, bu: undefined, rami: valori }
+    : { ...f, bu: valori, rami: undefined };
+}
+
+function filtroAgentePagina(f: FiltriPagina): Filtro | null {
+  const agenti = elencoValori(f.agente);
+  return agenti.length ? { campo: "agente", op: "in", valore: agenti } : null;
+}
+
+function riassuntoPagina(filtro: Filtro | null, vuoto: string): string {
+  if (!filtro) return vuoto;
+  const v = Array.isArray(filtro.valore) ? filtro.valore : [filtro.valore];
+  return v.length === 1 ? v[0] : `${v.length} selezionati`;
 }
 
 function filtriPuliti(filtri: FiltriPagina | null | undefined): FiltriPagina {
@@ -306,12 +340,14 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     } : corrente);
   }
 
-  async function salvaFiltriPagina() {
+  // `nuovi` quando si salva subito dopo aver cambiato: lo stato non e' ancora
+  // aggiornato e `paginaAttiva.filtri` sarebbe quello di prima.
+  async function salvaFiltriPagina(nuovi?: FiltriPagina) {
     if (!dashboard || !paginaAttiva || !modificabile) return;
     const risposta = await fetch(`/api/bi/dashboard/${dashboard.id}/pagine`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pagine: [{ id: paginaAttiva.id, filtri: paginaAttiva.filtri }] }),
+      body: JSON.stringify({ pagine: [{ id: paginaAttiva.id, filtri: nuovi ?? paginaAttiva.filtri }] }),
     });
     if (!risposta.ok) setErrore(messaggioErrore(await risposta.json(), "Impossibile salvare i filtri."));
   }
@@ -521,8 +557,45 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                   <label className="text-xs text-text-muted"><span className="mb-1 block">Al</span><input type="date" value={filtri.periodo?.al ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { ...filtri.periodo, anno: undefined, al: e.target.value || undefined } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
                 </>
               )}
-              <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Business unit</span><input value={filtri.bu ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, bu: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutte" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
-              <label className="min-w-44 flex-1 text-xs text-text-muted"><span className="mb-1 block">Agente</span><input value={filtri.agente ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, agente: e.target.value || undefined })} onBlur={() => void salvaFiltriPagina()} placeholder="Tutti" className="h-9 w-full rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+              <div className="min-w-52 flex-1 text-xs text-text-muted">
+                <span className="mb-1 block">Business unit</span>
+                {filtriModificabili ? (
+                  <SelettoreValori
+                    etichetta="Business unit"
+                    campo="bu"
+                    metrica="fatturato"
+                    periodo={filtri.periodo}
+                    filtro={filtroBuPagina(filtri)}
+                    onChange={(f) => {
+                      const nuovi = conFiltroBu(filtri, f);
+                      aggiornaFiltri(nuovi);
+                      void salvaFiltriPagina(nuovi);
+                    }}
+                  />
+                ) : (
+                  <span className="flex h-9 items-center text-sm text-text">{riassuntoPagina(filtroBuPagina(filtri), "Tutte")}</span>
+                )}
+              </div>
+              <div className="min-w-52 flex-1 text-xs text-text-muted">
+                <span className="mb-1 block">Agente</span>
+                {filtriModificabili ? (
+                  <SelettoreValori
+                    etichetta="Agente"
+                    campo="agente"
+                    metrica="ordinato"
+                    periodo={filtri.periodo}
+                    filtro={filtroAgentePagina(filtri)}
+                    onChange={(f) => {
+                      const valori = f ? (Array.isArray(f.valore) ? f.valore : [f.valore]) : [];
+                      const nuovi = { ...filtri, agente: valori.length ? valori : undefined };
+                      aggiornaFiltri(nuovi);
+                      void salvaFiltriPagina(nuovi);
+                    }}
+                  />
+                ) : (
+                  <span className="flex h-9 items-center text-sm text-text">{riassuntoPagina(filtroAgentePagina(filtri), "Tutti")}</span>
+                )}
+              </div>
               {modificabile ? <button type="button" onClick={() => setPannelloAggiungi(true)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button> : paginaAttiva.riquadri.length > 0 ? <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">{duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}Duplica per modificare</button> : null}
             </section>
 

@@ -318,7 +318,16 @@ export type Dimensione =
   /** Esito del preventivo: convertito, parziale, aperto. */
   | "esito"
   /** Fascia di anzianità del preventivo ancora aperto. */
-  | "fascia_eta";
+  | "fascia_eta"
+  /**
+   * Coppia «business unit › categoria». Serve ai filtri a matrioska: scegliere
+   * dentro COMPONENTI solo «AUTOMAZIONE pneumatica» non si puo' dire con due
+   * filtri separati, perche' la categoria «-» esiste sotto piu' business unit.
+   */
+  | "bu_categoria";
+
+/** Separatore dei valori di `bu_categoria`: `${bu}${SEPARATORE_RAMO}${categoria}`. */
+export const SEPARATORE_RAMO = " › ";
 
 export type OperatoreFiltro = "eq" | "neq" | "in" | "contiene";
 

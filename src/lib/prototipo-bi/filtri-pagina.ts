@@ -23,8 +23,32 @@ import type { Dimensione, Filtro, Periodo, SpecQuery } from "./tipi";
 
 export interface FiltriPagina {
   periodo?: Periodo;
-  bu?: string;
-  agente?: string;
+  /** Una o piu' business unit intere. */
+  bu?: string | string[];
+  /** Uno o piu' agenti. */
+  agente?: string | string[];
+  /**
+   * Scelta a matrioska dentro le business unit («COMPONENTI › AUTOMAZIONE
+   * pneumatica»): quando c'e', prevale su `bu`. Vedi filtro-albero.ts.
+   */
+  rami?: string[];
+}
+
+/** Valori non vuoti, da stringa singola o elenco. */
+function elenco(v: string | string[] | undefined): string[] {
+  return (Array.isArray(v) ? v : v ? [v] : []).map((x) => x.trim()).filter(Boolean);
+}
+
+function filtroSu(campo: Dimensione, valori: string[]): Filtro {
+  return valori.length === 1 ? { campo, op: "eq", valore: valori[0] } : { campo, op: "in", valore: valori };
+}
+
+/**
+ * Business unit, categoria e la loro coppia sono la stessa famiglia: un
+ * riquadro «Solo COMPONENTI» non deve ricevere anche il ramo scelto in pagina.
+ */
+function famiglia(campo: Dimensione): string {
+  return campo === "categoria" || campo === "bu_categoria" ? "bu" : campo;
 }
 
 export interface EsitoFusioneFiltriPagina {
@@ -39,10 +63,12 @@ function periodoPresente(periodo: Periodo | undefined): periodo is Periodo {
 
 function filtriDellaPagina(filtri: FiltriPagina): Filtro[] {
   const risultato: Filtro[] = [];
-  if (filtri.bu?.trim()) risultato.push({ campo: "bu", op: "eq", valore: filtri.bu.trim() });
-  if (filtri.agente?.trim()) {
-    risultato.push({ campo: "agente", op: "eq", valore: filtri.agente.trim() });
-  }
+  const rami = elenco(filtri.rami);
+  const bu = elenco(filtri.bu);
+  const agenti = elenco(filtri.agente);
+  if (rami.length > 0) risultato.push({ campo: "bu_categoria", op: "in", valore: rami });
+  else if (bu.length > 0) risultato.push(filtroSu("bu", bu));
+  if (agenti.length > 0) risultato.push(filtroSu("agente", agenti));
   return risultato;
 }
 
@@ -56,11 +82,11 @@ export function fondiFiltriPaginaConEsito(
 ): EsitoFusioneFiltriPagina {
   const proposti = filtriDellaPagina(filtriPagina);
   const esistenti = spec.filtri ?? [];
-  const dimensioniSpec = new Set(esistenti.map((filtro) => filtro.campo));
+  const famiglieSpec = new Set(esistenti.map((filtro) => famiglia(filtro.campo)));
   const filtriPaginaIgnorati = proposti
-    .filter((filtro) => dimensioniSpec.has(filtro.campo))
-    .map((filtro) => filtro.campo);
-  const aggiunti = proposti.filter((filtro) => !dimensioniSpec.has(filtro.campo));
+    .filter((filtro) => famiglieSpec.has(famiglia(filtro.campo)))
+    .map((filtro) => (famiglia(filtro.campo) === "bu" ? "bu" : filtro.campo) as Dimensione);
+  const aggiunti = proposti.filter((filtro) => !famiglieSpec.has(famiglia(filtro.campo)));
   const haPeriodoPagina = periodoPresente(filtriPagina.periodo);
   const haPeriodoSpec = periodoPresente(spec.periodo);
   const periodoIgnorato = haPeriodoPagina && haPeriodoSpec;

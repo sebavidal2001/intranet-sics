@@ -218,7 +218,9 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
     // quando il chiamante potrà passare una seconda serie.
     possibili.push("linee");
     if (numeroRighe >= 2) possibili.push("sparkline");
-    if (raggruppamenti.length === 1 && categorieDistinte(risultato) <= 6) {
+    // Oltre sei categorie il grafico somma le minori in «Altri»: resta leggibile,
+    // e rifiutarlo lasciava al suo posto una tabella con una riga per mese e persona.
+    if (raggruppamenti.length === 1 && categorieDistinte(risultato) >= 2) {
       possibili.push("areeImpilate");
     }
     if (raggruppamenti.length === 1) {
@@ -233,7 +235,9 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
       if (periodi >= 3) possibili.push("posizioni");
     }
   }
-  if (raggruppamenti.length === 2 || (temporale && raggruppamenti.length === 1)) {
+  // Serie giornaliera senza suddivisioni: la heatmap e' un calendario.
+  const calendario = risultato.spec.granularita === "giorno" && raggruppamenti.length === 0;
+  if (raggruppamenti.length === 2 || (temporale && raggruppamenti.length === 1) || calendario) {
     possibili.push("heatmap");
   }
   if (raggruppamenti.length === 2) possibili.push("matrice");

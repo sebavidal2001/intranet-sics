@@ -18,6 +18,7 @@
  * sarebbe peggio che dirlo prima.
  */
 
+import { SelettoreValori } from "./selettore-valori";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
@@ -524,7 +525,9 @@ export function EditorAnalisi({
       ...spec,
       metrica: metricaConfronto,
       raggruppa: spec.raggruppa?.filter((dimensione) => ammesse.has(dimensione)),
-      filtri: spec.filtri?.filter((filtro) => ammesse.has(filtro.campo)),
+      filtri: spec.filtri?.filter(
+        (filtro) => ammesse.has(filtro.campo) || (filtro.campo === "bu_categoria" && ammesse.has("bu"))
+      ),
     };
     const nome = vocabolario?.metriche.find((voce) => voce.chiave === metricaConfronto)?.etichetta
       ?? metricaConfronto;
@@ -989,7 +992,7 @@ export function EditorAnalisi({
                     ...corrente,
                     filtri: [
                       ...(corrente.filtri ?? []),
-                      { campo: dimensioniAmmesse[0]?.chiave ?? "bu", op: "eq", valore: "" },
+                      { campo: dimensioniAmmesse[0]?.chiave ?? "bu", op: "in", valore: [] },
                     ],
                   }))
                 }
@@ -1008,11 +1011,13 @@ export function EditorAnalisi({
                   <div key={indice} className="grid gap-2 sm:grid-cols-[1fr_1fr_1.2fr_auto]">
                     <select
                       aria-label={`Dimensione filtro ${indice + 1}`}
-                      value={filtro.campo}
+                      value={filtro.campo === "bu_categoria" ? "bu" : filtro.campo}
                       onChange={(evento) =>
+                        // Cambiando campo i valori scelti non valgono piu'.
                         aggiornaFiltro(indice, {
-                          ...filtro,
                           campo: evento.target.value as Dimensione,
+                          op: filtro.op,
+                          valore: filtro.op === "in" ? [] : "",
                         })
                       }
                       className={CLASSE_CAMPO}
@@ -1028,13 +1033,12 @@ export function EditorAnalisi({
                       value={filtro.op}
                       onChange={(evento) => {
                         const op = evento.target.value as Filtro["op"];
-                        const valore =
-                          op === "in"
-                            ? valoreFiltroPerCampo(filtro)
-                                .split(",")
-                                .map((voce) => voce.trim())
-                                .filter(Boolean)
-                            : valoreFiltroPerCampo(filtro);
+                        const lista = Array.isArray(filtro.valore)
+                          ? filtro.valore
+                          : valoreFiltroPerCampo(filtro).split(",").map((voce) => voce.trim()).filter(Boolean);
+                        // Da «è uno tra» a un operatore a valore singolo si tiene il
+                        // primo: unirli in "A, B" darebbe un valore che non esiste.
+                        const valore = op === "in" ? lista : lista[0] ?? "";
                         aggiornaFiltro(indice, { ...filtro, op, valore });
                       }}
                       className={CLASSE_CAMPO}
@@ -1045,21 +1049,35 @@ export function EditorAnalisi({
                         </option>
                       ))}
                     </select>
-                    <input
-                      aria-label={`Valore filtro ${indice + 1}`}
-                      value={valoreFiltroPerCampo(filtro)}
-                      placeholder={filtro.op === "in" ? "Valori separati da virgola" : "Valore"}
-                      onChange={(evento) =>
-                        aggiornaFiltro(indice, {
-                          ...filtro,
-                          valore:
-                            filtro.op === "in"
-                              ? evento.target.value.split(",").map((voce) => voce.trim())
-                              : evento.target.value,
-                        })
-                      }
-                      className={CLASSE_CAMPO}
-                    />
+                    {filtro.op === "eq" || filtro.op === "in" ? (
+                      // I valori si scelgono fra quelli presenti nei dati; per
+                      // business unit e categoria, ad albero.
+                      <SelettoreValori
+                        etichetta={`Valore filtro ${indice + 1}`}
+                        campo={filtro.campo}
+                        metrica={spec.metrica}
+                        periodo={spec.periodo ?? periodoEreditato}
+                        filtro={filtro}
+                        onChange={(nuovo) =>
+                          aggiornaFiltro(
+                            indice,
+                            nuovo ?? {
+                              campo: filtro.campo === "bu_categoria" ? "bu" : filtro.campo,
+                              op: "in",
+                              valore: [],
+                            }
+                          )
+                        }
+                      />
+                    ) : (
+                      <input
+                        aria-label={`Valore filtro ${indice + 1}`}
+                        value={valoreFiltroPerCampo(filtro)}
+                        placeholder="Valore"
+                        onChange={(evento) => aggiornaFiltro(indice, { ...filtro, valore: evento.target.value })}
+                        className={CLASSE_CAMPO}
+                      />
+                    )}
                     <button
                       type="button"
                       aria-label={`Rimuovi filtro ${indice + 1}`}

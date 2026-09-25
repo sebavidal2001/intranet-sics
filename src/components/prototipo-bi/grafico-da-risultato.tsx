@@ -28,7 +28,7 @@ import {
   Quadranti,
   Sparkline,
 } from "./grafici-avanzati";
-import { Anelli, AreeImpilate, Composizione, Imbuto } from "./grafici-spettacolari";
+import { Anelli, AreeImpilate, CalendarioAttivita, Composizione, Imbuto } from "./grafici-spettacolari";
 import {
   Distribuzione,
   Flusso,
@@ -117,23 +117,58 @@ function matrice(risultato: RisultatoQuery) {
   return { righe, colonne, valori };
 }
 
+/** Oltre questo numero di categorie le aree impilate diventano illeggibili. */
+const MASSIMO_AREE = 6;
+
 function aree(risultato: RisultatoQuery) {
   const dimensione = risultato.spec.raggruppa?.[0];
   if (!dimensione || !risultato.spec.granularita) return null;
 
-  const periodi = [...new Set(risultato.righe.map((riga) => riga.chiavi.periodo))];
-  const categorie = [...new Set(risultato.righe.map((riga) => riga.chiavi[dimensione]))];
-  const serie = categorie.map((categoria) => {
+  const periodi = [...new Set(risultato.righe.map((riga) => riga.chiavi.periodo))].sort();
+  const totali = new Map<string, number>();
+  for (const riga of risultato.righe) {
+    const c = riga.chiavi[dimensione];
+    totali.set(c, (totali.get(c) ?? 0) + Math.abs(riga.valore));
+  }
+  // Le categorie oltre la sesta per peso si sommano in «Altri»: prima il
+  // grafico veniva rifiutato del tutto appena c'era un addetto in piu' (il
+  // Back office ne ha sette) e al suo posto compariva una tabella lunghissima.
+  const ordinate = [...totali.keys()].sort((a, b) => (totali.get(b) ?? 0) - (totali.get(a) ?? 0));
+  const tenute = new Set(
+    ordinate.length > MASSIMO_AREE ? ordinate.slice(0, MASSIMO_AREE - 1) : ordinate
+  );
+  const nomi = [...ordinate.filter((c) => tenute.has(c)), ...(ordinate.length > tenute.size ? ["Altri"] : [])];
+  const serie = nomi.map((nome) => {
     const valori: Record<string, number> = {};
     for (const riga of risultato.righe) {
-      if (riga.chiavi[dimensione] === categoria) {
+      const categoria = riga.chiavi[dimensione];
+      const destinazione = tenute.has(categoria) ? categoria : "Altri";
+      if (destinazione === nome) {
         const periodo = riga.chiavi.periodo;
         valori[periodo] = (valori[periodo] ?? 0) + riga.valore;
       }
     }
-    return { nome: categoria, valori };
+    return { nome, valori };
   });
   return { periodi, serie };
+}
+
+/**
+ * Serie giornaliera senza suddivisioni: la «heatmap» giusta e' il calendario,
+ * una casella per giorno. Si disegna l'anno dell'ultimo giorno presente.
+ */
+function calendario(risultato: RisultatoQuery) {
+  if (risultato.spec.granularita !== "giorno" || (risultato.spec.raggruppa?.length ?? 0) > 0) return null;
+  const valori: Record<string, number> = {};
+  let ultimo = "";
+  for (const riga of risultato.righe) {
+    const giorno = riga.chiavi.periodo ?? riga.etichetta;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(giorno)) continue;
+    valori[giorno] = (valori[giorno] ?? 0) + riga.valore;
+    if (giorno > ultimo) ultimo = giorno;
+  }
+  if (!ultimo) return null;
+  return { valori, anno: Number(ultimo.slice(0, 4)) };
 }
 
 function valorePerEtichetta(risultato: RisultatoQuery): Map<string, number> {
@@ -360,6 +395,8 @@ export function GraficoDaRisultato({
     case "pareto":
       return <Pareto dati={datiSemplici(risultato)} altezza={altezza} onClick={onClickEtichetta} />;
     case "heatmap": {
+      const giorni = calendario(risultato);
+      if (giorni) return <CalendarioAttivita {...giorni} unita={risultato.unita} onClick={onClickEtichetta} />;
       const dati = matrice(risultato);
       if (!dati) return <Ripiego risultato={risultato} tipo={tipoScelto} />;
       return (

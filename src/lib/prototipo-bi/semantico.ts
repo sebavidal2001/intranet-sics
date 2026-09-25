@@ -32,6 +32,7 @@ import type {
   SpecQuery,
   UnitaMisura,
 } from "./tipi";
+import { SEPARATORE_RAMO } from "./tipi";
 import { dataDaIso, settimanaIso } from "./calendario";
 import { dimensioniPerMetrica, TIPOLOGIE } from "./tassonomia";
 
@@ -375,6 +376,10 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
   agente: { etichetta: "Agente", estrai: (r) => r.agente },
   cliente: { etichetta: "Cliente", estrai: (r) => r.cliente },
   categoria: { etichetta: "Categoria", estrai: (r) => r.categoria },
+  bu_categoria: {
+    etichetta: "Business unit › categoria",
+    estrai: (r) => `${r.bu}${SEPARATORE_RAMO}${r.categoria || "-"}`,
+  },
   causale: {
     etichetta: "Causale magazzino",
     estrai: (r) => r.causaleDescrizione || r.causaleCodice || "(nessuna)",
@@ -610,6 +615,10 @@ export function validaSpec(spec: unknown): SpecQuery {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function passaFiltro(r: RigaFatto, f: Filtro): boolean {
+  // Un filtro senza valori scelti non restringe niente: e' quello appena
+  // aggiunto, o quello in cui si e' tolta ogni spunta. Prima svuotava il
+  // risultato fino a quando non si scriveva il valore.
+  if (Array.isArray(f.valore) ? f.valore.length === 0 : String(f.valore).trim() === "") return true;
   const v = DIMENSIONI[f.campo].estrai(r);
   switch (f.op) {
     case "eq":
