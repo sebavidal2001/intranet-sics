@@ -103,7 +103,7 @@ Da fare via WinRM su SRVWOA con `Start-Process` e file SQL senza BOM
 Attivita' pianificata **`IMPRESA_BI_ACQUISTI`** su SRVWOA, senza orario: lancia
 `Invoke-BIPipeline-Acquisti.ps1`, cioe' il solo profilo `acquisti` (~25 s). Stesso
 account e logon (Password) di `IMPRESA_BI_CRUSCOTTO`. Log in
-`C:\ProgramData\ImpresaBI\launcher-logscquisti-launch-*.log`, stato in
+`C:\ProgramData\ImpresaBI\launcher-logs\acquisti-launch-*.log`, stato in
 `last-run-acquisti.json`.
 
     Start-ScheduledTask -TaskName IMPRESA_BI_ACQUISTI
