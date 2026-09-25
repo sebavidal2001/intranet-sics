@@ -98,6 +98,19 @@ Da fare via WinRM su SRVWOA con `Start-Process` e file SQL senza BOM
 3. VM: `acquisti-ingest.sh` in `/opt/impresa-bi/`, le due unita' in `/etc/systemd/system/`,
    `systemctl enable --now impresa-bi-acquisti.path`.
 
+## Ricarico a richiesta (25/09/2026)
+
+Attivita' pianificata **`IMPRESA_BI_ACQUISTI`** su SRVWOA, senza orario: lancia
+`Invoke-BIPipeline-Acquisti.ps1`, cioe' il solo profilo `acquisti` (~25 s). Stesso
+account e logon (Password) di `IMPRESA_BI_CRUSCOTTO`. Log in
+`C:\ProgramData\ImpresaBI\launcher-logscquisti-launch-*.log`, stato in
+`last-run-acquisti.json`.
+
+    Start-ScheduledTask -TaskName IMPRESA_BI_ACQUISTI
+
+Da preferire di giorno a `IMPRESA_BI_CRUSCOTTO`, che estrae per ~20 minuti e con il lock
+condiviso ferma la pipeline `trasporti live` del Portale Vettori.
+
 ## Collegato a
 
 - `docs/bi/PIANO-MARGINALITA.md` — lo stesso percorso fatto per lo storico costi
