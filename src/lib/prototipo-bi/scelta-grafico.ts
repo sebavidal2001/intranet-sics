@@ -27,6 +27,7 @@ export type TipoGrafico =
   | "torta"
   | "anelli"
   | "areeImpilate"
+  | "barreImpilate"
   | "pareto"
   | "bullet"
   | "heatmap"
@@ -58,6 +59,7 @@ export const NOMI_GRAFICI: Record<TipoGrafico, string> = {
   torta: "Torta",
   anelli: "Anelli",
   areeImpilate: "Aree impilate",
+  barreImpilate: "Barre impilate",
   pareto: "Pareto",
   bullet: "Bullet",
   heatmap: "Mappa di calore",
@@ -74,6 +76,9 @@ export const NOMI_GRAFICI: Record<TipoGrafico, string> = {
   kpi: "KPI",
   tabella: "Tabella",
 };
+
+/** Tutti i tipi, nell'ordine dei nomi: la fonte unica per menu e validazioni. */
+export const TIPI_GRAFICO = Object.keys(NOMI_GRAFICI) as TipoGrafico[];
 
 export interface PropostaGrafico {
   tipo: TipoGrafico;
@@ -221,7 +226,7 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
     // Oltre sei categorie il grafico somma le minori in «Altri»: resta leggibile,
     // e rifiutarlo lasciava al suo posto una tabella con una riga per mese e persona.
     if (raggruppamenti.length === 1 && categorieDistinte(risultato) >= 2) {
-      possibili.push("areeImpilate");
+      possibili.push("areeImpilate", "barreImpilate");
     }
     if (raggruppamenti.length === 1) {
       const periodi = periodiDistinti(risultato);
@@ -240,7 +245,7 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
   if (raggruppamenti.length === 2 || (temporale && raggruppamenti.length === 1) || calendario) {
     possibili.push("heatmap");
   }
-  if (raggruppamenti.length === 2) possibili.push("matrice");
+  if (raggruppamenti.length === 2) possibili.push("matrice", "barreImpilate");
 
   possibili.push("barre");
   if (numeroRighe >= 2) possibili.push("pareto", "quadranti");

@@ -33,7 +33,7 @@ import { instrada, calcolaCosto, MODELLI, type Complessita, type Consumo } from 
 import { leggiConfigurazione } from "./archivio";
 import { chiusureEffettive } from "./chiusure-dedotte";
 import { eseguiSqlBi, ErroreSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
-import { graficiPossibili, scegliGrafico, type TipoGrafico } from "./scelta-grafico";
+import { TIPI_GRAFICO, graficiPossibili, scegliGrafico, type TipoGrafico } from "./scelta-grafico";
 import { validaSerieAnalisi } from "./analisi-composita";
 import { calcolaPunteggi, costruisciContesto, rilevaTutto } from "./rilevatori";
 import {
@@ -515,23 +515,7 @@ const STRUMENTI_TUTTI = [
           },
           grafico: {
             type: "string",
-            enum: [
-              "linee",
-              "barre",
-              "combo",
-              "torta",
-              "anelli",
-              "areeImpilate",
-              "pareto",
-              "bullet",
-              "heatmap",
-              "quadranti",
-              "imbuto",
-              "treemap",
-              "sparkline",
-              "kpi",
-              "tabella",
-            ],
+            enum: TIPI_GRAFICO,
           },
           commento: {
             type: "string",

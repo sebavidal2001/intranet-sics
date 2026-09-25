@@ -38,6 +38,7 @@ import {
   Posizioni,
 } from "./grafici-nuovi";
 import { useImpostazioni } from "./impostazioni";
+import { BarreImpilate, datiBarreImpilate } from "./barre-impilate";
 import {
   TabellaAnalitica,
   type ColonnaAnalitica,
@@ -452,6 +453,9 @@ export function GraficoDaRisultato({
         />
       );
     }
+    case "barreImpilate":
+      if (!datiBarreImpilate(risultato)) return <Ripiego risultato={risultato} tipo={tipoScelto} />;
+      return <BarreImpilate risultato={risultato} altezza={altezza} onClick={onClickEtichetta} />;
     case "areeImpilate": {
       const dati = aree(risultato);
       if (!dati) return <Ripiego risultato={risultato} tipo={tipoScelto} />;

@@ -19,6 +19,7 @@
  */
 
 import { SelettoreValori } from "./selettore-valori";
+import { SceltaGrafico } from "./scelta-grafico";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
@@ -1147,25 +1148,19 @@ export function EditorAnalisi({
                     <p className="text-xs font-medium">Grafico proposto: {NOMI_GRAFICI[proposta.tipo]}</p>
                     <p className="mt-1 text-xs leading-relaxed text-text-muted">{proposta.motivo}</p>
                   </div>
-                  <label className="text-xs text-text-muted">
-                    Visualizzazione
-                    <select
-                      aria-label="Visualizzazione"
-                      value={tipoGrafico}
-                      onChange={(evento) => {
-                        setGraficoScelto(evento.target.value as TipoGrafico);
+                  <div className="text-xs text-text-muted">
+                    <span className="mb-1 block">Visualizzazione</span>
+                    <SceltaGrafico
+                      etichetta="Visualizzazione"
+                      valore={tipoGrafico}
+                      opzioni={grafici}
+                      onChange={(tipo) => {
+                        setGraficoScelto(tipo);
                         setSalvataggio("pronto");
                         setMessaggioSalvataggio("");
                       }}
-                      className={`${CLASSE_CAMPO} mt-1`}
-                    >
-                      {grafici.map((tipo) => (
-                        <option key={tipo} value={tipo}>
-                          {NOMI_GRAFICI[tipo]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    />
+                  </div>
                 </div>
 
                 {sbloccaGrafici.length > 0 && (

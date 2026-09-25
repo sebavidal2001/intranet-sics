@@ -20,6 +20,7 @@
 
 import { useAutoAggiornamento } from "./auto-aggiornamento";
 import { SelettoreValori } from "./selettore-valori";
+import { SceltaGrafico } from "./scelta-grafico";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -47,7 +48,7 @@ import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti
 import { DATASET_DI_METRICA } from "@/lib/prototipo-bi/gruppi-campi";
 import { preparaEsecuzioneAnalisi } from "@/lib/prototipo-bi/analisi-composita";
 import type { FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
-import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
+import { TIPI_GRAFICO, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type {
   Filtro,
   RisultatoQuery,
@@ -109,23 +110,6 @@ interface ProprietaDashboardView {
   dashboardIniziale?: DashboardCompleta;
 }
 
-const GRAFICI: Array<{ valore: TipoGrafico; etichetta: string }> = [
-  { valore: "barre", etichetta: "Barre" },
-  { valore: "linee", etichetta: "Linee" },
-  { valore: "combo", etichetta: "Combinato" },
-  { valore: "torta", etichetta: "Torta" },
-  { valore: "anelli", etichetta: "Anelli" },
-  { valore: "areeImpilate", etichetta: "Aree impilate" },
-  { valore: "pareto", etichetta: "Pareto" },
-  { valore: "bullet", etichetta: "Bullet" },
-  { valore: "heatmap", etichetta: "Mappa di calore" },
-  { valore: "quadranti", etichetta: "Quadranti" },
-  { valore: "imbuto", etichetta: "Imbuto" },
-  { valore: "treemap", etichetta: "Composizione" },
-  { valore: "sparkline", etichetta: "Sparkline" },
-  { valore: "kpi", etichetta: "KPI" },
-  { valore: "tabella", etichetta: "Tabella" },
-];
 
 const COLONNE: Record<number, string> = {
   1: "lg:col-span-1", 2: "lg:col-span-2", 3: "lg:col-span-3", 4: "lg:col-span-4",
@@ -637,7 +621,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                           <button type="button" onClick={() => spostaRiquadro(indice, -1)} disabled={indice === 0} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta prima"><ChevronLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => spostaRiquadro(indice, 1)} disabled={indice === paginaAttiva.riquadri.length - 1} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta dopo"><ChevronRight className="h-4 w-4" /></button>
                           <select aria-label={`Larghezza di ${riquadro.analisi.titolo}`} value={riquadro.larghezza} onChange={(e) => { const larghezza = Number(e.target.value); const aggiornato = { ...riquadro, larghezza }; void aggiornaRiquadri(paginaAttiva.riquadri.map((r) => r.id === riquadro.id ? aggiornato : r), [{ id: riquadro.id, larghezza }]); }} className="h-8 rounded-md border border-border bg-bg-page px-1.5 text-xs outline-none focus:ring-2 focus:ring-primary"><option value={3}>3/12</option><option value={4}>4/12</option><option value={6}>6/12</option><option value={8}>8/12</option><option value={9}>9/12</option><option value={12}>12/12</option></select>
-                          <select aria-label={`Grafico di ${riquadro.analisi.titolo}`} value={riquadro.grafico ?? riquadro.analisi.grafico ?? "barre"} onChange={(e) => { const grafico = e.target.value as TipoGrafico; const aggiornato = { ...riquadro, grafico }; void aggiornaRiquadri(paginaAttiva.riquadri.map((r) => r.id === riquadro.id ? aggiornato : r), [{ id: riquadro.id, grafico }]); }} className="h-8 max-w-32 rounded-md border border-border bg-bg-page px-1.5 text-xs outline-none focus:ring-2 focus:ring-primary">{GRAFICI.map((grafico) => <option key={grafico.valore} value={grafico.valore}>{grafico.etichetta}</option>)}</select>
+                          <div className="w-40"><SceltaGrafico compatto etichetta={`Grafico di ${riquadro.analisi.titolo}`} valore={riquadro.grafico ?? riquadro.analisi.grafico ?? "barre"} opzioni={TIPI_GRAFICO} onChange={(grafico) => { const aggiornato = { ...riquadro, grafico }; void aggiornaRiquadri(paginaAttiva.riquadri.map((r) => r.id === riquadro.id ? aggiornato : r), [{ id: riquadro.id, grafico }]); }} /></div>
                           {/*
                             Riaprire un riquadro nel builder serve a correggerlo
                             senza rifarlo, e a vedere com'e' fatto: quelli

@@ -9,6 +9,7 @@
  * costo della domanda: senza, non si può decidere se l'analista conviene.
  */
 
+import { SceltaGrafico } from "./scelta-grafico";
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -307,27 +308,22 @@ function BloccoAnalisi({ analisi }: { analisi: AnalisiProposta }) {
       </div>
 
       <div className="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-end sm:justify-between">
-        <label className="min-w-0 text-xs text-text-muted">
-          Tipo di grafico
-          <select
-            value={tipoScelto}
-            onChange={(evento) => {
-              setTipoScelto(evento.target.value as TipoGrafico);
+        <div className="min-w-0 text-xs text-text-muted sm:w-60">
+          <span className="mb-1 block">Tipo di grafico</span>
+          <SceltaGrafico
+            etichetta="Tipo di grafico"
+            title={analisi.motivoGrafico}
+            valore={tipoScelto}
+            opzioni={graficiPossibili(analisi.risultatiSerie ?? analisi.risultato)}
+            onChange={(tipo) => {
+              setTipoScelto(tipo);
               if (salvataggio === "salvata") {
                 setSalvataggio("pronto");
                 setMessaggio("");
               }
             }}
-            title={analisi.motivoGrafico}
-            className="mt-1 block min-h-10 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary sm:w-auto"
-          >
-            {graficiPossibili(analisi.risultatiSerie ?? analisi.risultato).map((tipo) => (
-              <option key={tipo} value={tipo}>
-                {NOMI_GRAFICI[tipo]}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <button

@@ -1,16 +1,15 @@
 import type { AccessoBi } from "@/lib/prototipo-bi/accesso";
 import { registraAccesso } from "@/lib/prototipo-bi/registro";
-import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
+import { TIPI_GRAFICO, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 
 export const UUID_VALIDO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-const TIPI_GRAFICO = new Set<TipoGrafico>([
-  "linee", "barre", "combo", "torta", "anelli", "areeImpilate", "pareto",
-  "bullet", "heatmap", "quadranti", "imbuto", "treemap", "sparkline", "kpi", "tabella",
-]);
+// Dal catalogo, non ricopiato: la copia a mano era ferma a quindici tipi e
+// rifiutava i sei aggiunti il 14/09 (matrice, pendenza, ...).
+const TIPI_AMMESSI = new Set<TipoGrafico>(TIPI_GRAFICO);
 
 export function graficoValido(valore: unknown): valore is TipoGrafico {
-  return typeof valore === "string" && TIPI_GRAFICO.has(valore as TipoGrafico);
+  return typeof valore === "string" && TIPI_AMMESSI.has(valore as TipoGrafico);
 }
 
 export function interoTra(valore: unknown, minimo: number, massimo: number): valore is number {
