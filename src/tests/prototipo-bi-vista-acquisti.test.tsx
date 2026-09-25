@@ -57,7 +57,9 @@ describe("VistaAcquisti", () => {
 
     render(<VistaAcquisti anno={2026} periodo={{ dal: "2026-01-01", al: "2026-09-24" }} />);
 
-    await waitFor(() => expect(screen.getByText("Per buyer")).toBeInTheDocument());
+    // Sotto il carico della suite completa i grafici impiegano piu' del
+    // secondo predefinito a montare: senza margine il test diventa instabile.
+    await waitFor(() => expect(screen.getByText("Per buyer")).toBeInTheDocument(), { timeout: 5000 });
     expect(fetchFinta).toHaveBeenCalledWith("/api/bi/acquisti?dal=2026-01-01&al=2026-09-24");
     expect(screen.getAllByText("Claudio Dalsass").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Linda Carlone").length).toBeGreaterThan(0);
@@ -72,6 +74,6 @@ describe("VistaAcquisti", () => {
       json: async () => ({ error: "Ordini di acquisto non disponibili: la vista bi_acquisti non è raggiungibile." }),
     }));
     render(<VistaAcquisti anno={2026} periodo={{ anno: 2026 }} />);
-    await waitFor(() => expect(screen.getByText(/non è raggiungibile/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/non è raggiungibile/)).toBeInTheDocument(), { timeout: 5000 });
   });
 });

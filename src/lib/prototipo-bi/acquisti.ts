@@ -162,6 +162,8 @@ export interface CruscottoAcquisti {
   perFornitore: (IndicatoriGruppo & { puntualitaPrimaPct: number | null })[];
   /** Righe emesse per settimana e buyer, ultime 26 settimane fino a `oggi`. */
   caricoSettimanale: { settimana: string; perBuyer: Record<string, number>; totale: number }[];
+  /** Righe emesse per mese (YYYY-MM) e buyer, nel periodo: per il Back office. */
+  caricoMensile: { mese: string; perBuyer: Record<string, number> }[];
   scadute: {
     ordine: number | null;
     dataOrdine: string;
@@ -303,6 +305,17 @@ export function calcolaCruscottoAcquisti(
     };
   });
 
+  const perMese = new Map<string, Record<string, number>>();
+  for (const r of emesse) {
+    const mese = r.dataOrdine.slice(0, 7);
+    const m = perMese.get(mese) ?? {};
+    m[nomeBuyer(r)] = (m[nomeBuyer(r)] ?? 0) + 1;
+    perMese.set(mese, m);
+  }
+  const caricoMensile = [...perMese.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([mese, perBuyerMese]) => ({ mese, perBuyer: perBuyerMese }));
+
   const scadute = aperteOra
     .filter((r) => scaduta(r, oggi))
     .map((r) => ({
@@ -326,7 +339,7 @@ export function calcolaCruscottoAcquisti(
     avvisi.push("«acquisti» è un utente condiviso del gestionale: le sue righe non si possono attribuire a una persona.");
   }
 
-  return { periodo: { dal, al }, oggi, totale, perBuyer, perFornitore, caricoSettimanale, scadute, avvisi };
+  return { periodo: { dal, al }, oggi, totale, perBuyer, perFornitore, caricoSettimanale, caricoMensile, scadute, avvisi };
 }
 
 /**

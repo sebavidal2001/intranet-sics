@@ -85,7 +85,7 @@ const VISTE: { chiave: Vista; etichetta: string; nota: string }[] = [
   { chiave: "margine", etichetta: "Margine", nota: "dove si guadagna, non dove si fattura" },
   { chiave: "preventivi", etichetta: "Preventivi", nota: "cosa c'è in canna" },
   { chiave: "conversione", etichetta: "Conversione", nota: "che fine fanno i preventivi" },
-  { chiave: "backoffice", etichetta: "Back office", nota: "carico e tempi degli addetti" },
+  { chiave: "backoffice", etichetta: "Back office", nota: "carico e tempi del personale, vendite e acquisti" },
   { chiave: "acquisti", etichetta: "Acquisti", nota: "fornitori puntuali, carico dei buyer" },
 ];
 

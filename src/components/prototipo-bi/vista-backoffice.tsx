@@ -20,6 +20,7 @@ import { BarreScostamento, Heatmap } from "./grafici-avanzati";
 import { Anelli, AreeImpilate, CalendarioAttivita } from "./grafici-spettacolari";
 import { TabellaAnalitica, type ColonnaAnalitica, type RigaAnalitica } from "./tabella-analitica";
 import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti";
+import { PersonaleInsieme, type PersonaPreventivi } from "./personale-insieme";
 import type { Dimensione, Periodo, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 const MESI_BREVI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
@@ -169,6 +170,15 @@ export function VistaBackoffice({
     });
   }, [risultati]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Per la vista d'insieme col personale acquisti: null finche' i preventivi
+  // non sono arrivati, cosi' la tabella non mostra gli acquisti da soli.
+  const preventiviPerPersona = useMemo<PersonaPreventivi[] | null>(() => {
+    const doc = r("docPerAddetto");
+    if (!doc) return null;
+    const righe = new Map((r("righePerAddetto")?.righe ?? []).map((x) => [x.etichetta, x.valore]));
+    return doc.righe.map((x) => ({ nome: x.etichetta, documenti: x.valore, righe: righe.get(x.etichetta) ?? 0 }));
+  }, [risultati]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const colonneAddetti: ColonnaAnalitica[] = [
     // `unita: "numero"` è indispensabile: senza, il conteggio dei preventivi
     // veniva stampato in euro ("418 €").
@@ -217,6 +227,13 @@ export function VistaBackoffice({
             {errori._generale}
           </div>
         )}
+
+        <PersonaleInsieme
+          anno={anno}
+          periodo={periodo}
+          preventiviPerPersona={preventiviPerPersona}
+          preventiviMensili={r("righeMeseAddetto")}
+        />
 
         <Scheda
           titolo="Volume di lavoro"

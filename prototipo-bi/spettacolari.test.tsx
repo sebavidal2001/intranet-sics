@@ -260,7 +260,13 @@ function mockQuery(perId: Record<string, unknown>) {
     const body = JSON.parse(String(init?.body ?? "{}")) as {
       specs?: { id: string; spec: unknown }[];
     };
-    void input;
+    // La scheda Back office chiede anche gli ordini a fornitore, in GET.
+    if (String(input).startsWith("/api/bi/acquisti")) {
+      return {
+        ok: true,
+        json: async () => ({ perBuyer: [], caricoMensile: [], avvisi: [] }),
+      };
+    }
     return {
       ok: true,
       json: async () => ({
@@ -313,7 +319,8 @@ describe("Vista Conversione", () => {
     await waitFor(() => expect(spia).toHaveBeenCalled());
 
     // Le spec devono nominare le metriche nuove, non SQL.
-    const inviato = JSON.stringify(JSON.parse(String(spia.mock.calls[0][1]?.body)));
+    const query = spia.mock.calls.find(([url]) => url === "/api/bi/query");
+    const inviato = JSON.stringify(JSON.parse(String(query?.[1]?.body)));
     expect(inviato).toContain("tasso_conversione");
     expect(inviato).toContain("preventivi_convertito");
     expect(inviato).not.toMatch(/select|SELECT/);
@@ -378,9 +385,11 @@ describe("Vista Back office", () => {
       </ImpostazioniProvider>
     );
 
-    await waitFor(() => expect(spia).toHaveBeenCalled());
+    // La scheda chiede anche gli ordini a fornitore: si guarda solo il batch di query.
+    const query = () => spia.mock.calls.find(([url]) => url === "/api/bi/query");
+    await waitFor(() => expect(query()).toBeDefined());
 
-    const inviato = JSON.stringify(JSON.parse(String(spia.mock.calls[0][1]?.body)));
+    const inviato = JSON.stringify(JSON.parse(String(query()?.[1]?.body)));
     expect(inviato).toContain("righe_preventivo");
     expect(inviato).toContain("quota_stesso_giorno");
     expect(inviato).toContain("creatore");
@@ -403,8 +412,10 @@ describe("Vista Back office", () => {
         <VistaBackoffice anno={2026} periodo={{ anno: 2026 }} filtriSpec={[]} alternaFiltro={() => {}} filtroDi={() => null} />
       </ImpostazioniProvider>
     );
-    await waitFor(() => expect(screen.getByText("Mostra quote %")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("Mostra quote %"));
-    expect(screen.getByText("Mostra volumi")).toBeInTheDocument();
+    // Due grafici hanno il loro interruttore: si prova quello del carico dei preventivi.
+    await waitFor(() => expect(screen.getByText("Come si distribuisce il carico")).toBeInTheDocument());
+    const sezione = screen.getByText("Come si distribuisce il carico").closest("section")!;
+    fireEvent.click(within(sezione).getByText("Mostra quote %"));
+    expect(within(sezione).getByText("Mostra volumi")).toBeInTheDocument();
   });
 });
