@@ -16,11 +16,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { salvaSnapshotInCache, leggiSnapshotDaCache, etaSnapshot } from "./archivio";
 import { etichettaBusinessUnit, controllaTassonomia } from "./business-unit";
-import type { ChiaveDataset, RigaFatto, Snapshot } from "./tipi";
-import { daVista, type RigaAcquisto } from "./acquisti";
+import type { ChiaveDataset, ChiaveDatasetVendite, RigaFatto, Snapshot } from "./tipi";
+import { comeFatti, daVista, type RigaAcquisto } from "./acquisti";
 
 /** Viste di origine. `importoCampo` cambia solo per i preventivi. */
-const VISTE: Record<ChiaveDataset, { vista: string; importoCampo: string }> = {
+const VISTE: Record<ChiaveDatasetVendite, { vista: string; importoCampo: string }> = {
   ordinato: { vista: "bi_ordinato", importoCampo: "Importo" },
   fatturato: { vista: "bi_fatturato", importoCampo: "Importo" },
   consegnato: { vista: "bi_consegnato", importoCampo: "Importo" },
@@ -404,7 +404,7 @@ async function leggiStatoRun(): Promise<{
 export async function costruisciSnapshot(): Promise<Snapshot> {
   const stato = await leggiStatoRun();
 
-  const chiavi = Object.keys(VISTE) as ChiaveDataset[];
+  const chiavi = Object.keys(VISTE) as ChiaveDatasetVendite[];
   const risultati = await Promise.all(
     chiavi.map(async (k) => {
       // I preventivi passano dalla tabella grezza per avere i campi
@@ -417,7 +417,7 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
     })
   );
 
-  const dataset = Object.fromEntries(risultati) as Record<ChiaveDataset, RigaFatto[]>;
+  const dataset = Object.fromEntries(risultati) as Snapshot["dataset"];
   const acquisti = await caricaAcquisti();
 
   // Il costo si aggancia a ogni riga che ha un articolo, prendendo la
@@ -445,6 +445,15 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
   const conteggi = Object.fromEntries(
     risultati.map(([k, v]) => [k, v.length])
   ) as Record<string, number>;
+
+  // Gli ordini a fornitore entrano nel motore come dataset a se', DOPO il
+  // controllo della tassonomia (non hanno business unit) e fuori dal calcolo
+  // della data di riferimento (un ordine di oggi non dice fin dove arrivano
+  // le vendite).
+  if (acquisti) {
+    dataset.acquisti = comeFatti(acquisti.righe, acquisti.al ?? new Date().toISOString().slice(0, 10));
+    conteggi.acquisti = dataset.acquisti.length;
+  }
 
   // La data di riferimento ("oggi") deve venire SOLO dai dataset che guardano
   // al passato. `portafoglio` e `consegnato_futuro_per_mese` contengono
@@ -527,8 +536,11 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * 4 (24/09/2026): `dataConsegnaRichiesta` e `dataConsegnaConfermata` sulle
  * righe dell'ordinato, per il rilevatore delle consegne; e `acquisti`, le
  * righe d'ordine a fornitore.
+ *
+ * 5 (25/09/2026): `dataset.acquisti`, gli ordini a fornitore come fatti del
+ * motore semantico (metriche acquisti_*, puntualita_fornitori, ...).
  */
-const VERSIONE_FORMA = 4;
+const VERSIONE_FORMA = 5;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.

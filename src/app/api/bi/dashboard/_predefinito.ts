@@ -22,7 +22,7 @@ export async function assicuraCruscottoDiSistema(): Promise<string> {
     {
       chiave: CHIAVE_CRUSCOTTO,
       titolo: "Cruscotto",
-      descrizione: "La lettura direzionale condivisa, organizzata nelle sei pagine storiche.",
+      descrizione: "La lettura direzionale condivisa: vendite, margine, back office e acquisti.",
       autore_id: accesso.userId,
       visibilita: "condivisa",
       di_sistema: true,
@@ -44,7 +44,7 @@ export async function assicuraCruscottoDiSistema(): Promise<string> {
     .from("dashboard")
     .update({
       titolo: "Cruscotto",
-      descrizione: "La lettura direzionale condivisa, organizzata nelle sei pagine storiche.",
+      descrizione: "La lettura direzionale condivisa: vendite, margine, back office e acquisti.",
       visibilita: "condivisa",
       di_sistema: true,
       aggiornato_il: new Date().toISOString(),

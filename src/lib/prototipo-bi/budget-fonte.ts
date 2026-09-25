@@ -24,6 +24,7 @@ import type {
   SerieBudget,
   SpecQuery,
 } from "./tipi";
+import { SEPARATORE_RAMO } from "./tipi";
 
 function arr(n: number) {
   return Math.round(n * 100) / 100;
@@ -287,7 +288,21 @@ export function risolviBudget(
   });
 
   // ── Filtri su dimensioni ──────────────────────────────────────────────────
-  for (const f of spec.filtri ?? []) {
+  for (const filtroOriginale of spec.filtri ?? []) {
+    let f = filtroOriginale;
+    // Scelta per rami («COMPONENTI › FLUIDI»): il budget non scende sotto la
+    // business unit, quindi si confronta con quello delle business unit toccate
+    // e lo si dice. Ignorarlo avrebbe messo l'ordinato di una categoria accanto
+    // al budget di tutta l'azienda.
+    if (f.campo === "bu_categoria") {
+      const rami = (Array.isArray(f.valore) ? f.valore : [f.valore]).map(String).filter(Boolean);
+      if (rami.length === 0) continue;
+      const bu = [...new Set(rami.map((r) => r.split(SEPARATORE_RAMO)[0]))];
+      f = { campo: "bu", op: "in", valore: bu };
+      avvisi.push(
+        `Il budget esiste per business unit intera: la scelta per categorie è confrontata con il budget di ${bu.join(", ")}.`
+      );
+    }
     const estrai = (r: RigaSerieBudget) =>
       f.campo === "agente" ? (r.agente ?? "") : f.campo === "bu" ? r.area : null;
 

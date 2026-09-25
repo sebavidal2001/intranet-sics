@@ -97,7 +97,7 @@ describe("Il perimetro filtra il dato, non la domanda", () => {
     const s = applicaPerimetro(SNAPSHOT, SOLO_VALERIA);
 
     for (const chiave of Object.keys(s.dataset) as (keyof Snapshot["dataset"])[]) {
-      for (const r of s.dataset[chiave]) {
+      for (const r of s.dataset[chiave] ?? []) {
         expect(r.codiceAgente.trim().toUpperCase()).toBe("VA");
       }
     }

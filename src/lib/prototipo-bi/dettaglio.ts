@@ -82,6 +82,8 @@ export interface EsitoDettaglio {
 function passaFiltro(r: RigaFatto, f: Filtro): boolean {
   const dim = DIMENSIONI[f.campo];
   if (!dim) return true;
+  // Come nel motore: un filtro senza valori scelti non restringe niente.
+  if (Array.isArray(f.valore) ? f.valore.length === 0 : String(f.valore).trim() === "") return true;
   const v = dim.estrai(r);
   switch (f.op) {
     case "eq":

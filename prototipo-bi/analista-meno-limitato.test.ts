@@ -125,6 +125,11 @@ describe("I rifiuti dicono cosa usare al posto di cosa", () => {
   });
 
   it("una dimensione inesistente nomina quelle sensate per quella metrica", () => {
+    const e = rifiuto({ metrica: "fatturato", raggruppa: ["reparto"] });
+    expect(e?.suggerimento).toContain("agente");
+  });
+
+  it("una dimensione degli acquisti su una metrica di vendita e' rifiutata con i suggerimenti", () => {
     const e = rifiuto({ metrica: "fatturato", raggruppa: ["fornitore"] });
     expect(e?.suggerimento).toContain("agente");
   });

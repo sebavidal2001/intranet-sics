@@ -868,9 +868,15 @@ function snapshotNelPeriodo(snapshot: Snapshot, periodo?: Periodo): Snapshot {
   };
   const dataset = { ...snapshot.dataset };
   for (const chiave of Object.keys(dataset) as Array<keyof Snapshot["dataset"]>) {
-    dataset[chiave] = snapshot.dataset[chiave].filter((riga) => dentro(riga.data));
+    dataset[chiave] = (snapshot.dataset[chiave] ?? []).filter((riga) => dentro(riga.data));
   }
-  const date = Object.values(dataset).flat().map((riga) => riga.data).filter(Boolean).sort();
+  // Gli ordini a fornitore non contano per la data di riferimento delle vendite.
+  const date = Object.entries(dataset)
+    .filter(([chiave]) => chiave !== "acquisti")
+    .flatMap(([, righe]) => righe ?? [])
+    .map((riga) => riga.data)
+    .filter(Boolean)
+    .sort();
   return {
     ...snapshot,
     dataset,

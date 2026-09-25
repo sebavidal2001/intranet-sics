@@ -352,6 +352,72 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     denominatore: (r) => Math.abs(r.importo),
   },
 
+  // ── Acquisti: righe d'ordine a fornitore ─────────────────────────────────
+  // La data di riga e' quella dell'ORDINE: «puntualita' di luglio» vuol dire
+  // «degli ordini emessi a luglio, quanti sono arrivati entro la promessa».
+  // La scheda Acquisti del Cruscotto la misura invece sugli arrivi del periodo.
+  acquisti_valore: {
+    chiave: "acquisti_valore",
+    etichetta: "Ordinato a fornitore",
+    descrizione: "Valore delle righe d'ordine a fornitore (OF, OFT, OFR), per data dell'ordine.",
+    dataset: "acquisti",
+    aggregazione: "somma",
+    unita: "euro",
+  },
+  acquisti_righe: {
+    chiave: "acquisti_righe",
+    etichetta: "Righe d'ordine a fornitore",
+    descrizione: "Numero di righe d'ordine emesse: l'unità di lavoro dell'ufficio acquisti.",
+    dataset: "acquisti",
+    aggregazione: "conta_righe",
+    unita: "numero",
+  },
+  acquisti_ordini: {
+    chiave: "acquisti_ordini",
+    etichetta: "Ordini a fornitore",
+    descrizione: "Numero di ordini a fornitore distinti.",
+    dataset: "acquisti",
+    aggregazione: "conta_documenti",
+    unita: "numero",
+  },
+  puntualita_fornitori: {
+    chiave: "puntualita_fornitori",
+    etichetta: "Puntualità fornitori",
+    descrizione:
+      "Quota delle righe ordinate già arrivate entro la data promessa dal fornitore (confermata, o prevista se manca). Le righe non ancora arrivate non contano.",
+    dataset: "acquisti",
+    aggregazione: "rapporto",
+    unita: "percentuale",
+    numeratore: (r) => (r.puntuale === true ? 1 : 0),
+    denominatore: (r) => (r.puntuale === null || r.puntuale === undefined ? 0 : 1),
+  },
+  giorni_consegna_fornitori: {
+    chiave: "giorni_consegna_fornitori",
+    etichetta: "Giorni ordine → arrivo",
+    descrizione: "Giorni medi fra l'ordine e il primo arrivo della merce, sulle righe arrivate.",
+    dataset: "acquisti",
+    aggregazione: "media",
+    unita: "giorni",
+    valore: (r) => (r.giorniConsegna === null || r.giorniConsegna === undefined ? null : r.giorniConsegna),
+  },
+  acquisti_da_sollecitare: {
+    chiave: "acquisti_da_sollecitare",
+    etichetta: "Righe da sollecitare",
+    descrizione: "Righe d'ordine ancora aperte con la data promessa già passata, al giorno dell'estrazione.",
+    dataset: "acquisti",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => (r.scaduta ? 1 : 0),
+  },
+  acquisti_valore_da_sollecitare: {
+    chiave: "acquisti_valore_da_sollecitare",
+    etichetta: "Valore da sollecitare",
+    descrizione: "Valore ancora da ricevere sulle righe con la data promessa passata.",
+    dataset: "acquisti",
+    aggregazione: "somma",
+    unita: "euro",
+    valore: (r) => (r.scaduta ? (r.valoreResiduo ?? 0) : 0),
+  },
   // Budget e BEP non vengono dallo snapshot: sono iniettati dal motore budget.
   budget: {
     chiave: "budget",
@@ -371,11 +437,22 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   },
 };
 
+const SOLO_ACQUISTI = new Set<Dimensione>(["fornitore", "buyer"]);
+
+/** Vero se la dimensione appartiene all'altro dominio (acquisti ↔ vendite). */
+export function dimensioneFuoriDominio(metrica: ChiaveMetrica, dimensione: Dimensione): boolean {
+  const acquisti = CATALOGO[metrica]?.dataset === "acquisti";
+  if (acquisti) return !dimensioniPerMetrica(metrica).includes(dimensione);
+  return SOLO_ACQUISTI.has(dimensione);
+}
+
 export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: RigaFatto) => string }> = {
   bu: { etichetta: "Business unit", estrai: (r) => r.bu },
   agente: { etichetta: "Agente", estrai: (r) => r.agente },
   cliente: { etichetta: "Cliente", estrai: (r) => r.cliente },
   categoria: { etichetta: "Categoria", estrai: (r) => r.categoria },
+  fornitore: { etichetta: "Fornitore", estrai: (r) => r.fornitore ?? "" },
+  buyer: { etichetta: "Buyer", estrai: (r) => r.buyer ?? "" },
   bu_categoria: {
     etichetta: "Business unit › categoria",
     estrai: (r) => `${r.bu}${SEPARATORE_RAMO}${r.categoria || "-"}`,
@@ -451,7 +528,7 @@ export function elencaValoriDimensione(
 
   const peso = new Map<string, { righe: number; importo: number }>();
   for (const righe of Object.values(snapshot.dataset)) {
-    for (const r of righe) {
+    for (const r of righe ?? []) {
       const v = estrattore.estrai(r);
       if (!v) continue;
       if (cerca && !v.toLowerCase().includes(cerca)) continue;
@@ -561,6 +638,18 @@ export function validaSpec(spec: unknown): SpecQuery {
   const suggerite = dimensioniPerMetrica(metrica).join(", ");
   const tutte = Object.keys(DIMENSIONI).join(", ");
 
+  // Unica restrizione: acquisti e vendite non si mescolano. Un fatturato per
+  // fornitore darebbe un solo gruppo vuoto, un ordinato a fornitore per agente
+  // idem. Sono combinazioni nate il 25/09/2026, quindi nessuna analisi salvata
+  // le usa e rifiutarle non rompe niente.
+  const fuoriDominio = (dim: Dimensione) =>
+    dimensioneFuoriDominio(metrica, dim)
+      ? new SpecNonValida(
+          `La dimensione "${dim}" non si applica alla metrica "${metrica}".`,
+          `Per la metrica "${metrica}" hanno senso: ${suggerite}.`
+        )
+      : null;
+
   const raggruppa = Array.isArray(s.raggruppa)
     ? s.raggruppa.map((d) => {
         const dim = String(d) as Dimensione;
@@ -570,6 +659,8 @@ export function validaSpec(spec: unknown): SpecQuery {
             `Per la metrica "${metrica}" hanno senso: ${suggerite}. Esistenti in tutto: ${tutte}.`
           );
         }
+        const errore = fuoriDominio(dim);
+        if (errore) throw errore;
         return dim;
       })
     : [];
@@ -585,6 +676,8 @@ export function validaSpec(spec: unknown): SpecQuery {
               "Per sapere quali valori contiene una dimensione usa elenca_valori."
           );
         }
+        const erroreDominio = fuoriDominio(campo);
+        if (erroreDominio) throw erroreDominio;
         const op = String(ff.op ?? "eq") as Filtro["op"];
         if (!["eq", "neq", "in", "contiene"].includes(op)) {
           throw new SpecNonValida(

@@ -15,7 +15,12 @@ export type ChiaveDataset =
   | "portafoglio"
   | "preventivi_aperti"
   | "controllo_banco"
-  | "consegnato_futuro_per_mese";
+  | "consegnato_futuro_per_mese"
+  /** Righe d'ordine a fornitore (migration 118), viste come fatti del motore. */
+  | "acquisti";
+
+/** I dataset che vengono dalle viste delle vendite: tutti sempre presenti. */
+export type ChiaveDatasetVendite = Exclude<ChiaveDataset, "acquisti">;
 
 /** Riga normalizzata: le viste hanno tutte la stessa forma, salvo i preventivi. */
 export interface RigaFatto {
@@ -34,6 +39,22 @@ export interface RigaFatto {
   causaleCodice?: string;
   causaleDescrizione?: string;
   rigaEvasa?: string;
+  // ── Solo sugli acquisti (righe d'ordine a fornitore) ─────────────────────
+  fornitore?: string;
+  /** Utente del gestionale che ha emesso l'ordine. */
+  buyer?: string;
+  /** Data promessa dal fornitore (confermata, o prevista se manca). */
+  promessa?: string | null;
+  /** Primo arrivo (DDT del fornitore). */
+  dataArrivo?: string | null;
+  /** Arrivata entro la promessa; null se non ancora arrivata o senza promessa. */
+  puntuale?: boolean | null;
+  /** Aperta, con la promessa passata al giorno dell'estrazione. */
+  scaduta?: boolean;
+  /** Valore ancora da ricevere. */
+  valoreResiduo?: number;
+  /** Giorni dall'ordine al primo arrivo. */
+  giorniConsegna?: number | null;
   /** Solo sull'ordinato: data di consegna chiesta dal cliente. */
   dataConsegnaRichiesta?: string;
   /** Solo sull'ordinato: data di consegna confermata al cliente. */
@@ -109,7 +130,10 @@ export interface Snapshot {
   /** Ultimo giorno presente in assoluto, comprese le consegne future. */
   dataMassimaAssoluta?: string | null;
   dataMinima: string | null;
-  dataset: Record<ChiaveDataset, RigaFatto[]>;
+  dataset: Record<ChiaveDatasetVendite, RigaFatto[]> & {
+    /** Assente se la vista bi_acquisti non e' raggiungibile. */
+    acquisti?: RigaFatto[];
+  };
   conteggi: Record<string, number>;
   /**
    * Esito del controllo sulle business unit: `coerente: false` significa che
@@ -286,7 +310,15 @@ export type ChiaveMetrica =
   | "costo_venduto"
   | "margine"
   | "margine_pct"
-  | "copertura_costi_pct";
+  | "copertura_costi_pct"
+  // ── Acquisti: ordini a fornitore ────────────────────────────────────────
+  | "acquisti_valore"
+  | "acquisti_righe"
+  | "acquisti_ordini"
+  | "puntualita_fornitori"
+  | "giorni_consegna_fornitori"
+  | "acquisti_da_sollecitare"
+  | "acquisti_valore_da_sollecitare";
 
 export type Modificatore =
   | "corrente"
@@ -324,7 +356,11 @@ export type Dimensione =
    * dentro COMPONENTI solo «AUTOMAZIONE pneumatica» non si puo' dire con due
    * filtri separati, perche' la categoria «-» esiste sotto piu' business unit.
    */
-  | "bu_categoria";
+  | "bu_categoria"
+  /** Fornitore della riga d'ordine d'acquisto. */
+  | "fornitore"
+  /** Chi ha emesso l'ordine a fornitore. */
+  | "buyer";
 
 /** Separatore dei valori di `bu_categoria`: `${bu}${SEPARATORE_RAMO}${categoria}`. */
 export const SEPARATORE_RAMO = " › ";

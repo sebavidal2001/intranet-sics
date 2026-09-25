@@ -66,7 +66,8 @@ import { VistaConversione } from "./vista-conversione";
 import { VistaBackoffice } from "./vista-backoffice";
 import { VistaAcquisti } from "./vista-acquisti";
 import { useAutoAggiornamento } from "./auto-aggiornamento";
-import type { Dimensione, RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import { SelettoreValori } from "./selettore-valori";
+import type { Dimensione, Filtro, RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 type Vista =
   | "sintesi"
@@ -180,8 +181,18 @@ export function CruscottoView({
     return () => window.removeEventListener("keydown", onTasto);
   }, []);
 
+  // Business unit e agente hanno anche un selettore in alto (a matrioska per
+  // la business unit). Clic sui grafici e selettore scrivono lo stesso stato:
+  // cliccare la barra COMPONENTI equivale a spuntarla nell'albero.
+  const [filtroBu, setFiltroBu] = useState<Filtro | null>(null);
+  const [filtroAgente, setFiltroAgente] = useState<Filtro | null>(null);
+
   /** Un click su un elemento aggiunge (o toglie) un filtro. */
   const alternaFiltro = useCallback((campo: Dimensione, valore: string) => {
+    const alterna = (prec: Filtro | null): Filtro | null =>
+      prec?.campo === campo && prec.op === "eq" && prec.valore === valore ? null : { campo, op: "eq", valore };
+    if (campo === "bu") return setFiltroBu(alterna);
+    if (campo === "agente") return setFiltroAgente(alterna);
     setFiltri((f) => {
       const esistente = f.find((x) => x.campo === campo);
       if (esistente?.valore === valore) return f.filter((x) => x.campo !== campo);
@@ -189,12 +200,25 @@ export function CruscottoView({
     });
   }, []);
 
-  const filtroDi = (campo: Dimensione) => filtri.find((f) => f.campo === campo)?.valore ?? null;
+  /** Il valore evidenziato nei grafici: solo se il filtro e' su un valore unico. */
+  const filtroDi = (campo: Dimensione) => {
+    const f = campo === "bu" ? filtroBu : campo === "agente" ? filtroAgente : null;
+    if (f) {
+      const v = Array.isArray(f.valore) ? f.valore : [f.valore];
+      return f.campo === campo && v.length === 1 ? v[0] : null;
+    }
+    return filtri.find((x) => x.campo === campo)?.valore ?? null;
+  };
 
-  const filtriSpec = useMemo(
-    () => filtri.map((f) => ({ campo: f.campo, op: "eq" as const, valore: f.valore })),
-    [filtri]
+  const filtriSpec = useMemo<Filtro[]>(
+    () => [
+      ...filtri.map((f) => ({ campo: f.campo, op: "eq" as const, valore: f.valore })),
+      ...(filtroBu ? [filtroBu] : []),
+      ...(filtroAgente ? [filtroAgente] : []),
+    ],
+    [filtri, filtroBu, filtroAgente]
   );
+  const nessunFiltro = filtri.length === 0 && !filtroBu && !filtroAgente;
 
   const alGiorno = useMemo(
     () =>
@@ -973,11 +997,31 @@ export function CruscottoView({
         {/* Nella scheda Acquisti filtri e KPI delle vendite non valgono: buyer e
             fornitori non sono agenti e clienti. Si nascondono invece di mentire. */}
         <div className={`flex items-center gap-2 flex-wrap mb-4 min-h-[30px] ${vista === "acquisti" ? "hidden" : ""}`}>
+          <div className="w-56">
+            <SelettoreValori
+              etichetta="Business unit"
+              campo="bu"
+              metrica="ordinato"
+              periodo={periodo}
+              filtro={filtroBu}
+              onChange={setFiltroBu}
+            />
+          </div>
+          <div className="w-48">
+            <SelettoreValori
+              etichetta="Agente"
+              campo="agente"
+              metrica="ordinato"
+              periodo={periodo}
+              filtro={filtroAgente}
+              onChange={setFiltroAgente}
+            />
+          </div>
           <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
             <Filter className="w-3.5 h-3.5" aria-hidden />
             {filtri.length === 0
-              ? "Clicca su un elemento di un grafico o di una tabella per filtrare tutto"
-              : "Filtri attivi:"}
+              ? "oppure clicca un elemento di un grafico per filtrare tutto"
+              : "Altri filtri:"}
           </span>
           {filtri.map((f) => (
             <motion.button
@@ -992,9 +1036,13 @@ export function CruscottoView({
               <X className="w-3 h-3" aria-hidden />
             </motion.button>
           ))}
-          {filtri.length > 1 && (
+          {!nessunFiltro && (
             <button
-              onClick={() => setFiltri([])}
+              onClick={() => {
+                setFiltri([]);
+                setFiltroBu(null);
+                setFiltroAgente(null);
+              }}
               className="text-xs text-text-muted hover:text-danger underline"
             >
               azzera tutti

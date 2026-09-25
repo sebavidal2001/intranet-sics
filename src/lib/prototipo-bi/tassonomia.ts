@@ -15,7 +15,8 @@ export type ChiaveTipologia =
   | "back_office"
   | "banco"
   | "budget"
-  | "margine";
+  | "margine"
+  | "acquisti";
 
 export interface Tipologia {
   chiave: ChiaveTipologia;
@@ -89,6 +90,20 @@ export const TIPOLOGIE: Tipologia[] = [
       "Margine sul fatturato, al costo di acquisto valido il giorno della vendita. Da leggere sempre accanto alla copertura costi.",
     metriche: ["margine", "margine_pct", "costo_venduto", "copertura_costi_pct"],
   },
+  {
+    chiave: "acquisti",
+    etichetta: "Acquisti",
+    descrizione: "Ordini a fornitore: volume, puntualità dei fornitori, carico dei buyer, righe da sollecitare.",
+    metriche: [
+      "acquisti_valore",
+      "acquisti_righe",
+      "acquisti_ordini",
+      "puntualita_fornitori",
+      "giorni_consegna_fornitori",
+      "acquisti_da_sollecitare",
+      "acquisti_valore_da_sollecitare",
+    ],
+  },
 ];
 
 const DIMENSIONI_COMUNI: Dimensione[] = [
@@ -105,6 +120,13 @@ const DIMENSIONI_COMUNI: Dimensione[] = [
 /** Le dimensioni che hanno senso per questa metrica. */
 export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
   const dataset = CATALOGO[metrica].dataset;
+  // Gli ordini a fornitore non hanno agente, cliente ne' business unit: le
+  // loro dimensioni sono altre. La categoria e' il gruppo articoli.
+  if (dataset === "acquisti") {
+    return (["fornitore", "buyer", "categoria", "articolo", "documento"] as Dimensione[]).filter(
+      (dimensione) => dimensione in DIMENSIONI
+    );
+  }
   const dimensioni = [...DIMENSIONI_COMUNI];
 
   if (dataset === "preventivi_aperti") {

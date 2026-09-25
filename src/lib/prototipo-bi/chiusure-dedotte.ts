@@ -39,8 +39,11 @@ const GIORNI_MINIMI = 5;
 
 function giorniConDocumenti(snapshot: Snapshot): Set<string> {
   const presenti = new Set<string>();
-  for (const righe of Object.values(snapshot.dataset)) {
-    for (const r of righe) presenti.add(r.data);
+  for (const [chiave, righe] of Object.entries(snapshot.dataset)) {
+    // Le chiusure sono delle vendite: un ordine a fornitore fatto in una
+    // settimana di chiusura non la rende lavorativa.
+    if (chiave === "acquisti") continue;
+    for (const r of righe ?? []) presenti.add(r.data);
   }
   return presenti;
 }

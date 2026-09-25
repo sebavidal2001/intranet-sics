@@ -21,7 +21,7 @@
  * un OC, quindi "ordine urgente per un cliente" non si ricava da qui.
  */
 
-import type { Snapshot } from "./tipi";
+import type { RigaFatto, Snapshot } from "./tipi";
 
 export interface RigaAcquisto {
   idRiga: number;
@@ -353,4 +353,38 @@ export function oggiAcquisti(snapshot: Snapshot): string {
 /** Le righe acquisti dello snapshot, o un elenco vuoto se non caricate. */
 export function righeAcquisti(snapshot: Snapshot): RigaAcquisto[] {
   return snapshot.acquisti ?? [];
+}
+
+/**
+ * Le righe d'ordine viste come fatti del motore semantico: cosi' gli acquisti
+ * entrano nelle analisi, nelle dashboard e nell'analista con le stesse regole
+ * delle vendite. Agente, cliente e business unit restano vuoti — non esistono
+ * sugli ordini a fornitore — e un perimetro per agente li esclude tutti.
+ */
+export function comeFatti(righe: RigaAcquisto[], oggi: string): RigaFatto[] {
+  return righe.map((r) => {
+    const p = promessa(r);
+    return {
+      data: r.dataOrdine,
+      importo: r.valore,
+      bu: "",
+      categoria: r.gruppoArticoli || "-",
+      agente: "",
+      codiceAgente: "",
+      cliente: "",
+      codiceCliente: "",
+      documento: `${r.profilo} ${r.numeroOrdine ?? "?"}/${r.dataOrdine.slice(0, 4)}`,
+      articolo: r.articolo,
+      descrizioneArticolo: r.descrizione,
+      quantita: r.quantita,
+      fornitore: r.fornitore,
+      buyer: nomeBuyer(r),
+      promessa: p,
+      dataArrivo: r.primoArrivo,
+      puntuale: puntuale(r),
+      scaduta: scaduta(r, oggi),
+      valoreResiduo: valoreResiduo(r),
+      giorniConsegna: r.primoArrivo ? giorniFra(r.dataOrdine, r.primoArrivo) : null,
+    };
+  });
 }

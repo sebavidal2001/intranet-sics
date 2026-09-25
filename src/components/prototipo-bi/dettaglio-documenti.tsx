@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Clock, FileText, Loader2, Package, X } from "lucide-react";
 import { euro, numero } from "./primitivi";
-import type { ChiaveDataset, Dimensione } from "@/lib/prototipo-bi/tipi";
+import type { ChiaveDataset, Dimensione, Filtro } from "@/lib/prototipo-bi/tipi";
 
 interface DocumentoSintesi {
   numero: string;
@@ -52,7 +52,7 @@ interface RigaDettaglio {
 export interface RichiestaPannello {
   dataset: ChiaveDataset;
   titolo: string;
-  filtri: { campo: Dimensione; op: "eq"; valore: string }[];
+  filtri: Filtro[];
   periodo?: { dal?: string; al?: string; anno?: number };
 }
 

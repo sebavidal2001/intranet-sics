@@ -21,7 +21,7 @@ import { Anelli, AreeImpilate, CalendarioAttivita } from "./grafici-spettacolari
 import { TabellaAnalitica, type ColonnaAnalitica, type RigaAnalitica } from "./tabella-analitica";
 import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti";
 import { PersonaleInsieme, type PersonaPreventivi } from "./personale-insieme";
-import type { Dimensione, Periodo, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type { Dimensione, Periodo, SpecQuery, Filtro } from "@/lib/prototipo-bi/tipi";
 
 const MESI_BREVI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
 
@@ -34,7 +34,7 @@ export function VistaBackoffice({
 }: {
   anno: number;
   periodo: Periodo;
-  filtriSpec: { campo: Dimensione; op: "eq"; valore: string }[];
+  filtriSpec: Filtro[];
   alternaFiltro: (campo: Dimensione, valore: string) => void;
   filtroDi: (campo: Dimensione) => string | null;
 }) {

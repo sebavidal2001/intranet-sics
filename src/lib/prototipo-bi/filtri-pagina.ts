@@ -20,6 +20,7 @@
  */
 
 import type { Dimensione, Filtro, Periodo, SpecQuery } from "./tipi";
+import { dimensioneFuoriDominio } from "./semantico";
 
 export interface FiltriPagina {
   periodo?: Periodo;
@@ -83,10 +84,14 @@ export function fondiFiltriPaginaConEsito(
   const proposti = filtriDellaPagina(filtriPagina);
   const esistenti = spec.filtri ?? [];
   const famiglieSpec = new Set(esistenti.map((filtro) => famiglia(filtro.campo)));
+  // Un filtro di pagina che non si applica alla metrica del riquadro (la
+  // business unit su un riquadro di ordini a fornitore) si salta e si dice.
+  const nonApplicabile = (f: Filtro) => dimensioneFuoriDominio(spec.metrica, f.campo);
+  const scartato = (f: Filtro) => famiglieSpec.has(famiglia(f.campo)) || nonApplicabile(f);
   const filtriPaginaIgnorati = proposti
-    .filter((filtro) => famiglieSpec.has(famiglia(filtro.campo)))
+    .filter(scartato)
     .map((filtro) => (famiglia(filtro.campo) === "bu" ? "bu" : filtro.campo) as Dimensione);
-  const aggiunti = proposti.filter((filtro) => !famiglieSpec.has(famiglia(filtro.campo)));
+  const aggiunti = proposti.filter((filtro) => !scartato(filtro));
   const haPeriodoPagina = periodoPresente(filtriPagina.periodo);
   const haPeriodoSpec = periodoPresente(spec.periodo);
   const periodoIgnorato = haPeriodoPagina && haPeriodoSpec;

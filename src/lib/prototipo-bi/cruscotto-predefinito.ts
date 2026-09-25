@@ -388,6 +388,16 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
         larghezza: 4,
       },
       {
+        // Il personale acquisti accanto a quello delle vendite: la pagina
+        // Back office e' la vista completa del carico di lavoro.
+        chiave: "backoffice.carico-buyer",
+        titolo: "Ordini a fornitore: il carico dei buyer",
+        descrizione: "Righe d'ordine a fornitore emesse per mese, impilate per chi le ha emesse.",
+        spec: { metrica: "acquisti_righe", granularita: "mese", raggruppa: ["buyer"], ordina: "etichetta" },
+        grafico: "barreImpilate",
+        larghezza: 12,
+      },
+      {
         chiave: "backoffice.tempi-risposta-nel-tempo",
         titolo: "Tempi di risposta nel tempo",
         spec: {
@@ -558,6 +568,104 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
             ruolo: "confronto",
             nome: "Fatturato",
             spec: { metrica: "fatturato", raggruppa: ["articolo"], ordina: "valore_desc", limite: 25 },
+          },
+        ],
+        grafico: "tabella",
+        larghezza: 12,
+      },
+    ],
+  },
+  {
+    chiave: "acquisti",
+    titolo: "Acquisti",
+    ordine: 7,
+    analisi: [
+      {
+        chiave: "acquisti.valore",
+        titolo: "Ordinato a fornitore",
+        spec: { metrica: "acquisti_valore" },
+        grafico: "kpi",
+        larghezza: 3,
+      },
+      {
+        chiave: "acquisti.righe",
+        titolo: "Righe d'ordine",
+        spec: { metrica: "acquisti_righe" },
+        grafico: "kpi",
+        larghezza: 3,
+      },
+      {
+        chiave: "acquisti.puntualita",
+        titolo: "Puntualità fornitori",
+        descrizione: "Righe arrivate entro la data promessa, fra gli ordini del periodo già arrivati.",
+        spec: { metrica: "puntualita_fornitori" },
+        grafico: "kpi",
+        larghezza: 3,
+      },
+      {
+        chiave: "acquisti.da-sollecitare",
+        titolo: "Righe da sollecitare",
+        descrizione: "Righe degli ordini del periodo ancora aperte con la data promessa passata.",
+        spec: { metrica: "acquisti_da_sollecitare" },
+        grafico: "kpi",
+        larghezza: 3,
+      },
+      {
+        chiave: "acquisti.puntualita-mese",
+        titolo: "Puntualità dei fornitori, mese per mese",
+        descrizione: "Per mese dell'ordine: quota delle righe arrivate entro la promessa.",
+        spec: { metrica: "puntualita_fornitori", granularita: "mese", ordina: "etichetta" },
+        grafico: "linee",
+        larghezza: 6,
+      },
+      {
+        chiave: "acquisti.carico-buyer",
+        titolo: "Il carico dei buyer",
+        spec: { metrica: "acquisti_righe", granularita: "mese", raggruppa: ["buyer"], ordina: "etichetta" },
+        grafico: "barreImpilate",
+        larghezza: 6,
+      },
+      {
+        chiave: "acquisti.fornitori-valore",
+        titolo: "Da chi compriamo",
+        spec: { metrica: "acquisti_valore", raggruppa: ["fornitore"], ordina: "valore_desc", limite: 20 },
+        grafico: "pareto",
+        larghezza: 6,
+      },
+      {
+        chiave: "acquisti.sollecitare-buyer",
+        titolo: "Valore da sollecitare, per buyer",
+        spec: { metrica: "acquisti_valore_da_sollecitare", raggruppa: ["buyer"], ordina: "valore_desc" },
+        grafico: "barre",
+        larghezza: 6,
+      },
+      {
+        chiave: "acquisti.fornitori-tabella",
+        titolo: "Fornitori: volume, puntualità, tempi",
+        descrizione: "I 25 fornitori con più righe ordinate nel periodo.",
+        spec: { metrica: "acquisti_righe", raggruppa: ["fornitore"], ordina: "valore_desc", limite: 25 },
+        serie: [
+          {
+            ruolo: "principale",
+            nome: "Righe",
+            spec: { metrica: "acquisti_righe", raggruppa: ["fornitore"], ordina: "valore_desc", limite: 25 },
+          },
+          {
+            // Liste di lookup: senza limite ne' ordinamento, altrimenti un
+            // fornitore della tabella potrebbe non trovarci il suo valore.
+            ruolo: "confronto",
+            nome: "Puntualità",
+            spec: { metrica: "puntualita_fornitori", raggruppa: ["fornitore"] },
+          },
+          {
+            ruolo: "confronto",
+            nome: "Giorni ordine → arrivo",
+            spec: { metrica: "giorni_consegna_fornitori", raggruppa: ["fornitore"] },
+          },
+          {
+            ruolo: "confronto",
+            nome: "Ordinato",
+            spec: { metrica: "acquisti_valore", raggruppa: ["fornitore"] },
           },
         ],
         grafico: "tabella",
