@@ -563,7 +563,11 @@ let controllatoIl = 0;
  */
 async function runCambiato(snapshot: Snapshot): Promise<boolean> {
   const stato = await leggiStatoRun();
-  if (!stato.runCorrente || !snapshot.runCorrente) return false;
+  if (!stato.runCorrente) return false;
+  // Uno snapshot che non sa quale run contiene (la lettura di bi_runs era
+  // fallita quando e' stato costruito) va rifatto appena il database risponde:
+  // prima restava in uso fino alla scadenza, sei ore di dati senza data certa.
+  if (!snapshot.runCorrente) return true;
   return stato.runCorrente !== snapshot.runCorrente;
 }
 

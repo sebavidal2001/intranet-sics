@@ -133,8 +133,11 @@ describe("Dashboard a pagine", () => {
     expect(screen.getByRole("tab", { name: "Agenti" })).toBeInTheDocument();
     expect(screen.getByText("Ordinato totale")).toBeInTheDocument();
 
-    await waitFor(() => expect(spiaFetch).toHaveBeenCalledTimes(1));
-    const primoBody = JSON.parse(String(spiaFetch.mock.calls[0][1]?.body ?? "{}")) as {
+    // Solo le chiamate di query: la pagina controlla anche, a parte, se sul
+    // server e' arrivato un caricamento nuovo (/api/bi/snapshot).
+    const batch = () => spiaFetch.mock.calls.filter(([url]) => url === "/api/bi/query");
+    await waitFor(() => expect(batch()).toHaveLength(1));
+    const primoBody = JSON.parse(String(batch()[0][1]?.body ?? "{}")) as {
       specs: unknown[];
     };
     expect(primoBody.specs).toHaveLength(2);
@@ -143,8 +146,8 @@ describe("Dashboard a pagine", () => {
     expect(screen.getByText("Risultati per agente")).toBeInTheDocument();
     expect(screen.queryByText("Ordinato totale")).not.toBeInTheDocument();
 
-    await waitFor(() => expect(spiaFetch).toHaveBeenCalledTimes(2));
-    const secondoBody = JSON.parse(String(spiaFetch.mock.calls[1][1]?.body ?? "{}")) as {
+    await waitFor(() => expect(batch()).toHaveLength(2));
+    const secondoBody = JSON.parse(String(batch()[1][1]?.body ?? "{}")) as {
       specs: unknown[];
     };
     expect(secondoBody.specs).toHaveLength(1);

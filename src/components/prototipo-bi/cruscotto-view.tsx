@@ -65,6 +65,7 @@ import { PannelloImpostazioni, useImpostazioni } from "./impostazioni";
 import { VistaConversione } from "./vista-conversione";
 import { VistaBackoffice } from "./vista-backoffice";
 import { VistaAcquisti } from "./vista-acquisti";
+import { useAutoAggiornamento } from "./auto-aggiornamento";
 import type { Dimensione, RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 type Vista =
@@ -219,6 +220,13 @@ export function CruscottoView({
 
   const [forzando, setForzando] = useState(false);
   const [erroreAggiornamento, setErroreAggiornamento] = useState<string | null>(null);
+
+  // Arrivato un caricamento nuovo sul server: la pagina si rilegge da sola,
+  // restando sulla scheda aperta (anche in presentazione).
+  useAutoAggiornamento(runRicevutoIl, () => {
+    svuotaCacheQuery();
+    router.refresh();
+  });
 
   /**
    * Rilegge lo snapshot dalle viste `bi_*`.

@@ -18,6 +18,7 @@
  *    che diventi il modo più comodo per far uscire dati.
  */
 
+import { useAutoAggiornamento } from "./auto-aggiornamento";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -249,6 +250,11 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     );
   }, [paginaAttiva]);
 
+  // Caricamento nuovo sul server: si rieseguono i riquadri, senza ricaricare
+  // la pagina ne' perdere la pagina di dashboard aperta.
+  const [generazioneDati, setGenerazioneDati] = useState(0);
+  useAutoAggiornamento(undefined, () => setGenerazioneDati((g) => g + 1));
+
   useEffect(() => {
     if (specsBatch.length === 0) {
       setRisultati({});
@@ -289,7 +295,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     return () => {
       annullata = true;
     };
-  }, [specsBatch]);
+  }, [specsBatch, generazioneDati]);
 
   const modificabile = dashboard?.modificabile ?? Boolean(dashboardIniziale);
 

@@ -110,9 +110,18 @@ const cacheClient = new Map<
 
 const DURATA_CACHE_MS = 10 * 60 * 1000;
 
-/** Svuota la cache del browser: serve dopo un aggiornamento forzato dei dati. */
+// Chi usa `useQueryBi` si iscrive qui: svuotare la cache deve anche far
+// ripartire le richieste dei grafici gia' montati. Prima si svuotava e basta,
+// e un grafico rifaceva la richiesta solo se cambiava la sua spec — cioe' quasi
+// mai: il tasto di aggiornamento lasciava a video i numeri vecchi.
+let generazioneCache = 0;
+const iscritti = new Set<(g: number) => void>();
+
+/** Svuota la cache del browser e fa rileggere tutti i grafici a video. */
 export function svuotaCacheQuery() {
   cacheClient.clear();
+  generazioneCache += 1;
+  for (const f of iscritti) f(generazioneCache);
 }
 
 /** Esegue più spec in una sola chiamata. */
@@ -135,6 +144,14 @@ export function useQueryBi(specs: Record<string, SpecQuery | null>): EsitoQuery 
   const [caricamento, setCaricamento] = useState(!iniziale);
   const [dataMassima, setDataMassima] = useState<string | null>(iniziale?.dataMassima ?? null);
   const [nonce, setNonce] = useState(0);
+  const [generazione, setGenerazione] = useState(generazioneCache);
+
+  useEffect(() => {
+    iscritti.add(setGenerazione);
+    return () => {
+      iscritti.delete(setGenerazione);
+    };
+  }, []);
 
   useEffect(() => {
     let annullato = false;
@@ -200,7 +217,7 @@ export function useQueryBi(specs: Record<string, SpecQuery | null>): EsitoQuery 
     return () => {
       annullato = true;
     };
-  }, [chiave, nonce]);
+  }, [chiave, nonce, generazione]);
 
   return {
     risultati,
