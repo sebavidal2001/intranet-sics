@@ -1,7 +1,8 @@
 
-import { headers } from "next/headers";
 import Link from "next/link";
 import { EditorAnalisi } from "@/components/prototipo-bi/editor-analisi";
+import { verificaAccessoSicuro } from "@/lib/prototipo-bi/accesso";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type { AspettoGrafico, SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
@@ -25,36 +26,45 @@ function eOggetto(valore: unknown): valore is Record<string, unknown> {
   return typeof valore === "object" && valore !== null;
 }
 
-function leggiAnalisi(corpo: unknown, id: string): AnalisiSalvata | undefined {
-  if (!eOggetto(corpo) || !Array.isArray(corpo.analisi)) return undefined;
-  const trovata = corpo.analisi.find(
-    (voce) => eOggetto(voce) && voce.id === id && typeof voce.titolo === "string" && eOggetto(voce.spec)
-  );
-  if (!eOggetto(trovata)) return undefined;
-  return {
-    id: String(trovata.id),
-    titolo: String(trovata.titolo),
-    spec: trovata.spec as unknown as SpecQuery,
-    serie: Array.isArray(trovata.serie) ? (trovata.serie as SerieAnalisi[]) : null,
-    grafico: typeof trovata.grafico === "string" ? (trovata.grafico as TipoGrafico) : undefined,
-    aspetto: eOggetto(trovata.aspetto) ? (trovata.aspetto as AspettoGrafico) : null,
-    modificabile: trovata.modificabile === true,
-  };
-}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
+/**
+ * L'analisi da riaprire, letta direttamente dal database.
+ *
+ * Prima la pagina chiamava la propria API (`/api/bi/analisi`) ricostruendo
+ * l'indirizzo da `host` e `x-forwarded-proto`. Dietro nginx quell'intestazione
+ * non arriva: la chiamata partiva in http, nginx rispondeva 301 verso https e
+ * nel salto di schema Node scarta il cookie. L'API rispondeva 401 e ogni
+ * «Modifica» finiva su «Analisi non disponibile», per qualunque grafico.
+ *
+ * Le regole sono le stesse della GET dell'API: accesso al portale, e visibile
+ * solo se tua o condivisa; modificabile solo se tua e non del Cruscotto.
+ */
 async function caricaAnalisi(id: string): Promise<AnalisiSalvata | undefined> {
-  const intestazioni = await headers();
-  const host = intestazioni.get("x-forwarded-host") ?? intestazioni.get("host");
-  if (!host) return undefined;
-  const protocollo = intestazioni.get("x-forwarded-proto") ?? "http";
-  const cookie = intestazioni.get("cookie");
-  const risposta = await fetch(`${protocollo}://${host}/api/bi/analisi`, {
-    cache: "no-store",
-    headers: cookie ? { cookie } : undefined,
-  });
-  if (!risposta.ok) return undefined;
-  const corpo: unknown = await risposta.json();
-  return leggiAnalisi(corpo, id);
+  if (!UUID.test(id)) return undefined;
+  const esito = await verificaAccessoSicuro();
+  if (!esito.ok) return undefined;
+  const { userId } = esito.accesso;
+
+  const { data, error } = await createAdminClient()
+    .schema("bi_direzionale")
+    .from("analisi")
+    .select("id,titolo,spec,serie,grafico,aspetto,autore_id,visibilita,chiave")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return undefined;
+  if (data.autore_id !== userId && data.visibilita !== "condivisa") return undefined;
+  if (typeof data.titolo !== "string" || !eOggetto(data.spec)) return undefined;
+
+  return {
+    id: String(data.id),
+    titolo: data.titolo,
+    spec: data.spec as unknown as SpecQuery,
+    serie: Array.isArray(data.serie) ? (data.serie as SerieAnalisi[]) : null,
+    grafico: typeof data.grafico === "string" ? (data.grafico as TipoGrafico) : undefined,
+    aspetto: eOggetto(data.aspetto) ? (data.aspetto as AspettoGrafico) : null,
+    modificabile: data.autore_id === userId && data.chiave === null,
+  };
 }
 
 export default async function PaginaEsplora({
