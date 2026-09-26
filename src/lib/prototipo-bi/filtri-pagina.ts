@@ -21,6 +21,7 @@
 
 import type { Dimensione, Filtro, Periodo, SpecQuery } from "./tipi";
 import { dimensioneFuoriDominio } from "./semantico";
+import { periodoPresente } from "./periodo";
 
 export interface FiltriPagina {
   periodo?: Periodo;
@@ -56,10 +57,6 @@ export interface EsitoFusioneFiltriPagina {
   spec: SpecQuery;
   filtriPaginaIgnorati: Dimensione[];
   periodoIgnorato: boolean;
-}
-
-function periodoPresente(periodo: Periodo | undefined): periodo is Periodo {
-  return Boolean(periodo && (periodo.anno !== undefined || periodo.dal || periodo.al));
 }
 
 function filtriDellaPagina(filtri: FiltriPagina): Filtro[] {

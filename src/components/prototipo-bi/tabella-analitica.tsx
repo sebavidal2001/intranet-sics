@@ -12,7 +12,41 @@ import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from "lucide-react";
 import { euro, numero, valoreFmt } from "./primitivi";
 import { Sparkline } from "./grafici-avanzati";
-import type { RisultatoQuery, UnitaMisura } from "@/lib/prototipo-bi/tipi";
+import { useImpostazioni } from "./impostazioni";
+import type { AggregazioneTotale, RisultatoQuery, UnitaMisura } from "@/lib/prototipo-bi/tipi";
+
+/** Chiave di ordinamento riservata alla colonna delle voci. */
+export const COLONNA_VOCE = "voce";
+
+export const NOMI_AGGREGAZIONE: Record<AggregazioneTotale, string> = {
+  automatico: "Automatico",
+  somma: "Somma",
+  media: "Media",
+  minimo: "Minimo",
+  massimo: "Massimo",
+  conteggio: "Conteggio",
+  nessuno: "Nessun totale",
+};
+
+/** L'etichetta della riga dei totali, in base a come si aggrega. */
+const ETICHETTA_RIGA: Record<AggregazioneTotale, string> = {
+  automatico: "Totale",
+  somma: "Somma",
+  media: "Media",
+  minimo: "Minimo",
+  massimo: "Massimo",
+  conteggio: "Conteggio",
+  nessuno: "Totale",
+};
+
+function ePercentuale(c: ColonnaAnalitica): boolean {
+  return (
+    c.tipo === "percentuale" ||
+    c.tipo === "delta_pct" ||
+    c.tipo === "raggiungimento" ||
+    c.unita === "percentuale"
+  );
+}
 
 export type TipoColonna =
   | "testo"
@@ -109,6 +143,8 @@ export function TabellaAnalitica({
   righe,
   colonnaDimensione = "Voce",
   colonnaOrdinamentoIniziale,
+  versoIniziale,
+  aggregazioneIniziale,
   mostraTotali = true,
   massimoIniziale = 12,
   onClickRiga,
@@ -120,6 +156,14 @@ export function TabellaAnalitica({
   righe: RigaAnalitica[];
   colonnaDimensione?: string;
   colonnaOrdinamentoIniziale?: string;
+  /** Verso iniziale; senza, i numeri partono dal più grande e le voci dalla A. */
+  versoIniziale?: "asc" | "desc";
+  /**
+   * Come si calcola la riga dei totali. «Automatico» è il comportamento
+   * storico: ogni colonna sceglie da sé (somma, rapporto, nessuno). Senza
+   * questa prop vale l'aspetto del riquadro, poi l'automatico.
+   */
+  aggregazioneIniziale?: AggregazioneTotale;
   mostraTotali?: boolean;
   massimoIniziale?: number;
   onClickRiga?: (chiave: string) => void;
@@ -134,10 +178,29 @@ export function TabellaAnalitica({
   ultimoPeriodoParziale?: boolean;
   ricercabile?: boolean;
 }) {
-  const [ordinaPer, setOrdinaPer] = useState<string>(
-    colonnaOrdinamentoIniziale ?? colonne.find((c) => c.tipo !== "testo")?.chiave ?? ""
+  const { aspetto } = useImpostazioni();
+  // «valore» e' la scelta generica del pannello Aspetto, che non conosce le
+  // chiavi delle colonne: vuol dire la prima colonna numerica.
+  const ordinamentoRiquadro =
+    aspetto?.tabella?.ordinaPer === "valore" && !colonne.some((c) => c.chiave === "valore")
+      ? colonne.find((c) => c.tipo !== "testo" && c.tipo !== "sparkline")?.chiave
+      : aspetto?.tabella?.ordinaPer;
+  const colonnaIniziale =
+    colonnaOrdinamentoIniziale ??
+    (ordinamentoRiquadro &&
+    (ordinamentoRiquadro === COLONNA_VOCE || colonne.some((c) => c.chiave === ordinamentoRiquadro))
+      ? ordinamentoRiquadro
+      : undefined) ??
+    colonne.find((c) => c.tipo !== "testo")?.chiave ??
+    COLONNA_VOCE;
+  const [ordinaPer, setOrdinaPer] = useState<string>(colonnaIniziale);
+  const [discendente, setDiscendente] = useState(
+    (versoIniziale ?? aspetto?.tabella?.verso ?? (colonnaIniziale === COLONNA_VOCE ? "asc" : "desc")) ===
+      "desc"
   );
-  const [discendente, setDiscendente] = useState(true);
+  const [aggregazione, setAggregazione] = useState<AggregazioneTotale>(
+    aggregazioneIniziale ?? aspetto?.tabella?.totale ?? "automatico"
+  );
   const [tutte, setTutte] = useState(false);
   const [cerca, setCerca] = useState("");
 
@@ -157,6 +220,14 @@ export function TabellaAnalitica({
   }, [righe, cerca]);
 
   const ordinate = useMemo(() => {
+    if (ordinaPer === COLONNA_VOCE) {
+      // Confronto naturale: «2026-W9» prima di «2026-W10», «Agente 2» prima
+      // di «Agente 10». Un confronto di stringhe secco li mescolava.
+      const confronta = new Intl.Collator("it", { numeric: true, sensitivity: "base" }).compare;
+      return [...filtrate].sort((a, b) =>
+        discendente ? confronta(b.chiave, a.chiave) : confronta(a.chiave, b.chiave)
+      );
+    }
     const col = colonne.find((c) => c.chiave === ordinaPer);
     if (!col) return filtrate;
     return [...filtrate].sort((a, b) => {
@@ -176,12 +247,50 @@ export function TabellaAnalitica({
   const visibili = tutte ? ordinate : ordinate.slice(0, massimoIniziale);
 
   const totali = useMemo(() => {
-    if (!mostraTotali) return null;
+    if (!mostraTotali || aggregazione === "nessuno") return null;
 
     const somma = (chiave: string) =>
       filtrate.reduce((s, r) => s + (Number(r.celle[chiave]) || 0), 0);
 
     const t: Record<string, number | null> = {};
+
+    // Aggregazione scelta a mano: vale uguale per tutte le colonne numeriche.
+    // Unica eccezione la somma delle percentuali, che non esiste: la cella
+    // resta vuota invece di stampare un 340% che nessuno ha misurato.
+    if (aggregazione !== "automatico") {
+      for (const c of colonne) {
+        if (c.tipo === "testo" || c.tipo === "sparkline") continue;
+        const valori = filtrate
+          .map((r) => r.celle[c.chiave])
+          .filter((v): v is number | string => v !== null && v !== undefined && v !== "")
+          .map(Number)
+          .filter(Number.isFinite);
+        if (aggregazione === "conteggio") {
+          t[c.chiave] = valori.length;
+          continue;
+        }
+        if (valori.length === 0 || (aggregazione === "somma" && ePercentuale(c))) {
+          t[c.chiave] = null;
+          continue;
+        }
+        switch (aggregazione) {
+          case "somma":
+            t[c.chiave] = valori.reduce((a, b) => a + b, 0);
+            break;
+          case "media":
+            t[c.chiave] = valori.reduce((a, b) => a + b, 0) / valori.length;
+            break;
+          case "minimo":
+            t[c.chiave] = valori.reduce((a, b) => Math.min(a, b));
+            break;
+          case "massimo":
+            t[c.chiave] = valori.reduce((a, b) => Math.max(a, b));
+            break;
+        }
+      }
+      return t;
+    }
+
     for (const c of colonne) {
       if (c.tipo === "testo" || c.tipo === "sparkline") continue;
 
@@ -239,7 +348,29 @@ export function TabellaAnalitica({
     if (colonne.some((c) => c.chiave === "quota")) t.quota = 100;
 
     return t;
-  }, [filtrate, colonne, mostraTotali]);
+  }, [filtrate, colonne, mostraTotali, aggregazione]);
+
+  function cambiaOrdinamento(chiave: string) {
+    if (ordinaPer === chiave) setDiscendente((d) => !d);
+    else {
+      setOrdinaPer(chiave);
+      // Le voci partono dalla A, i numeri dal più grande: è quello che ci si
+      // aspetta al primo clic in entrambi i casi.
+      setDiscendente(chiave !== COLONNA_VOCE);
+    }
+  }
+
+  function freccia(attiva: boolean) {
+    return attiva ? (
+      discendente ? (
+        <ArrowDown className="w-3 h-3" aria-hidden />
+      ) : (
+        <ArrowUp className="w-3 h-3" aria-hidden />
+      )
+    ) : (
+      <ChevronsUpDown className="w-3 h-3 opacity-40" aria-hidden />
+    );
+  }
 
   function intestazione(c: ColonnaAnalitica) {
     const attiva = ordinaPer === c.chiave;
@@ -253,27 +384,15 @@ export function TabellaAnalitica({
         title={c.titolo}
       >
         <button
-          onClick={() => {
-            if (attiva) setDiscendente((d) => !d);
-            else {
-              setOrdinaPer(c.chiave);
-              setDiscendente(true);
-            }
-          }}
+          type="button"
+          onClick={() => cambiaOrdinamento(c.chiave)}
+          aria-label={`Ordina per ${c.etichetta}`}
           className={`inline-flex items-center gap-1 hover:text-primary transition-colors ${
             attiva ? "text-primary" : "text-text-muted"
           }`}
         >
           {c.etichetta}
-          {attiva ? (
-            discendente ? (
-              <ArrowDown className="w-3 h-3" aria-hidden />
-            ) : (
-              <ArrowUp className="w-3 h-3" aria-hidden />
-            )
-          ) : (
-            <ChevronsUpDown className="w-3 h-3 opacity-40" aria-hidden />
-          )}
+          {freccia(attiva)}
         </button>
       </th>
     );
@@ -363,8 +482,18 @@ export function TabellaAnalitica({
         <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="border-b border-border">
-              <th className="py-2 px-2 text-left font-tenorite text-[11px] uppercase tracking-wide text-text-muted">
-                {colonnaDimensione}
+              <th className="py-2 px-2 text-left font-tenorite text-[11px] uppercase tracking-wide">
+                <button
+                  type="button"
+                  onClick={() => cambiaOrdinamento(COLONNA_VOCE)}
+                  aria-label={`Ordina per ${colonnaDimensione}`}
+                  className={`inline-flex items-center gap-1 hover:text-primary transition-colors ${
+                    ordinaPer === COLONNA_VOCE ? "text-primary" : "text-text-muted"
+                  }`}
+                >
+                  {colonnaDimensione}
+                  {freccia(ordinaPer === COLONNA_VOCE)}
+                </button>
               </th>
               {colonne.map(intestazione)}
             </tr>
@@ -406,7 +535,9 @@ export function TabellaAnalitica({
           {totali && visibili.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-border font-semibold bg-bg-page/60">
-                <td className="py-2 px-2">Totale ({filtrate.length})</td>
+                <td className="py-2 px-2">
+                  {ETICHETTA_RIGA[aggregazione]} ({filtrate.length})
+                </td>
                 {colonne.map((c) => {
                   if (c.tipo === "sparkline") return <td key={c.chiave} />;
                   const v = totali[c.chiave];
@@ -424,7 +555,7 @@ export function TabellaAnalitica({
                         isDelta ? coloreDelta(v, c.altoBuono ?? true) : ""
                       }`}
                     >
-                      {fmt(v, c)}
+                      {aggregazione === "conteggio" ? numero(v) : fmt(v, c)}
                     </td>
                   );
                 })}
@@ -434,16 +565,38 @@ export function TabellaAnalitica({
         </table>
       </div>
 
-      {ordinate.length > massimoIniziale && (
-        <button
-          onClick={() => setTutte((t) => !t)}
-          className="mt-2 text-xs text-primary hover:underline"
-        >
-          {tutte
-            ? `Mostra solo le prime ${massimoIniziale}`
-            : `Mostra tutte le ${ordinate.length} righe`}
-        </button>
-      )}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        {ordinate.length > massimoIniziale ? (
+          <button
+            type="button"
+            onClick={() => setTutte((t) => !t)}
+            className="text-xs text-primary hover:underline"
+          >
+            {tutte
+              ? `Mostra solo le prime ${massimoIniziale}`
+              : `Mostra tutte le ${ordinate.length} righe`}
+          </button>
+        ) : (
+          <span />
+        )}
+        {mostraTotali && righe.length > 0 && (
+          <label className="flex items-center gap-1.5 text-[11px] text-text-muted">
+            Riga dei totali
+            <select
+              aria-label="Riga dei totali"
+              value={aggregazione}
+              onChange={(e) => setAggregazione(e.target.value as AggregazioneTotale)}
+              className="rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] text-text outline-none focus:ring-2 focus:ring-primary"
+            >
+              {(Object.keys(NOMI_AGGREGAZIONE) as AggregazioneTotale[]).map((chiave) => (
+                <option key={chiave} value={chiave}>
+                  {NOMI_AGGREGAZIONE[chiave]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
     </div>
   );
 }

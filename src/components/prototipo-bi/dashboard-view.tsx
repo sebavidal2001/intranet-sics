@@ -21,6 +21,8 @@
 import { useAutoAggiornamento } from "./auto-aggiornamento";
 import { SelettoreValori } from "./selettore-valori";
 import { SceltaGrafico } from "./scelta-grafico";
+import { SelettoreAnni } from "./selettore-anni";
+import { anniDelPeriodo } from "@/lib/prototipo-bi/periodo";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -50,6 +52,7 @@ import { preparaEsecuzioneAnalisi } from "@/lib/prototipo-bi/analisi-composita";
 import type { FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
 import { TIPI_GRAFICO, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type {
+  AspettoGrafico,
   Filtro,
   RisultatoQuery,
   SerieAnalisi,
@@ -64,6 +67,7 @@ export interface AnalisiDashboard {
   spec: SpecQuery;
   serie?: SerieAnalisi[] | null;
   grafico: TipoGrafico | null;
+  aspetto?: AspettoGrafico | null;
   autore_id: string;
   visibilita: "privata" | "condivisa";
 }
@@ -469,7 +473,14 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
 
   const filtri = filtriPuliti(paginaAttiva?.filtri);
   const filtriModificabili = modificabile || dashboard.di_sistema === true;
-  const modalitaPeriodo = filtri.periodo?.anno !== undefined ? "anno" : "intervallo";
+  const anniPagina = anniDelPeriodo(filtri.periodo);
+  const modalitaPeriodo = anniPagina ? "anno" : "intervallo";
+  function cambiaAnniPagina(anni: number[]) {
+    // Le pastiglie non hanno un «blur» affidabile come i campi: si salva subito.
+    const nuovi = { ...filtri, periodo: { anni } };
+    aggiornaFiltri(nuovi);
+    void salvaFiltriPagina(nuovi);
+  }
 
   return (
     <main className="flex-1 bg-bg-page px-4 py-6 text-text sm:px-6 lg:px-8">
@@ -526,19 +537,19 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                 <select
                   value={modalitaPeriodo}
                   disabled={!filtriModificabili}
-                  onChange={(evento) => aggiornaFiltri({ ...filtri, periodo: evento.target.value === "anno" ? { anno: new Date().getFullYear() } : {} })}
+                  onChange={(evento) => aggiornaFiltri({ ...filtri, periodo: evento.target.value === "anno" ? { anni: [new Date().getFullYear()] } : {} })}
                   onBlur={() => void salvaFiltriPagina()}
                   className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
                 >
-                  <option value="anno">Anno</option><option value="intervallo">Dal / al</option>
+                  <option value="anno">Anni</option><option value="intervallo">Dal / al</option>
                 </select>
               </label>
               {modalitaPeriodo === "anno" ? (
-                <label className="text-xs text-text-muted"><span className="mb-1 block">Anno</span><input type="number" value={filtri.periodo?.anno ?? new Date().getFullYear()} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { anno: Number(e.target.value) } })} onBlur={() => void salvaFiltriPagina()} className="h-9 w-24 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+                <div className="text-xs text-text-muted"><span className="mb-1 block">Anni (anche più di uno)</span><SelettoreAnni valore={anniPagina ?? [new Date().getFullYear()]} disabilitato={!filtriModificabili} onCambia={cambiaAnniPagina} etichetta="Anni della pagina" /></div>
               ) : (
                 <>
-                  <label className="text-xs text-text-muted"><span className="mb-1 block">Dal</span><input type="date" value={filtri.periodo?.dal ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { ...filtri.periodo, anno: undefined, dal: e.target.value || undefined } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
-                  <label className="text-xs text-text-muted"><span className="mb-1 block">Al</span><input type="date" value={filtri.periodo?.al ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { ...filtri.periodo, anno: undefined, al: e.target.value || undefined } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+                  <label className="text-xs text-text-muted"><span className="mb-1 block">Dal</span><input type="date" value={filtri.periodo?.dal ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { dal: e.target.value || undefined, al: filtri.periodo?.al } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
+                  <label className="text-xs text-text-muted"><span className="mb-1 block">Al</span><input type="date" value={filtri.periodo?.al ?? ""} disabled={!filtriModificabili} onChange={(e) => aggiornaFiltri({ ...filtri, periodo: { dal: filtri.periodo?.dal, al: e.target.value || undefined } })} onBlur={() => void salvaFiltriPagina()} className="h-9 rounded-lg border border-border bg-bg-page px-2.5 text-sm text-text outline-none focus:ring-2 focus:ring-primary disabled:opacity-60" /></label>
                 </>
               )}
               <div className="min-w-52 flex-1 text-xs text-text-muted">
@@ -634,7 +645,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                         </div>}
                       </header>
                       <div className="min-h-48 p-4">
-                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => apriDocumenti(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
+                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} aspetto={riquadro.analisi.aspetto} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => apriDocumenti(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
                       </div>
                     </article>
                   );

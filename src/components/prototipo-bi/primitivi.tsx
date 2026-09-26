@@ -17,6 +17,7 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -28,7 +29,12 @@ import {
   YAxis,
 } from "recharts";
 import type { RisultatoQuery, SpecQuery, UnitaMisura } from "@/lib/prototipo-bi/tipi";
-import { useImpostazioni } from "./impostazioni";
+import {
+  propsAsseCategorie,
+  propsAsseValori,
+  propsLegenda,
+  useImpostazioni,
+} from "./impostazioni";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Formattazione
@@ -69,16 +75,20 @@ export function valoreFmt(n: number, unita: UnitaMisura, compatto = true): strin
   }
 }
 
+/** Ripiego fuori dal contesto: la stessa sequenza della palette SICS. */
 export const PALETTE = [
-  "#00a1be",
-  "#f59e0b",
-  "#8b5cf6",
-  "#22c55e",
-  "#ef4444",
-  "#0ea5e9",
-  "#ec4899",
-  "#64748b",
+  "#00A1BE",
+  "#C82381",
+  "#95C11F",
+  "#EE7326",
+  "#E73331",
+  "#747373",
+  "#F4C948",
+  "#004867",
 ];
+
+/** Stile delle etichette stampate sui valori, quando sono accese. */
+const STILE_ETICHETTA = { fontSize: 10, fill: "#475569" };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Recupero dati
@@ -501,7 +511,7 @@ export function GraficoBarre({
   onClick?: (etichetta: string) => void;
   selezionata?: string | null;
 }) {
-  const { imp, colore: coloreSerie, durata } = useImpostazioni();
+  const { imp, colore: coloreSerie, coloreFisso, aspetto, durata } = useImpostazioni();
   if (!risultato) return <Scheletro altezza={altezza} />;
   const limite = massimo ?? imp.topN;
   const dati = risultato.righe.slice(0, limite).map((r) => ({
@@ -521,13 +531,13 @@ export function GraficoBarre({
         )}
         {orizzontale ? (
           <>
-            <XAxis type="number" tick={ASSE} tickFormatter={(v) => valoreFmt(v, risultato.unita, imp.numeriCompatti)} />
-            <YAxis type="category" dataKey="nome" tick={ASSE} width={140} />
+            <XAxis type="number" tick={ASSE} tickFormatter={(v) => valoreFmt(v, risultato.unita, imp.numeriCompatti)} {...propsAsseValori(aspetto)} />
+            <YAxis type="category" dataKey="nome" tick={ASSE} width={140} {...propsAsseCategorie(aspetto)} />
           </>
         ) : (
           <>
-            <XAxis dataKey="nome" tick={ASSE} interval={0} angle={-25} textAnchor="end" height={64} />
-            <YAxis tick={ASSE} tickFormatter={(v) => valoreFmt(v, risultato.unita, imp.numeriCompatti)} />
+            <XAxis dataKey="nome" tick={ASSE} interval={0} angle={-25} textAnchor="end" height={64} {...propsAsseCategorie(aspetto)} />
+            <YAxis tick={ASSE} tickFormatter={(v) => valoreFmt(v, risultato.unita, imp.numeriCompatti)} {...propsAsseValori(aspetto)} />
           </>
         )}
         <Tooltip
@@ -561,10 +571,20 @@ export function GraficoBarre({
           {dati.map((d, i) => (
             <Cell
               key={i}
-              fill={tinta}
+              // Una barra che e' una business unit (o una voce colorata nel
+              // riquadro) porta il suo colore; le altre la tinta della serie.
+              fill={coloreFisso(d.nomeCompleto) ?? tinta}
               fillOpacity={selezionata && selezionata !== d.nomeCompleto ? 0.28 : 1}
             />
           ))}
+          {imp.mostraEtichette && (
+            <LabelList
+              dataKey="valore"
+              position={orizzontale ? "right" : "top"}
+              style={STILE_ETICHETTA}
+              formatter={(v: unknown) => valoreFmt(Number(v), risultato.unita, true)}
+            />
+          )}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -578,9 +598,12 @@ export function GraficoLinee({
   serie: { nome: string; risultato?: RisultatoQuery; colore?: string; tratteggiata?: boolean }[];
   altezza?: number;
 }) {
-  const { imp, colore: coloreSerie, durata } = useImpostazioni();
+  const { imp, coloreNome, aspetto, legenda, durata } = useImpostazioni();
   const attive = serie.filter((s) => s.risultato);
   if (attive.length === 0) return <Scheletro altezza={altezza} />;
+  // L'asse segue l'unita' della prima serie: prima era sempre in euro, e un
+  // tasso di conversione compariva come "35 €".
+  const unita = attive[0].risultato!.unita;
 
   // Unione delle etichette temporali di tutte le serie.
   const etichette = [
@@ -601,22 +624,31 @@ export function GraficoLinee({
     <ResponsiveContainer width="100%" height={altezza}>
       <LineChart data={dati} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
         {imp.mostraGriglia && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-        <XAxis dataKey="periodo" tick={ASSE} minTickGap={24} />
-        <YAxis tick={ASSE} tickFormatter={(v) => euro(v, imp.numeriCompatti)} />
-        <Tooltip formatter={tooltipFormatter("euro")} />
-        {imp.mostraLegenda && <Legend wrapperStyle={{ fontSize: 11 }} />}
+        <XAxis dataKey="periodo" tick={ASSE} minTickGap={24} {...propsAsseCategorie(aspetto)} />
+        <YAxis tick={ASSE} tickFormatter={(v) => valoreFmt(v, unita, imp.numeriCompatti)} {...propsAsseValori(aspetto)} />
+        <Tooltip formatter={tooltipFormatter(unita)} />
+        {legenda !== "nascosta" && <Legend {...propsLegenda(legenda)} />}
         {attive.map((s, i) => (
           <Line
             key={s.nome}
             type="monotone"
             dataKey={s.nome}
-            stroke={s.colore ?? coloreSerie(i)}
+            stroke={s.colore ?? coloreNome(s.nome, i)}
             strokeWidth={2}
             strokeDasharray={s.tratteggiata ? "5 4" : undefined}
             dot={false}
             animationDuration={durata}
             connectNulls
-          />
+          >
+            {imp.mostraEtichette && (
+              <LabelList
+                dataKey={s.nome}
+                position="top"
+                style={STILE_ETICHETTA}
+                formatter={(v: unknown) => valoreFmt(Number(v), unita, true)}
+              />
+            )}
+          </Line>
         ))}
       </LineChart>
     </ResponsiveContainer>
@@ -632,8 +664,9 @@ export function GraficoCombo({
   linee: { nome: string; risultato?: RisultatoQuery; colore?: string; tratteggiata?: boolean }[];
   altezza?: number;
 }) {
-  const { imp, colore: coloreSerie, durata } = useImpostazioni();
+  const { imp, coloreNome, aspetto, legenda, durata } = useImpostazioni();
   if (!barre.risultato) return <Scheletro altezza={altezza} />;
+  const unita = barre.risultato.unita;
   const attive = linee.filter((l) => l.risultato);
   const etichette = [
     ...new Set([
@@ -658,22 +691,31 @@ export function GraficoCombo({
     <ResponsiveContainer width="100%" height={altezza}>
       <ComposedChart data={dati} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
         {imp.mostraGriglia && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-        <XAxis dataKey="periodo" tick={ASSE} minTickGap={20} />
-        <YAxis tick={ASSE} tickFormatter={(v) => euro(v, imp.numeriCompatti)} />
-        <Tooltip formatter={tooltipFormatter("euro")} />
-        {imp.mostraLegenda && <Legend wrapperStyle={{ fontSize: 11 }} />}
+        <XAxis dataKey="periodo" tick={ASSE} minTickGap={20} {...propsAsseCategorie(aspetto)} />
+        <YAxis tick={ASSE} tickFormatter={(v) => valoreFmt(v, unita, imp.numeriCompatti)} {...propsAsseValori(aspetto)} />
+        <Tooltip formatter={tooltipFormatter(unita)} />
+        {legenda !== "nascosta" && <Legend {...propsLegenda(legenda)} />}
         <Bar
           dataKey={barre.nome}
-          fill={barre.colore ?? coloreSerie(0)}
+          fill={barre.colore ?? coloreNome(barre.nome, 0)}
           radius={[imp.arrotondamento, imp.arrotondamento, 0, 0]}
           animationDuration={durata}
-        />
+        >
+          {imp.mostraEtichette && (
+            <LabelList
+              dataKey={barre.nome}
+              position="top"
+              style={STILE_ETICHETTA}
+              formatter={(v: unknown) => valoreFmt(Number(v), unita, true)}
+            />
+          )}
+        </Bar>
         {attive.map((l, i) => (
           <Line
             key={l.nome}
             type="monotone"
             dataKey={l.nome}
-            stroke={l.colore ?? coloreSerie(i + 1)}
+            stroke={l.colore ?? coloreNome(l.nome, i + 1)}
             strokeWidth={2}
             strokeDasharray={l.tratteggiata ? "5 4" : undefined}
             dot={false}
@@ -699,7 +741,7 @@ export function GraficoTorta({
   onClick?: (etichetta: string) => void;
   selezionata?: string | null;
 }) {
-  const { imp, colore: coloreSerie, durata } = useImpostazioni();
+  const { imp, coloreNome, aspetto, durata } = useImpostazioni();
   if (!risultato) return <Scheletro altezza={altezza} />;
   const righe = risultato.righe.slice(0, massimo ?? Math.min(8, imp.topN));
   if (righe.length === 0) return <Vuoto altezza={altezza} />;
@@ -730,11 +772,14 @@ export function GraficoTorta({
           {dati.map((d, i) => (
             <Cell
               key={i}
-              fill={coloreSerie(i)}
+              fill={coloreNome(d.nome, i)}
               fillOpacity={selezionata && selezionata !== d.nome ? 0.3 : 1}
             />
           ))}
         </Pie>
+        {/* La torta mette gia' nome e quota sulle fette: la legenda compare
+            solo se il riquadro la chiede esplicitamente. */}
+        {aspetto?.legenda && aspetto.legenda !== "nascosta" && <Legend {...propsLegenda(aspetto.legenda)} />}
         <Tooltip
           content={(p) => {
             const props = p as { active?: boolean; payload?: { payload: { nome?: string; nomeCompleto?: string; valore: number } }[] };

@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { EditorAnalisi } from "@/components/prototipo-bi/editor-analisi";
 import type { TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
-import type { SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import type { AspettoGrafico, SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +17,7 @@ interface AnalisiSalvata {
   spec: SpecQuery;
   serie: SerieAnalisi[] | null;
   grafico?: TipoGrafico;
+  aspetto: AspettoGrafico | null;
   modificabile: boolean;
 }
 
@@ -36,6 +37,7 @@ function leggiAnalisi(corpo: unknown, id: string): AnalisiSalvata | undefined {
     spec: trovata.spec as unknown as SpecQuery,
     serie: Array.isArray(trovata.serie) ? (trovata.serie as SerieAnalisi[]) : null,
     grafico: typeof trovata.grafico === "string" ? (trovata.grafico as TipoGrafico) : undefined,
+    aspetto: eOggetto(trovata.aspetto) ? (trovata.aspetto as AspettoGrafico) : null,
     modificabile: trovata.modificabile === true,
   };
 }
@@ -85,6 +87,7 @@ export default async function PaginaEsplora({
       serieIniziali={analisi?.serie}
       titoloIniziale={analisi?.titolo}
       graficoIniziale={analisi?.grafico}
+      aspettoIniziale={analisi?.aspetto}
       modificabile={analisi?.modificabile ?? true}
     />
   );

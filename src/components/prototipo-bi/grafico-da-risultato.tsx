@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  AspettoGrafico,
   RisultatoQuery,
   RigaRisultato,
   SerieAnalisiEseguita,
@@ -18,7 +19,7 @@ import {
   GraficoTorta,
   KpiEroe,
   PALETTE,
-  Tabella,
+  Vuoto,
 } from "./primitivi";
 import {
   BarreScostamento,
@@ -37,9 +38,10 @@ import {
   Pendenza,
   Posizioni,
 } from "./grafici-nuovi";
-import { useImpostazioni } from "./impostazioni";
+import { AspettoLocale, useImpostazioni } from "./impostazioni";
 import { BarreImpilate, datiBarreImpilate } from "./barre-impilate";
 import {
+  COLONNA_VOCE,
   TabellaAnalitica,
   type ColonnaAnalitica,
   type RigaAnalitica,
@@ -57,7 +59,112 @@ interface ProprietaGraficoDaAnalisi {
   serie: SerieAnalisiEseguita[];
   tipo?: TipoGrafico;
   altezza?: number;
+  /** Colori, legenda, assi e totali scelti per questo riquadro. */
+  aspetto?: AspettoGrafico | null;
   onClickEtichetta?: (etichetta: string) => void;
+}
+
+/** Oltre queste colonne una tabella a incrocio non si legge più: si torna all'elenco. */
+const MASSIMO_COLONNE_INCROCIO = 12;
+
+function totaleAutomatico(unita: UnitaMisura): ColonnaAnalitica["totale"] {
+  // Percentuali e giorni sono medie o rapporti: sommarli darebbe un numero
+  // mai misurato. Meglio la cella vuota, oppure la scelta esplicita
+  // dell'utente nella tendina dei totali.
+  return unita === "percentuale" || unita === "giorni" ? { tipo: "nessuno" } : { tipo: "somma" };
+}
+
+/**
+ * La tabella di un risultato solo.
+ *
+ * Con tempo e una suddivisione (ordinato per mese e business unit) diventa un
+ * incrocio: i periodi sulle righe, le categorie sulle colonne. Prima era un
+ * elenco di «2026-03 · COMPONENTI» da leggere in fila, senza ordinamento né
+ * totali; l'incrocio è quello che si costruisce in Power BI con la matrice.
+ */
+function datiTabellaRisultato(risultato: RisultatoQuery): {
+  colonne: ColonnaAnalitica[];
+  righe: RigaAnalitica[];
+  intestazione: string;
+  temporale: boolean;
+} {
+  const dimensioni = risultato.spec.raggruppa ?? [];
+  const temporale = risultato.spec.granularita !== undefined;
+  const chiaveRiga = temporale ? "periodo" : dimensioni[0];
+  const chiaveColonna = temporale ? dimensioni[0] : dimensioni[1];
+  const tipo = tipoColonna(risultato.unita);
+
+  if (chiaveRiga && chiaveColonna) {
+    const totaliColonna = new Map<string, number>();
+    for (const riga of risultato.righe) {
+      const colonna = riga.chiavi[chiaveColonna] ?? "";
+      totaliColonna.set(colonna, (totaliColonna.get(colonna) ?? 0) + Math.abs(riga.valore));
+    }
+    if (totaliColonna.size <= MASSIMO_COLONNE_INCROCIO) {
+      const nomiColonne = [...totaliColonna.entries()].sort((a, b) => b[1] - a[1]).map(([nome]) => nome);
+      const perRiga = new Map<string, RigaAnalitica>();
+      for (const riga of risultato.righe) {
+        const nomeRiga = riga.chiavi[chiaveRiga] ?? riga.etichetta;
+        const voce = perRiga.get(nomeRiga) ?? { chiave: nomeRiga, celle: {} };
+        const colonna = `c_${nomiColonne.indexOf(riga.chiavi[chiaveColonna] ?? "")}`;
+        voce.celle[colonna] = (Number(voce.celle[colonna]) || 0) + riga.valore;
+        perRiga.set(nomeRiga, voce);
+      }
+      return {
+        colonne: nomiColonne.map((nome, indice) => ({
+          chiave: `c_${indice}`,
+          etichetta: nome,
+          tipo,
+          unita: risultato.unita,
+          totale: totaleAutomatico(risultato.unita),
+        })),
+        righe: [...perRiga.values()],
+        intestazione: temporale ? "Periodo" : "Voce",
+        temporale,
+      };
+    }
+  }
+
+  return {
+    colonne: [
+      {
+        chiave: "valore",
+        etichetta: "Valore",
+        tipo: tipo === "euro" ? "barra" : tipo,
+        unita: risultato.unita,
+        totale: totaleAutomatico(risultato.unita),
+      },
+    ],
+    righe: risultato.righe.map((riga) => ({ chiave: riga.etichetta, celle: { valore: riga.valore } })),
+    intestazione: temporale && dimensioni.length === 0 ? "Periodo" : "Voce",
+    temporale,
+  };
+}
+
+function TabellaRisultato({
+  risultato,
+  onClickRiga,
+}: {
+  risultato: RisultatoQuery;
+  onClickRiga?: (etichetta: string) => void;
+}) {
+  const { aspetto } = useImpostazioni();
+  if (risultato.righe.length === 0) return <Vuoto altezza={140} />;
+  const dati = datiTabellaRisultato(risultato);
+  return (
+    <TabellaAnalitica
+      colonne={dati.colonne}
+      righe={dati.righe}
+      colonnaDimensione={dati.intestazione}
+      // Nel tempo si legge in ordine cronologico; il resto dal più grande.
+      // Un ordinamento scelto nel riquadro prevale su entrambi.
+      colonnaOrdinamentoIniziale={
+        aspetto?.tabella?.ordinaPer ? undefined : dati.temporale ? COLONNA_VOCE : undefined
+      }
+      massimoIniziale={15}
+      onClickRiga={onClickRiga}
+    />
+  );
 }
 
 function datiSemplici(risultato: RisultatoQuery) {
@@ -234,9 +341,23 @@ function chiaveCategoria(serie: SerieAnalisiEseguita, riga: RigaRisultato): stri
   return dimensione ? riga.chiavi[dimensione] ?? riga.etichetta : riga.etichetta;
 }
 
-function tabellaComposita(serie: SerieAnalisiEseguita[]) {
+/**
+ * La tabella di più misure insieme (ordinato, budget, BEP, anno precedente…).
+ *
+ * Con misure nel tempo le righe sono i periodi — o periodo e categoria — e
+ * ogni misura una colonna. Prima qui entravano come colonne solo le misure
+ * SENZA granularità: scegliendo la tabella per «ordinato e budget per mese»
+ * restava una tabella senza numeri, o tutto schiacciato sulla categoria, e le
+ * settimane e i mesi sparivano.
+ */
+function tabellaComposita(serie: SerieAnalisiEseguita[]): {
+  colonne: ColonnaAnalitica[];
+  righe: RigaAnalitica[];
+  temporale: boolean;
+} {
   const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
-  if (!principale) return { colonne: [], righe: [] };
+  if (!principale) return { colonne: [], righe: [], temporale: false };
+  if (principale.spec.granularita !== undefined) return tabellaCompositaNelTempo(serie, principale);
   const nonTemporali = serie.filter((voce) => voce.spec.granularita === undefined);
   const fontiRighe = nonTemporali.length > 0 ? nonTemporali : [principale];
   const chiavi = new Set<string>();
@@ -302,7 +423,69 @@ function tabellaComposita(serie: SerieAnalisiEseguita[]) {
     }
     return { chiave, celle };
   });
-  return { colonne, righe };
+  return { colonne, righe, temporale: false };
+}
+
+function tabellaCompositaNelTempo(
+  serie: SerieAnalisiEseguita[],
+  principale: SerieAnalisiEseguita
+): { colonne: ColonnaAnalitica[]; righe: RigaAnalitica[]; temporale: true } {
+  // La principale per prima: e' la colonna con la barra e il termine di
+  // paragone di delta e raggiungimento.
+  const ordinate = [principale, ...serie.filter((voce) => voce !== principale)];
+  // L'anno precedente va riportato sui periodi di quest'anno, altrimenti
+  // «2025-03» e «2026-03» finirebbero su due righe diverse.
+  const mappe = ordinate.map(
+    (voce) =>
+      new Map(risultatoAllineatoNelTempo(voce).righe.map((riga) => [riga.etichetta, riga.valore]))
+  );
+  const chiavi = [...new Set(mappe.flatMap((mappa) => [...mappa.keys()]))];
+
+  const indiceObiettivo = ordinate.findIndex((voce) => voce.ruolo === "obiettivo");
+  const indiceConfronto = ordinate.findIndex((voce) => voce.ruolo === "confronto");
+  const unitaPrincipale = principale.risultato.unita;
+
+  const colonne: ColonnaAnalitica[] = ordinate.map((voce, indice) => ({
+    chiave: `serie_${indice}`,
+    etichetta: voce.nome,
+    tipo: indice === 0 && voce.risultato.unita === "euro" ? "barra" : tipoColonna(voce.risultato.unita),
+    unita: voce.risultato.unita,
+    totale: totaleAutomatico(voce.risultato.unita),
+  }));
+  if (indiceConfronto > 0) {
+    colonne.push({
+      chiave: "delta_confronto",
+      etichetta: `Δ ${ordinate[indiceConfronto].nome}`,
+      tipo: unitaPrincipale === "euro" ? "delta_euro" : "numero",
+      unita: unitaPrincipale,
+      totale: totaleAutomatico(unitaPrincipale),
+    });
+  }
+  if (indiceObiettivo > 0) {
+    colonne.push({
+      chiave: "raggiungimento",
+      etichetta: "Raggiungimento",
+      tipo: "raggiungimento",
+      totale: { tipo: "rapporto", numeratore: "serie_0", denominatore: `serie_${indiceObiettivo}` },
+    });
+  }
+
+  const righe: RigaAnalitica[] = chiavi.map((chiave) => {
+    const celle: RigaAnalitica["celle"] = {};
+    mappe.forEach((mappa, indice) => {
+      celle[`serie_${indice}`] = mappa.get(chiave) ?? null;
+    });
+    const valorePrincipale = mappe[0].get(chiave) ?? 0;
+    if (indiceConfronto > 0) {
+      celle.delta_confronto = valorePrincipale - (mappe[indiceConfronto].get(chiave) ?? 0);
+    }
+    if (indiceObiettivo > 0) {
+      const atteso = mappe[indiceObiettivo].get(chiave) ?? 0;
+      celle.raggiungimento = atteso === 0 ? null : (valorePrincipale / atteso) * 100;
+    }
+    return { chiave, celle };
+  });
+  return { colonne, righe, temporale: true };
 }
 
 function matriceScostamento(serie: SerieAnalisiEseguita[]) {
@@ -336,7 +519,7 @@ function Ripiego({ risultato, tipo }: { risultato: RisultatoQuery; tipo: TipoGra
       <p className="text-sm text-text-muted">
         Il grafico «{tipo}» non è applicabile a questi dati. Mostro la tabella completa.
       </p>
-      <Tabella risultato={risultato} massimo={risultato.righe.length || 15} />
+      <TabellaRisultato risultato={risultato} />
     </div>
   );
 }
@@ -348,7 +531,7 @@ export function GraficoDaRisultato({
   coloreSerie,
   onClickEtichetta,
 }: ProprietaGraficoDaRisultato): JSX.Element {
-  const { colore } = useImpostazioni();
+  const { colore, coloreNome } = useImpostazioni();
   const tipoScelto = tipo ?? scegliGrafico(risultato).tipo;
   const applicabili = graficiPossibili(risultato);
   const colorePrincipale = coloreSerie ?? (colore(0) || PALETTE[0]);
@@ -372,9 +555,14 @@ export function GraficoDaRisultato({
     case "linee":
       return (
         <GraficoLinee
-          serie={serieTemporali(risultato).map((serie, indice) => ({
+          serie={serieTemporali(risultato).map((serie, indice, tutte) => ({
             ...serie,
-            colore: colore(indice) || PALETTE[indice % PALETTE.length],
+            // Con una sola serie vale il colore scelto per il riquadro; con
+            // una per categoria, ogni business unit porta il suo.
+            colore:
+              tutte.length === 1 && coloreSerie
+                ? coloreSerie
+                : coloreNome(serie.nome, indice) || PALETTE[indice % PALETTE.length],
           }))}
           altezza={altezza}
         />
@@ -392,7 +580,7 @@ export function GraficoDaRisultato({
       return <KpiEroe etichetta={riga.etichetta} valore={riga.valore} unita={risultato.unita} />;
     }
     case "tabella":
-      return <Tabella risultato={risultato} massimo={risultato.righe.length || 15} />;
+      return <TabellaRisultato risultato={risultato} onClickRiga={onClickEtichetta} />;
     case "pareto":
       return <Pareto dati={datiSemplici(risultato)} altezza={altezza} onClick={onClickEtichetta} />;
     case "heatmap": {
@@ -510,19 +698,62 @@ export function GraficoDaRisultato({
 function tintaSerie(
   voce: SerieAnalisiEseguita,
   indice: number,
-  dallaPalette: (posizione: number) => string
+  dalNome: (nome: string, posizione: number) => string,
+  aspetto?: AspettoGrafico | null
 ): string {
-  return voce.colore ?? (dallaPalette(indice) || PALETTE[indice % PALETTE.length]);
+  // Il colore scelto nel pannello Aspetto prevale su quello dato alla serie
+  // quando è stata aggiunta: è la scelta più recente e più esplicita.
+  return (
+    aspetto?.colori?.[voce.nome] ??
+    voce.colore ??
+    (dalNome(voce.nome, indice) || PALETTE[indice % PALETTE.length])
+  );
 }
 
-/** Distribuisce ruoli e risultati sulle firme già usate dai grafici del Cruscotto. */
-export function GraficoDaAnalisi({
+function TabellaComposita({
+  serie,
+  onClickRiga,
+}: {
+  serie: SerieAnalisiEseguita[];
+  onClickRiga?: (etichetta: string) => void;
+}) {
+  const { aspetto } = useImpostazioni();
+  const { temporale, ...dati } = tabellaComposita(serie);
+  return (
+    <TabellaAnalitica
+      {...dati}
+      colonnaDimensione={temporale ? "Periodo" : "Voce"}
+      colonnaOrdinamentoIniziale={
+        aspetto?.tabella?.ordinaPer ? undefined : temporale ? COLONNA_VOCE : undefined
+      }
+      massimoIniziale={temporale ? 15 : 12}
+      onClickRiga={onClickRiga}
+    />
+  );
+}
+
+/**
+ * Distribuisce ruoli e risultati sulle firme già usate dai grafici del Cruscotto.
+ *
+ * L'aspetto del riquadro avvolge tutto il sottoalbero: i grafici lo leggono
+ * dal contesto come le impostazioni generali, senza doverlo ricevere a mano.
+ */
+export function GraficoDaAnalisi({ aspetto, ...proprieta }: ProprietaGraficoDaAnalisi): JSX.Element {
+  return (
+    <AspettoLocale aspetto={aspetto}>
+      <CorpoGraficoDaAnalisi {...proprieta} />
+    </AspettoLocale>
+  );
+}
+
+function CorpoGraficoDaAnalisi({
   serie,
   tipo,
   altezza = 300,
   onClickEtichetta,
-}: ProprietaGraficoDaAnalisi): JSX.Element {
-  const { colore } = useImpostazioni();
+}: Omit<ProprietaGraficoDaAnalisi, "aspetto">): JSX.Element {
+  const { coloreNome, coloreFisso, aspetto } = useImpostazioni();
+  const colore = coloreNome;
   const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
   if (!principale) {
     return <p role="status" className="text-sm text-text-muted">Nessuna serie disponibile.</p>;
@@ -533,7 +764,7 @@ export function GraficoDaAnalisi({
         risultato={principale.risultato}
         tipo={tipo}
         altezza={altezza}
-        coloreSerie={principale.colore}
+        coloreSerie={aspetto?.colori?.[principale.nome] ?? principale.colore ?? coloreFisso(principale.nome)}
         onClickEtichetta={onClickEtichetta}
       />
     );
@@ -541,8 +772,7 @@ export function GraficoDaAnalisi({
 
   const tipoScelto = tipo ?? scegliGrafico(serie).tipo;
   if (!graficiPossibili(serie).includes(tipoScelto)) {
-    const dati = tabellaComposita(serie);
-    return <TabellaAnalitica {...dati} colonnaDimensione="Voce" />;
+    return <TabellaComposita serie={serie} />;
   }
 
   switch (tipoScelto) {
@@ -552,7 +782,7 @@ export function GraficoDaAnalisi({
           serie={serie.map((voce, indice) => ({
             nome: voce.nome,
             risultato: risultatoAllineatoNelTempo(voce),
-            colore: tintaSerie(voce, indice, colore),
+            colore: tintaSerie(voce, indice, colore, aspetto),
             tratteggiata: voce.ruolo !== "principale",
           }))}
           altezza={altezza}
@@ -564,14 +794,14 @@ export function GraficoDaAnalisi({
           barre={{
             nome: principale.nome,
             risultato: principale.risultato,
-            colore: tintaSerie(principale, 0, colore),
+            colore: tintaSerie(principale, 0, colore, aspetto),
           }}
           linee={serie
             .filter((voce) => voce !== principale)
             .map((voce, indice) => ({
               nome: voce.nome,
               risultato: risultatoAllineatoNelTempo(voce),
-              colore: tintaSerie(voce, indice + 1, colore),
+              colore: tintaSerie(voce, indice + 1, colore, aspetto),
               tratteggiata: voce.ruolo !== "principale",
             }))}
           altezza={altezza}
@@ -683,10 +913,8 @@ export function GraficoDaAnalisi({
         />
       );
     }
-    case "tabella": {
-      const dati = tabellaComposita(serie);
-      return <TabellaAnalitica {...dati} colonnaDimensione="Voce" onClickRiga={onClickEtichetta} />;
-    }
+    case "tabella":
+      return <TabellaComposita serie={serie} onClickRiga={onClickEtichetta} />;
     default:
       return (
         <GraficoDaRisultato

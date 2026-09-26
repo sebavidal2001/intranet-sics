@@ -68,6 +68,7 @@ import { VistaAcquisti } from "./vista-acquisti";
 import { useAutoAggiornamento } from "./auto-aggiornamento";
 import { SelettoreValori } from "./selettore-valori";
 import type { Dimensione, Filtro, RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
+import { COLORI_SICS } from "@/lib/prototipo-bi/aspetto";
 
 type Vista =
   | "sintesi"
@@ -126,12 +127,15 @@ const NOMI_DIMENSIONE: Record<string, string> = {
 
 export function CruscottoView({
   anniDisponibili,
+  annoIniziale,
   dataMassima,
   runRicevutoIl,
   tassonomiaBu,
   puoForzareAggiornamento = false,
 }: {
   anniDisponibili: number[];
+  /** Anno con cui si apre; per difetto il più recente dell'elenco. */
+  annoIniziale?: number;
   // `buDisponibili` e `agentiDisponibili` erano dichiarati qui e mai usati: la
   // pagina li calcolava sullo snapshot INTERO — non perimetrato — e Next li
   // serializzava comunque nel payload verso il browser. Nessuno li disegnava,
@@ -146,7 +150,11 @@ export function CruscottoView({
 }) {
   const router = useRouter();
   const [vista, setVista] = useState<Vista>("sintesi");
-  const [anno, setAnno] = useState<number>(anniDisponibili[0] ?? new Date().getFullYear());
+  const [anno, setAnno] = useState<number>(
+    annoIniziale && anniDisponibili.includes(annoIniziale)
+      ? annoIniziale
+      : anniDisponibili[0] ?? new Date().getFullYear()
+  );
   const [filtri, setFiltri] = useState<FiltroAttivo[]>([]);
   const [schermoIntero, setSchermoIntero] = useState(false);
   const [presentazione, setPresentazione] = useState(false);
@@ -1209,8 +1217,8 @@ export function CruscottoView({
               <GraficoCombo
                 barre={{ nome: "Ordinato", risultato: r("ordinatoMese") }}
                 linee={[
-                  { nome: "Budget", risultato: r("budgetMese"), colore: "#f59e0b" },
-                  { nome: "BEP", risultato: r("bepMese"), colore: "#ef4444", tratteggiata: true },
+                  { nome: "Budget", risultato: r("budgetMese"), colore: COLORI_SICS.fucsia },
+                  { nome: "BEP", risultato: r("bepMese"), colore: COLORI_SICS.arancio, tratteggiata: true },
                 ]}
               />
             </Scheda>
@@ -1218,9 +1226,9 @@ export function CruscottoView({
             <Scheda titolo="Visione progressiva annua" className="lg:col-span-2">
               <GraficoLinee
                 serie={[
-                  { nome: "Ordinato", risultato: r("ordinatoProgSett"), colore: "#00a1be" },
-                  { nome: "Budget", risultato: r("budgetProgSett"), colore: "#f59e0b", tratteggiata: true },
-                  { nome: "BEP", risultato: r("bepProgSett"), colore: "#ef4444", tratteggiata: true },
+                  { nome: "Ordinato", risultato: r("ordinatoProgSett"), colore: COLORI_SICS.turchese },
+                  { nome: "Budget", risultato: r("budgetProgSett"), colore: COLORI_SICS.fucsia, tratteggiata: true },
+                  { nome: "BEP", risultato: r("bepProgSett"), colore: COLORI_SICS.arancio, tratteggiata: true },
                 ]}
                 altezza={300}
               />
@@ -1472,11 +1480,11 @@ export function CruscottoView({
             >
               <GraficoLinee
                 serie={[
-                  { nome: `Margine ${anno}`, risultato: r("margineMese"), colore: "#00a1be" },
+                  { nome: `Margine ${anno}`, risultato: r("margineMese"), colore: COLORI_SICS.turchese },
                   {
                     nome: `Margine ${anno - 1}`,
                     risultato: r("margineMeseAP"),
-                    colore: "#94a3b8",
+                    colore: COLORI_SICS.verde,
                     tratteggiata: true,
                   },
                 ]}
@@ -1656,7 +1664,7 @@ export function CruscottoView({
 
             <Scheda titolo="Portafoglio per mese di consegna">
               <GraficoCombo
-                barre={{ nome: "Portafoglio", risultato: r("portafoglioMese"), colore: "#8b5cf6" }}
+                barre={{ nome: "Portafoglio", risultato: r("portafoglioMese"), colore: COLORI_SICS.grigio }}
                 linee={[]}
                 altezza={280}
               />

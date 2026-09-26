@@ -1,6 +1,7 @@
 "use client";
 
-import type { RisultatoQuery, UnitaMisura } from "@/lib/prototipo-bi/tipi";
+import { useState } from "react";
+import type { AggregazioneTotale, RisultatoQuery, UnitaMisura } from "@/lib/prototipo-bi/tipi";
 import { useImpostazioni } from "./impostazioni";
 import { valoreFmt, Vuoto } from "./primitivi";
 
@@ -69,18 +70,46 @@ function gestisciTastiera(
   azione();
 }
 
+/**
+ * Riassume i valori di una riga o colonna della matrice.
+ *
+ * In automatico somma euro e conteggi, e lascia vuoto per percentuali e
+ * giorni: prima sommava tutto, e una matrice di tassi di conversione
+ * chiudeva con un «totale» del 340%.
+ */
+function aggregaMargine(valori: number[], aggregazione: AggregazioneTotale, unita: UnitaMisura): number | null {
+  const efficace =
+    aggregazione === "automatico" ? (unita === "percentuale" || unita === "giorni" ? "nessuno" : "somma") : aggregazione;
+  if (efficace === "conteggio") return valori.length;
+  if (efficace === "nessuno" || valori.length === 0) return null;
+  if (efficace === "somma") return unita === "percentuale" ? null : valori.reduce((a, b) => a + b, 0);
+  if (efficace === "media") return valori.reduce((a, b) => a + b, 0) / valori.length;
+  if (efficace === "minimo") return valori.reduce((a, b) => Math.min(a, b));
+  return valori.reduce((a, b) => Math.max(a, b));
+}
+
+const COLONNA_RIGHE = "\u0000righe";
+const COLONNA_TOTALE = "\u0000totale";
+
 /** Tabella pivot con totali marginali, pensata per incroci compatti. */
 export function Matrice({ risultato, onClick }: ProprietaGraficoNuovo) {
-  const { imp, colore } = useImpostazioni();
+  const { imp, colore, aspetto } = useImpostazioni();
+  const [ordinaPer, setOrdinaPer] = useState<string>(
+    aspetto?.tabella?.ordinaPer === "valore" ? COLONNA_TOTALE : COLONNA_RIGHE
+  );
+  const [discendente, setDiscendente] = useState(
+    aspetto?.tabella?.verso ? aspetto.tabella.verso === "desc" : aspetto?.tabella?.ordinaPer === "valore"
+  );
+  const [aggregazione, setAggregazione] = useState<AggregazioneTotale>(aspetto?.tabella?.totale ?? "automatico");
   const dimensioni = risultato.spec.raggruppa ?? [];
   if (dimensioni.length !== 2) {
     return <Vuoto testo="La matrice richiede esattamente due raggruppamenti." />;
   }
 
   const [dimensioneRiga, dimensioneColonna] = dimensioni;
-  const nomiRiga = [...new Set(risultato.righe.map((riga) => riga.chiavi[dimensioneRiga]).filter(Boolean))];
+  const nomiRigaGrezzi = [...new Set(risultato.righe.map((riga) => riga.chiavi[dimensioneRiga]).filter(Boolean))];
   const nomiColonna = [...new Set(risultato.righe.map((riga) => riga.chiavi[dimensioneColonna]).filter(Boolean))];
-  if (nomiRiga.length === 0 || nomiColonna.length === 0) {
+  if (nomiRigaGrezzi.length === 0 || nomiColonna.length === 0) {
     return <Vuoto testo="La matrice richiede valori in entrambe le dimensioni." />;
   }
 
@@ -92,17 +121,58 @@ export function Matrice({ risultato, onClick }: ProprietaGraficoNuovo) {
     const chiave = `${nomeRiga}\u0000${nomeColonna}`;
     celle.set(chiave, (celle.get(chiave) ?? 0) + riga.valore);
   }
-  const totaleColonna = (nomeColonna: string) => nomiRiga.reduce(
-    (somma, nomeRiga) => somma + (celle.get(`${nomeRiga}\u0000${nomeColonna}`) ?? 0),
-    0
-  );
-  const totaleRiga = (nomeRiga: string) => nomiColonna.reduce(
-    (somma, nomeColonna) => somma + (celle.get(`${nomeRiga}\u0000${nomeColonna}`) ?? 0),
-    0
-  );
+  const valoriRiga = (nomeRiga: string) =>
+    nomiColonna.flatMap((nomeColonna) => {
+      const v = celle.get(`${nomeRiga}\u0000${nomeColonna}`);
+      return v === undefined ? [] : [v];
+    });
+  const valoriColonna = (nomeColonna: string) =>
+    nomiRigaGrezzi.flatMap((nomeRiga) => {
+      const v = celle.get(`${nomeRiga}\u0000${nomeColonna}`);
+      return v === undefined ? [] : [v];
+    });
+  const totaleRiga = (nomeRiga: string) => aggregaMargine(valoriRiga(nomeRiga), aggregazione, risultato.unita);
+  const totaleColonna = (nomeColonna: string) =>
+    aggregaMargine(valoriColonna(nomeColonna), aggregazione, risultato.unita);
+  const totaleGenerale = aggregaMargine([...celle.values()], aggregazione, risultato.unita);
+  const mostraTotali = aggregazione !== "nessuno";
+
+  const confronta = new Intl.Collator("it", { numeric: true, sensitivity: "base" }).compare;
+  const chiaveOrdinamento = (nomeRiga: string): number => {
+    if (ordinaPer === COLONNA_TOTALE) return totaleRiga(nomeRiga) ?? Number.NEGATIVE_INFINITY;
+    return celle.get(`${nomeRiga}\u0000${ordinaPer}`) ?? Number.NEGATIVE_INFINITY;
+  };
+  const nomiRiga = [...nomiRigaGrezzi].sort((a, b) => {
+    const esito = ordinaPer === COLONNA_RIGHE ? confronta(a, b) : chiaveOrdinamento(a) - chiaveOrdinamento(b);
+    return discendente ? -esito : esito;
+  });
+
+  function ordina(chiave: string) {
+    if (ordinaPer === chiave) setDiscendente((d) => !d);
+    else {
+      setOrdinaPer(chiave);
+      setDiscendente(chiave !== COLONNA_RIGHE);
+    }
+  }
+  const freccia = (chiave: string) =>
+    ordinaPer === chiave ? (discendente ? " ↓" : " ↑") : "";
+  const cella = (valore: number | null) =>
+    valore === null ? "—" : aggregazione === "conteggio" ? String(valore) : formatta(valore, risultato.unita, imp.numeriCompatti);
   const spaziatura = imp.densita === "compatta" ? "px-2 py-1.5" : "px-3 py-2.5";
+  const intestazioneOrdinabile = (chiave: string, testo: string, allineamento: string) => (
+    <button
+      type="button"
+      onClick={() => ordina(chiave)}
+      aria-label={`Ordina per ${testo}`}
+      className={`w-full ${allineamento} hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary ${ordinaPer === chiave ? "text-primary" : ""}`}
+    >
+      {testo}
+      {freccia(chiave)}
+    </button>
+  );
 
   return (
+    <div>
     <div className="overflow-x-auto rounded-lg border border-border">
       <table className="min-w-full border-collapse text-xs">
         <caption className="sr-only">
@@ -111,16 +181,18 @@ export function Matrice({ risultato, onClick }: ProprietaGraficoNuovo) {
         <thead className="bg-bg-page text-text-muted">
           <tr>
             <th scope="col" className={`${spaziatura} sticky left-0 z-10 bg-bg-page text-left font-semibold`}>
-              {dimensioneRiga}
+              {intestazioneOrdinabile(COLONNA_RIGHE, dimensioneRiga, "text-left")}
             </th>
             {nomiColonna.map((nome) => (
               <th key={nome} scope="col" className={`${spaziatura} whitespace-nowrap text-right font-semibold`}>
-                {nome}
+                {intestazioneOrdinabile(nome, nome, "text-right")}
               </th>
             ))}
-            <th scope="col" className={`${spaziatura} whitespace-nowrap text-right font-semibold text-text`}>
-              Totale
-            </th>
+            {mostraTotali && (
+              <th scope="col" className={`${spaziatura} whitespace-nowrap text-right font-semibold text-text`}>
+                {intestazioneOrdinabile(COLONNA_TOTALE, NOMI_AGGREGAZIONE_BREVI[aggregazione], "text-right")}
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -147,29 +219,59 @@ export function Matrice({ risultato, onClick }: ProprietaGraficoNuovo) {
                   </td>
                 );
               })}
-              <td className={`${spaziatura} bg-bg-page text-right font-semibold tabular-nums`}>
-                {formatta(totaleRiga(nomeRiga), risultato.unita, imp.numeriCompatti)}
-              </td>
+              {mostraTotali && (
+                <td className={`${spaziatura} bg-bg-page text-right font-semibold tabular-nums`}>
+                  {cella(totaleRiga(nomeRiga))}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
-        <tfoot className="border-t-2 border-border bg-bg-page font-semibold">
-          <tr>
-            <th scope="row" className={`${spaziatura} sticky left-0 bg-bg-page text-left`}>Totale</th>
-            {nomiColonna.map((nome) => (
-              <td key={nome} className={`${spaziatura} text-right tabular-nums`}>
-                {formatta(totaleColonna(nome), risultato.unita, imp.numeriCompatti)}
-              </td>
-            ))}
-            <td className={`${spaziatura} text-right text-primary tabular-nums`}>
-              {formatta([...celle.values()].reduce((somma, valore) => somma + valore, 0), risultato.unita, imp.numeriCompatti)}
-            </td>
-          </tr>
-        </tfoot>
+        {mostraTotali && (
+          <tfoot className="border-t-2 border-border bg-bg-page font-semibold">
+            <tr>
+              <th scope="row" className={`${spaziatura} sticky left-0 bg-bg-page text-left`}>
+                {NOMI_AGGREGAZIONE_BREVI[aggregazione]}
+              </th>
+              {nomiColonna.map((nome) => (
+                <td key={nome} className={`${spaziatura} text-right tabular-nums`}>
+                  {cella(totaleColonna(nome))}
+                </td>
+              ))}
+              <td className={`${spaziatura} text-right text-primary tabular-nums`}>{cella(totaleGenerale)}</td>
+            </tr>
+          </tfoot>
+        )}
       </table>
+    </div>
+      <label className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-text-muted">
+        Totali
+        <select
+          aria-label="Totali della matrice"
+          value={aggregazione}
+          onChange={(e) => setAggregazione(e.target.value as AggregazioneTotale)}
+          className="rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] text-text outline-none focus:ring-2 focus:ring-primary"
+        >
+          {(Object.keys(NOMI_AGGREGAZIONE_BREVI) as AggregazioneTotale[]).map((chiave) => (
+            <option key={chiave} value={chiave}>
+              {chiave === "automatico" ? "Automatico" : chiave === "nessuno" ? "Nessuno" : NOMI_AGGREGAZIONE_BREVI[chiave]}
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 }
+
+const NOMI_AGGREGAZIONE_BREVI: Record<AggregazioneTotale, string> = {
+  automatico: "Totale",
+  somma: "Somma",
+  media: "Media",
+  minimo: "Minimo",
+  massimo: "Massimo",
+  conteggio: "Conteggio",
+  nessuno: "Totale",
+};
 
 /** Confronta due soli periodi e mette in primo piano direzione e ampiezza. */
 export function Pendenza({ risultato, altezza = 320, onClick }: ProprietaGraficoNuovo) {

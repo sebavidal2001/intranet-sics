@@ -57,6 +57,7 @@ import type {
   VoceBriefing,
   UnitaMisura,
 } from "./tipi";
+import { dataNelPeriodo } from "./periodo";
 import { FAMIGLIE_RILEVATORI } from "./tipi";
 
 function haChiave() {
@@ -860,12 +861,7 @@ function aggiungiValore(
 
 function snapshotNelPeriodo(snapshot: Snapshot, periodo?: Periodo): Snapshot {
   if (!periodo) return snapshot;
-  const dentro = (data: string) => {
-    if (periodo.anno !== undefined && Number(data.slice(0, 4)) !== periodo.anno) return false;
-    if (periodo.dal && data < periodo.dal) return false;
-    if (periodo.al && data > periodo.al) return false;
-    return true;
-  };
+  const dentro = (data: string) => dataNelPeriodo(data, periodo);
   const dataset = { ...snapshot.dataset };
   for (const chiave of Object.keys(dataset) as Array<keyof Snapshot["dataset"]>) {
     dataset[chiave] = (snapshot.dataset[chiave] ?? []).filter((riga) => dentro(riga.data));

@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { registraAccesso } from "@/lib/prototipo-bi/registro";
 import { SpecNonValida, validaSpec } from "@/lib/prototipo-bi/semantico";
 import { validaSerieAnalisi } from "@/lib/prototipo-bi/analisi-composita";
+import { AspettoNonValido, validaAspetto } from "@/lib/prototipo-bi/aspetto";
 import { NOMI_GRAFICI, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type { SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi/tipi";
 
@@ -44,7 +45,7 @@ export async function GET() {
   const database = createAdminClient().schema("bi_direzionale");
   const { data, error: erroreDb } = await database
     .from("analisi")
-    .select("id,titolo,descrizione,spec,serie,grafico,autore_id,visibilita,creato_il,aggiornato_il,chiave")
+    .select("id,titolo,descrizione,spec,serie,grafico,aspetto,autore_id,visibilita,creato_il,aggiornato_il,chiave")
     .or(`autore_id.eq.${pre.accesso.userId},visibilita.eq.condivisa`)
     .order("aggiornato_il", { ascending: false });
 
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
     spec?: unknown;
     serie?: unknown;
     grafico?: unknown;
+    aspetto?: unknown;
     visibilita?: unknown;
   };
   try {
@@ -134,6 +136,12 @@ export async function POST(request: NextRequest) {
   }
   if (body.grafico !== undefined && !graficoValido(body.grafico)) {
     return errore("Tipo di grafico non valido");
+  }
+  let aspetto: ReturnType<typeof validaAspetto>;
+  try {
+    aspetto = validaAspetto(body.aspetto);
+  } catch (causa) {
+    return errore(causa instanceof AspettoNonValido ? causa.message : "Aspetto non valido", 422);
   }
 
   let spec: SpecQuery;
@@ -162,10 +170,11 @@ export async function POST(request: NextRequest) {
       spec,
       serie,
       grafico: body.grafico ?? null,
+      aspetto,
       autore_id: pre.accesso.userId,
       visibilita,
     })
-    .select("id,titolo,descrizione,spec,serie,grafico,autore_id,visibilita,creato_il,aggiornato_il")
+    .select("id,titolo,descrizione,spec,serie,grafico,aspetto,autore_id,visibilita,creato_il,aggiornato_il")
     .single();
 
   if (erroreDb) {
@@ -208,6 +217,7 @@ export async function PATCH(request: NextRequest) {
     spec?: unknown;
     serie?: unknown;
     grafico?: unknown;
+    aspetto?: unknown;
     visibilita?: unknown;
   };
   try {
@@ -223,6 +233,14 @@ export async function PATCH(request: NextRequest) {
   }
   if (body.visibilita !== undefined && body.visibilita !== "privata" && body.visibilita !== "condivisa") {
     return errore("Visibilita non valida");
+  }
+  // Assente = non toccare: chi aggiorna solo la domanda non deve cancellare
+  // i colori scelti. `null` esplicito lo riporta alle impostazioni generali.
+  let aspetto: ReturnType<typeof validaAspetto> | undefined;
+  try {
+    aspetto = body.aspetto === undefined ? undefined : validaAspetto(body.aspetto);
+  } catch (causa) {
+    return errore(causa instanceof AspettoNonValido ? causa.message : "Aspetto non valido", 422);
   }
 
   let spec: SpecQuery;
@@ -268,12 +286,13 @@ export async function PATCH(request: NextRequest) {
       spec,
       serie,
       grafico: body.grafico ?? null,
+      ...(aspetto !== undefined ? { aspetto } : {}),
       visibilita: body.visibilita ?? esistente.visibilita,
       aggiornato_il: new Date().toISOString(),
     })
     .eq("id", id)
     .eq("autore_id", pre.accesso.userId)
-    .select("id,titolo,descrizione,spec,serie,grafico,autore_id,visibilita,creato_il,aggiornato_il")
+    .select("id,titolo,descrizione,spec,serie,grafico,aspetto,autore_id,visibilita,creato_il,aggiornato_il")
     .single();
   if (erroreDb) return errore("Impossibile aggiornare l'analisi.", 500);
 

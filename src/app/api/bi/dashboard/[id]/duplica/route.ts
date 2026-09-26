@@ -35,7 +35,9 @@ interface AnalisiSorgente {
   titolo: string;
   descrizione: string | null;
   spec: Record<string, unknown>;
+  serie: unknown[] | null;
   grafico: string | null;
+  aspetto: Record<string, unknown> | null;
 }
 
 export async function POST(_request: NextRequest, { params }: Contesto) {
@@ -81,7 +83,7 @@ export async function POST(_request: NextRequest, { params }: Contesto) {
   if (idsAnalisi.length > 0) {
     const { data, error: erroreAnalisi } = await database
       .from("analisi")
-      .select("id,titolo,descrizione,spec,grafico")
+      .select("id,titolo,descrizione,spec,serie,grafico,aspetto")
       .in("id", idsAnalisi);
     if (erroreAnalisi) return errore("Impossibile leggere le analisi da duplicare.", 500);
     analisi = (data ?? []) as AnalisiSorgente[];
@@ -114,7 +116,11 @@ export async function POST(_request: NextRequest, { params }: Contesto) {
           titolo: voce.titolo,
           descrizione: voce.descrizione,
           spec: voce.spec,
+          // Senza le serie la copia perdeva budget, BEP e confronti: restava
+          // la sola misura principale, e il riquadro cambiava significato.
+          serie: voce.serie ?? null,
           grafico: voce.grafico,
+          aspetto: voce.aspetto ?? null,
           autore_id: pre.accesso.userId,
           visibilita: "privata",
           chiave: null,

@@ -39,10 +39,18 @@ export default async function PaginaCruscotto() {
     runRicevutoIl = s.runRicevutoIl;
     tassonomiaBu = s.tassonomiaBu ?? null;
 
-    const righe = s.dataset.ordinato;
-    anni = [...new Set(righe.map((r) => Number(r.data.slice(0, 4))).filter(Boolean))].sort(
-      (a, b) => b - a
-    );
+    // Gli anni di TUTTI i dataset, non del solo ordinato: consegne e
+    // portafoglio arrivano gia' nel 2027 prima che ci sia un ordine datato
+    // 2027, e con l'elenco preso dall'ordinato quell'anno non si poteva
+    // nemmeno scegliere.
+    const presenti = new Set<number>();
+    for (const righe of Object.values(s.dataset)) {
+      for (const r of righe ?? []) {
+        const anno = Number(r.data?.slice(0, 4));
+        if (anno) presenti.add(anno);
+      }
+    }
+    anni = [...presenti].sort((a, b) => b - a);
   } catch {
     // Snapshot non disponibile: il cruscotto mostrerà lo stato di errore.
   }
@@ -57,6 +65,9 @@ export default async function PaginaCruscotto() {
   return (
     <CruscottoView
       anniDisponibili={anni.length > 0 ? anni : [new Date().getFullYear()]}
+      // Si apre sull'anno dell'ultimo dato reale, non sul piu' alto: il 2027
+      // delle consegne future non e' l'anno che si vuole vedere per primo.
+      annoIniziale={dataMassima ? Number(dataMassima.slice(0, 4)) : undefined}
       dataMassima={dataMassima}
       runRicevutoIl={runRicevutoIl}
       tassonomiaBu={tassonomiaBu}

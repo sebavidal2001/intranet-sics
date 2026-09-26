@@ -26,6 +26,13 @@ import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
 import { GraficoDaAnalisi } from "@/components/prototipo-bi/grafico-da-risultato";
 import { Scheda, Scheletro, euro, numero } from "@/components/prototipo-bi/primitivi";
 import { useImpostazioni } from "@/components/prototipo-bi/impostazioni";
+import { PannelloAspetto } from "@/components/prototipo-bi/pannello-aspetto";
+import { SelettoreAnni } from "@/components/prototipo-bi/selettore-anni";
+import {
+  anniDelPeriodo,
+  descriviPeriodo as descriviPeriodoFissato,
+  periodoPresente,
+} from "@/lib/prototipo-bi/periodo";
 import {
   AlberoCampi,
   SELEZIONE_VUOTA,
@@ -44,6 +51,7 @@ import {
   type TipoGrafico,
 } from "@/lib/prototipo-bi/scelta-grafico";
 import type {
+  AspettoGrafico,
   ChiaveMetrica,
   Dimensione,
   Filtro,
@@ -200,10 +208,7 @@ function costruisciTitolo(spec: SpecQuery, vocabolario: Vocabolario): string {
     .filter((voce): voce is string => Boolean(voce));
   const parti = [metrica ?? spec.metrica];
   if (dimensioni.length > 0) parti.push(`per ${dimensioni.join(" e ")}`);
-  if (spec.periodo?.anno) parti.push(String(spec.periodo.anno));
-  else if (spec.periodo?.dal || spec.periodo?.al) {
-    parti.push([spec.periodo.dal, spec.periodo.al].filter(Boolean).join(" – "));
-  }
+  if (periodoPresente(spec.periodo)) parti.push(descriviPeriodoFissato(spec.periodo));
   return parti.join(", ");
 }
 
@@ -222,16 +227,25 @@ function formattaTotale(risultato: RisultatoQuery): string {
   return numero(risultato.totale);
 }
 
-function periodoPresente(periodo: Periodo | undefined): periodo is Periodo {
-  return Boolean(periodo && (periodo.anno !== undefined || periodo.dal || periodo.al));
+function descriviPeriodo(periodo: Periodo | undefined): string {
+  return descriviPeriodoFissato(periodo, "il periodo corrente della dashboard");
 }
 
-function descriviPeriodo(periodo: Periodo | undefined): string {
-  if (!periodoPresente(periodo)) return "il periodo corrente della dashboard";
-  if (periodo.anno !== undefined) return String(periodo.anno);
-  if (periodo.dal && periodo.al) return `${periodo.dal} – ${periodo.al}`;
-  if (periodo.dal) return `dal ${periodo.dal}`;
-  return `fino al ${periodo.al}`;
+/**
+ * Toglie la scelta degli anni. Se non restano date il periodo sarebbe vuoto,
+ * cioe' «eredita dalla dashboard»: si tiene allora l'inizio del primo anno
+ * scelto, cosi' il riquadro resta fermo come chiesto.
+ */
+function togliAnni(periodo: Periodo | undefined): Periodo {
+  const restante = senzaAnni(periodo);
+  if (restante.dal || restante.al) return restante;
+  const primo = anniDelPeriodo(periodo)?.[0] ?? new Date().getFullYear();
+  return { dal: `${primo}-01-01` };
+}
+
+/** Il periodo senza anni: restano solo le date. */
+function senzaAnni(periodo: Periodo | undefined): Periodo {
+  return { dal: periodo?.dal, al: periodo?.al };
 }
 
 export function EditorAnalisi({
@@ -240,6 +254,7 @@ export function EditorAnalisi({
   serieIniziali,
   titoloIniziale,
   graficoIniziale,
+  aspettoIniziale,
   modificabile = true,
   periodoEreditato,
   dentroUnaPagina = false,
@@ -250,6 +265,7 @@ export function EditorAnalisi({
   serieIniziali?: SerieAnalisi[] | null;
   titoloIniziale?: string;
   graficoIniziale?: TipoGrafico;
+  aspettoIniziale?: AspettoGrafico | null;
   modificabile?: boolean;
   periodoEreditato?: Periodo;
   /**
@@ -279,6 +295,9 @@ export function EditorAnalisi({
   const [erroreVocabolario, setErroreVocabolario] = useState("");
   const [titolo, setTitolo] = useState(titoloIniziale ?? "");
   const [graficoScelto, setGraficoScelto] = useState<TipoGrafico | undefined>(graficoIniziale);
+  // L'aspetto non entra in `chiaveSpec`: e' resa, non domanda, e cambiarlo
+  // non deve far ripartire la query.
+  const [aspetto, setAspetto] = useState<AspettoGrafico | null>(aspettoIniziale ?? null);
   const [salvataggio, setSalvataggio] = useState<"pronto" | "in_corso" | "salvata">("pronto");
   const [messaggioSalvataggio, setMessaggioSalvataggio] = useState("");
   const titoloModificato = useRef(Boolean(titoloIniziale));
@@ -337,12 +356,17 @@ export function EditorAnalisi({
       // Le misure spuntate nell'albero seguono la principale su suddivisione e
       // granularita': cambiare «mese» in «anno» deve spostare tutte le serie,
       // non solo la prima.
+      // Anche il periodo fissato: senza, il budget spuntato nell'albero
+      // arrivava per tutti gli anni mentre l'ordinato era fermo al 2026, e la
+      // tabella si riempiva di mesi con il solo budget.
+      const { periodo: _periodoVecchio, ...restoSpec } = voce.spec;
       return {
         ...voce,
         spec: {
-          ...voce.spec,
+          ...restoSpec,
           raggruppa: spec.raggruppa ? [...spec.raggruppa] : undefined,
           granularita: spec.granularita,
+          ...(spec.periodo ? { periodo: { ...spec.periodo } } : {}),
         },
       };
     }));
@@ -390,6 +414,14 @@ export function EditorAnalisi({
   }, [chiaveSpec, spec, vocabolario]);
 
   const risultatoGrafico = serieEseguite.length > 1 ? serieEseguite : risultato;
+  // Le voci della prima suddivisione, da colorare una per una nel pannello
+  // Aspetto. Oltre trenta non si sceglie piu' un colore per ciascuna.
+  const categorieDelRisultato = useMemo(() => {
+    const dimensione = risultato?.spec.raggruppa?.[0];
+    if (!risultato || !dimensione) return [];
+    const voci = [...new Set(risultato.righe.map((riga) => riga.chiavi[dimensione]).filter(Boolean))];
+    return voci.length <= 30 ? voci : [];
+  }, [risultato]);
   const proposta = risultatoGrafico ? scegliGrafico(risultatoGrafico) : null;
   const grafici = risultatoGrafico ? graficiPossibili(risultatoGrafico) : [];
   // Perche' la tendina delle visualizzazioni e' cosi' corta. Si accorcia da
@@ -460,6 +492,7 @@ export function EditorAnalisi({
             modificatore: "corrente" as const,
             ...(nuova.suddivisioni.length > 0 ? { raggruppa: [...nuova.suddivisioni] } : {}),
             ...(nuova.granularita ? { granularita: nuova.granularita } : {}),
+            ...(spec?.periodo ? { periodo: { ...spec.periodo } } : {}),
           },
         };
       });
@@ -555,7 +588,7 @@ export function EditorAnalisi({
       ...corrente,
       periodo: periodoPresente(periodoEreditato)
         ? { ...periodoEreditato }
-        : { anno: new Date().getFullYear() },
+        : { anni: [new Date().getFullYear()] },
     }));
   }
 
@@ -589,6 +622,7 @@ export function EditorAnalisi({
           spec,
           serie: seriePersistita,
           ...(tipoGrafico ? { grafico: tipoGrafico } : {}),
+          aspetto,
         }),
       });
       const corpo: unknown = await risposta.json();
@@ -725,26 +759,39 @@ export function EditorAnalisi({
                 <p className="mb-2 text-xs leading-relaxed text-text-muted">
                   Questo riquadro resterà sul periodo fissato anche quando la dashboard cambia periodo.
                 </p>
-                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                  <label className="text-xs text-text-muted">
-                    Anno
+                <div className="mb-3">
+                  <label className="flex items-center gap-2 text-sm">
                     <input
-                      aria-label="Anno"
-                      type="number"
-                      min={2000}
-                      max={2100}
-                      value={spec.periodo.anno ?? ""}
-                      placeholder="Tutti"
-                      onChange={(evento) => {
-                        const anno = evento.target.value ? Number(evento.target.value) : undefined;
+                      type="checkbox"
+                      checked={anniDelPeriodo(spec.periodo) !== null}
+                      onChange={(evento) =>
                         aggiornaSpec((corrente) => ({
                           ...corrente,
-                          periodo: anno ? { anno } : { dal: corrente.periodo?.dal, al: corrente.periodo?.al },
-                        }));
-                      }}
-                      className={`${CLASSE_CAMPO} mt-1`}
+                          periodo: evento.target.checked
+                            ? { ...senzaAnni(corrente.periodo), anni: [new Date().getFullYear()] }
+                            : togliAnni(corrente.periodo),
+                        }))
+                      }
+                      className="h-4 w-4 accent-primary"
                     />
+                    Solo questi anni
                   </label>
+                  {anniDelPeriodo(spec.periodo) && (
+                    <div className="mt-2">
+                      <SelettoreAnni
+                        valore={anniDelPeriodo(spec.periodo) ?? []}
+                        etichetta="Anni del riquadro"
+                        onCambia={(anni) =>
+                          aggiornaSpec((corrente) => ({
+                            ...corrente,
+                            periodo: { ...senzaAnni(corrente.periodo), anni },
+                          }))
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                   <label className="text-xs text-text-muted">
                     Dal
                     <input
@@ -754,7 +801,7 @@ export function EditorAnalisi({
                       onChange={(evento) =>
                         aggiornaSpec((corrente) => ({
                           ...corrente,
-                          periodo: { dal: evento.target.value || undefined, al: corrente.periodo?.al },
+                          periodo: { ...corrente.periodo, dal: evento.target.value || undefined },
                         }))
                       }
                       className={`${CLASSE_CAMPO} mt-1`}
@@ -769,7 +816,7 @@ export function EditorAnalisi({
                       onChange={(evento) =>
                         aggiornaSpec((corrente) => ({
                           ...corrente,
-                          periodo: { dal: corrente.periodo?.dal, al: evento.target.value || undefined },
+                          periodo: { ...corrente.periodo, al: evento.target.value || undefined },
                         }))
                       }
                       className={`${CLASSE_CAMPO} mt-1`}
@@ -1097,6 +1144,17 @@ export function EditorAnalisi({
               </div>
             )}
           </Scheda>
+
+          <PannelloAspetto
+            aspetto={aspetto}
+            onCambia={(nuovo) => {
+              setAspetto(nuovo);
+              setSalvataggio("pronto");
+              setMessaggioSalvataggio("");
+            }}
+            nomiSerie={serieAnalisi.map((voce) => voce.nome)}
+            categorie={categorieDelRisultato}
+          />
         </div>
 
         <section className="min-w-0 xl:sticky xl:top-4">
@@ -1123,7 +1181,7 @@ export function EditorAnalisi({
             <div className="relative min-h-[340px]" aria-busy={caricamento}>
               {risultato && tipoGrafico && serieEseguite.length > 0 ? (
                 <div className={caricamento ? "opacity-50" : undefined}>
-                  <GraficoDaAnalisi serie={serieEseguite} tipo={tipoGrafico} altezza={340} />
+                  <GraficoDaAnalisi serie={serieEseguite} aspetto={aspetto} tipo={tipoGrafico} altezza={340} />
                 </div>
               ) : (
                 <Scheletro altezza={340} />

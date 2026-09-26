@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   let body: {
     dataset?: string;
     filtri?: { campo?: string; op?: string; valore?: unknown }[];
-    periodo?: { dal?: string; al?: string; anno?: number };
+    periodo?: { dal?: string; al?: string; anno?: number; anni?: number[] };
     documento?: string;
     limite?: number;
     ordina?: string;

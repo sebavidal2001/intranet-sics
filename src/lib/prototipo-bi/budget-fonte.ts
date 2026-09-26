@@ -17,6 +17,7 @@ import { distribuisci } from "./budget";
 import { settimanaIso, dataDaIso } from "./calendario";
 import type {
   ConfigurazioneAnno,
+  Periodo,
   Granularita,
   RigaRisultato,
   RigaSerieBudget,
@@ -24,6 +25,7 @@ import type {
   SerieBudget,
   SpecQuery,
 } from "./tipi";
+import { anniDelPeriodo, dataNelPeriodo, spostaPeriodo } from "./periodo";
 import { SEPARATORE_RAMO } from "./tipi";
 
 function arr(n: number) {
@@ -64,8 +66,9 @@ export function anniDellaSpec(
   const annoCorrente = new Date().getFullYear();
   let anni: number[];
 
-  if (periodo?.anno !== undefined && Number.isInteger(periodo.anno) && periodo.anno > 0) {
-    anni = [periodo.anno];
+  const anniScelti = anniDelPeriodo(periodo);
+  if (anniScelti) {
+    anni = anniScelti;
   } else {
     const annoMinimo = annoDaData(copertura.dataMinima);
     const annoMassimo = annoDaData(copertura.dataMassima);
@@ -263,29 +266,16 @@ export function risolviBudget(
 
   // ── Periodo (con lo spostamento per i modificatori anno su anno) ──────────
   const mod = spec.modificatore ?? "corrente";
-  const p = spec.periodo ?? {};
-  const meno1 = (s?: string) => (s ? `${Number(s.slice(0, 4)) - 1}${s.slice(4)}` : undefined);
+  let p: Periodo = spec.periodo ?? {};
 
-  let dal = p.dal;
-  let al = p.al;
-  let anno = p.anno;
-
-  if (mod === "anno_precedente" || mod === "progressivo_ap") {
-    dal = meno1(dal);
-    al = meno1(al);
-    anno = anno ? anno - 1 : undefined;
-  }
+  if (mod === "anno_precedente" || mod === "progressivo_ap") p = spostaPeriodo(p, -1);
   if (mod === "progressivo" || mod === "progressivo_ap") {
-    const a = anno ?? Number((al ?? dal ?? "").slice(0, 4));
-    if (a) dal = `${a}-01-01`;
+    const a = anniDelPeriodo(p)?.[0] ?? Number((p.al ?? p.dal ?? "").slice(0, 4));
+    if (a) p = { ...p, dal: `${a}-01-01` };
   }
 
-  righe = righe.filter((r) => {
-    if (anno && Number(r.data.slice(0, 4)) !== anno) return false;
-    if (dal && r.data < dal) return false;
-    if (al && r.data > al) return false;
-    return true;
-  });
+  const periodoFiltro = p;
+  righe = righe.filter((r) => dataNelPeriodo(r.data, periodoFiltro));
 
   // ── Filtri su dimensioni ──────────────────────────────────────────────────
   for (const filtroOriginale of spec.filtri ?? []) {

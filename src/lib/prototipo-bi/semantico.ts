@@ -32,6 +32,7 @@ import type {
   SpecQuery,
   UnitaMisura,
 } from "./tipi";
+import { anniDelPeriodo, dataNelPeriodo, normalizzaPeriodo, spostaPeriodo } from "./periodo";
 import { SEPARATORE_RAMO } from "./tipi";
 import { dataDaIso, settimanaIso } from "./calendario";
 import { dimensioniPerMetrica, TIPOLOGIE } from "./tassonomia";
@@ -689,7 +690,7 @@ export function validaSpec(spec: unknown): SpecQuery {
       })
     : [];
 
-  const periodo = (s.periodo ?? {}) as Periodo;
+  const periodo = normalizzaPeriodo(s.periodo);
 
   return {
     metrica,
@@ -738,44 +739,32 @@ function chiaveTempo(data: string, g: Granularita): string {
   }
 }
 
-/** Sposta un periodo indietro di un anno (per i confronti anno su anno). */
-function periodoAnnoPrecedente(p: Periodo): Periodo {
-  const meno1 = (s?: string) =>
-    s ? `${Number(s.slice(0, 4)) - 1}${s.slice(4)}` : undefined;
-  return {
-    dal: meno1(p.dal),
-    al: meno1(p.al),
-    anno: p.anno ? p.anno - 1 : undefined,
-  };
-}
-
 function periodoEffettivo(spec: SpecQuery): Periodo {
   const base = spec.periodo ?? {};
   const mod = spec.modificatore ?? "corrente";
 
   if (mod === "anno_precedente" || mod === "progressivo_ap") {
-    const p = periodoAnnoPrecedente(base);
-    if (mod === "progressivo_ap" && p.anno) {
-      return { dal: `${p.anno}-01-01`, al: p.al ?? `${p.anno}-12-31` };
+    const p = spostaPeriodo(base, -1);
+    const anni = anniDelPeriodo(p);
+    if (mod === "progressivo_ap" && anni) {
+      // Con più anni il progressivo parte dal primo e cumula fino all'ultimo:
+      // gli anni restano il filtro, l'intervallo fissa solo gli estremi.
+      return { ...p, dal: `${anni[0]}-01-01`, al: p.al ?? `${anni[anni.length - 1]}-12-31` };
     }
     return p;
   }
 
   if (mod === "progressivo") {
-    const anno = base.anno ?? (Number((base.al ?? base.dal ?? "").slice(0, 4)) || undefined);
-    if (anno) return { dal: `${anno}-01-01`, al: base.al ?? `${anno}-12-31` };
+    const anni = anniDelPeriodo(base);
+    const primo = anni?.[0] ?? (Number((base.al ?? base.dal ?? "").slice(0, 4)) || undefined);
+    const ultimo = anni?.[anni.length - 1] ?? primo;
+    if (primo) return { ...base, dal: `${primo}-01-01`, al: base.al ?? `${ultimo}-12-31` };
   }
 
   return base;
 }
 
-function inPeriodo(data: string, p: Periodo): boolean {
-  if (!data) return false;
-  if (p.anno && Number(data.slice(0, 4)) !== p.anno) return false;
-  if (p.dal && data < p.dal) return false;
-  if (p.al && data > p.al) return false;
-  return true;
-}
+const inPeriodo = dataNelPeriodo;
 
 /** Metriche che dipendono dal costo di acquisto: portano sempre le loro cautele. */
 const METRICHE_A_COSTO = new Set<ChiaveMetrica>([

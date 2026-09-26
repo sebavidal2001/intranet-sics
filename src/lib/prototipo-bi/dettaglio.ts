@@ -14,6 +14,7 @@
 
 import { DIMENSIONI } from "./semantico";
 import type { ChiaveDataset, Filtro, RigaFatto, Snapshot } from "./tipi";
+import { dataNelPeriodo } from "./periodo";
 
 /** Dataset che hanno un dettaglio documentale sensato. */
 export const DATASET_DETTAGLIO: ChiaveDataset[] = [
@@ -100,7 +101,7 @@ function passaFiltro(r: RigaFatto, f: Filtro): boolean {
 export interface RichiestaDettaglio {
   dataset: ChiaveDataset;
   filtri?: Filtro[];
-  periodo?: { dal?: string; al?: string; anno?: number };
+  periodo?: { dal?: string; al?: string; anno?: number; anni?: number[] };
   /** Se valorizzato, si restituiscono anche le righe di questo documento. */
   documento?: string;
   /** Quanti documenti elencare. */
@@ -130,10 +131,7 @@ export function dettaglioDocumenti(
   const p = richiesta.periodo ?? {};
   righe = righe.filter((r) => {
     if (!r.data) return false;
-    if (p.anno && Number(r.data.slice(0, 4)) !== p.anno) return false;
-    if (p.dal && r.data < p.dal) return false;
-    if (p.al && r.data > p.al) return false;
-    return true;
+    return dataNelPeriodo(r.data, p);
   });
 
   for (const f of richiesta.filtri ?? []) {

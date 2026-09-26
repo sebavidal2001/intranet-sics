@@ -11,7 +11,7 @@
 
 import { useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useImpostazioni } from "./impostazioni";
+import { propsAsseCategorie, propsAsseValori, propsLegenda, useImpostazioni } from "./impostazioni";
 import { valoreFmt } from "./primitivi";
 import type { RisultatoQuery } from "@/lib/prototipo-bi/tipi";
 
@@ -62,7 +62,7 @@ export function BarreImpilate({
   altezza?: number;
   onClick?: (etichetta: string) => void;
 }) {
-  const { colore, imp, durata } = useImpostazioni();
+  const { coloreNome, imp, durata, aspetto, legenda } = useImpostazioni();
   const dati = useMemo(() => datiBarreImpilate(risultato), [risultato]);
   if (!dati) return null;
   const fmt = (v: number) => valoreFmt(v, risultato.unita, imp.numeriCompatti);
@@ -71,16 +71,16 @@ export function BarreImpilate({
     <ResponsiveContainer width="100%" height={altezza}>
       <BarChart data={dati.righe} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
         {imp.mostraGriglia && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />}
-        <XAxis dataKey="asse" tick={ASSE} minTickGap={12} />
-        <YAxis tick={ASSE} tickFormatter={fmt} />
+        <XAxis dataKey="asse" tick={ASSE} minTickGap={12} {...propsAsseCategorie(aspetto)} />
+        <YAxis tick={ASSE} tickFormatter={fmt} {...propsAsseValori(aspetto)} />
         <Tooltip formatter={(v) => fmt(Number(v))} />
-        {imp.mostraLegenda && <Legend wrapperStyle={{ fontSize: 11 }} />}
+        {legenda !== "nascosta" && <Legend {...propsLegenda(legenda)} />}
         {dati.pile.map((p, i) => (
           <Bar
             key={p}
             dataKey={p}
             stackId="pila"
-            fill={p === "Altri" ? "#cbd5e1" : colore(i)}
+            fill={p === "Altri" ? "#cbd5e1" : coloreNome(p, i)}
             animationDuration={durata}
             onClick={() => onClick?.(p)}
           />

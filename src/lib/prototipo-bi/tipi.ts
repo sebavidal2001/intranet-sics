@@ -376,7 +376,13 @@ export interface Filtro {
 export interface Periodo {
   dal?: string;
   al?: string;
+  /** Un anno solo: la forma storica, ancora valida. */
   anno?: number;
+  /**
+   * Più anni, anche non contigui. Se presente prevale su `anno`; si combina
+   * con `dal`/`al` (devono valere entrambi). Regole in `periodo.ts`.
+   */
+  anni?: number[];
 }
 
 export interface SpecQuery {
@@ -400,6 +406,57 @@ export interface SerieAnalisi {
   /** Colore SVG esadecimale; se assente viene usata la palette attiva. */
   colore?: string;
   spec: SpecQuery;
+}
+
+// ── Aspetto di un riquadro ──────────────────────────────────────────────────
+
+export type PosizioneLegenda = "sotto" | "sopra" | "destra" | "nascosta";
+
+/** Come si riassume una colonna numerica nella riga dei totali. */
+export type AggregazioneTotale =
+  | "automatico"
+  | "somma"
+  | "media"
+  | "minimo"
+  | "massimo"
+  | "conteggio"
+  | "nessuno";
+
+export interface AspettoAsse {
+  visibile?: boolean;
+  titolo?: string;
+  /** Solo per l'asse dei valori: estremi fissati a mano. */
+  minimo?: number;
+  massimo?: number;
+}
+
+/**
+ * Le scelte di resa di un riquadro: colori, legenda, assi, totali.
+ *
+ * Tutto facoltativo. Un campo assente segue le impostazioni generali dei
+ * grafici (il pannello con l'ingranaggio), così un riquadro senza aspetto si
+ * comporta esattamente come prima. Non entra mai nella query: cambiarlo non
+ * rilancia il calcolo.
+ */
+export interface AspettoGrafico {
+  /**
+   * Colore per nome di serie o di categoria («COMPONENTI», «Budget»…).
+   * Prevale sui colori predefiniti delle business unit.
+   */
+  colori?: Record<string, string>;
+  legenda?: PosizioneLegenda;
+  griglia?: boolean;
+  etichetteValori?: boolean;
+  /** Asse delle categorie o del tempo. */
+  asseX?: AspettoAsse;
+  /** Asse dei valori. */
+  asseY?: AspettoAsse;
+  tabella?: {
+    totale?: AggregazioneTotale;
+    /** Chiave della colonna su cui ordinare; "voce" per l'etichetta. */
+    ordinaPer?: string;
+    verso?: "asc" | "desc";
+  };
 }
 
 export interface RigaRisultato {

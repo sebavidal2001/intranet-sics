@@ -27,7 +27,7 @@ import {
   YAxis,
 } from "recharts";
 import { valoreFmt, Vuoto } from "./primitivi";
-import { useImpostazioni } from "./impostazioni";
+import { propsAsseCategorie, propsAsseValori, propsLegenda, useImpostazioni } from "./impostazioni";
 import type { UnitaMisura } from "@/lib/prototipo-bi/tipi";
 
 function Riquadro({
@@ -375,7 +375,7 @@ export function Composizione({
   altezza?: number;
   onClick?: (etichetta: string) => void;
 }) {
-  const { colore, imp, durata } = useImpostazioni();
+  const { coloreNome, imp, durata } = useImpostazioni();
   const fmt = (n: number) => valoreFmt(n, unita, imp.numeriCompatti);
 
   const nodi = useMemo<NodoTreemap[]>(
@@ -399,7 +399,7 @@ export function Composizione({
         animationDuration={durata}
         // Il cast serve perché la firma di `content` in Recharts non prevede
         // props personalizzate, che però vengono inoltrate al componente.
-        content={(<ContenutoTreemap colore={colore} fmt={fmt} />) as never}
+        content={(<ContenutoTreemap colore={(i: number) => coloreNome(nodi[i]?.name ?? "", i)} fmt={fmt} />) as never}
         onClick={(d: unknown) => {
           const n = d as { name?: string };
           if (onClick && n?.name) onClick(n.name);
@@ -590,7 +590,8 @@ export function AreeImpilate({
   normalizzato?: boolean;
   onClick?: (nome: string) => void;
 }) {
-  const { colore, imp, durata, palette } = useImpostazioni();
+  const { coloreNome, imp, durata, palette, aspetto, legenda } = useImpostazioni();
+  const colore = (i: number) => coloreNome(serie[i]?.nome ?? "", i);
   const id = useId().replace(/:/g, "");
 
   const dati = useMemo(() => {
@@ -622,11 +623,12 @@ export function AreeImpilate({
         {imp.mostraGriglia && (
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
         )}
-        <XAxis dataKey="periodo" tick={{ fontSize: 11, fill: "#64748b" }} minTickGap={16} />
+        <XAxis dataKey="periodo" tick={{ fontSize: 11, fill: "#64748b" }} minTickGap={16} {...propsAsseCategorie(aspetto)} />
         <YAxis
           tick={{ fontSize: 11, fill: "#64748b" }}
           tickFormatter={(v) => valoreFmt(Number(v), unitaEffettiva, true)}
           domain={normalizzato ? [0, 100] : undefined}
+          {...(normalizzato ? { hide: aspetto?.asseY?.visibile === false } : propsAsseValori(aspetto))}
         />
         <Tooltip
           content={({ active, payload, label }) => {
@@ -641,9 +643,10 @@ export function AreeImpilate({
             return <Riquadro titolo={String(label)} voci={voci} />;
           }}
         />
-        {imp.mostraLegenda && (
+        {legenda !== "nascosta" && (
           <Legend
-            wrapperStyle={{ fontSize: 11, cursor: onClick ? "pointer" : undefined }}
+            {...propsLegenda(legenda)}
+            wrapperStyle={{ ...propsLegenda(legenda).wrapperStyle, cursor: onClick ? "pointer" : undefined }}
             onClick={(e) => {
               const v = e as { value?: string };
               if (onClick && v.value) onClick(v.value);
@@ -679,7 +682,7 @@ export function Anelli({
   voci: { etichetta: string; percentuale: number; nota?: string }[];
   onClick?: (etichetta: string) => void;
 }) {
-  const { colore, durata } = useImpostazioni();
+  const { coloreNome, durata } = useImpostazioni();
   const id = useId().replace(/:/g, "");
   if (voci.length === 0) return <Vuoto altezza={140} />;
 
@@ -705,7 +708,7 @@ export function Anelli({
                 />
                 <motion.circle
                   cx={34} cy={34} r={r} fill="none"
-                  stroke={colore(i)} strokeWidth={7} strokeLinecap="round"
+                  stroke={coloreNome(v.etichetta, i)} strokeWidth={7} strokeLinecap="round"
                   initial={durata ? { strokeDasharray: `0 ${c}` } : false}
                   animate={{ strokeDasharray: `${(c * p) / 100} ${c}` }}
                   transition={{ duration: durata / 1000, ease: "easeOut", delay: i * 0.05 }}

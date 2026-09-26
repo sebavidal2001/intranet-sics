@@ -31,6 +31,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { COLORI_BU, COLORI_SICS, coloreFissato } from "@/lib/prototipo-bi/aspetto";
+import type { AspettoGrafico, PosizioneLegenda } from "@/lib/prototipo-bi/tipi";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Palette
@@ -52,13 +54,25 @@ export const PALETTE_DISPONIBILI: Palette[] = [
   {
     chiave: "sics",
     nome: "SICS",
-    descrizione: "Azzurro aziendale, per l'uso quotidiano",
-    serie: ["#00a1be", "#f59e0b", "#8b5cf6", "#22c55e", "#ef4444", "#0ea5e9", "#ec4899", "#64748b"],
-    positivo: "#22c55e",
-    negativo: "#ef4444",
-    neutro: "#94a3b8",
-    obiettivo: "#f59e0b",
-    soglia: "#ef4444",
+    descrizione: "I sei colori aziendali; le business unit hanno sempre il loro",
+    // Ordine del report Power BI: consuntivo turchese, budget fucsia, anno
+    // precedente verde. Oltre la sesta serie si riparte con due tinte del
+    // report (giallo e blu notte) invece di ripetere subito il turchese.
+    serie: [
+      COLORI_SICS.turchese,
+      COLORI_SICS.fucsia,
+      COLORI_SICS.verde,
+      COLORI_SICS.arancio,
+      COLORI_SICS.rosso,
+      COLORI_SICS.grigio,
+      "#F4C948",
+      "#004867",
+    ],
+    positivo: COLORI_SICS.verde,
+    negativo: COLORI_SICS.rosso,
+    neutro: "#9E9A9A",
+    obiettivo: COLORI_SICS.fucsia,
+    soglia: COLORI_SICS.arancio,
   },
   {
     chiave: "direzione",
@@ -152,9 +166,45 @@ interface Contesto {
   reimposta: () => void;
   /** Colore della serie i-esima, ciclico sulla palette scelta. */
   colore: (i: number) => string;
+  /**
+   * Colore di una serie o categoria con un nome: quello fissato nel riquadro,
+   * poi quello della business unit, poi la palette. Una BU ha lo stesso colore
+   * in ogni grafico, qualunque sia la sua posizione nella classifica.
+   */
+  coloreNome: (nome: string, i: number) => string;
+  /** Solo il colore fissato (riquadro o BU), senza ripiegare sulla palette. */
+  coloreFisso: (nome: string) => string | undefined;
+  /** Aspetto del riquadro in cui ci si trova; `null` fuori da un riquadro. */
+  aspetto: AspettoGrafico | null;
+  /** Dove sta la legenda, già risolto fra riquadro e impostazioni generali. */
+  legenda: PosizioneLegenda;
   /** Durata delle animazioni: 0 quando sono disattivate. */
   durata: number;
   scuro: boolean;
+}
+
+function costruisciContesto(
+  imp: Impostazioni,
+  palette: Palette,
+  imposta: Contesto["imposta"],
+  reimposta: () => void,
+  aspetto: AspettoGrafico | null
+): Contesto {
+  const colore = (i: number) => palette.serie[i % palette.serie.length];
+  const coloreFisso = (nome: string) => coloreFissato(nome, aspetto);
+  return {
+    imp,
+    palette,
+    imposta,
+    reimposta,
+    colore,
+    coloreNome: (nome: string, i: number) => coloreFisso(nome) ?? colore(i),
+    coloreFisso,
+    aspetto,
+    legenda: aspetto?.legenda ?? (imp.mostraLegenda ? "sotto" : "nascosta"),
+    durata: imp.animazioni ? 600 : 0,
+    scuro: imp.tema === "scuro",
+  };
 }
 
 const ContestoImpostazioni = createContext<Contesto | null>(null);
@@ -203,15 +253,7 @@ export function ImpostazioniProvider({ children }: { children: React.ReactNode }
   );
 
   const valore = useMemo<Contesto>(
-    () => ({
-      imp,
-      palette,
-      imposta,
-      reimposta,
-      colore: (i: number) => palette.serie[i % palette.serie.length],
-      durata: imp.animazioni ? 600 : 0,
-      scuro: imp.tema === "scuro",
-    }),
+    () => costruisciContesto(imp, palette, imposta, reimposta, null),
     [imp, palette, imposta, reimposta]
   );
 
@@ -227,20 +269,110 @@ export function ImpostazioniProvider({ children }: { children: React.ReactNode }
  */
 export function useImpostazioni(): Contesto {
   const ctx = useContext(ContestoImpostazioni);
-  const ripiego = useMemo<Contesto>(() => {
-    const p = PALETTE_DISPONIBILI[0];
-    return {
-      imp: IMPOSTAZIONI_INIZIALI,
-      palette: p,
-      imposta: () => {},
-      reimposta: () => {},
-      colore: (i: number) => p.serie[i % p.serie.length],
-      durata: 600,
-      scuro: false,
-    };
-  }, []);
+  const ripiego = useMemo<Contesto>(
+    () => costruisciContesto(IMPOSTAZIONI_INIZIALI, PALETTE_DISPONIBILI[0], () => {}, () => {}, null),
+    []
+  );
   return ctx ?? ripiego;
 }
+
+/**
+ * Sovrappone l'aspetto di un riquadro alle impostazioni generali, per i soli
+ * grafici che contiene.
+ *
+ * I grafici leggono già griglia, legenda ed etichette dal contesto: invece di
+ * passare le stesse scelte a venti componenti, il riquadro ridefinisce il
+ * contesto per il proprio sottoalbero. Ciò che il riquadro non fissa resta
+ * quello del pannello generale.
+ */
+export function AspettoLocale({
+  aspetto,
+  children,
+}: {
+  aspetto: AspettoGrafico | null | undefined;
+  children: React.ReactNode;
+}) {
+  const genitore = useImpostazioni();
+  const valore = useMemo<Contesto>(() => {
+    if (!aspetto) return genitore;
+    const legenda = aspetto.legenda ?? genitore.legenda;
+    const imp: Impostazioni = {
+      ...genitore.imp,
+      mostraGriglia: aspetto.griglia ?? genitore.imp.mostraGriglia,
+      mostraEtichette: aspetto.etichetteValori ?? genitore.imp.mostraEtichette,
+      mostraLegenda: legenda !== "nascosta",
+    };
+    return {
+      ...costruisciContesto(imp, genitore.palette, genitore.imposta, genitore.reimposta, aspetto),
+      legenda,
+    };
+  }, [aspetto, genitore]);
+  return <ContestoImpostazioni.Provider value={valore}>{children}</ContestoImpostazioni.Provider>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Assi e legenda per i grafici recharts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STILE_TITOLO_ASSE = { fontSize: 11, fill: "#64748b" };
+
+/** Proprietà della `<Legend>` recharts secondo la posizione scelta. */
+export function propsLegenda(legenda: PosizioneLegenda) {
+  if (legenda === "destra") {
+    return {
+      layout: "vertical" as const,
+      align: "right" as const,
+      verticalAlign: "middle" as const,
+      wrapperStyle: { fontSize: 11, paddingLeft: 12 },
+    };
+  }
+  return {
+    layout: "horizontal" as const,
+    align: "center" as const,
+    verticalAlign: legenda === "sopra" ? ("top" as const) : ("bottom" as const),
+    wrapperStyle: { fontSize: 11 },
+  };
+}
+
+/** Asse delle categorie o del tempo: visibilità e titolo. */
+export function propsAsseCategorie(aspetto: AspettoGrafico | null) {
+  const asse = aspetto?.asseX;
+  return {
+    hide: asse?.visibile === false,
+    ...(asse?.titolo
+      ? { label: { value: asse.titolo, position: "insideBottom" as const, offset: -2, ...STILE_TITOLO_ASSE } }
+      : {}),
+  };
+}
+
+/** Asse dei valori: visibilità, titolo ed estremi fissati a mano. */
+export function propsAsseValori(aspetto: AspettoGrafico | null) {
+  const asse = aspetto?.asseY;
+  const minimo = asse?.minimo;
+  const massimo = asse?.massimo;
+  return {
+    hide: asse?.visibile === false,
+    ...(asse?.titolo
+      ? {
+          label: {
+            value: asse.titolo,
+            angle: -90,
+            position: "insideLeft" as const,
+            style: { textAnchor: "middle" as const },
+            ...STILE_TITOLO_ASSE,
+          },
+        }
+      : {}),
+    ...(minimo !== undefined || massimo !== undefined
+      ? {
+          domain: [minimo ?? "auto", massimo ?? "auto"] as [number | "auto", number | "auto"],
+          allowDataOverflow: true,
+        }
+      : {}),
+  };
+}
+
+export { COLORI_BU };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pannello
@@ -387,6 +519,19 @@ export function PannelloImpostazioni() {
                         </button>
                       );
                     })}
+                  </div>
+                  <div className="mt-3 rounded-lg border border-border p-2">
+                    <p className="mb-1.5 text-[11px] text-text-muted">
+                      Business unit: stesso colore in ogni grafico e con ogni palette
+                    </p>
+                    <ul className="grid grid-cols-2 gap-x-3 gap-y-1">
+                      {Object.entries(COLORI_BU).map(([bu, tinta]) => (
+                        <li key={bu} className="flex items-center gap-1.5 text-xs">
+                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: tinta }} aria-hidden />
+                          <span className="truncate">{bu}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </Sezione>
 
