@@ -108,9 +108,6 @@ export async function GET() {
     const aiSpesaMese = ((usageRes.data ?? []) as { cost_amount: string | number }[])
       .reduce((sum, r) => sum + Number(r.cost_amount ?? 0), 0);
 
-    const totConfermati = (k?.tot_ordinati ?? 0) + (k?.tot_rifiutati ?? 0);
-    const tassoOrdinato = totConfermati > 0 ? Math.round(((k?.tot_ordinati ?? 0) / totConfermati) * 100) : null;
-
     return NextResponse.json({
       window_months: 12,
       kpi: {
@@ -122,11 +119,10 @@ export async function GET() {
         importo_medio_delta: pctDelta(num(k?.importo_medio), num(k?.importo_medio_prec)),
         clienti_attivi: k?.clienti_attivi ?? 0,
         clienti_attivi_delta: pctDelta(k?.clienti_attivi ?? 0, k?.clienti_attivi_prec ?? 0),
-        tot_ordinati: k?.tot_ordinati ?? 0,
-        tot_rifiutati: k?.tot_rifiutati ?? 0,
-        tot_pending: k?.tot_pending ?? 0,
-        tasso_ordinato: tassoOrdinato, // null se non c'è ancora workflow stati
-        workflow_stati_attivo: totConfermati > 0,
+        // Il portale fa solo preventivi (migration 111): dalla 122 `dashboard_kpi`
+        // restituisce nei due contatori i definitivi e le bozze aperte.
+        tot_definitivi: k?.tot_ordinati ?? 0,
+        tot_bozze: k?.tot_pending ?? 0,
       },
       top_clienti: topClienti.map((c) => ({
         cliente: c.cliente,

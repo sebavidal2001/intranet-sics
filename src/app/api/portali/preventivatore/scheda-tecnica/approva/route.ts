@@ -1,120 +1,112 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
+import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
+import { haRuoloFunzionale, PREVENTIVATORE_RUOLI } from "@/lib/portali/preventivatore/ruoli";
 import { getCachedEmbedding } from "@/lib/portali/preventivatore/chat/embedding-cache";
-import type { BuilderStateForChat } from "@/lib/portali/preventivatore/chat/types";
 import { logError, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
-/**
- * POST /api/portali/preventivatore/scheda-tecnica/approva
- *
- * LOOP DI APPRENDIMENTO: quando l'utente scarica/approva una scheda, questa
- * viene salvata in `preventivatore.schede_approvate` con il suo embedding e da
- * quel momento diventa un ESEMPIO DI RIFERIMENTO prioritario per le generazioni
- * successive (vedi `recuperaEsempi` in lib/scheda-tecnica/ai.ts).
- *
- * In pratica: più schede l'azienda approva, più le nuove nascono già nello stile
- * giusto — senza dover riscrivere il prompt ogni volta.
- *
- * Idempotente sulla scheda: ri-approvare la stessa `scheda_id` aggiorna la riga
- * esistente invece di creare duplicati.
- *
- * Body: { scheda_id?, contenuto_md, builder_state?, n_revisioni? }
- */
+const requestSchema = z.object({
+  scheda_id: z.string().uuid("scheda_id non valido"),
+  contenuto_md: z.string().trim().min(1, "contenuto_md obbligatorio").max(40_000),
+  builder_state: z.unknown().optional(),
+  n_revisioni: z.number().int().min(0).max(10_000).optional(),
+}).superRefine((value, ctx) => {
+  if (value.builder_state !== undefined && Buffer.byteLength(JSON.stringify(value.builder_state), "utf8") > 200_000) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["builder_state"], message: "builder_state supera 200 KB" });
+  }
+});
 
-type RequestBody = {
-  scheda_id?: string | null;
-  contenuto_md: string;
-  builder_state?: BuilderStateForChat;
-  n_revisioni?: number;
-};
+function datiCliente(builderState: unknown): { titolo: string | null; cliente: string | null; clienteMasterId: string | null } {
+  if (!builderState || typeof builderState !== "object") return { titolo: null, cliente: null, clienteMasterId: null };
+  const state = builderState as Record<string, unknown>;
+  const clienteRaw = state.cliente;
+  const cliente = clienteRaw && typeof clienteRaw === "object" ? clienteRaw as Record<string, unknown> : null;
+  return {
+    titolo: typeof state.titolo === "string" ? state.titolo : null,
+    cliente: typeof cliente?.ragione_sociale === "string" ? cliente.ragione_sociale : null,
+    clienteMasterId: typeof cliente?.id === "string" ? cliente.id : null,
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-
-    const body = (await request.json()) as RequestBody;
-    const contenuto = (body?.contenuto_md ?? "").trim();
-    if (!contenuto) return NextResponse.json({ error: "contenuto_md obbligatorio" }, { status: 400 });
-
-    const admin = createAdminClient();
-    const bs = body.builder_state;
-    const titolo = bs?.titolo ?? null;
-    const cliente = bs?.cliente?.ragione_sociale ?? null;
-
-    // Embedding del contenuto approvato: è ciò che permetterà di ritrovarla come
-    // esempio quando si genererà una scheda per un prodotto simile.
-    let embedding: number[] | null = null;
-    try {
-      embedding = await getCachedEmbedding(contenuto.slice(0, 8000));
-    } catch (e) {
-      // Senza embedding la scheda resta archiviata ma non sarà recuperabile via RAG.
-      logWarn("preventivatore.scheda-tecnica", "embedding scheda approvata fallito", { dettaglio: String(e) });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const { user, ctx } = guard;
+    if (!haRuoloFunzionale(ctx, [PREVENTIVATORE_RUOLI.preventivatore])) {
+      return NextResponse.json({ error: "Non autorizzato ad approvare schede" }, { status: 403 });
     }
 
+    const parsed = requestSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Payload non valido" }, { status: 400 });
+    }
+    const body = parsed.data;
+    const admin = createAdminClient();
+    const { data: scheda, error: schedaError } = await admin.schema("preventivatore").from("schede_generate")
+      .select("id, user_id, builder_state")
+      .eq("id", body.scheda_id)
+      .maybeSingle();
+    if (schedaError) throw schedaError;
+    if (!scheda) return NextResponse.json({ error: "Scheda non trovata" }, { status: 404 });
+    if ((scheda as { user_id: string | null }).user_id !== user.id) {
+      return NextResponse.json({ error: "Scheda non appartenente all'utente" }, { status: 403 });
+    }
+
+    const contenuto = body.contenuto_md.trim();
+    const state = body.builder_state ?? (scheda as { builder_state: unknown }).builder_state;
+    const { titolo, cliente, clienteMasterId } = datiCliente(state);
+    let embedding: number[] | null = null;
+    try {
+      embedding = await getCachedEmbedding(contenuto.slice(0, 8_000));
+    } catch (error) {
+      logWarn("preventivatore.scheda-tecnica", "embedding scheda approvata fallito", { dettaglio: String(error) });
+    }
+
+    const verificata = ctx.livello === "admin" || ctx.livello === "superadmin";
     const payload = {
-      scheda_id: body.scheda_id || null,
+      scheda_id: body.scheda_id,
       titolo,
       cliente,
+      cliente_master_id: clienteMasterId,
       tipo_prodotto: titolo,
       contenuto_md: contenuto,
       embedding,
-      n_revisioni: Math.max(0, Number(body.n_revisioni ?? 0)),
+      n_revisioni: body.n_revisioni ?? 0,
       approvata_da: user.id,
+      verificata,
     };
 
-    // Se la scheda era già stata approvata, aggiorno (l'utente potrebbe averla
-    // ritoccata e riscaricata) invece di accumulare copie quasi identiche.
-    let esistente: { id: string } | null = null;
-    if (body.scheda_id) {
-      const { data } = await admin
-        .schema("preventivatore")
-        .from("schede_approvate")
-        .select("id")
-        .eq("scheda_id", body.scheda_id)
-        .maybeSingle();
-      esistente = (data as { id: string } | null) ?? null;
-    }
-
+    const { data: esistente, error: esistenteError } = await admin.schema("preventivatore").from("schede_approvate")
+      .select("id").eq("scheda_id", body.scheda_id).maybeSingle();
+    if (esistenteError) throw esistenteError;
     const query = esistente
       ? admin.schema("preventivatore").from("schede_approvate").update(payload).eq("id", esistente.id).select("id").single()
       : admin.schema("preventivatore").from("schede_approvate").insert(payload).select("id").single();
-
     const { data: row, error } = await query;
     if (error) {
       logError("preventivatore.scheda-tecnica", "salvataggio scheda approvata fallito", error);
       return NextResponse.json({ error: "Errore salvataggio esempio approvato" }, { status: 500 });
     }
 
-    // Marca la scheda originale come approvata (audit).
-    if (body.scheda_id) {
-      const { error: updErr } = await admin
-        .schema("preventivatore")
-        .from("schede_generate")
-        .update({ approvata_il: new Date().toISOString(), contenuto_md: contenuto })
-        .eq("id", body.scheda_id);
-      if (updErr) logWarn("preventivatore.scheda-tecnica", "marcatura approvata_il fallita", { dettaglio: updErr.message });
-    }
+    const { error: updateError } = await admin.schema("preventivatore").from("schede_generate")
+      .update({ approvata_il: new Date().toISOString(), contenuto_md: contenuto })
+      .eq("id", body.scheda_id)
+      .eq("user_id", user.id);
+    if (updateError) logWarn("preventivatore.scheda-tecnica", "marcatura approvata_il fallita", { dettaglio: updateError.message });
 
     return NextResponse.json({
       ok: true,
       id: (row as { id: string }).id,
       aggiornata: Boolean(esistente),
-      indicizzata: embedding != null,
+      indicizzata: embedding !== null,
+      verificata,
     });
   } catch (err) {
     logError("preventivatore.scheda-tecnica", "approva scheda error", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Errore approvazione scheda" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Errore approvazione scheda" }, { status: 500 });
   }
 }

@@ -1,0 +1,17 @@
+[Unit]
+Description=Preventivatore: calcola gli embedding mancanti (chunk dei preventivi e schede approvate)
+Documentation=file:/opt/intranet-sics/scripts/genera-embeddings-mancanti.cjs
+After=postgresql.service network-online.target
+Wants=network-online.target
+OnFailure=intranet-db-avviso@%n.service
+
+[Service]
+Type=oneshot
+# Gira come proprietario di .env.local (chiavi Supabase/PostgREST e AI).
+User=intra-adm
+WorkingDirectory=/opt/intranet-sics
+# Rete di sicurezza: l'app indicizza già al salvataggio; qui si recupera ciò che
+# è rimasto indietro (API AI irraggiungibile, timeout, modifiche successive).
+ExecStart=/usr/bin/node scripts/genera-embeddings-mancanti.cjs --schede --limit 200
+TimeoutStartSec=900
+Nice=10

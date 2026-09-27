@@ -11,7 +11,7 @@
  *
  *   node scripts/vettori/prova-lettura-llm.mjs \
  *     --pdf "ft Fedex_06.pdf" --atteso docs/vettori-trascrizioni/fedex-159322244-2026-06.json \
- *     --modello gemini-2.5-flash-lite --dpi 200
+ *     --modello google/gemini-2.5-flash-lite --dpi 200
  *
  * Stampa anche i token consumati: su un credito piccolo, sapere quanto costa
  * una pagina prima di lanciarne trenta è metà del lavoro.
@@ -26,7 +26,10 @@ const arg = (nome, ripiego = null) => {
 
 const PDF = arg("pdf");
 const ATTESO = arg("atteso");
-const MODELLO = arg("modello", "gemini-2.5-flash-lite");
+// Tutta l'AI passa da OpenRouter (27/09/2026): un nome Google senza prefisso
+// ("gemini-2.5-flash-lite") diventa l'ID OpenRouter equivalente.
+const MODELLO_ARG = arg("modello", "google/gemini-2.5-flash-lite");
+const MODELLO = MODELLO_ARG.includes("/") ? MODELLO_ARG : `google/${MODELLO_ARG}`;
 const DPI = Number(arg("dpi", "200"));
 const CARTELLA_PDF = process.env.VETTORI_FATTURE_DIR ?? ".";
 
@@ -45,9 +48,9 @@ for (const file of [".env.local", "/opt/intranet-sics/.env.local"]) {
   }
 }
 
-const CHIAVE = process.env.GEMINI_API_KEY;
+const CHIAVE = process.env.OPENROUTER_API_KEY;
 if (!CHIAVE) {
-  console.error("GEMINI_API_KEY non trovata.");
+  console.error("OPENROUTER_API_KEY non trovata.");
   process.exit(1);
 }
 
@@ -131,36 +134,35 @@ async function pagineDelPdf(percorso, dpi) {
 }
 
 async function chiedi(modello, pagine) {
-  const parti = [
-    { text: ISTRUZIONI },
+  const contenuto = [
+    { type: "text", text: `${ISTRUZIONI}
+
+Rispondi SOLO con un JSON conforme a questo schema:
+${JSON.stringify(SCHEMA)}` },
     ...pagine.map((png) => ({
-      inline_data: { mime_type: "image/png", data: png.toString("base64") },
+      type: "image_url",
+      image_url: { url: `data:image/png;base64,${png.toString("base64")}` },
     })),
   ];
   const inizio = Date.now();
-  const risposta = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${modello}:generateContent?key=${CHIAVE}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: parti }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: SCHEMA,
-          temperature: 0,
-        },
-      }),
-    }
-  );
+  const risposta = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${CHIAVE}` },
+    body: JSON.stringify({
+      model: modello,
+      messages: [{ role: "user", content: contenuto }],
+      response_format: { type: "json_object" },
+      temperature: 0,
+    }),
+  });
   const corpo = await risposta.json();
   if (!risposta.ok) {
     throw new Error(`${risposta.status}: ${JSON.stringify(corpo).slice(0, 400)}`);
   }
-  const testo = corpo.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  const testo = corpo.choices?.[0]?.message?.content ?? "{}";
   return {
-    letto: JSON.parse(testo),
-    uso: corpo.usageMetadata ?? {},
+    letto: JSON.parse(testo.replace(/^```(?:json)?\s*|\s*```$/g, "")),
+    uso: corpo.usage ?? {},
     secondi: Math.round((Date.now() - inizio) / 100) / 10,
   };
 }
@@ -241,5 +243,5 @@ const sommaAttesa = atteso.righe.reduce((acc, r) => acc + totaleAtteso(r), 0);
 console.log(`  somma dei totali: ${esito.somma.toFixed(2)} (attesa ${sommaAttesa.toFixed(2)})` +
             `${vicino(esito.somma, sommaAttesa, 0.02) ? " — quadra" : " — NON quadra"}`);
 for (const e of esito.esiti) console.log(`    ${e}`);
-console.log(`  token: ${uso.promptTokenCount ?? "?"} in ingresso, ` +
-            `${uso.candidatesTokenCount ?? "?"} in uscita — ${secondi}s`);
+console.log(`  token: ${uso.prompt_tokens ?? "?"} in ingresso, ` +
+            `${uso.completion_tokens ?? "?"} in uscita, costo ${uso.cost ?? "?"} $ — ${secondi}s`);

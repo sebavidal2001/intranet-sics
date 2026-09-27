@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { markdownToDocxBuffer } from "@/lib/portali/preventivatore/scheda-tecnica/md-to-docx"
 import { diffRighe, diffCompatto, contaModifiche, type RigaDiff } from "@/lib/portali/preventivatore/scheda-tecnica/diff"
+import type { BuilderStateForChat } from "@/lib/portali/preventivatore/chat/types"
 import type { BuilderState } from "@/components/portali/preventivatore/nuovo-view-types"
 
 // ─── Tipi risposta API ────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ interface Domanda {
 
 type SchedaApiResponse =
   | { tipo: "scheda"; contenuto_md: string; modello: string; provider: string; scheda_id: string; costo?: number | null }
-  | { tipo: "domande"; motivo: string; domande: Domanda[] }
+  | { tipo: "domande"; motivo: string; domande: Domanda[]; _usage?: { cost?: number | null } }
 
 type MessaggioRevisione = { ruolo: "utente" | "ai"; testo: string }
 
@@ -28,7 +29,7 @@ type UsageSummary = { enabled: boolean; today: number; last_30_days: number; cur
 interface Props {
   open: boolean
   onClose: () => void
-  builderState: BuilderState
+  builderState: BuilderStateForChat | BuilderState
 }
 
 const fmtUsd = (n: number) => `$${n.toFixed(n < 1 ? 3 : 2)}`
@@ -55,6 +56,7 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
   const [diff, setDiff] = useState<RigaDiff[] | null>(null)
   const [mostraDiff, setMostraDiff] = useState(false)
   const [approvata, setApprovata] = useState(false)
+  const [esitoApprovazione, setEsitoApprovazione] = useState<string | null>(null)
 
   // ── Contatore spesa AI ──
   const [usage, setUsage] = useState<UsageSummary | null>(null)
@@ -90,6 +92,7 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
       const body: Record<string, unknown> = { builder_state: builderState }
       if (rispondi) {
         body.risposte_domande = Object.entries(risposte).map(([id, risposta]) => ({ id, risposta }))
+        body.domande_poste = domande ?? undefined
       }
       if (forza) body.forza_generazione = true
 
@@ -107,6 +110,7 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
         setDomande(data.domande)
         setMotivoDomande(data.motivo)
         setSchedaMd("")
+        registraCosto(data._usage?.cost)
       } else {
         setSchedaMd(data.contenuto_md)
         setSchedaId(data.scheda_id)
@@ -117,6 +121,7 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
         setVersionePrecedente(null)
         setDiff(null)
         setApprovata(false)
+        setEsitoApprovazione(null)
         registraCosto(data.costo)
       }
     } catch (e) {
@@ -202,8 +207,9 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
    * Salva la scheda come ESEMPIO APPROVATO: da qui in poi verrà usata come
    * riferimento prioritario nelle generazioni successive (loop di apprendimento).
    */
-  async function approva(silenzioso = false) {
+  async function approva(silenzioso = false): Promise<void> {
     if (!schedaMd) return
+    setEsitoApprovazione(null)
     try {
       const res = await fetch("/api/portali/preventivatore/scheda-tecnica/approva", {
         method: "POST",
@@ -215,17 +221,27 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
           n_revisioni: messaggi.filter((m) => m.ruolo === "utente").length,
         }),
       })
-      if (!res.ok) throw new Error("Errore salvataggio esempio")
+      const data = (await res.json().catch(() => ({}))) as { error?: string; indicizzata?: boolean }
+      if (!res.ok) throw new Error(data.error ?? "Errore salvataggio esempio")
       setApprovata(true)
+      setEsitoApprovazione(data.indicizzata === false
+        ? "Salvata, ma non indicizzata: verrà indicizzata a breve"
+        : "Salvata tra gli esempi")
     } catch (e) {
-      if (!silenzioso) setErrore(e instanceof Error ? e.message : "Errore approvazione")
+      const messaggio = e instanceof Error ? e.message : "Errore approvazione"
+      setErrore(messaggio)
+      if (silenzioso) throw e
     }
   }
 
   async function scaricaDocx() {
     if (!schedaMd) return
     setLoading(true)
+    setErrore(null)
     try {
+      // Il download vale come approvazione: attendiamo l'esito prima di creare
+      // il file, così l'utente sa se l'esempio è stato davvero archiviato.
+      await approva(true)
       const titolo = builderState.titolo || "Scheda tecnica preventivo"
       const cliente = builderState.cliente?.ragione_sociale
       const intest = [cliente, builderState.data_consegna && `consegna ${builderState.data_consegna}`]
@@ -248,8 +264,6 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      // Scaricarla equivale ad approvarla: diventa esempio per le prossime schede.
-      approva(true)
     } catch (e) {
       setErrore(e instanceof Error ? e.message : "Errore download")
     } finally {
@@ -328,6 +342,11 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
           {errore && (
             <div className="mx-5 mt-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">
               {errore}
+            </div>
+          )}
+          {esitoApprovazione && (
+            <div className="mx-5 mt-4 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800">
+              {esitoApprovazione}
             </div>
           )}
 

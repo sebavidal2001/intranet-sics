@@ -1,260 +1,69 @@
-import { dispatchTool, type ChatToolScope } from "./tool-handlers";
-import {
-  TOOL_LIST_PREVENTIVI_DEF,
-  TOOL_CERCA_SIMILI_DEF,
-  TOOL_CERCA_ARTICOLO_DEF,
-  TOOL_AGGREGA_DEF,
-  TOOL_QUERY_RIGHE_DEF,
-  TOOL_TOP_ARTICOLI_DEF,
-  TOOL_DETTAGLIO_DEF,
-  TOOL_ANALISI_SQL_DEF,
-  TOOL_ANOMALIE_DEF,
-  TOOL_CERCA_ARTICOLO_ANAGRAFICA_DEF,
-  TOOL_LISTINO_SERVIZI_DEF,
-  TOOL_STORIA_PREZZI_ARTICOLO_DEF,
-  TOOL_ANALISI_MARGINI_DEF,
-  TOOL_HIT_RATE_DEF,
-  TOOL_INFO_CLIENTE_DEF,
-  TOOL_ARTICOLI_ASSOCIATI_DEF,
-  TOOL_TREND_MENSILE_DEF,
-} from "./tool-definitions";
-import type { ChatMessage, ToolName, ChatHandlerResult } from "./types";
+import { TOOL_DEFINITIONS } from "./tool-definitions";
+import { eseguiChiamateTool, fontiDaEsiti, MAX_ROUNDS, serializzaDatiNonFidati, ultimoRisultatoMostrabile, type EsitoTool } from "./orchestratore";
+import type { ChatToolScope } from "./tool-handlers";
+import type { ChatHandlerResult, ChatMessage, ChatUsage } from "./types";
 
-type OpenRouterUsage = {
-  completion_tokens?: number;
-  prompt_tokens?: number;
-  total_tokens?: number;
-  cost?: number;
+type OpenRouterUsage = { completion_tokens?: number; prompt_tokens?: number; total_tokens?: number; cost?: number };
+type OpenRouterMessage = { role: string; content: unknown; tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>; tool_call_id?: string };
+
+const OPENROUTER_TOOLS = TOOL_DEFINITIONS.map((definizione) => ({
+  type: "function",
+  function: { name: definizione.name, description: definizione.description, parameters: { type: "object", properties: definizione.parameters_obj, required: definizione.required } },
+}));
+
+export class OpenRouterHandlerError extends Error {
+  constructor(message: string, public readonly usage: ChatUsage | null) {
+    super(message);
+    this.name = "OpenRouterHandlerError";
+  }
 }
 
-// ─── OpenRouter tool definitions ──────────────────────────────────────────────
-
-const OPENROUTER_TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: TOOL_LIST_PREVENTIVI_DEF.name,
-      description: TOOL_LIST_PREVENTIVI_DEF.description,
-      parameters: { type: "object", properties: TOOL_LIST_PREVENTIVI_DEF.parameters_obj, required: [] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: TOOL_CERCA_SIMILI_DEF.name,
-      description: TOOL_CERCA_SIMILI_DEF.description,
-      parameters: { type: "object", properties: TOOL_CERCA_SIMILI_DEF.parameters_obj, required: TOOL_CERCA_SIMILI_DEF.required },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: TOOL_CERCA_ARTICOLO_DEF.name,
-      description: TOOL_CERCA_ARTICOLO_DEF.description,
-      parameters: { type: "object", properties: TOOL_CERCA_ARTICOLO_DEF.parameters_obj, required: TOOL_CERCA_ARTICOLO_DEF.required },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: TOOL_AGGREGA_DEF.name,
-      description: TOOL_AGGREGA_DEF.description,
-      parameters: { type: "object", properties: TOOL_AGGREGA_DEF.parameters_obj, required: TOOL_AGGREGA_DEF.required },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: TOOL_TOP_ARTICOLI_DEF.name,
-      description: TOOL_TOP_ARTICOLI_DEF.description,
-      parameters: { type: "object", properties: TOOL_TOP_ARTICOLI_DEF.parameters_obj, required: TOOL_TOP_ARTICOLI_DEF.required },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: TOOL_QUERY_RIGHE_DEF.name,
-      description: TOOL_QUERY_RIGHE_DEF.description,
-      parameters: { type: "object", properties: TOOL_QUERY_RIGHE_DEF.parameters_obj, required: TOOL_QUERY_RIGHE_DEF.required },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: TOOL_DETTAGLIO_DEF.name,
-      description: TOOL_DETTAGLIO_DEF.description,
-      parameters: { type: "object", properties: TOOL_DETTAGLIO_DEF.parameters_obj, required: TOOL_DETTAGLIO_DEF.required },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: TOOL_ANALISI_SQL_DEF.name,
-      description: TOOL_ANALISI_SQL_DEF.description,
-      parameters: { type: "object", properties: TOOL_ANALISI_SQL_DEF.parameters_obj, required: TOOL_ANALISI_SQL_DEF.required },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: TOOL_ANOMALIE_DEF.name,
-      description: TOOL_ANOMALIE_DEF.description,
-      parameters: { type: "object", properties: TOOL_ANOMALIE_DEF.parameters_obj, required: TOOL_ANOMALIE_DEF.required },
-    },
-  },
-  // ── Nuovi tool redazione preventivi (migration 043) ────────────────────────
-  ...([
-    TOOL_CERCA_ARTICOLO_ANAGRAFICA_DEF,
-    TOOL_LISTINO_SERVIZI_DEF,
-    TOOL_STORIA_PREZZI_ARTICOLO_DEF,
-    TOOL_ANALISI_MARGINI_DEF,
-    TOOL_HIT_RATE_DEF,
-    TOOL_INFO_CLIENTE_DEF,
-    TOOL_ARTICOLI_ASSOCIATI_DEF,
-    TOOL_TREND_MENSILE_DEF,
-  ] as const).map((def) => ({
-    type: "function" as const,
-    function: {
-      name: def.name,
-      description: def.description,
-      parameters: { type: "object", properties: def.parameters_obj, required: def.required },
-    },
-  })),
-];
-
-// ─── OpenRouter handler ───────────────────────────────────────────────────────
-
-export async function handleOpenRouter(
-  messages: ChatMessage[],
-  systemInstruction: string,
-  temperature: number = 0.2,
-  top_p: number = 0.9,
-  configuredModel?: string,
-  scope?: ChatToolScope
-): Promise<ChatHandlerResult> {
+export async function handleOpenRouter(messages: ChatMessage[], systemInstruction: string, temperature = 0.2, top_p = 0.9, configuredModel?: string, scope?: ChatToolScope): Promise<ChatHandlerResult> {
   const apiKey = process.env.OPENROUTER_API_KEY!;
   const model = configuredModel?.trim() || process.env.OPENROUTER_MODEL || "anthropic/claude-haiku-4-5";
-
-  const isAnthropicModel = model.startsWith("anthropic/");
-  const openaiMessages: Array<Record<string, unknown>> = [
-    {
-      role: "system",
-      content: systemInstruction,
-      ...(isAnthropicModel && { cache_control: { type: "ephemeral" } }),
-    },
-    ...messages.map(m => ({ role: m.role, content: m.content })),
-  ];
-
-  const call = async (msgs: Array<Record<string, unknown>>) => {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      signal: AbortSignal.timeout(30_000),
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://intranet-sics.vercel.app",
-        "X-Title": "SICS Preventivatore",
-      },
-      body: JSON.stringify({ model, messages: msgs, tools: OPENROUTER_TOOLS, tool_choice: "auto", temperature, top_p, max_tokens: 2048 }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-      throw new Error(err?.error?.message ?? `OpenRouter HTTP ${res.status}`);
-    }
-    return res.json() as Promise<{
-      choices: Array<{
-        message: {
-          role: string;
-          content: string | null;
-          tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
-        };
-      }>;
-      usage?: OpenRouterUsage;
-    }>;
-  };
-
-  const totalUsage: Required<OpenRouterUsage> = {
-    completion_tokens: 0,
-    prompt_tokens: 0,
-    total_tokens: 0,
-    cost: 0,
-  };
+  const systemContent = model.startsWith("anthropic/") ? [{ type: "text", text: systemInstruction, cache_control: { type: "ephemeral" } }] : systemInstruction;
+  let currentMessages: OpenRouterMessage[] = [{ role: "system", content: systemContent }, ...messages.map((messaggio) => ({ role: messaggio.role, content: messaggio.content }))];
+  const total = { completion_tokens: 0, prompt_tokens: 0, total_tokens: 0, cost: 0 };
   let hasUsage = false;
-
   const addUsage = (usage?: OpenRouterUsage) => {
     if (!usage) return;
     hasUsage = true;
-    totalUsage.completion_tokens += usage.completion_tokens ?? 0;
-    totalUsage.prompt_tokens += usage.prompt_tokens ?? 0;
-    totalUsage.total_tokens += usage.total_tokens ?? 0;
-    totalUsage.cost += usage.cost ?? 0;
+    total.completion_tokens += usage.completion_tokens ?? 0;
+    total.prompt_tokens += usage.prompt_tokens ?? 0;
+    total.total_tokens += usage.total_tokens ?? 0;
+    total.cost += usage.cost ?? 0;
   };
-
-  const buildUsage = (): ChatHandlerResult["usage"] => {
-    if (!hasUsage) return null;
-    return {
-      provider: "openrouter",
-      model,
-      prompt_tokens: totalUsage.prompt_tokens || null,
-      completion_tokens: totalUsage.completion_tokens || null,
-      total_tokens: totalUsage.total_tokens || null,
-      cost: totalUsage.cost || null,
-      currency: "usd",
-      source: "exact",
-    };
-  };
-
-  // Multi-step tool loop
-  const MAX_ROUNDS = 6;
-  let currentMessages = [...openaiMessages];
-  let lastToolName: ToolName | null = null;
-  let lastRisultati: unknown[] | null = null;
-
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    const data = await call(currentMessages);
+  const buildUsage = (): ChatUsage | null => hasUsage ? { provider: "openrouter", model, prompt_tokens: total.prompt_tokens, completion_tokens: total.completion_tokens, total_tokens: total.total_tokens, cost: total.cost, currency: "usd", source: "exact" } : null;
+  const call = async (msgs: OpenRouterMessage[], toolChoice: "auto" | "none") => {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST", signal: AbortSignal.timeout(30_000),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "HTTP-Referer": "https://intranet-sics.vercel.app", "X-Title": "SICS Preventivatore" },
+      body: JSON.stringify({ model, messages: msgs, tools: OPENROUTER_TOOLS, tool_choice: toolChoice, temperature, top_p, max_tokens: 2048 }),
+    });
+    const data = await response.json().catch(() => ({})) as { choices?: Array<{ message: OpenRouterMessage }>; usage?: OpenRouterUsage; error?: { message?: string } };
     addUsage(data.usage);
-    const msg = data.choices[0].message;
-
-    if (!msg.tool_calls || msg.tool_calls.length === 0) {
-      return { risposta: msg.content ?? "", tool_usato: lastToolName, risultati: lastRisultati, usage: buildUsage() };
-    }
-
-    const toolCall = msg.tool_calls[0];
-    const toolName = toolCall.function.name as ToolName;
-    const toolArgs = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
-
-    let toolResult: unknown;
-    let risultatiTool: unknown[] | null = null;
-
-    try {
-      const res = await dispatchTool(toolName, toolArgs, scope);
-      toolResult = res;
-      risultatiTool = res as unknown[];
-    } catch (err) {
-      console.error(`Tool ${toolName} error:`, err);
-      toolResult = { error: err instanceof Error ? err.message : "Errore esecuzione tool" };
-    }
-
-    lastToolName = toolName;
-    lastRisultati = risultatiTool;
-
-    currentMessages = [
-      ...currentMessages,
-      { role: "assistant", content: msg.content ?? null, tool_calls: msg.tool_calls },
-      { role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(toolResult) },
-    ];
-  }
-
-  // Superato MAX_ROUNDS: forza una risposta finale senza ulteriori tool calls
-  const fallbackData = await call([
-    ...currentMessages,
-    { role: "user", content: "Per favore rispondi all'utente basandoti sui dati che hai già raccolto." },
-  ]);
-  addUsage(fallbackData.usage);
-  return {
-    risposta: fallbackData.choices[0].message.content ?? "",
-    tool_usato: lastToolName,
-    risultati: lastRisultati,
-    usage: buildUsage(),
+    if (!response.ok) throw new Error(data.error?.message ?? `OpenRouter HTTP ${response.status}`);
+    const message = data.choices?.[0]?.message;
+    if (!message) throw new Error("Risposta OpenRouter priva di contenuto");
+    return message;
   };
+
+  const tuttiEsiti: EsitoTool[] = [];
+  try {
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      const message = await call(currentMessages, "auto");
+      if (!message.tool_calls?.length) {
+        const ultimo = ultimoRisultatoMostrabile(tuttiEsiti);
+        return { risposta: typeof message.content === "string" ? message.content : "", tool_usato: ultimo.tool, risultati: ultimo.risultati, fonti: fontiDaEsiti(tuttiEsiti), provider: "openrouter", modello: model, fallback: false, usage: buildUsage() };
+      }
+      const esiti = await eseguiChiamateTool(message.tool_calls.map((chiamata) => ({ id: chiamata.id, nome: chiamata.function.name, argomenti: chiamata.function.arguments })), scope);
+      tuttiEsiti.push(...esiti);
+      currentMessages = [...currentMessages, { role: "assistant", content: message.content, tool_calls: message.tool_calls }, ...esiti.map((esito) => ({ role: "tool", tool_call_id: esito.id, content: serializzaDatiNonFidati(esito) }))];
+    }
+    const finale = await call([...currentMessages, { role: "user", content: "Concludi usando soltanto i dati già raccolti. Non chiamare altri tool." }], "none");
+    const ultimo = ultimoRisultatoMostrabile(tuttiEsiti);
+    return { risposta: typeof finale.content === "string" ? finale.content : "", tool_usato: ultimo.tool, risultati: ultimo.risultati, fonti: fontiDaEsiti(tuttiEsiti), provider: "openrouter", modello: model, fallback: false, usage: buildUsage() };
+  } catch (errore) {
+    throw new OpenRouterHandlerError(errore instanceof Error ? errore.message : "Errore OpenRouter", buildUsage());
+  }
 }

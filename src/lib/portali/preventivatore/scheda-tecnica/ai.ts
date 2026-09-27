@@ -9,7 +9,7 @@ import { logWarn } from "@/lib/logger";
 
 export type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
 
-export type UsageAI = {
+type UsageAI = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
@@ -17,7 +17,7 @@ export type UsageAI = {
 };
 
 /** Modalità tracciate in `ai_usage_events` (CHECK esteso dalla migration 072). */
-export type ModalitaUsage = "scheda_tecnica" | "scheda_domande" | "scheda_revisione";
+type ModalitaUsage = "scheda_tecnica" | "scheda_domande" | "scheda_revisione";
 
 /** Chiamata a OpenRouter con storico messaggi completo (supporta la chat di revisione). */
 export async function chiamaOpenRouterChat(opts: {
@@ -26,7 +26,7 @@ export async function chiamaOpenRouterChat(opts: {
   temperature: number;
   maxTokens: number;
   title?: string;
-}): Promise<{ content: string; usage: UsageAI | undefined }> {
+}): Promise<{ content: string; usage: UsageAI | undefined; finishReason: string | null }> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY non configurata");
 
@@ -57,7 +57,11 @@ export async function chiamaOpenRouterChat(opts: {
     choices: Array<{ message: { content: string }; finish_reason?: string }>;
     usage?: UsageAI;
   };
-  return { content: data.choices?.[0]?.message?.content ?? "", usage: data.usage };
+  return {
+    content: data.choices?.[0]?.message?.content ?? "",
+    usage: data.usage,
+    finishReason: data.choices?.[0]?.finish_reason ?? null,
+  };
 }
 
 /**
@@ -73,7 +77,7 @@ export async function registraUsage(opts: {
 }): Promise<void> {
   try {
     const admin = createAdminClient();
-    await admin.schema("preventivatore").from("ai_usage_events").insert({
+    const { error } = await admin.schema("preventivatore").from("ai_usage_events").insert({
       user_id: opts.userId,
       sessione_id: null, // le schede non appartengono a una sessione di chat
       provider: "openrouter",
@@ -86,6 +90,9 @@ export async function registraUsage(opts: {
       currency: "usd",
       cost_source: opts.usage?.cost != null ? "exact" : "estimated",
     });
+    if (error) {
+      logWarn("preventivatore.scheda-tecnica", "registrazione usage fallita", { dettaglio: error.message });
+    }
   } catch (e) {
     logWarn("preventivatore.scheda-tecnica", "registrazione usage fallita", { dettaglio: String(e) });
   }
@@ -98,11 +105,13 @@ export async function registraUsage(opts: {
 export function risolveModello(
   configSpecific: string | undefined,
   configFallback: string | undefined
-): { provider: "openrouter" | "gemini"; model: string } {
+): { provider: "openrouter"; model: string } {
   const candidate = configSpecific?.trim() || configFallback?.trim() || "openrouter:anthropic/claude-haiku-4.5";
   if (candidate.startsWith("openrouter:")) return { provider: "openrouter", model: candidate.slice("openrouter:".length) };
   if (candidate.includes("/")) return { provider: "openrouter", model: candidate };
-  return { provider: "gemini", model: candidate };
+  // Tutta l'AI passa da OpenRouter: un vecchio nome Google senza prefisso
+  // (es. "gemini-2.5-flash") diventa l'ID OpenRouter equivalente.
+  return { provider: "openrouter", model: `google/${candidate}` };
 }
 
 /** Testo di ricerca che caratterizza il tipo di fornitura del preventivo corrente. */
@@ -115,7 +124,7 @@ export function queryRicercaDaBuilder(state: BuilderStateForChat): string {
   return [state.titolo ?? "", tipi.join(", "), descr.join("; ")].filter(Boolean).join(". ").trim();
 }
 
-export type EsempioScheda = {
+type EsempioScheda = {
   etichetta: string;
   contenuto: string;
   /** true = scheda già approvata dall'utente (stile-target più affidabile). */
@@ -148,7 +157,8 @@ type MatchSchedaRow = {
 export async function recuperaEsempi(
   builderState: BuilderStateForChat,
   maxEsempi: number,
-  soglia: number
+  soglia: number,
+  scope: { utenteId: string; clienteIds: string[] | null }
 ): Promise<EsempioScheda[]> {
   const admin = createAdminClient();
   const queryText = queryRicercaDaBuilder(builderState);
@@ -173,6 +183,8 @@ export async function recuperaEsempi(
         query_embedding: queryEmbedding,
         match_threshold: soglia,
         match_count: quotaApprovate,
+        p_utente: scope.utenteId,
+        p_cliente_ids: scope.clienteIds,
       });
     if (error) throw new Error(error.message);
     for (const r of (approvate ?? []) as MatchSchedaRow[]) {
@@ -191,7 +203,15 @@ export async function recuperaEsempi(
   if (restanti > 0) {
     const { data, error } = await admin
       .schema("preventivatore")
-      .rpc("match_chunks", { query_embedding: queryEmbedding, match_threshold: soglia, match_count: 30 });
+      .rpc("match_chunks_scoped", {
+        query_embedding: queryEmbedding,
+        match_threshold: soglia,
+        match_count: 30,
+        p_cliente_ids: scope.clienteIds,
+        p_cliente: null,
+        p_tipo: "storico",
+        p_escludi_documento: null,
+      });
     if (error) {
       logWarn("preventivatore.scheda-tecnica", "match_chunks fallito", { dettaglio: error.message });
     } else {

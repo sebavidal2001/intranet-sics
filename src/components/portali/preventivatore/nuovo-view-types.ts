@@ -441,6 +441,8 @@ export interface BuilderStateBlocco {
 export interface BuilderState {
   titolo: string | null
   cliente: {
+    /** clienti_master.id: serve allo scope commerciale degli esempi di scheda. */
+    id?: string | null
     ragione_sociale: string
     piva: string | null
     citta: string | null
@@ -476,6 +478,7 @@ export function buildBuilderState(input: {
     titolo: titolo.trim() || null,
     cliente: cliente
       ? {
+          id: cliente.id,
           ragione_sociale: cliente.ragione_sociale,
           piva: cliente.piva,
           citta: cliente.citta,

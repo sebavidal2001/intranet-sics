@@ -11,7 +11,6 @@ import {
   BarChart3,
   Sparkles,
   Package,
-  CircleDashed,
   Wallet,
 } from "lucide-react"
 import Link from "next/link"
@@ -31,11 +30,8 @@ type DashboardData = {
     importo_medio_delta: number | null
     clienti_attivi: number
     clienti_attivi_delta: number | null
-    tot_ordinati: number
-    tot_rifiutati: number
-    tot_pending: number
-    tasso_ordinato: number | null
-    workflow_stati_attivo: boolean
+    tot_definitivi: number
+    tot_bozze: number
   }
   top_clienti: { cliente: string; preventivi: number; valore: number; ordinati: number }[]
   serie_mensile: {
@@ -407,15 +403,8 @@ function TopArticoli({ data }: { data: DashboardData["top_articoli"] }) {
 // tradotte nei colori della timeline. Prima la mappa conosceva solo i tre stati
 // legacy e il fallback marcava «Pending» qualunque cosa, storici inclusi.
 const STATO_CFG: Record<string, { dot: string; chip: ChipVariant }> = {
-  pending:          { dot: "#94a3b8", chip: "muted"  },
   aperta:           { dot: "#94a3b8", chip: "muted"  },
-  presa_in_carico:  { dot: "#3b82f6", chip: "muted"  },
   completato:       { dot: "#8b5cf6", chip: "muted"  },
-  inviata:          { dot: "#f59e0b", chip: "warn"   },
-  ordinato:         { dot: "#95c11f", chip: "ok"     },
-  ordinata:         { dot: "#95c11f", chip: "ok"     },
-  rifiutato:        { dot: "#e73331", chip: "danger" },
-  fallita:          { dot: "#e73331", chip: "danger" },
   storico:          { dot: "#cbd5e1", chip: "muted"  },
 }
 
@@ -511,27 +500,6 @@ function AIQuickStart({ spesaMese, currency }: { spesaMese: number; currency: st
   )
 }
 
-// ─── Banner workflow stati ───────────────────────────────────────────────────
-
-function WorkflowStatiBanner({ pending }: { pending: number }) {
-  return (
-    <div className="rounded-2xl p-4 flex items-start gap-3" style={{ backgroundColor: "rgba(238,115,38,0.06)", border: "1px solid rgba(238,115,38,0.20)" }}>
-      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "rgba(238,115,38,0.14)" }}>
-        <CircleDashed className="w-4 h-4" style={{ color: "#ee7326" }} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-[#0f1720]">Workflow stati non attivo</p>
-        <p className="text-xs text-text-muted mt-0.5 leading-snug">
-          Tutti i {pending} preventivi sono ancora <code className="text-[10px] font-mono">pending</code>. Inizia a marcare gli stati (ordinato/rifiutato) dall&apos;archivio per popolare il <strong>tasso di conversione</strong> e i KPI commerciali.
-        </p>
-      </div>
-      <Link href="/preventivatore/archivio" className="text-xs font-semibold px-3 py-1.5 rounded-lg shrink-0" style={{ backgroundColor: "#ee7326", color: "white" }}>
-        Vai all&apos;archivio
-      </Link>
-    </div>
-  )
-}
-
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export function DashboardView() {
@@ -603,29 +571,16 @@ export function DashboardView() {
           icon={Users}
           loading={loading}
         />
-        {data?.kpi.workflow_stati_attivo && data.kpi.tasso_ordinato != null ? (
-          <KpiCard
-            label="Tasso ordinato"
-            value={`${data.kpi.tasso_ordinato}%`}
-            sub={`${data.kpi.tot_ordinati} ord · ${data.kpi.tot_rifiutati} rif`}
-            chipLabel="Live"
-            chipVariant="ok"
-            icon={CheckCircle2}
-            loading={loading}
-          />
-        ) : (
-          <KpiCardPlaceholder
-            label="Tasso ordinato"
-            hint="Marca i preventivi come ordinato/rifiutato per attivare il KPI conversione."
-            icon={CheckCircle2}
-          />
-        )}
+        <KpiCard
+          label="Definitivi"
+          value={loading || !data ? "…" : String(data.kpi.tot_definitivi)}
+          sub={loading || !data ? "" : `${data.kpi.tot_bozze} bozze aperte`}
+          chipLabel="Live"
+          chipVariant="ok"
+          icon={CheckCircle2}
+          loading={loading}
+        />
       </div>
-
-      {/* Banner workflow se non attivo */}
-      {data && !data.kpi.workflow_stati_attivo && data.kpi.tot_pending > 0 && (
-        <WorkflowStatiBanner pending={data.kpi.tot_pending} />
-      )}
 
       {/* Middle row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

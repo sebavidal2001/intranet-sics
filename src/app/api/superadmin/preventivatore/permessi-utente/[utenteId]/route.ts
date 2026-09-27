@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logError } from "@/lib/logger";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
+
+const PermessiBodySchema = z.object({
+  ruoli_slug: z.array(z.string().trim().min(1).max(80)).max(20),
+  agente_codice: z.string().trim().max(80).nullable(),
+});
 
 /**
  * Permessi preventivatore per un utente (superadmin only):
@@ -79,66 +85,28 @@ export async function POST(
       return NextResponse.json({ error: "utenteId non valido" }, { status: 400 });
     }
 
-    const body = await request.json() as {
-      ruoli_slug?: string[];
-      agente_codice?: string | null;
-    };
-    const ruoliSlug = Array.isArray(body.ruoli_slug) ? body.ruoli_slug : [];
-    const agenteCodice = (body.agente_codice ?? "").trim() || null;
+    const parsed = PermessiBodySchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Payload non valido", dettagli: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) },
+        { status: 400 },
+      );
+    }
+    const ruoliSlug = [...new Set(parsed.data.ruoli_slug)];
+    const agenteCodice = parsed.data.agente_codice || null;
 
     const admin = createAdminClient();
 
-    // 1) update agente_codice su utenti
-    const { error: uErr } = await admin
-      .from("utenti")
-      .update({ preventivatore_agente_codice: agenteCodice })
-      .eq("id", utenteId);
-    if (uErr) {
-      logError("superadmin.preventivatore.permessi-utente", "update agente_codice", uErr);
-      return NextResponse.json({ error: "Errore aggiornamento agente" }, { status: 500 });
-    }
-
-    // 2) lookup id dei ruoli richiesti
-    let ruoliIds: string[] = [];
-    if (ruoliSlug.length > 0) {
-      const { data: ruoli, error: rfErr } = await admin
-        .schema("preventivatore")
-        .from("ruoli_funzionali")
-        .select("id, slug")
-        .in("slug", ruoliSlug);
-      if (rfErr) {
-        logError("superadmin.preventivatore.permessi-utente", "lookup ruoli", rfErr);
-        return NextResponse.json({ error: "Errore lookup ruoli" }, { status: 500 });
-      }
-      ruoliIds = (ruoli ?? []).map((r) => r.id as string);
-    }
-
-    // 3) sostituisci interamente le associazioni dell'utente (delete + insert)
-    const { error: delErr } = await admin
+    const { error: rpcError } = await admin
       .schema("preventivatore")
-      .from("utente_ruoli_funzionali")
-      .delete()
-      .eq("utente_id", utenteId);
-    if (delErr) {
-      logError("superadmin.preventivatore.permessi-utente", "reset ruoli", delErr);
-      return NextResponse.json({ error: "Errore reset ruoli" }, { status: 500 });
-    }
-
-    if (ruoliIds.length > 0) {
-      const payload = ruoliIds.map((rid) => ({
-        utente_id: utenteId,
-        ruolo_id: rid,
-        assegnato_da: me.id,
-        assegnato_il: new Date().toISOString(),
-      }));
-      const { error: insErr } = await admin
-        .schema("preventivatore")
-        .from("utente_ruoli_funzionali")
-        .insert(payload);
-      if (insErr) {
-        logError("superadmin.preventivatore.permessi-utente", "insert ruoli", insErr);
-        return NextResponse.json({ error: "Errore insert ruoli" }, { status: 500 });
-      }
+      .rpc("salva_permessi_utente", {
+        p_utente: utenteId,
+        p_codice_agente: agenteCodice,
+        p_ruoli: ruoliSlug,
+      });
+    if (rpcError) {
+      logError("superadmin.preventivatore.permessi-utente", "salva_permessi_utente", rpcError);
+      return NextResponse.json({ error: "Errore salvataggio permessi" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });

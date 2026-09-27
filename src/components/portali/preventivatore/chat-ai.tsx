@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { Send, History, ChevronRight, Maximize2, Minimize2, Plus, Trash2 } from "lucide-react"
+import { Send, History, ChevronRight, Maximize2, Minimize2, Plus, Trash2, Square } from "lucide-react"
 import { Mascot, type MascotStato } from "@/components/portali/preventivatore/mascot"
 import { SessionsPanel, type Sessione } from "@/components/portali/preventivatore/chat-ai-sessions-panel"
 
@@ -105,6 +105,18 @@ interface ChatMessage {
   modalita?: "preciso" | "creativo" | null
   tool?: ToolUsato
   risultati?: ListaRisultato[] | SemanticaRisultato[] | ArticoloRisultato[] | AggRisultato[] | TopArticoloRisultato[] | RigaDistintaRisultato[] | DettaglioRisultato | null
+  /** Nota sotto la risposta: strumenti consultati, modello di riserva. Non viene rimandata al server. */
+  nota?: string
+}
+
+/** Nota sotto la risposta: quali strumenti hanno fornito i dati, e se ha risposto il modello di riserva. */
+function notaRisposta(fonti: Array<{ tool: string; n: number }> | undefined, fallback: boolean | undefined): string | undefined {
+  const parti: string[] = []
+  if (fonti && fonti.length > 0) {
+    parti.push("Dati da: " + fonti.map((f) => (f.n > 1 ? `${f.tool} ×${f.n}` : f.tool)).join(", "))
+  }
+  if (fallback) parti.push("risposta dal modello di riserva")
+  return parti.length > 0 ? parti.join(" · ") : undefined
 }
 
 interface UsageSummary {
@@ -1019,6 +1031,11 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Richiesta in corso: permette di interromperla.
+  const abortRef = useRef<AbortController | null>(null)
+  // Avviso non bloccante (sessioni non caricate/eliminate): prima gli errori
+  // venivano ignorati e l'interfaccia fingeva che tutto fosse andato bene.
+  const [avviso, setAvviso] = useState<string | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -1063,12 +1080,11 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
     setLoadingSessioni(true)
     try {
       const res = await fetch("/api/portali/preventivatore/sessioni")
-      if (res.ok) {
-        const data = await res.json() as { sessioni: Sessione[] }
-        setSessioni(data.sessioni ?? [])
-      }
+      if (!res.ok) throw new Error()
+      const data = await res.json() as { sessioni: Sessione[] }
+      setSessioni(data.sessioni ?? [])
     } catch {
-      // silenzioso
+      setAvviso("Non è stato possibile caricare le conversazioni salvate.")
     } finally {
       setLoadingSessioni(false)
     }
@@ -1091,7 +1107,10 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
     setLoading(true)
     try {
       const res = await fetch(`/api/portali/preventivatore/sessioni/${s.id}`)
-      if (!res.ok) return
+      if (!res.ok) {
+        setAvviso("Non è stato possibile aprire la conversazione.")
+        return
+      }
       const data = await res.json() as {
         messaggi: Array<{
           ruolo: string
@@ -1113,7 +1132,7 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
       setShowHistory(false)
       void fetchUsageSummary(s.id)
     } catch {
-      // silenzioso
+      setAvviso("Non è stato possibile aprire la conversazione.")
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
@@ -1124,14 +1143,15 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
 
   const handleDeleteSession = useCallback(async (id: string) => {
     try {
-      await fetch(`/api/portali/preventivatore/sessioni/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/portali/preventivatore/sessioni/${id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error()
       setSessioni(prev => prev.filter(s => s.id !== id))
       if (sessioneId === id) {
         setSessioneId(null)
         setMessages([])
       }
     } catch {
-      // silenzioso
+      setAvviso("Non è stato possibile eliminare la conversazione.")
     }
   }, [sessioneId])
 
@@ -1179,7 +1199,10 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
     const nextMessages = [...messages, userMsg]
     setMessages(nextMessages)
     setInput("")
+    setAvviso(null)
     setLoading(true)
+    const controller = new AbortController()
+    abortRef.current = controller
     setMascotStato("loading")
 
     // Crea sessione al primo messaggio (se non esiste)
@@ -1192,9 +1215,12 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
     try {
       const res = await fetch("/api/portali/preventivatore/chat", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextMessages.map((m) => ({ role: m.role, content: m.content })),
+          messages: nextMessages
+            .filter((m) => m.content.trim().length > 0)
+            .map((m) => ({ role: m.role, content: m.content })),
           contesto,
           modalita,
           sessione_id: activeSessId,
@@ -1212,6 +1238,8 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
         risposta: string
         tool_usato: ToolUsato
         risultati: ListaRisultato[] | SemanticaRisultato[] | AggRisultato[] | TopArticoloRisultato[] | RigaDistintaRisultato[] | DettaglioRisultato | null
+        fonti?: Array<{ tool: string; n: number }>
+        fallback?: boolean
       }
 
       const assistantMsg: ChatMessage = {
@@ -1220,19 +1248,22 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
         modalita,
         tool: data.tool_usato,
         risultati: data.risultati,
+        nota: notaRisposta(data.fonti, data.fallback),
       }
 
       setMessages((prev) => [...prev, assistantMsg])
       setMascotStato("success")
       setTimeout(() => void fetchUsageSummary(activeSessId), 250)
     } catch (err) {
+      const interrotta = err instanceof DOMException && err.name === "AbortError"
       const errMsg: ChatMessage = {
         role: "assistant",
-        content: `Errore: ${err instanceof Error ? err.message : "Sconosciuto"}`,
+        content: interrotta ? "_Richiesta interrotta._" : `Errore: ${err instanceof Error ? err.message : "Sconosciuto"}`,
       }
       setMessages((prev) => [...prev, errMsg])
       setMascotStato("idle")
     } finally {
+      abortRef.current = null
       setLoading(false)
       inputRef.current?.focus()
     }
@@ -1416,6 +1447,9 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
                 {msg.role === "assistant" && msg.tool === "dettaglio_preventivo" && msg.risultati && (
                   <DettaglioCard risultato={msg.risultati as DettaglioRisultato} />
                 )}
+                {msg.role === "assistant" && msg.nota && (
+                  <p className="mt-2 text-[10px]" style={{ color: "rgba(255,255,255,0.45)" }}>{msg.nota}</p>
+                )}
               </div>
             </div>
           ))}
@@ -1430,6 +1464,13 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
 
           <div ref={bottomRef} />
         </div>
+
+        {avviso && (
+          <div className="relative mx-3 mb-2 flex items-start gap-2 rounded-lg px-3 py-2 text-[11px]" style={{ backgroundColor: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.30)", color: "rgba(255,237,213,0.95)" }}>
+            <span className="flex-1">{avviso}</span>
+            <button onClick={() => setAvviso(null)} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Chiudi avviso">×</button>
+          </div>
+        )}
 
         {/* Input */}
         <div className="relative p-3 flex gap-2 shrink-0" style={{ borderTop: darkBorder }}>
@@ -1450,15 +1491,27 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
             onFocus={e => { e.currentTarget.style.borderColor = "rgba(0,161,190,0.55)"; e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.11)" }}
             onBlur={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)" }}
           />
-          <button
-            onClick={invia}
-            disabled={loading || !input.trim()}
-            className="h-8 w-8 p-0 shrink-0 rounded-lg flex items-center justify-center transition-all duration-150 disabled:opacity-40"
-            style={{ backgroundColor: "#00a1be", color: "#ffffff" }}
-            aria-label="Invia"
-          >
-            <Send className="w-3.5 h-3.5" />
-          </button>
+          {loading ? (
+            <button
+              onClick={() => abortRef.current?.abort()}
+              className="h-8 w-8 p-0 shrink-0 rounded-lg flex items-center justify-center transition-all duration-150"
+              style={{ backgroundColor: "rgba(255,255,255,0.14)", color: "#ffffff" }}
+              aria-label="Interrompi"
+              title="Interrompi la risposta"
+            >
+              <Square className="w-3 h-3" />
+            </button>
+          ) : (
+            <button
+              onClick={invia}
+              disabled={!input.trim()}
+              className="h-8 w-8 p-0 shrink-0 rounded-lg flex items-center justify-center transition-all duration-150 disabled:opacity-40"
+              style={{ backgroundColor: "#00a1be", color: "#ffffff" }}
+              aria-label="Invia"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         </div>
       </div>

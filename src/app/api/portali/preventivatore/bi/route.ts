@@ -1,25 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
+import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
 import { DEFAULT_BI_DASHBOARD } from "@/lib/portali/preventivatore/bi/defaults";
-import type { BiDashboardConfig, BiDashboardRow, BiScope } from "@/lib/portali/preventivatore/bi/types";
+import { BiDashboardRequestSchema, type BiDashboardRow, type BiScope } from "@/lib/portali/preventivatore/bi/types";
 import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
 function isScope(value: string | null): value is BiScope {
   return value === "user" || value === "team";
-}
-
-function sanitizeConfig(input: unknown): BiDashboardConfig {
-  const cfg = input as Partial<BiDashboardConfig>;
-  if (!cfg || cfg.version !== 1 || !Array.isArray(cfg.widgets)) return DEFAULT_BI_DASHBOARD;
-  return {
-    version: 1,
-    filters: Array.isArray(cfg.filters) ? cfg.filters : [],
-    widgets: cfg.widgets,
-  } as BiDashboardConfig;
 }
 
 async function ensureDashboard(scope: BiScope, userId: string): Promise<BiDashboardRow> {
@@ -51,16 +40,12 @@ async function ensureDashboard(scope: BiScope, userId: string): Promise<BiDashbo
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
 
     const scopeParam = new URL(request.url).searchParams.get("scope");
     const scope = isScope(scopeParam) ? scopeParam : "user";
-    const dashboard = await ensureDashboard(scope, user.id);
+    const dashboard = await ensureDashboard(scope, guard.user.id);
 
     return NextResponse.json({ dashboard });
   } catch (error) {
@@ -75,33 +60,32 @@ const TEAM_WRITE_LEVELS = new Set(["admin", "superadmin", "exporter"]);
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-
-    const body = await request.json() as { scope?: BiScope; title?: string; config?: unknown };
-    const scope = isScope(body.scope ?? null) ? body.scope! : "user";
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const parsed = BiDashboardRequestSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Config BI non valida" }, { status: 400 });
+    }
+    const body = parsed.data;
+    const scope = body.scope ?? "user";
 
     // ─── Security check: scope=team richiede livello admin/exporter ──────────
-    if (scope === "team" && !TEAM_WRITE_LEVELS.has(livello)) {
+    if (scope === "team" && !TEAM_WRITE_LEVELS.has(guard.ctx.livello ?? "")) {
       return NextResponse.json(
         { error: "Non hai i permessi per modificare la dashboard del team. Serve livello admin o exporter." },
         { status: 403 }
       );
     }
 
-    const current = await ensureDashboard(scope, user.id);
-    const config = sanitizeConfig(body.config);
+    const current = await ensureDashboard(scope, guard.user.id);
+    const config = body.config;
 
     const adminClient = createAdminClient();
     const { data, error } = await adminClient
       .schema("preventivatore")
       .from("bi_dashboards")
       .update({
-        title: body.title?.trim() || current.title,
+        title: body.title ?? current.title,
         config,
       })
       .eq("id", current.id)
@@ -118,7 +102,7 @@ export async function PUT(request: NextRequest) {
       .insert({
         dashboard_id: current.id,
         scope,
-        user_id: user.id,
+        user_id: guard.user.id,
         action: "update",
         title: data.title,
         n_widgets: Array.isArray(config.widgets) ? config.widgets.length : 0,

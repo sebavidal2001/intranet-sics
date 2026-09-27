@@ -553,7 +553,7 @@ function ModelSelector({
             {description ?? "Modello usato da OpenRouter per la chat del preventivatore."}
           </p>
           <p className="text-xs text-text-muted mt-1">
-            Se OpenRouter non e disponibile, usa Gemini come fallback.
+            Se il modello scelto non risponde, la chat riprova con un modello di riserva (sempre su OpenRouter).
           </p>
         </div>
         <Button

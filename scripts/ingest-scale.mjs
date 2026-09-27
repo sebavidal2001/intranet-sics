@@ -12,7 +12,6 @@
 
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { readdirSync, statSync, readFileSync } from 'fs';
@@ -22,7 +21,7 @@ import { join, basename, extname } from 'path';
 const SOURCE_DIR = process.env.SOURCE_DIR;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const IS_TEST  = process.argv.includes('--test');
 const IS_DRY   = process.argv.includes('--dry');
 const IS_FORCE = process.argv.includes('--force'); // Cancella e re-indicizza documenti esistenti
@@ -31,20 +30,19 @@ const ONLY_CODE = (() => {
   const idx = process.argv.indexOf('--only');
   return idx !== -1 ? process.argv[idx + 1] : null;
 })();
-const EMBEDDING_DELAY_MS = 600; // Rate limiting Gemini
+const EMBEDDING_DELAY_MS = 600; // Rate limiting embedding
 const CATEGORIA = 'scale';
 
 // Cartelle da escludere
 const CARTELLE_ESCLUSE = ['S_25_128']; // SORMA 2023, fuori scope
 
-if (!SOURCE_DIR || !SUPABASE_URL || !SUPABASE_SERVICE_KEY || !GEMINI_API_KEY) {
+if (!SOURCE_DIR || !SUPABASE_URL || !SUPABASE_SERVICE_KEY || !OPENROUTER_API_KEY) {
   console.error('❌ Variabili mancanti nel file .env');
   process.exit(1);
 }
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-const genai = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -64,11 +62,22 @@ const parseNum = (value) => {
 
 const fmtNum = (value) => Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 
-/** Genera embedding con gemini-embedding-2 (3072 dim) */
+/**
+ * Embedding gemini-embedding-2 (3072 dim) via OpenRouter: tutta l'AI passa da lì
+ * dal 27/09/2026. I vettori sono identici a quelli calcolati prima via Google.
+ */
 async function getEmbedding(text) {
-  const model = genai.getGenerativeModel({ model: 'gemini-embedding-2' });
-  const result = await model.embedContent(text);
-  return result.embedding.values; // array di 3072 float
+  const res = await fetch('https://openrouter.ai/api/v1/embeddings', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'google/gemini-embedding-2-preview', input: text }),
+  });
+  const json = await res.json().catch(() => null);
+  const values = json?.data?.[0]?.embedding;
+  if (!res.ok || !Array.isArray(values) || values.length !== 3072) {
+    throw new Error(`Embedding OpenRouter non valido (HTTP ${res.status})`);
+  }
+  return values; // array di 3072 float
 }
 
 /**

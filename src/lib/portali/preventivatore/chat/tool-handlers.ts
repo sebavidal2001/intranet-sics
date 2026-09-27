@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCachedEmbedding } from "./embedding-cache";
 import { loadAiConfig } from "./config-cache";
+import { isStatoDocumento } from "@/lib/portali/preventivatore/stati";
 import type {
   DocumentoRow,
   ChunkRow,
@@ -15,10 +16,9 @@ import type {
 
 // Scope commerciale: normalizza i cliente_master_id visibili (lista vuota → UUID
 // impossibile, così il commerciale ristretto senza clienti vede 0 record).
-const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 function scopeIds(ids: string[] | null | undefined): string[] | null {
   if (!Array.isArray(ids)) return null;
-  return ids.length > 0 ? ids : [ZERO_UUID];
+  return ids;
 }
 
 // ─── Codici preventivo: separatore tollerante ────────────────────────────────
@@ -43,8 +43,11 @@ export function variantiCodice(codice: string): { conUnderscore: string; conSlas
 /** Filtro `.or()` PostgREST che matcha il codice in entrambe le notazioni. */
 function filtroCodiceOr(campo: string, codice: string, parziale = false): string {
   const { conUnderscore, conSlash } = variantiCodice(codice);
+  // Anche il codice così com'è scritto: i codici commessa del builder possono
+  // contenere `-` o `.` (es. `SIM-RIC-0927`), che le due varianti trasformano.
+  const esatto = codice.trim().toUpperCase().replace(/\s+/g, "_");
   const wrap = (s: string) => (parziale ? `%${escapeIlike(s)}%` : escapeIlike(s));
-  return `${campo}.ilike.${wrap(conUnderscore)},${campo}.ilike.${wrap(conSlash)}`;
+  return [...new Set([esatto, conUnderscore, conSlash])].map((v) => `${campo}.ilike.${wrap(v)}`).join(",");
 }
 
 // ─── Tool: list_preventivi ────────────────────────────────────────────────────
@@ -73,7 +76,7 @@ export async function toolListPreventivi(args: {
       .select("*", { count: "exact", head: true });
     if (scope) countQ = countQ.in("cliente_master_id", scope);
     if (args.cliente) countQ = countQ.ilike("cliente", `%${args.cliente}%`);
-    if (args.stato && ["pending", "ordinato", "rifiutato"].includes(args.stato))
+    if (args.stato && isStatoDocumento(args.stato))
       countQ = countQ.eq("stato", args.stato);
     if (args.categoria) countQ = countQ.eq("categoria", args.categoria);
     if (args.anno) countQ = countQ.eq("anno", args.anno);
@@ -101,12 +104,12 @@ export async function toolListPreventivi(args: {
     .schema("preventivatore")
     .from("documenti")
     .select(
-      "codice, cliente, stato, categoria, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, anno, tipo_prodotto"
+      "codice, cliente, stato, categoria, numero_offerta, data_offerta, importo_preventivo, importo_ordinato, anno, tipo_prodotto, data_consegna_richiesta, data_consegna_confermata, data_consegna_effettiva, giorni_consegna_offerti"
     );
 
   if (scope) q = q.in("cliente_master_id", scope);
   if (args.cliente) q = q.ilike("cliente", `%${args.cliente}%`);
-  if (args.stato && ["pending", "ordinato", "rifiutato"].includes(args.stato))
+  if (args.stato && isStatoDocumento(args.stato))
     q = q.eq("stato", args.stato);
   if (args.categoria) q = q.eq("categoria", args.categoria);
   if (args.anno) q = q.eq("anno", args.anno);
@@ -146,6 +149,7 @@ export async function toolListPreventivi(args: {
 export async function toolCercaSimili(args: {
   query: string;
   cliente?: string;
+  tipo?: "storico" | "generato";
   limite?: number;
 }, clienteIds: string[] | null = null): Promise<
   Array<{
@@ -161,7 +165,6 @@ export async function toolCercaSimili(args: {
 > {
   const limite = args.limite ?? 8;
   const adminClient = createAdminClient();
-  const scope = scopeIds(clienteIds);
 
   // Parametri configurabili (con fallback prudenti)
   const cfg = await loadAiConfig();
@@ -172,10 +175,14 @@ export async function toolCercaSimili(args: {
 
   const { data: chunks, error: rpcError } = await adminClient
     .schema("preventivatore")
-    .rpc("match_chunks", {
+    .rpc("match_chunks_scoped", {
       query_embedding: queryEmbedding,
       match_threshold: matchThreshold,
       match_count: matchCount,
+      p_cliente_ids: clienteIds,
+      p_cliente: args.cliente ?? null,
+      p_tipo: args.tipo ?? null,
+      p_escludi_documento: null,
     });
 
   if (rpcError) {
@@ -193,8 +200,6 @@ export async function toolCercaSimili(args: {
     .from("documenti")
     .select("id, codice, cliente, stato, importo_preventivo, data_offerta, data_consegna_richiesta, data_consegna_confermata, data_consegna_effettiva, giorni_consegna_offerti, numero_offerta, numero_preventivo, tipo_cartella")
     .in("id", docIds);
-  if (scope) docsQuery = docsQuery.in("cliente_master_id", scope);
-  if (args.cliente) docsQuery = docsQuery.ilike("cliente", `%${args.cliente}%`);
 
   const { data: documenti, error: docError } = await docsQuery;
   if (docError) {
@@ -231,7 +236,86 @@ export async function toolCercaSimili(args: {
     .slice(0, limite);
 }
 
+// ─── Lettura a pagine e filtri per documento ─────────────────────────────────
+// PostgREST restituisce al massimo 1.000 righe per richiesta: senza paginazione un
+// aggregato si calcola su un sottoinsieme arbitrario, in silenzio. E una lista di
+// id dentro `.in()` finisce nell'URL: con centinaia di documenti supera il limite
+// di nginx (8 KB) e la richiesta fallisce. Da qui le due helper.
+
+const PAGINA = 1_000;
+const TETTO_RIGHE = 20_000;
+const LOTTO_ID = 150;
+
+type RispostaPagina = { data: unknown[] | null; error: { message: string } | null };
+
+/** Legge tutte le pagine (ordine deterministico a cura del chiamante) fino al tetto. */
+async function tutteLePagine<T>(
+  pagina: (da: number, a: number) => PromiseLike<RispostaPagina>,
+  tetto = TETTO_RIGHE
+): Promise<{ righe: T[]; incompleto: boolean }> {
+  const righe: T[] = [];
+  for (let da = 0; da < tetto; da += PAGINA) {
+    const { data, error } = await pagina(da, da + PAGINA - 1);
+    if (error) throw new Error(error.message);
+    const blocco = (data ?? []) as T[];
+    righe.push(...blocco);
+    if (blocco.length < PAGINA) return { righe, incompleto: false };
+  }
+  return { righe, incompleto: true };
+}
+
+/** Esegue la query su lotti di id (per stare sotto il limite dell'URL) e unisce. */
+async function perLotti<T>(ids: string[], query: (lotto: string[]) => PromiseLike<RispostaPagina>): Promise<T[]> {
+  const risultati: T[] = [];
+  for (let i = 0; i < ids.length; i += LOTTO_ID) {
+    const { data, error } = await query(ids.slice(i, i + LOTTO_ID));
+    if (error) throw new Error(error.message);
+    risultati.push(...((data ?? []) as T[]));
+  }
+  return risultati;
+}
+
+type DocumentoMinimo = { id: string; codice: string | null; cliente: string | null };
+
+/**
+ * Documenti che rispettano scope e filtri. `null` = nessun filtro attivo: il
+ * chiamante interroga le righe direttamente, senza liste di id.
+ */
+async function documentiFiltrati(filtri: {
+  scope: string[] | null;
+  categoria?: string;
+  cliente?: string;
+  stato?: string;
+  codice?: string;
+}): Promise<DocumentoMinimo[] | null> {
+  const stato = filtri.stato && isStatoDocumento(filtri.stato) ? filtri.stato : undefined;
+  if (!filtri.scope && !filtri.categoria && !filtri.cliente && !stato && !filtri.codice) return null;
+  if (filtri.scope && filtri.scope.length === 0) return [];
+  const adminClient = createAdminClient();
+  const { righe } = await tutteLePagine<DocumentoMinimo>((da, a) => {
+    let q = adminClient.schema("preventivatore").from("documenti").select("id, codice, cliente");
+    if (filtri.scope) q = q.in("cliente_master_id", filtri.scope);
+    if (filtri.categoria) q = q.eq("categoria", filtri.categoria);
+    if (filtri.cliente) q = q.ilike("cliente", `%${escapeIlike(filtri.cliente)}%`);
+    if (stato) q = q.eq("stato", stato);
+    if (filtri.codice) q = q.or(filtroCodiceOr("codice", filtri.codice));
+    return q.order("id", { ascending: true }).range(da, a);
+  });
+  return righe;
+}
+
+/** Codice e cliente dei documenti citati nei risultati (pochi id, a lotti). */
+async function mappaDocumenti(ids: string[]): Promise<Map<string, DocumentoMinimo>> {
+  const adminClient = createAdminClient();
+  const unici = [...new Set(ids)];
+  const righe = await perLotti<DocumentoMinimo>(unici, (lotto) =>
+    adminClient.schema("preventivatore").from("documenti").select("id, codice, cliente").in("id", lotto));
+  return new Map(righe.map((d) => [d.id, d]));
+}
+
 // ─── Tool: cerca_articolo ─────────────────────────────────────────────────────
+// Cerca sia nelle righe strutturate (codice/descrizione: trova anche i preventivi
+// del builder) sia nel testo dei documenti storici.
 
 export async function toolCercaArticolo(args: {
   query: string;
@@ -240,64 +324,70 @@ export async function toolCercaArticolo(args: {
 }, clienteIds: string[] | null = null): Promise<Array<{ documento_id: string; codice: string | null; cliente: string | null; estratto: string }>> {
   const limite = Math.min(args.limite ?? 10, 20);
   const adminClient = createAdminClient();
-  const scope = scopeIds(clienteIds);
+  const documenti = await documentiFiltrati({ scope: scopeIds(clienteIds), codice: args.codice_preventivo });
+  if (documenti && documenti.length === 0) return [];
 
-  // Scope commerciale: la ricerca testuale legge `chunks` direttamente, che non
-  // ha `cliente_master_id`. Restringiamo prima ai documenti visibili dell'agente,
-  // poi filtriamo i chunk su quei documento_id (coerente con gli altri tool).
-  let docFilterIds: string[] | null = null;
-  if (scope) {
-    const { data: scopedDocs } = await adminClient
-      .schema("preventivatore")
-      .from("documenti")
-      .select("id")
-      .in("cliente_master_id", scope);
-    docFilterIds = (scopedDocs ?? []).map((d: { id: string }) => d.id);
-    if (docFilterIds.length === 0) return [];
+  const escaped = escapeIlike(args.query.trim());
+  const cercaRighe = (lotto: string[] | null) => {
+    let q = adminClient.schema("preventivatore").from("righe_distinta")
+      .select("documento_id, codice_articolo, descrizione")
+      .or(`codice_articolo.ilike.%${escaped}%,descrizione.ilike.%${escaped}%`);
+    if (lotto) q = q.in("documento_id", lotto);
+    // I più recenti prima: un codice comune compare in decine di preventivi, e
+    // chi chiede quasi sempre cerca il lavoro recente.
+    return q.order("created_at", { ascending: false }).order("id", { ascending: true }).limit(limite * 3);
+  };
+  const cercaChunk = (lotto: string[] | null) => {
+    let q = adminClient.schema("preventivatore").from("chunks")
+      .select("documento_id, contenuto, metadata")
+      .ilike("contenuto", `%${escaped}%`);
+    if (lotto) q = q.in("documento_id", lotto);
+    // I più recenti prima: un codice comune compare in decine di preventivi, e
+    // chi chiede quasi sempre cerca il lavoro recente.
+    return q.order("created_at", { ascending: false }).order("id", { ascending: true }).limit(limite * 3);
+  };
+
+  type RigaTrovata = { documento_id: string; codice_articolo: string | null; descrizione: string };
+  let righe: RigaTrovata[];
+  let chunks: ChunkSearchRow[];
+  if (documenti) {
+    const ids = documenti.map((d) => d.id);
+    [righe, chunks] = await Promise.all([perLotti<RigaTrovata>(ids, cercaRighe), perLotti<ChunkSearchRow>(ids, cercaChunk)]);
+  } else {
+    const [r, c] = await Promise.all([cercaRighe(null), cercaChunk(null)]);
+    if (r.error || c.error) throw new Error("Errore ricerca testo nei preventivi");
+    righe = (r.data ?? []) as RigaTrovata[];
+    chunks = (c.data ?? []) as ChunkSearchRow[];
   }
 
-  let q = adminClient
-    .schema("preventivatore")
-    .from("chunks")
-    .select("documento_id, contenuto, metadata")
-    .ilike("contenuto", `%${args.query}%`);
-
-  if (docFilterIds) q = q.in("documento_id", docFilterIds);
-  if (args.codice_preventivo)
-    // Tollerante al separatore: `C/25/25` trova anche `C_25_25` (e viceversa).
-    q = q.or(filtroCodiceOr("metadata->>codice_progetto", args.codice_preventivo));
-
-  const { data, error } = await q.limit(limite * 3);
-
-  if (error) {
-    console.error("cerca_articolo error:", error);
-    throw new Error("Errore ricerca testo nei preventivi");
-  }
-
-  const seen = new Set<string>();
-  const risultati: Array<{ documento_id: string; codice: string | null; cliente: string | null; estratto: string }> = [];
-
-  for (const chunk of (data ?? []) as ChunkSearchRow[]) {
-    const docId = chunk.documento_id;
-    if (seen.has(docId)) continue;
-    seen.add(docId);
-
-    const lines = chunk.contenuto.split("\n");
-    const queryLower = args.query.toLowerCase();
-    const matchLines = lines.filter(l => l.toLowerCase().includes(queryLower));
-    const estratto = (matchLines.length > 0 ? matchLines.slice(0, 4).join("\n") : lines.slice(0, 3).join("\n")).slice(0, 400);
-
-    risultati.push({
-      documento_id: docId,
-      codice: (chunk.metadata?.codice_progetto as string) ?? null,
-      cliente: (chunk.metadata?.cliente as string) ?? null,
-      estratto,
+  const docMap = documenti
+    ? new Map(documenti.map((d) => [d.id, d]))
+    : await mappaDocumenti([...righe.map((r) => r.documento_id), ...chunks.map((c) => c.documento_id)]);
+  const queryMinuscola = args.query.toLowerCase();
+  const risultati = new Map<string, { documento_id: string; codice: string | null; cliente: string | null; estratto: string }>();
+  for (const riga of righe) {
+    if (risultati.has(riga.documento_id)) continue;
+    const documento = docMap.get(riga.documento_id);
+    risultati.set(riga.documento_id, {
+      documento_id: riga.documento_id,
+      codice: documento?.codice ?? null,
+      cliente: documento?.cliente ?? null,
+      estratto: `${riga.codice_articolo ?? ""} ${riga.descrizione}`.trim().slice(0, 400),
     });
-
-    if (risultati.length >= limite) break;
   }
-
-  return risultati;
+  for (const chunk of chunks) {
+    if (risultati.has(chunk.documento_id)) continue;
+    const documento = docMap.get(chunk.documento_id);
+    const linee = chunk.contenuto.split("\n");
+    const pertinenti = linee.filter((linea) => linea.toLowerCase().includes(queryMinuscola));
+    risultati.set(chunk.documento_id, {
+      documento_id: chunk.documento_id,
+      codice: documento?.codice ?? (typeof chunk.metadata?.codice_progetto === "string" ? chunk.metadata.codice_progetto : null),
+      cliente: documento?.cliente ?? (typeof chunk.metadata?.cliente === "string" ? chunk.metadata.cliente : null),
+      estratto: (pertinenti.length ? pertinenti.slice(0, 4) : linee.slice(0, 3)).join("\n").slice(0, 400),
+    });
+  }
+  return [...risultati.values()].slice(0, limite);
 }
 
 // ─── Tool: query_righe_distinta ───────────────────────────────────────────────
@@ -312,42 +402,10 @@ export async function toolQueryRigheDistinta(args: {
 }, clienteIds: string[] | null = null): Promise<RigaDistintaRow[]> {
   const adminClient = createAdminClient();
   const limit = Math.min(args.limit ?? 10, 50);
-  const scope = scopeIds(clienteIds);
-
-  let docQ = adminClient.schema("preventivatore").from("documenti").select("id, codice, cliente");
-  if (scope) docQ = docQ.in("cliente_master_id", scope);
-  if (args.categoria)       docQ = docQ.eq("categoria", args.categoria);
-  if (args.filtro_cliente)  docQ = docQ.ilike("cliente", `%${args.filtro_cliente}%`);
-  if (args.filtro_stato && ["pending","ordinato","rifiutato"].includes(args.filtro_stato))
-    docQ = docQ.eq("stato", args.filtro_stato);
-
-  const { data: docs, error: docErr } = await docQ.limit(2000);
-  if (docErr || !docs || docs.length === 0) return [];
-
-  const docMap = new Map(
-    (docs as Array<{ id: string; codice: string; cliente: string | null }>).map(d => [d.id, d])
-  );
-  const docIds = Array.from(docMap.keys());
-
-  let q = adminClient
-    .schema("preventivatore")
-    .from("righe_distinta")
-    .select("codice_articolo, descrizione, prezzo_unitario, quantita, totale_riga, documento_id")
-    .in("documento_id", docIds)
-    .not("prezzo_unitario", "is", null);
-
-  if (args.modalita === "cerca_codice" && args.query) {
-    q = q.ilike("codice_articolo", `%${args.query}%`);
-  } else if (args.modalita === "cerca_descrizione" && args.query) {
-    q = q.ilike("descrizione", `%${args.query}%`);
-  }
-
-  if (args.modalita === "max_prezzo" || args.modalita === "top_costi") {
-    q = q.order("prezzo_unitario", { ascending: false, nullsFirst: false });
-  }
-
-  const { data: righe, error: righeErr } = await q.limit(limit * 5);
-  if (righeErr || !righe) return [];
+  const documenti = await documentiFiltrati({
+    scope: scopeIds(clienteIds), categoria: args.categoria, cliente: args.filtro_cliente, stato: args.filtro_stato,
+  });
+  if (documenti && documenti.length === 0) return [];
 
   type RigaRaw = {
     codice_articolo: string | null;
@@ -357,13 +415,43 @@ export async function toolQueryRigheDistinta(args: {
     totale_riga: number | null;
     documento_id: string;
   };
+  const perPrezzo = args.modalita === "max_prezzo" || args.modalita === "top_costi";
+  const cerca = (lotto: string[] | null) => {
+    let q = adminClient
+      .schema("preventivatore")
+      .from("righe_distinta")
+      .select("codice_articolo, descrizione, prezzo_unitario, quantita, totale_riga, documento_id")
+      .not("prezzo_unitario", "is", null);
+    if (lotto) q = q.in("documento_id", lotto);
+    if (args.modalita === "cerca_codice" && args.query) q = q.ilike("codice_articolo", `%${escapeIlike(args.query)}%`);
+    else if (args.modalita === "cerca_descrizione" && args.query) q = q.ilike("descrizione", `%${escapeIlike(args.query)}%`);
+    q = perPrezzo
+      ? q.order("prezzo_unitario", { ascending: false, nullsFirst: false }).order("id", { ascending: true })
+      : q.order("id", { ascending: true });
+    return q.limit(limit * 5);
+  };
+
+  let righe: RigaRaw[];
+  if (documenti) {
+    righe = await perLotti<RigaRaw>(documenti.map((d) => d.id), cerca);
+    if (perPrezzo) righe.sort((a, b) => (b.prezzo_unitario ?? 0) - (a.prezzo_unitario ?? 0));
+    righe = righe.slice(0, limit * 5);
+  } else {
+    const { data, error } = await cerca(null);
+    if (error) throw new Error("Errore lettura righe distinta");
+    righe = (data ?? []) as RigaRaw[];
+  }
+  if (righe.length === 0) return [];
+
+  const docMap = documenti ? new Map(documenti.map((d) => [d.id, d])) : await mappaDocumenti(righe.map((r) => r.documento_id));
 
   if (args.modalita === "top_costi") {
     const byCode = new Map<string, RigaDistintaRow>();
-    for (const r of righe as RigaRaw[]) {
+    for (const r of righe) {
       const key = r.codice_articolo ?? r.descrizione.slice(0, 40);
       const doc = docMap.get(r.documento_id);
-      if (!byCode.has(key) || (r.prezzo_unitario ?? 0) > (byCode.get(key)!.prezzo_unitario ?? 0)) {
+      const esistente = byCode.get(key);
+      if (!esistente || (r.prezzo_unitario ?? 0) > (esistente.prezzo_unitario ?? 0)) {
         byCode.set(key, {
           codice_articolo: r.codice_articolo,
           descrizione: r.descrizione,
@@ -372,11 +460,10 @@ export async function toolQueryRigheDistinta(args: {
           totale_riga: r.totale_riga,
           codice_preventivo: doc?.codice ?? null,
           cliente: doc?.cliente ?? null,
-          n_utilizzi: (byCode.get(key)?.n_utilizzi ?? 0) + 1,
+          n_utilizzi: (esistente?.n_utilizzi ?? 0) + 1,
         });
       } else {
-        const existing = byCode.get(key)!;
-        existing.n_utilizzi++;
+        esistente.n_utilizzi++;
       }
     }
     return Array.from(byCode.values())
@@ -384,7 +471,7 @@ export async function toolQueryRigheDistinta(args: {
       .slice(0, limit);
   }
 
-  return (righe as RigaRaw[]).slice(0, limit).map(r => {
+  return righe.slice(0, limit).map((r) => {
     const doc = docMap.get(r.documento_id);
     return {
       codice_articolo: r.codice_articolo,
@@ -400,82 +487,65 @@ export async function toolQueryRigheDistinta(args: {
 }
 
 // ─── Tool: top_articoli ───────────────────────────────────────────────────────
+// Conta in quanti preventivi compare ogni codice articolo, dalle righe di
+// distinta (prima si estraevano i codici dal testo dei chunk con una regex, e
+// su una sola pagina di 1.000 chunk).
 
 export async function toolTopArticoli(args: {
   categoria?: string;
   top_n?: number;
   filtro_cliente?: string;
   filtro_stato?: string;
-}, clienteIds: string[] | null = null): Promise<TopArticoloRow[]> {
+}, clienteIds: string[] | null = null): Promise<TopArticoloRow[] | { risultati: TopArticoloRow[]; incompleto: true }> {
   const adminClient = createAdminClient();
   const topN = Math.min(args.top_n ?? 10, 30);
-  const scope = scopeIds(clienteIds);
+  const documenti = await documentiFiltrati({
+    scope: scopeIds(clienteIds), categoria: args.categoria, cliente: args.filtro_cliente, stato: args.filtro_stato,
+  });
+  if (documenti && documenti.length === 0) return [];
 
-  let docQ = adminClient
+  type RigaCodice = { documento_id: string; codice_articolo: string; descrizione: string | null };
+  const base = () => adminClient
     .schema("preventivatore")
-    .from("documenti")
-    .select("id");
-  if (scope) docQ = docQ.in("cliente_master_id", scope);
-  if (args.categoria) docQ = docQ.eq("categoria", args.categoria);
-  if (args.filtro_cliente) docQ = docQ.ilike("cliente", `%${args.filtro_cliente}%`);
-  if (args.filtro_stato && ["pending", "ordinato", "rifiutato"].includes(args.filtro_stato))
-    docQ = docQ.eq("stato", args.filtro_stato);
+    .from("righe_distinta")
+    .select("documento_id, codice_articolo, descrizione")
+    .not("codice_articolo", "is", null)
+    .neq("codice_articolo", "");
 
-  const { data: docs, error: docErr } = await docQ.limit(1000);
-  if (docErr || !docs || docs.length === 0) return [];
-
-  const docIds = docs.map((d: { id: string }) => d.id);
-
-  const { data: chunks, error: chunkErr } = await adminClient
-    .schema("preventivatore")
-    .from("chunks")
-    .select("documento_id, contenuto")
-    .in("documento_id", docIds);
-
-  if (chunkErr || !chunks) return [];
-
-  const CODE_REGEX =
-    /(?<![./\w])(\d{5,9})(?![\d./])|([A-Z]{2,}(?:\.[A-Z0-9]+){2,})(?![A-Z0-9.])/g;
-
-  const articleMap = new Map<string, { docIds: Set<string>; descrizione: string }>();
-
-  for (const chunk of chunks as Array<{ documento_id: string; contenuto: string }>) {
-    const docId = chunk.documento_id;
-    const lines = chunk.contenuto.split("\n");
-
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line || line.length < 4) continue;
-      if (/^(TOTALE|PREZZO|OFFERTA|CLIENTE|DATA|NOTE|OGGETTO|PROGETTO|\s*[-=]{3,})/i.test(line)) continue;
-
-      CODE_REGEX.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = CODE_REGEX.exec(line)) !== null) {
-        const codice = (match[1] ?? match[2]).trim();
-        if (!codice) continue;
-
-        const afterCode = line.slice((match.index ?? 0) + codice.length).replace(/^[\s|:;,]+/, "").slice(0, 60).trim();
-        const descrizione = afterCode || line.slice(0, 60).trim();
-
-        if (!articleMap.has(codice)) {
-          articleMap.set(codice, { docIds: new Set(), descrizione });
-        }
-        articleMap.get(codice)!.docIds.add(docId);
-        const cur = articleMap.get(codice)!;
-        if (descrizione.length > cur.descrizione.length) cur.descrizione = descrizione;
-      }
+  let righe: RigaCodice[];
+  let incompleto = false;
+  if (documenti) {
+    righe = [];
+    const ids = documenti.map((d) => d.id);
+    for (let i = 0; i < ids.length; i += LOTTO_ID) {
+      const lotto = ids.slice(i, i + LOTTO_ID);
+      const letto = await tutteLePagine<RigaCodice>((da, a) => base().in("documento_id", lotto).order("id", { ascending: true }).range(da, a));
+      righe.push(...letto.righe);
+      incompleto ||= letto.incompleto;
     }
+  } else {
+    const letto = await tutteLePagine<RigaCodice>((da, a) => base().order("id", { ascending: true }).range(da, a), 100_000);
+    righe = letto.righe;
+    incompleto = letto.incompleto;
   }
 
-  return Array.from(articleMap.entries())
-    .map(([codice, v]) => ({
-      codice,
-      n_preventivi: v.docIds.size,
-      esempio_descrizione: v.descrizione.slice(0, 80),
-    }))
+  const articoli = new Map<string, { docIds: Set<string>; descrizione: string }>();
+  for (const riga of righe) {
+    const codice = riga.codice_articolo.trim();
+    if (!codice) continue;
+    const voce = articoli.get(codice) ?? { docIds: new Set<string>(), descrizione: "" };
+    voce.docIds.add(riga.documento_id);
+    const descrizione = (riga.descrizione ?? "").trim();
+    if (descrizione.length > voce.descrizione.length) voce.descrizione = descrizione;
+    articoli.set(codice, voce);
+  }
+
+  const risultati = Array.from(articoli.entries())
+    .map(([codice, v]) => ({ codice, n_preventivi: v.docIds.size, esempio_descrizione: v.descrizione.slice(0, 80) }))
     .filter((r) => r.n_preventivi >= 2)
-    .sort((a, b) => b.n_preventivi - a.n_preventivi)
+    .sort((a, b) => b.n_preventivi - a.n_preventivi || a.codice.localeCompare(b.codice))
     .slice(0, topN);
+  return incompleto ? { risultati, incompleto: true } : risultati;
 }
 
 // ─── Tool: aggrega_preventivi ─────────────────────────────────────────────────
@@ -489,33 +559,25 @@ export async function toolAggregatPreventivi(args: {
   filtro_importo_min?: number;
   filtro_importo_max?: number;
   limit?: number;
-}, clienteIds: string[] | null = null): Promise<AggRow[]> {
+}, clienteIds: string[] | null = null): Promise<AggRow[] | { risultati: AggRow[]; incompleto: true }> {
   const adminClient = createAdminClient();
   const scope = scopeIds(clienteIds);
 
-  let q = adminClient
-    .schema("preventivatore")
-    .from("documenti")
-    .select("stato, cliente, categoria, importo_preventivo, importo_ordinato, data_offerta, codice, anno, numero_offerta");
-
-  if (scope) q = q.in("cliente_master_id", scope);
-  if (args.filtro_stato && ["pending", "ordinato", "rifiutato"].includes(args.filtro_stato))
-    q = q.eq("stato", args.filtro_stato);
-  if (args.filtro_cliente)
-    q = q.ilike("cliente", `%${args.filtro_cliente}%`);
-  if (args.filtro_anno) {
-    q = q.eq("anno", args.filtro_anno);
+  const rows: DocumentoRow[] = [];
+  for (let da = 0; da < 20_000; da += 1_000) {
+    let q = adminClient.schema("preventivatore").from("documenti").select("stato, cliente, categoria, importo_preventivo, importo_ordinato, data_offerta, codice, anno, numero_offerta");
+    if (scope) q = q.in("cliente_master_id", scope);
+    if (args.filtro_stato && isStatoDocumento(args.filtro_stato)) q = q.eq("stato", args.filtro_stato);
+    if (args.filtro_cliente) q = q.ilike("cliente", `%${escapeIlike(args.filtro_cliente)}%`);
+    if (args.filtro_anno) q = q.eq("anno", args.filtro_anno);
+    if (typeof args.filtro_importo_min === "number") q = q.gte("importo_preventivo", args.filtro_importo_min);
+    if (typeof args.filtro_importo_max === "number") q = q.lte("importo_preventivo", args.filtro_importo_max);
+    const pagina = await q.order("codice", { ascending: true }).range(da, da + 999);
+    if (pagina.error) throw new Error("Errore aggregazione dati");
+    rows.push(...(pagina.data ?? []) as DocumentoRow[]);
+    if ((pagina.data ?? []).length < 1_000) break;
   }
-  if (typeof args.filtro_importo_min === "number") q = q.gte("importo_preventivo", args.filtro_importo_min);
-  if (typeof args.filtro_importo_max === "number") q = q.lte("importo_preventivo", args.filtro_importo_max);
-
-  const { data, error } = await q.limit(2000);
-  if (error) {
-    console.error("aggrega_preventivi error:", error);
-    throw new Error("Errore aggregazione dati");
-  }
-
-  const rows = (data ?? []) as DocumentoRow[];
+  const incompleto = rows.length >= 20_000;
   const groupMap = new Map<string, { count: number; sumImp: number; sumOrd: number; cntOrd: number }>();
 
   for (const row of rows) {
@@ -558,7 +620,7 @@ export async function toolAggregatPreventivi(args: {
   const metrica = args.metrica ?? "count";
   const limit = Math.min(args.limit ?? 20, 50);
 
-  return Array.from(groupMap.entries())
+  const risultati = Array.from(groupMap.entries())
     .map(([gruppo, v]) => ({
       gruppo,
       count: v.count,
@@ -573,6 +635,7 @@ export async function toolAggregatPreventivi(args: {
       return b.count - a.count;
     })
     .slice(0, limit);
+  return incompleto ? { risultati, incompleto: true } : risultati;
 }
 
 // ─── Tool: dettaglio_preventivo ───────────────────────────────────────────────

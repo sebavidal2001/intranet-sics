@@ -1,5 +1,7 @@
 // ─── Shared types for the preventivatore chat route ──────────────────────────
 
+import type { TOOL_DEFINITIONS } from "./tool-definitions";
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -12,6 +14,8 @@ export interface ChatMessage {
 export interface BuilderStateForChat {
   titolo: string | null;
   cliente: {
+    /** clienti_master.id: serve allo scope commerciale degli esempi di scheda. */
+    id?: string | null;
     ragione_sociale: string;
     piva: string | null;
     citta: string | null;
@@ -71,6 +75,10 @@ export interface DocumentoRow {
   data_offerta: string | null;
   importo_preventivo: number | null;
   importo_ordinato: number | null;
+  data_consegna_richiesta?: string | null;
+  data_consegna_confermata?: string | null;
+  data_consegna_effettiva?: string | null;
+  giorni_consegna_offerti?: number | null;
 }
 
 export interface ChunkRow {
@@ -136,28 +144,31 @@ export interface DettaglioRow {
   n_chunks: number;
 }
 
-export type ToolName =
-  | "list_preventivi"
-  | "cerca_simili"
-  | "cerca_articolo"
-  | "aggrega_preventivi"
-  | "top_articoli"
-  | "query_righe_distinta"
-  | "dettaglio_preventivo"
-  | "analisi_preventivi_sql";
+export type ToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
+
+export interface FonteTool {
+  tool: ToolName;
+  n: number;
+}
+
+export interface ChatUsage {
+  provider: "openrouter";
+  model: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  cost: number | null;
+  currency: "usd";
+  source: "exact" | "estimated";
+}
 
 export interface ChatHandlerResult {
   risposta: string;
   tool_usato: ToolName | null;
-  risultati: unknown[] | null;
-  usage?: {
-    provider: "openrouter";
-    model: string;
-    prompt_tokens: number | null;
-    completion_tokens: number | null;
-    total_tokens: number | null;
-    cost: number | null;
-    currency: "usd";
-    source: "exact";
-  } | null;
+  risultati: unknown;
+  fonti: FonteTool[];
+  provider: "openrouter";
+  modello: string;
+  fallback: boolean;
+  usage?: ChatUsage | null;
 }

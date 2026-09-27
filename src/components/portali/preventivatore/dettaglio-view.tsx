@@ -2,12 +2,15 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, FileText, Package, Hammer, StickyNote, Tag, Sparkles, ExternalLink, Wand2, Loader2, Pencil, TrendingUp, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DocumentoWordDialog } from "./documento-word-dialog";
 import { MarkdownLight } from "./markdown-light";
 import { CorreggiTotaliDialog } from "./correggi-totali-dialog";
 import { ConfermaDefinitivo } from "./conferma-definitivo";
+import { SchedaTecnicaDialog } from "./scheda-tecnica-dialog";
+import type { BuilderState } from "./nuovo-view-types";
 import { formattaNomeCliente, capitalizzaDescrizione } from "@/lib/portali/preventivatore/testo";
 import { badgeStato, STATI_NON_MODIFICABILI } from "@/lib/portali/preventivatore/stati";
 import {
@@ -125,9 +128,10 @@ function buildTotalsView(totals: Record<string, { raw: number; ceil_2: number }>
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDettaglio }) {
+  const router = useRouter();
   const { documento, chunks, righe_distinta, motivo_rifiuto_label } = dettaglio;
   const blocchiTable = useMemo(() => dettaglio.blocchi ?? [], [dettaglio.blocchi]);
-  const modificabile = !STATI_NON_MODIFICABILI.includes(documento.stato);
+  const modificabile = !(STATI_NON_MODIFICABILI as readonly string[]).includes(documento.stato);
 
   // Preventivo generato dal builder: la distinta vive nelle tabelle blocchi +
   // righe_distinta (non nei chunk excel). Lo rendiamo con un percorso dedicato
@@ -227,6 +231,77 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
   const [riassuntoLoading, setRiassuntoLoading] = useState(false);
   const [riassuntoError, setRiassuntoError] = useState<string | null>(null);
   const [correggiOpen, setCorreggiOpen] = useState(false);
+  const [schedaOpen, setSchedaOpen] = useState(false);
+
+  const builderState = useMemo<BuilderState>(() => {
+    const blocchi = blocchiTable.map((blocco, index) => {
+      const key = blocco.codice_blocco ?? blocco.sheet_name ?? "—";
+      const righe = righePerBlocco.get(key) ?? [];
+      const articoli = righe.filter((r) => r.tipo_riga !== "manodopera").map((r) => {
+        const qty = toNum(r.quantita) ?? 0;
+        const costo = toNum(r.prezzo_unitario) ?? 0;
+        const coeff = toNum(r.ricarico_coefficiente) ?? toNum(r.ricarico_pct) ?? 1;
+        return {
+          codice: r.codice_articolo ?? "",
+          descrizione: r.descrizione,
+          qty,
+          ult_costo: costo,
+          coeff_ricarico: coeff,
+          netto: toNum(r.totale_riga) ?? (coeff > 0 ? costo * qty / coeff : 0),
+        };
+      });
+      const lavorazioni = righe.filter((r) => r.tipo_riga === "manodopera").map((r) => {
+        const ore = toNum(r.quantita) ?? 0;
+        const tariffa = toNum(r.prezzo_unitario) ?? 0;
+        const coeff = toNum(r.ricarico_coefficiente) ?? toNum(r.ricarico_pct) ?? 1;
+        return {
+          nome: r.descrizione,
+          categoria: "",
+          ore,
+          tariffa_ora: tariffa,
+          coeff_ricarico: coeff,
+          totale: toNum(r.totale_riga) ?? (coeff > 0 ? tariffa * ore / coeff : 0),
+          scala_con_quantita: r.scala_con_quantita ?? true,
+        };
+      });
+      const totaleMateriali = articoli.reduce((somma, r) => somma + r.netto, 0);
+      const totaleServizi = lavorazioni.reduce((somma, r) => somma + r.totale, 0);
+      return {
+        numero: index + 1,
+        // Per i blocchi del builder `sheet_name` vale sempre "builder": il nome
+        // vero del blocco è `codice_blocco`.
+        tipo: blocco.codice_blocco ?? "Blocco",
+        nome: blocco.codice_blocco ?? `Blocco ${index + 1}`,
+        note: blocco.note ?? "",
+        quantita_pezzi: blocco.quantita_pezzi ?? 1,
+        articoli,
+        lavorazioni,
+        totale_materiali: totaleMateriali,
+        totale_servizi: totaleServizi,
+        totale_blocco: totaleMateriali + totaleServizi,
+      };
+    });
+    const articoli = blocchi.flatMap((b) => b.articoli);
+    const materiali = blocchi.reduce((somma, b) => somma + b.totale_materiali, 0);
+    const servizi = blocchi.reduce((somma, b) => somma + b.totale_servizi, 0);
+    return {
+      titolo: documento.tipo_prodotto ?? documento.categoria ?? documento.codice,
+      cliente: documento.cliente
+        ? { id: documento.cliente_master_id ?? null, ragione_sociale: documento.cliente, piva: null, citta: null, provincia: null }
+        : null,
+      data_consegna: null,
+      blocchi,
+      totali: {
+        materiali,
+        servizi,
+        netto_totale: materiali + servizi,
+        n_blocchi: blocchi.length,
+        n_articoli: articoli.length,
+        ore_totali: blocchi.flatMap((b) => b.lavorazioni).reduce((somma, r) => somma + r.ore, 0),
+        coeff_ricarico_medio: articoli.length > 0 ? articoli.reduce((somma, r) => somma + r.coeff_ricarico, 0) / articoli.length : 0,
+      },
+    };
+  }, [blocchiTable, righePerBlocco, documento]);
 
   // Chunks word commerciale (non note) per il pulsante "Apri documento" e per il riassunto AI
   const wordCommerciali = useMemo(
@@ -292,16 +367,30 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
             Crea preventivo da questa base
           </Link>
         </Button>
-        <Button
-          onClick={() => setCorreggiOpen(true)}
-          variant="outline"
-          size="sm"
-          className="gap-1.5 text-[#007a91] border-[#00a1be]/30 hover:bg-[#00a1be]/5"
-          title="Correggi totali (richiede livello admin/exporter)"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-          Correggi totali
-        </Button>
+        {dettaglio.puo_modificare && (
+          <Button
+            onClick={() => setCorreggiOpen(true)}
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-[#007a91] border-[#00a1be]/30 hover:bg-[#00a1be]/5"
+            title="Correggi i totali del preventivo"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Correggi totali
+          </Button>
+        )}
+        {documento.tipo === "generato" && dettaglio.puo_modificare && (
+          <Button
+            onClick={() => setSchedaOpen(true)}
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-[#007a91] border-[#00a1be]/40 hover:bg-[#00a1be]/5"
+            title="Genera la scheda tecnica da questo preventivo"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Scheda tecnica
+          </Button>
+        )}
       </div>
 
       <CorreggiTotaliDialog
@@ -311,7 +400,12 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
         codice={documento.codice}
         chunks={chunks}
         importoCorrente={typeof documento.importo_preventivo === "number" ? documento.importo_preventivo : null}
-        onSaved={() => window.location.reload()}
+        onSaved={() => router.refresh()}
+      />
+      <SchedaTecnicaDialog
+        open={schedaOpen}
+        onClose={() => setSchedaOpen(false)}
+        builderState={builderState}
       />
 
       {/* ── Header card ── */}

@@ -5,7 +5,6 @@ export const env = {
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   },
   ai: {
-    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
     openrouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
     openrouterModel: process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4-5",
     openrouterBaseUrl: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",

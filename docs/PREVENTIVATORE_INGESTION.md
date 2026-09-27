@@ -36,9 +36,12 @@ DB Supabase: documenti, chunks (+embedding), righe_distinta, blocchi
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://...supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
-GEMINI_API_KEY=AIza...           # embedding + chat AI
-OPENROUTER_API_KEY=sk-or-...     # fallback embedding + chat AI
+OPENROUTER_API_KEY=sk-or-...     # tutta l'AI: embedding, chat, schede, riassunti
 ```
+
+Dal 27/09/2026 **non serve più `GEMINI_API_KEY`**: anche l'embedding passa da
+OpenRouter (`google/gemini-embedding-2-preview`), che restituisce vettori identici
+a quelli calcolati prima via Google (verificato: coseno 1,00000).
 
 ## 4. Comandi essenziali
 

@@ -1,4 +1,4 @@
-// ─── Tool definitions shared between Gemini and OpenRouter handlers ───────────
+// ─── Definizioni dei tool della chat (formato OpenRouter / JSON Schema) ────────
 
 export const TOOL_LIST_PREVENTIVI_DEF = {
   name: "list_preventivi",
@@ -9,7 +9,7 @@ export const TOOL_LIST_PREVENTIVI_DEF = {
     "I record restituiti includono anche le date di consegna (data_consegna_richiesta/confermata/effettiva, giorni_consegna_offerti): se l'utente chiede 'tempi di consegna' e i campi sono NULL, dichiaralo esplicitamente come 'dato non popolato' invece di dire che il campo non esiste.",
   parameters_obj: {
     cliente:      { type: "string",  description: "Nome cliente, es. ALPHAMAC" },
-    stato:        { type: "string",  description: "Stato: pending, ordinato o rifiutato" },
+    stato:        { type: "string", enum: ["storico", "aperta", "completato"], description: "Stato: storico, aperta o completato" },
     categoria:    { type: "string",  description: "Categoria prodotto, es. scale, nastri, protezioni, strutture" },
     anno:         { type: "number",  description: "Anno di riferimento, es. 2024" },
     importo_min:  { type: "number",  description: "Filtra preventivi con importo_preventivo >= importo_min (€)" },
@@ -29,6 +29,7 @@ export const TOOL_CERCA_SIMILI_DEF = {
   parameters_obj: {
     query:   { type: "string", description: "Codici articolo e/o descrizione tecnica da cercare semanticamente. Se l'utente sta replicando un blocco, elenca i codici articolo esatti." },
     cliente: { type: "string", description: "Filtro opzionale per cliente" },
+    tipo:    { type: "string", enum: ["storico", "generato"], description: "Tipo documento opzionale: storico o generato" },
     limite:  { type: "number", description: "Max blocchi da restituire, default 8" },
   },
   required: ["query"] as string[],
@@ -53,7 +54,7 @@ export const TOOL_AGGREGA_DEF = {
   parameters_obj: {
     group_by:           { type: "string", description: "Dimensione di raggruppamento: stato | cliente | categoria | anno | mese" },
     metrica:            { type: "string", description: "Metrica di ordinamento: count (default) | sum_importo | avg_importo | tasso_ordinato" },
-    filtro_stato:       { type: "string", description: "Filtra per stato: pending, ordinato, rifiutato" },
+    filtro_stato:       { type: "string", enum: ["storico", "aperta", "completato"], description: "Filtra per stato: storico, aperta, completato" },
     filtro_cliente:     { type: "string", description: "Filtra per nome cliente (ricerca parziale)" },
     filtro_anno:        { type: "number", description: "Filtra per anno, es. 2024" },
     filtro_importo_min: { type: "number", description: "Filtra preventivi con importo_preventivo >= valore" },
@@ -93,7 +94,7 @@ export const TOOL_TOP_ARTICOLI_DEF = {
     categoria:       { type: "string", description: "Categoria dei preventivi da analizzare, es. 'scale', 'ballatoi'. Se omessa analizza tutto." },
     top_n:           { type: "number", description: "Numero di articoli da restituire, default 10, max 30" },
     filtro_cliente:  { type: "string", description: "Filtra per cliente (ricerca parziale)" },
-    filtro_stato:    { type: "string", description: "Filtra per stato: pending, ordinato, rifiutato" },
+    filtro_stato:    { type: "string", enum: ["storico", "aperta", "completato"], description: "Filtra per stato: storico, aperta, completato" },
   },
   required: [] as string[],
 };
@@ -148,7 +149,7 @@ export const TOOL_ANALISI_SQL_DEF = {
     anno: { type: "number", description: "Anno filtro, es. 2026" },
     anno_a: { type: "number", description: "Primo anno per confronta_anni" },
     anno_b: { type: "number", description: "Secondo anno per confronta_anni" },
-    stato: { type: "string", description: "Filtro stato: pending, ordinato, rifiutato" },
+    stato: { type: "string", enum: ["storico", "aperta", "completato"], description: "Filtro stato: storico, aperta, completato" },
     cliente: { type: "string", description: "Filtro cliente, ricerca parziale" },
     categoria: { type: "string", description: "Filtro categoria, es. nastri, protezioni, scale" },
     tipo_prodotto: { type: "string", description: "Filtro tipo prodotto" },
@@ -224,9 +225,8 @@ export const TOOL_ANALISI_MARGINI_DEF = {
 export const TOOL_HIT_RATE_DEF = {
   name: "hit_rate",
   description:
-    "Hit-rate commerciale: per cliente×categoria, conta preventivi totali, ordinati, falliti, pending; calcola hit_rate_pct = ordinati / (ordinati+falliti) * 100. " +
-    "Considera sia gli stati legacy ('ordinato'/'rifiutato') sia i workflow nuovo ('ordinata'/'fallita'). " +
-    "Filtro temporale su `data_offerta` parsata. Usare per: 'qual è il nostro tasso di conversione su ALPHAMAC?', 'su quali categorie ordinano di più i clienti?', 'hit-rate ultimi 12 mesi'.",
+    "Analisi esclusivamente storica dell'hit-rate sui documenti importati che conservano un esito commerciale. I preventivi correnti non registrano più ordinato/rifiutato, quindi il risultato non rappresenta il workflow attuale. " +
+    "Per cliente×categoria calcola gli esiti disponibili nel patrimonio storico. Filtro temporale su `data_offerta` parsata.",
   parameters_obj: {
     cliente:   { type: "string", description: "Filtro cliente parziale" },
     categoria: { type: "string", description: "Filtro categoria parziale" },
@@ -276,12 +276,33 @@ export const TOOL_TREND_MENSILE_DEF = {
   required: [] as string[],
 };
 
+/** Fonte unica dell'elenco tool, usata dai provider e dal tipo `ToolName`. */
+export const TOOL_DEFINITIONS = [
+  TOOL_LIST_PREVENTIVI_DEF,
+  TOOL_CERCA_SIMILI_DEF,
+  TOOL_CERCA_ARTICOLO_DEF,
+  TOOL_AGGREGA_DEF,
+  TOOL_QUERY_RIGHE_DEF,
+  TOOL_TOP_ARTICOLI_DEF,
+  TOOL_DETTAGLIO_DEF,
+  TOOL_ANALISI_SQL_DEF,
+  TOOL_ANOMALIE_DEF,
+  TOOL_CERCA_ARTICOLO_ANAGRAFICA_DEF,
+  TOOL_LISTINO_SERVIZI_DEF,
+  TOOL_STORIA_PREZZI_ARTICOLO_DEF,
+  TOOL_ANALISI_MARGINI_DEF,
+  TOOL_HIT_RATE_DEF,
+  TOOL_INFO_CLIENTE_DEF,
+  TOOL_ARTICOLI_ASSOCIATI_DEF,
+  TOOL_TREND_MENSILE_DEF,
+] as const;
+
 // ─── Fallback constants (used if the row is missing in ai_config) ─────────────
 
 export const SICS_KNOWLEDGE_FALLBACK =
   "=== PROFILO AZIENDA SICS ===\n" +
-  "Ragione sociale: SICS by Airfluid s.r.l.\n" +
-  "Sede: Via Fornace 26, Castel Guelfo (BO) 40023, Italia | Tel: +39 0542 670840 | info@s-ics.com | www.s-ics.com\n" +
+  "Ragione sociale: Airfluid s.r.l.\n" +
+  "Sede: via Fornace 26 – z.i. Poggio Piccolo, 40023 Castel Guelfo (BO), Italia | Tel: +39 0542 670 543 | s-ics@s-ics.com | www.s-ics.com\n" +
   "P.IVA: 00683421200 | Fondata: 1990 (35+ anni di esperienza)\n" +
   "Claim aziendale: 'Create to Solve'\n" +
   "Certificazione: ISO 9001:2024\n" +

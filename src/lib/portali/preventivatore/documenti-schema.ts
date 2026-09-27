@@ -47,6 +47,8 @@ export const PostBodySchema = z.object({
   margine_trattativa_pct: PCT.optional(),
   // Tempo cronometrato nel builder (secondi). Cap a 30 giorni di lavoro attivo.
   tempo_preventivazione_sec: z.number().int().min(0).max(2_592_000).optional(),
+  // Lock ottimistico: valorizzato dalla GET quando il builder modifica un documento.
+  _versione_attesa: z.string().datetime({ offset: true }).optional(),
   // Codice commessa inserito dall'utente (sostituisce il vecchio progressivo G).
   // Permissivo: lettere/cifre/._-/ (accetta anche i vecchi codici G_/S_/C_ per la
   // retrocompatibilità del path di modifica). Obbligo di presenza imposto dalla

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
-import { PORTALE_SLUGS } from "@/lib/config/portali";
-import { getFiltroCommerciale, getIdClientiVisibili } from "@/lib/portali/preventivatore/ruoli";
+import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
+import { requireDocumentoVisibile } from "@/lib/portali/preventivatore/documento-visibile";
 import { logError, logWarn } from "@/lib/logger";
 import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
@@ -28,48 +26,7 @@ const PROMPT_SISTEMA =
   "- Sii conciso ma completo: ogni sezione ha valore informativo, niente fluff.\n" +
   "- Usa terminologia tecnica SICS (ballatoio, nastro, profilato, motoriduttore, ecc.) come la usano nei documenti.";
 
-async function callGemini(testoDocumenti: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY non configurata");
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  const body = {
-    systemInstruction: { parts: [{ text: PROMPT_SISTEMA }] },
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: `Documenti del preventivo da riassumere:\n\n${testoDocumenti}` }],
-      },
-    ],
-    generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 1500,
-    },
-  };
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    const msg = (json?.error?.message as string) ?? JSON.stringify(json).slice(0, 300);
-    throw new Error(`Gemini HTTP ${res.status}: ${msg}`);
-  }
-
-  type GeminiResp = {
-    candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> };
-    }>;
-  };
-  const g = json as GeminiResp;
-  const text = g.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-  if (!text.trim()) throw new Error("Gemini ha restituito una risposta vuota");
-  return text.trim();
-}
-
-async function callOpenRouter(testoDocumenti: string): Promise<string> {
+async function callOpenRouter(testoDocumenti: string, modello: string): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY non configurata");
 
@@ -82,7 +39,7 @@ async function callOpenRouter(testoDocumenti: string): Promise<string> {
       "X-Title": "SICS preventivatore riassumi",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: modello,
       messages: [
         { role: "system", content: PROMPT_SISTEMA },
         { role: "user", content: `Documenti del preventivo da riassumere:\n\n${testoDocumenti}` },
@@ -110,16 +67,20 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
   }
 
   try {
-    // Auth + portale
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-    const livello = await getPortaleAccesso(supabase, user.id, PORTALE_SLUGS.PREVENTIVATORE);
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const { user, ctx: authCtx } = guard;
 
     const rl = checkRateLimit(`ai-riassumi:${user.id}`, { limit: 20, windowMs: 60_000 });
     if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
+
+    const visibilita = await requireDocumentoVisibile(
+      { userId: user.id, livello: authCtx.livello },
+      id,
+    );
+    if (!visibilita.ok) {
+      return NextResponse.json({ error: visibilita.error }, { status: visibilita.status });
+    }
 
     // Fetch dei chunks Word del documento (preventivo commerciale + note)
     const sb = createAdminClient();
@@ -135,14 +96,6 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
     // Scope commerciale: senza questo controllo bastava conoscere un UUID per
     // farsi riassumere dall'AI un preventivo di un cliente fuori portfolio —
     // la lettura qui usa l'admin client, quindi RLS e grant non filtrano nulla.
-    const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
-    if (agenteCommerciale && docRow.cliente_master_id) {
-      const idsVisibili = await getIdClientiVisibili(agenteCommerciale);
-      if (!idsVisibili.includes(docRow.cliente_master_id as string)) {
-        return NextResponse.json({ error: "Documento fuori dal tuo portfolio" }, { status: 403 });
-      }
-    }
-
     const { data: wordChunks, error: chunkErr } = await sb
       .schema("preventivatore")
       .from("chunks")
@@ -180,28 +133,22 @@ export async function POST(_request: NextRequest, ctx: RouteContext) {
 
     const testoDocumenti = pezzi.join("\n").slice(0, 60000); // safety cap input
 
-    // Strategia: OpenRouter se disponibile (più stabile sui rate limit chat),
-    // fallback Gemini diretto.
+    // Tutta l'AI passa da OpenRouter: se il modello principale fallisce si
+    // riprova una volta con un modello di riserva.
     let riassunto: string;
     try {
-      if (process.env.OPENROUTER_API_KEY) {
-        riassunto = await callOpenRouter(testoDocumenti);
-      } else {
-        riassunto = await callGemini(testoDocumenti);
-      }
+      riassunto = await callOpenRouter(testoDocumenti, "google/gemini-2.5-flash");
     } catch (orErr) {
-      if (process.env.GEMINI_API_KEY && process.env.OPENROUTER_API_KEY) {
-        logWarn("preventivatore.riassumi", "OpenRouter fallito, fallback Gemini", { dettaglio: orErr instanceof Error ? orErr.message : orErr });
-        riassunto = await callGemini(testoDocumenti);
-      } else {
-        throw orErr;
-      }
+      logWarn("preventivatore.riassumi", "Modello principale fallito, riprovo con la riserva", { dettaglio: orErr instanceof Error ? orErr.message : orErr });
+      riassunto = await callOpenRouter(testoDocumenti, "anthropic/claude-haiku-4.5");
     }
 
     return NextResponse.json({ riassunto, n_documenti: documenti.length });
   } catch (err) {
     logError("preventivatore.riassumi", "Riassumi documenti error", err);
-    const msg = err instanceof Error ? err.message : "Errore del server";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json(
+      { error: "Non è stato possibile generare il riassunto. Riprova più tardi." },
+      { status: 500 },
+    );
   }
 }

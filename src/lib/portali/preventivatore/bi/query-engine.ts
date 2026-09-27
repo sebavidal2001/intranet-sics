@@ -61,6 +61,8 @@ const ALLOWED_DATASETS: ReadonlySet<string> = new Set(["documenti", "righe_disti
 
 const DOC_LIMIT = 5000;
 const RIGA_LIMIT = 12000;
+const PAGE_SIZE = 1000;
+export const BI_MAX_ROWS = 100_000;
 
 export function validateWidgetConfig(widget: unknown): { ok: boolean; reason?: string } {
   if (!widget || typeof widget !== "object") return { ok: false, reason: "Widget non valido" };
@@ -246,6 +248,69 @@ export interface LoadedDataset {
   limit: number;
 }
 
+async function loadBiRowsPaged(
+  admin: SupabaseClient,
+  dataset: "documenti" | "righe_distinta",
+  scopeIds: string[] | null,
+): Promise<LoadedDataset> {
+  const rawRows: Array<Record<string, unknown>> = [];
+  let total = 0;
+
+  for (let offset = 0; offset < BI_MAX_ROWS; offset += PAGE_SIZE) {
+    const end = Math.min(offset + PAGE_SIZE - 1, BI_MAX_ROWS - 1);
+    if (dataset === "documenti") {
+      let query = admin
+        .schema("preventivatore")
+        .from("documenti")
+        .select(DOC_SELECT, offset === 0 ? { count: "exact" } : undefined)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, end);
+      if (scopeIds) query = query.in("cliente_master_id", scopeIds);
+      const { data, count, error } = await query;
+      if (error) throw error;
+      if (offset === 0) total = count ?? 0;
+      const page = (data ?? []) as unknown as Array<Record<string, unknown>>;
+      rawRows.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    } else {
+      let query = admin
+        .schema("preventivatore")
+        .from("righe_distinta")
+        .select(
+          `${RIGA_FIELDS.join(",")}, documenti!inner(${DOC_SELECT})`,
+          offset === 0 ? { count: "exact" } : undefined,
+        )
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, end);
+      if (scopeIds) query = query.in("documenti.cliente_master_id", scopeIds);
+      const { data, count, error } = await query;
+      if (error) throw error;
+      if (offset === 0) total = count ?? 0;
+      const page = (data ?? []) as unknown as Array<Record<string, unknown>>;
+      rawRows.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
+  }
+
+  const rows = dataset === "documenti"
+    ? rawRows.map(normalizeDocRow)
+    : rawRows.map((row) => {
+        const doc = (row.documenti ?? {}) as Record<string, unknown>;
+        const flat: RawRow = { ...normalizeDocRow(doc) };
+        for (const field of RIGA_FIELDS) flat[field] = row[field] as string | number | null;
+        return flat;
+      });
+  const totalInDb = total || rows.length;
+  return {
+    rows,
+    total_in_db: totalInDb,
+    truncated: totalInDb > rows.length || rows.length >= BI_MAX_ROWS,
+    limit: BI_MAX_ROWS,
+  };
+}
+
 export async function loadBiRows(
   admin: SupabaseClient,
   dataset: "documenti" | "righe_distinta",
@@ -257,51 +322,8 @@ export async function loadBiRows(
     ? (clienteIds.length > 0 ? clienteIds : ["00000000-0000-0000-0000-000000000000"])
     : null;
 
-  if (dataset === "documenti") {
-    let q = admin
-      .schema("preventivatore")
-      .from("documenti")
-      .select(DOC_SELECT, { count: "exact" })
-      // Un `.limit()` senza ordinamento lascia al piano di esecuzione la scelta
-      // di QUALI righe restituire: sopra il tetto il campione sarebbe arbitrario
-      // e potrebbe cambiare fra due caricamenti della stessa pagina. Ordinare
-      // rende il troncamento almeno deterministico e prevedibile (i più recenti).
-      .order("created_at", { ascending: false })
-      .limit(DOC_LIMIT);
-    if (scopeIds) q = q.in("cliente_master_id", scopeIds);
-    const { data, count, error } = await q;
-    if (error) throw error;
-    const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map(normalizeDocRow);
-    return {
-      rows,
-      total_in_db: count ?? rows.length,
-      truncated: (count ?? 0) > DOC_LIMIT,
-      limit: DOC_LIMIT,
-    };
-  }
+  return loadBiRowsPaged(admin, dataset, scopeIds);
 
-  let rq = admin
-    .schema("preventivatore")
-    .from("righe_distinta")
-    .select(`${RIGA_FIELDS.join(",")}, documenti!inner(${DOC_SELECT})`, { count: "exact" })
-    .order("created_at", { ascending: false })
-    .limit(RIGA_LIMIT);
-  if (scopeIds) rq = rq.in("documenti.cliente_master_id", scopeIds);
-  const { data, count, error } = await rq;
-  if (error) throw error;
-
-  const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => {
-    const doc = (row.documenti ?? {}) as Record<string, unknown>;
-    const flat: RawRow = { ...normalizeDocRow(doc) };
-    for (const field of RIGA_FIELDS) flat[field] = row[field] as string | number | null;
-    return flat;
-  });
-  return {
-    rows,
-    total_in_db: count ?? rows.length,
-    truncated: (count ?? 0) > RIGA_LIMIT,
-    limit: RIGA_LIMIT,
-  };
 }
 
 export interface ComputeBiResult {
@@ -330,7 +352,11 @@ export async function computeBiDashboardData(admin: SupabaseClient, config: BiDa
       byDataset.set(widget.dataset, await loadBiRows(admin, widget.dataset, clienteIds));
     }
     const ds = byDataset.get(widget.dataset)!;
-    results.push(computeWidget(ds.rows, widget, config.filters ?? []));
+    if (ds.truncated && widget.type === "kpi") {
+      results.push({ widget_id: widget.id, data: [], incompleto: true });
+    } else {
+      results.push(computeWidget(ds.rows, widget, config.filters ?? []));
+    }
   }
 
   const datasets: ComputeBiResult["meta"]["datasets"] = {};

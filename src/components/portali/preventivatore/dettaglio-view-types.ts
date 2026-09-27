@@ -11,6 +11,7 @@ export interface PreventivoDocumento {
   id: string;
   codice: string | null;
   cliente: string | null;
+  cliente_master_id?: string | null;
   tipo: TipoDocumento;
   categoria: string | null;
   tipo_prodotto: string | null;
@@ -57,7 +58,7 @@ export interface ChunkMetadata {
   titolo_voce?: string | null;
   tipo_prodotto?: string | null;
   ingest_mode?: string | null;
-  embedding_provider?: "gemini" | "openrouter" | string;
+  embedding_provider?: string;
   totals?: Record<string, TotaleValore> | null;
   lavorazioni?: LavorazioneVoce[] | null;
   decision?: string | null;
@@ -109,6 +110,8 @@ export interface PreventivoDettaglio {
   righe_distinta: PreventivoRigaRaw[];
   blocchi?: PreventivoBloccoRaw[];
   motivo_rifiuto_label: string | null;
+  /** Admin o ruolo funzionale preventivatore: correzioni e scheda tecnica. */
+  puo_modificare?: boolean;
 }
 
 // Etichette user-friendly per i totali chiave

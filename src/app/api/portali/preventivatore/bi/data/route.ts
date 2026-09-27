@@ -1,33 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
+import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
 import { getPreventivatoreScope } from "@/lib/portali/preventivatore/ruoli";
 import { computeBiDashboardData } from "@/lib/portali/preventivatore/bi/query-engine";
-import type { BiDashboardConfig } from "@/lib/portali/preventivatore/bi/types";
+import { BiDashboardConfigSchema } from "@/lib/portali/preventivatore/bi/types";
 import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
 
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-
-    const body = await request.json() as { config?: BiDashboardConfig };
-    if (!body.config || body.config.version !== 1 || !Array.isArray(body.config.widgets)) {
+    const raw = await request.json().catch(() => null) as { config?: unknown } | null;
+    const parsed = BiDashboardConfigSchema.safeParse(raw?.config);
+    if (!parsed.success) {
       return NextResponse.json({ error: "Config BI non valida" }, { status: 400 });
     }
 
     // Scope commerciale: i widget BI riflettono solo i clienti visibili.
-    const scope = await getPreventivatoreScope(user.id, livello);
+    const scope = await getPreventivatoreScope(guard.user.id, guard.ctx.livello);
     const { results, meta } = await computeBiDashboardData(
       createAdminClient(),
-      body.config,
+      parsed.data,
       scope.restricted ? scope.clienteIds : null,
     );
     return NextResponse.json({ results, meta });

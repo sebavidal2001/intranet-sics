@@ -15,7 +15,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^3.9.0",
     "@napi-rs/canvas": "^1.0.9",
     "@radix-ui/react-avatar": "^1.0.4",

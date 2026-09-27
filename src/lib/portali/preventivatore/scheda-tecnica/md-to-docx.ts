@@ -28,6 +28,7 @@ import {
   TableCell,
   WidthType,
   BorderStyle,
+  LevelFormat,
 } from "docx";
 import { SICS_HEADER } from "./assets";
 
@@ -63,10 +64,17 @@ interface InlineSpan { text: string; bold?: boolean; italic?: boolean }
 function parseInline(text: string): InlineSpan[] {
   const spans: InlineSpan[] = [];
   let i = 0, current = "", bold = false, italic = false;
+  const delimitatoriCorsivo = new Set<number>();
+  const reCorsivo = /(^|[^\p{L}\p{N}_])_([^_\r\n]+?)_(?=$|[^\p{L}\p{N}_])/gu;
+  for (const match of text.matchAll(reCorsivo)) {
+    const apertura = (match.index ?? 0) + match[1].length;
+    delimitatoriCorsivo.add(apertura);
+    delimitatoriCorsivo.add(apertura + match[2].length + 1);
+  }
   const flush = () => { if (current) { spans.push({ text: current, bold: bold || undefined, italic: italic || undefined }); current = ""; } };
   while (i < text.length) {
     if (text[i] === "*" && text[i + 1] === "*") { flush(); bold = !bold; i += 2; continue; }
-    if (text[i] === "_") { flush(); italic = !italic; i += 1; continue; }
+    if (text[i] === "_" && delimitatoriCorsivo.has(i)) { flush(); italic = !italic; i += 1; continue; }
     current += text[i]; i += 1;
   }
   flush();
@@ -83,7 +91,16 @@ function isTableHeaderSeparator(line: string): boolean {
   return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line);
 }
 function splitRow(line: string): string[] {
-  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  const value = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells: string[] = [];
+  let corrente = "";
+  for (let i = 0; i < value.length; i += 1) {
+    if (value[i] === "\\" && value[i + 1] === "|") { corrente += "|"; i += 1; continue; }
+    if (value[i] === "|") { cells.push(corrente.trim()); corrente = ""; continue; }
+    corrente += value[i];
+  }
+  cells.push(corrente.trim());
+  return cells;
 }
 function buildTable(headerCells: string[], rows: string[][]): Table {
   const totalCols = Math.max(headerCells.length, ...rows.map((r) => r.length));
@@ -108,7 +125,35 @@ const RE_OGGETTO = /^oggetto\s*:/i;
 const RE_SPETT = /^(spett\.?le|alla c\.?a\.?|offerta n)/i;
 
 /** Immagine da data-URI base64: ritorna { bytes, w, h } o null (URL http non supportati sync). */
-function parseImageMarkdown(line: string): { alt: string; bytes: Uint8Array; type: "png" | "jpg" | "gif" } | null {
+function dimensioniImmagine(bytes: Uint8Array, type: "png" | "jpg" | "gif"): { width: number; height: number } | null {
+  if (type === "png" && bytes.length >= 24) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return { width: view.getUint32(16), height: view.getUint32(20) };
+  }
+  if (type === "jpg" && bytes.length >= 4) {
+    let pos = 2;
+    const sof = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+    while (pos + 8 < bytes.length) {
+      if (bytes[pos] !== 0xff) { pos += 1; continue; }
+      const marker = bytes[pos + 1];
+      pos += 2;
+      if (marker === 0xd8 || marker === 0xd9) continue;
+      if (pos + 1 >= bytes.length) break;
+      const length = (bytes[pos] << 8) | bytes[pos + 1];
+      if (sof.has(marker) && pos + 6 < bytes.length) {
+        return {
+          height: (bytes[pos + 3] << 8) | bytes[pos + 4],
+          width: (bytes[pos + 5] << 8) | bytes[pos + 6],
+        };
+      }
+      if (length < 2) break;
+      pos += length;
+    }
+  }
+  return null;
+}
+
+function parseImageMarkdown(line: string): { alt: string; bytes: Uint8Array; type: "png" | "jpg" | "gif"; width: number; height: number } | null {
   const m = line.match(RE_IMG);
   if (!m) return null;
   const alt = m[1];
@@ -118,7 +163,16 @@ function parseImageMarkdown(line: string): { alt: string; bytes: Uint8Array; typ
   const fmt = dm[1].toLowerCase();
   const type = fmt === "gif" ? "gif" : fmt === "png" ? "png" : "jpg";
   try {
-    return { alt, bytes: b64ToBytes(dm[2]), type };
+    const bytes = b64ToBytes(dm[2]);
+    const dimensioni = dimensioniImmagine(bytes, type);
+    const rapporto = dimensioni ? Math.min(1, 460 / dimensioni.width, 300 / dimensioni.height) : 1;
+    return {
+      alt,
+      bytes,
+      type,
+      width: Math.max(1, Math.round((dimensioni?.width ?? 460) * rapporto)),
+      height: Math.max(1, Math.round((dimensioni?.height ?? 300) * rapporto)),
+    };
   } catch {
     return null;
   }
@@ -142,6 +196,7 @@ export async function markdownToDocxBuffer(opts: {
 
   let i = 0;
   let primoParagrafo = true;
+  let indentazioniLista: number[] = [0];
   while (i < lines.length) {
     const line = lines[i];
     const trimmed = line.trim();
@@ -160,7 +215,7 @@ export async function markdownToDocxBuffer(opts: {
       children.push(new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 160, after: 40 },
-        children: [new ImageRun({ type: img.type, data: img.bytes, transformation: { width: 460, height: 300 } })],
+        children: [new ImageRun({ type: img.type, data: img.bytes, transformation: { width: img.width, height: img.height } })],
       }));
       if (img.alt) children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [new TextRun({ text: img.alt, italics: true, font: FONT, size: 18, color: GREY })] }));
       i += 1; continue;
@@ -198,11 +253,25 @@ export async function markdownToDocxBuffer(opts: {
       continue;
     }
 
-    // Elenco puntato
-    if (/^[-*]\s+/.test(trimmed)) {
-      children.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: 40 }, children: inlineToRuns(trimmed.replace(/^[-*]\s+/, "")) }));
+    // Elenchi puntati e numerati; il livello deriva dall'indentazione effettiva
+    // (sono accettati sia due sia quattro spazi per ogni livello).
+    const lista = line.match(/^(\s*)([-*]|\d+\.)\s+(.+)$/);
+    if (lista) {
+      const spazi = lista[1].replace(/\t/g, "    ").length;
+      if (spazi === 0) indentazioniLista = [0];
+      else {
+        while (indentazioniLista.length > 1 && spazi < indentazioniLista[indentazioniLista.length - 1]) indentazioniLista.pop();
+        if (spazi > indentazioniLista[indentazioniLista.length - 1]) indentazioniLista.push(spazi);
+      }
+      const level = Math.max(0, indentazioniLista.indexOf(spazi));
+      children.push(new Paragraph({
+        ...(lista[2].endsWith(".") ? { numbering: { reference: "lista-numerata", level } } : { bullet: { level } }),
+        spacing: { after: 40 },
+        children: inlineToRuns(lista[3]),
+      }));
       i += 1; continue;
     }
+    indentazioniLista = [0];
 
     // Paragrafo. I primi (intestazione Spett.le/Alla c.a.) restano allineati a sx;
     // gli altri giustificati per una resa pulita.
@@ -269,6 +338,18 @@ export async function markdownToDocxBuffer(opts: {
     creator: "SICS Preventivatore",
     title: opts.titoloDocumento,
     styles: { default: { document: { run: { font: FONT, size: 22 } } } },
+    numbering: {
+      config: [{
+        reference: "lista-numerata",
+        levels: Array.from({ length: 9 }, (_, level) => ({
+          level,
+          format: LevelFormat.DECIMAL,
+          text: `%${level + 1}.`,
+          alignment: AlignmentType.START,
+          style: { paragraph: { indent: { left: 720 + level * 360, hanging: 260 } } },
+        })),
+      }],
+    },
     sections: [
       {
         properties: {

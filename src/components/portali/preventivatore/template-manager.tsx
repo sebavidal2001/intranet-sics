@@ -331,16 +331,24 @@ export function TemplateManager() {
   async function lookupCosto(idx: number, codice: string) {
     const c = codice.trim()
     if (!c) { updArr("righe_materiale", idx, { costo_corrente: null, data_ult_costo: null }); return }
+    const inCache = cacheCosti.get(c)
+    if (inCache) { updArr("righe_materiale", idx, inCache); return }
     try {
       const res = await fetch(`/api/portali/preventivatore/prodotti/costo?codice=${encodeURIComponent(c)}`)
       const d = await res.json()
-      updArr("righe_materiale", idx, {
+      const valori = {
         costo_corrente: d?.trovato ? (d.ult_costo ?? null) : null,
         data_ult_costo: d?.trovato ? (d.data_ult_costo ?? null) : null,
-      })
+      }
+      if (res.ok) cacheCosti.set(c, valori)
+      updArr("righe_materiale", idx, valori)
     } catch { /* ignora */ }
   }
 }
+
+// Costi già letti in questa sessione della pagina: ritoccare più volte la stessa
+// riga non rilancia la richiesta.
+const cacheCosti = new Map<string, { costo_corrente: number | null; data_ult_costo: string | null }>()
 
 // ─── sub-components / utils ──────────────────────────────────────────────────
 function Sezione({ titolo, onAdd, children }: { titolo: string; onAdd: () => void; children: React.ReactNode }) {

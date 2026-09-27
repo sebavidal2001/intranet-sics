@@ -40,7 +40,7 @@ export function formatBuilderStateForPrompt(state: BuilderStateForChat): string 
   if (state.blocchi.length === 0) {
     out.push("(Nessun blocco creato — il preventivo è vuoto)");
     out.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    return out.join("\n");
+    return out.join("\n").slice(0, 30_000);
   }
 
   for (const b of state.blocchi) {
@@ -69,5 +69,8 @@ export function formatBuilderStateForPrompt(state: BuilderStateForChat): string 
   out.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   out.push("Usa SEMPRE questi dati come fonte primaria per rispondere o suggerire ottimizzazioni.");
 
-  return out.join("\n");
+  const testo = out.join("\n");
+  const limite = 30_000;
+  if (testo.length <= limite) return testo;
+  return `${testo.slice(0, limite)}\n[Stato builder troncato per limite di contesto]`;
 }

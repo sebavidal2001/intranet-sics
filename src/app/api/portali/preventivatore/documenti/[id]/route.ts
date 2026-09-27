@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
 import {
-  getFiltroCommerciale,
-  getIdClientiVisibili,
-  haRuoloFunzionaleAsync,
+  getPreventivatoreScope,
+  haRuoloFunzionale,
   PREVENTIVATORE_RUOLI,
 } from "@/lib/portali/preventivatore/ruoli";
+import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
+import { requireDocumentoVisibile } from "@/lib/portali/preventivatore/documento-visibile";
 import { PostBodySchema } from "@/lib/portali/preventivatore/documenti-schema";
 import { STATI_NON_MODIFICABILI } from "@/lib/portali/preventivatore/stati";
-import { logError, logWarn } from "@/lib/logger";
+import { indicizzaDocumento } from "@/lib/portali/preventivatore/indicizzazione";
+import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -39,15 +39,6 @@ function num(v: number | string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-async function verificaAccesso(id: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Non autenticato", status: 401 as const };
-  const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-  if (livello === null) return { error: "Accesso negato", status: 403 as const };
-  return { user, livello };
-}
-
 // ── GET: stato builder a prezzi congelati (riapertura per modifica) ───────────
 export async function GET(
   _request: NextRequest,
@@ -59,31 +50,28 @@ export async function GET(
       return NextResponse.json({ error: "ID non valido" }, { status: 400 });
     }
 
-    const acc = await verificaAccesso(id);
-    if ("error" in acc) return NextResponse.json({ error: acc.error }, { status: acc.status });
-    const { user, livello } = acc;
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const visibilita = await requireDocumentoVisibile(
+      { userId: guard.user.id, livello: guard.ctx.livello },
+      id,
+    );
+    if (!visibilita.ok) {
+      return NextResponse.json({ error: visibilita.error }, { status: visibilita.status });
+    }
 
     const sb = createAdminClient();
 
     const { data: doc, error: docErr } = await sb
       .schema("preventivatore")
       .from("documenti")
-      .select("id, codice, cliente, cliente_master_id, tipo, tipo_prodotto, stato, note, margine_trattativa_pct, consegna_settimane_min, consegna_settimane_max, tempo_preventivazione_sec")
+      .select("id, codice, cliente, cliente_master_id, tipo, tipo_prodotto, stato, note, margine_trattativa_pct, consegna_settimane_min, consegna_settimane_max, tempo_preventivazione_sec, updated_at")
       .eq("id", id)
       .maybeSingle();
     if (docErr) throw docErr;
     if (!doc) return NextResponse.json({ error: "Documento non trovato" }, { status: 404 });
     if ((doc as { tipo: string }).tipo !== "generato") {
       return NextResponse.json({ error: "Solo i preventivi creati dal builder sono modificabili" }, { status: 422 });
-    }
-
-    // Filtro commerciale ristretto: il cliente deve essere nel portfolio
-    const agente = await getFiltroCommerciale(user.id, livello);
-    if (agente) {
-      const cmId = (doc as { cliente_master_id: string | null }).cliente_master_id;
-      if (!cmId) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-      const visibili = await getIdClientiVisibili(agente);
-      if (!visibili.includes(cmId)) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
     const [blocchiRes, righeRes] = await Promise.all([
@@ -208,6 +196,7 @@ export async function GET(
       note: string | null; margine_trattativa_pct: number | null;
       consegna_settimane_min: number | null; consegna_settimane_max: number | null;
       tempo_preventivazione_sec: number | null;
+      updated_at: string;
     };
 
     return NextResponse.json({
@@ -216,6 +205,7 @@ export async function GET(
         codice: d.codice,
         stato: d.stato,
         tempo_preventivazione_sec: d.tempo_preventivazione_sec,
+        updated_at: d.updated_at,
       },
       titolo: d.tipo_prodotto ?? "",
       cliente,
@@ -242,13 +232,13 @@ export async function PUT(
       return NextResponse.json({ error: "ID non valido" }, { status: 400 });
     }
 
-    const acc = await verificaAccesso(id);
-    if ("error" in acc) return NextResponse.json({ error: acc.error }, { status: acc.status });
-    const { user, livello } = acc;
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const { user, ctx } = guard;
 
     // Come per la creazione: modificare la distinta è del preventivatore.
     // Un commerciale in sola lettura non deve poter riscrivere un preventivo.
-    if (!(await haRuoloFunzionaleAsync(user.id, livello, [PREVENTIVATORE_RUOLI.preventivatore]))) {
+    if (!haRuoloFunzionale(ctx, [PREVENTIVATORE_RUOLI.preventivatore])) {
       return NextResponse.json(
         { error: "Per modificare un preventivo serve il ruolo 'preventivatore'." },
         { status: 403 }
@@ -264,6 +254,14 @@ export async function PUT(
       );
     }
     const body = parsed.data;
+
+    const visibilita = await requireDocumentoVisibile(
+      { userId: user.id, livello: ctx.livello },
+      id,
+    );
+    if (!visibilita.ok) {
+      return NextResponse.json({ error: visibilita.error }, { status: visibilita.status });
+    }
 
     const admin = createAdminClient();
 
@@ -285,7 +283,7 @@ export async function PUT(
     // cambiavano mentre `numero_preventivo` e `importo_offerta` restavano
     // quelli dell'offerta già partita, e i due valori non corrispondevano più.
     const statoDoc = (doc as { stato: string }).stato;
-    if (STATI_NON_MODIFICABILI.includes(statoDoc)) {
+    if ((STATI_NON_MODIFICABILI as readonly string[]).includes(statoDoc)) {
       return NextResponse.json(
         {
           error:
@@ -296,15 +294,9 @@ export async function PUT(
       );
     }
 
-    const agente = await getFiltroCommerciale(user.id, livello);
-    if (agente) {
-      const visibili = await getIdClientiVisibili(agente);
-      const cmOld = (doc as { cliente_master_id: string | null }).cliente_master_id;
-      // Il cliente attuale del documento e quello nuovo devono entrambi essere visibili.
-      if (cmOld && !visibili.includes(cmOld)) {
-        return NextResponse.json({ error: "Preventivo fuori dal tuo portfolio" }, { status: 403 });
-      }
-      if (body.cliente_master_id && !visibili.includes(body.cliente_master_id)) {
+    const scope = await getPreventivatoreScope(user.id, ctx.livello);
+    if (scope.restricted) {
+      if (body.cliente_master_id && !scope.clienteIds.includes(body.cliente_master_id)) {
         return NextResponse.json({ error: "Cliente fuori dal tuo portfolio" }, { status: 403 });
       }
     }
@@ -314,6 +306,12 @@ export async function PUT(
       .rpc("aggiorna_documento_dal_builder", { p_id: id, p_payload: body });
 
     if (rpcErr || !result) {
+      if (rpcErr?.code === "PT409" || rpcErr?.message?.includes("versione_obsoleta")) {
+        return NextResponse.json(
+          { error: "Il preventivo è stato modificato da qualcun altro. Il tuo lavoro è ancora qui: ricarica e riconcilia le modifiche prima di salvare." },
+          { status: 409 },
+        );
+      }
       logError("preventivatore.documenti", "aggiorna_documento_dal_builder fallita", rpcErr, { reqId: id });
       return NextResponse.json(
         { error: "Errore aggiornamento documento: " + (rpcErr?.message ?? "unknown") },
@@ -323,15 +321,7 @@ export async function PUT(
 
     const r = result as { id: string; codice: string };
 
-    // Tempo di preventivazione (come per la create): update mirato best-effort.
-    if (typeof body.tempo_preventivazione_sec === "number" && body.tempo_preventivazione_sec > 0) {
-      const { error: tempoErr } = await admin
-        .schema("preventivatore")
-        .from("documenti")
-        .update({ tempo_preventivazione_sec: body.tempo_preventivazione_sec })
-        .eq("id", r.id);
-      if (tempoErr) logWarn("preventivatore.documenti", "tempo_preventivazione non salvato", { reqId: r.id, dettaglio: tempoErr.message });
-    }
+    await indicizzaDocumento(r.id, { timeoutMs: 8000 });
 
     return NextResponse.json({ id: r.id, codice: r.codice });
   } catch (error) {

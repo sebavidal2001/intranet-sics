@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortaleAccesso } from "@/lib/auth/portale";
-import {
-  getFiltroCommerciale,
-  getIdClientiVisibili,
-} from "@/lib/portali/preventivatore/ruoli";
+import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
+import { requireDocumentoVisibile } from "@/lib/portali/preventivatore/documento-visibile";
 import { logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -51,12 +47,15 @@ export async function GET(
       return NextResponse.json({ error: "ID non valido" }, { status: 400 });
     }
 
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-    const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
-    if (livello === null) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
+    const guard = await requirePreventivatore();
+    if (!guard.ok) return guard.response;
+    const visibilita = await requireDocumentoVisibile(
+      { userId: guard.user.id, livello: guard.ctx.livello },
+      id,
+    );
+    if (!visibilita.ok) {
+      return NextResponse.json({ error: visibilita.error }, { status: visibilita.status });
+    }
 
     const sb = createAdminClient();
 
@@ -70,15 +69,6 @@ export async function GET(
     if (docErr) throw docErr;
     if (!doc) return NextResponse.json({ error: "Documento non trovato" }, { status: 404 });
 
-    // Filtro commerciale ristretto: il cliente deve essere nel portfolio
-    const agente = await getFiltroCommerciale(user.id, livello);
-    if (agente) {
-      const cmId = (doc as { cliente_master_id: string | null }).cliente_master_id;
-      if (!cmId) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-      const visibili = await getIdClientiVisibili(agente);
-      if (!visibili.includes(cmId)) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-    }
-
     // 2) Blocchi (presenti solo per i generati) + righe
     const [blocchiRes, righeRes] = await Promise.all([
       sb
@@ -86,6 +76,7 @@ export async function GET(
         .from("blocchi")
         .select("codice_blocco, sheet_name, note, created_at, quantita_pezzi, margine_trattativa_pct")
         .eq("documento_id", id)
+        .order("ordine", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: true }),
       sb
         .schema("preventivatore")

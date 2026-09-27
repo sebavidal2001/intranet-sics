@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
 import { logError } from "@/lib/logger";
 import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { validateFormula } from "@/lib/portali/preventivatore/template/formula";
+import type { TemplateParametro, TemplateRigaManodopera, TemplateRigaMateriale } from "@/lib/portali/preventivatore/template/types";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +46,59 @@ Rispondi SOLO con un JSON valido:
 }
 Nessun testo prima o dopo il JSON.`;
 
+const slugSchema = z.string().regex(/^[a-z][a-z0-9_]*$/, "slug non valido").max(100);
+const parametroSchema = z.object({
+  slug: slugSchema,
+  label: z.string().trim().min(1).max(500),
+  tipo: z.enum(["number", "select", "bool"]),
+  unita: z.string().max(100).nullable().optional(),
+  valore_default: z.string().max(500).nullable().optional(),
+  opzioni: z.array(z.string().max(500)).max(100).nullable().optional(),
+}) satisfies z.ZodType<TemplateParametro>;
+const materialeSchema = z.object({
+  slug: slugSchema.nullable().optional(),
+  descrizione: z.string().trim().min(1).max(2_000),
+  codice_articolo: z.string().trim().max(500).nullable().optional(),
+  costo_manuale: z.number().finite().min(0).nullable().optional(),
+  usa_listino: z.boolean().optional(),
+  ricarico_default: z.number().finite().positive().max(1),
+  qta_formula: z.string().max(2_000).nullable().optional(),
+  qta_manuale: z.number().finite().min(0).optional(),
+  gruppo: z.string().max(500).nullable().optional(),
+}) satisfies z.ZodType<TemplateRigaMateriale>;
+const manodoperaSchema = z.object({
+  label: z.string().trim().min(1).max(2_000),
+  tariffa_default: z.number().finite().min(0),
+  unita_tempo: z.enum(["min", "h"]),
+  tempo_formula: z.string().max(2_000).nullable().optional(),
+  tempo_default: z.number().finite().min(0).optional(),
+  modalita: z.enum(["per_pezzo", "una_tantum"]),
+  ricarico_default: z.number().finite().positive().max(1),
+}) satisfies z.ZodType<TemplateRigaManodopera>;
+const templateSchema = z.object({
+  nome: z.string().trim().min(1).max(500),
+  descrizione: z.string().max(5_000).nullable().optional(),
+  parametri: z.array(parametroSchema).max(100),
+  righe_materiale: z.array(materialeSchema).max(500),
+  righe_manodopera: z.array(manodoperaSchema).max(200),
+  costanti: z.object({
+    imballaggio_pct: z.number().finite().min(0).max(100),
+    tempi_accessori_pct: z.number().finite().min(0).max(100),
+    spese_generali_pct: z.number().finite().min(0).max(100),
+    margine_default_pct: z.number().finite().min(0).max(100),
+    consegna_settimane_min: z.number().int().min(0).max(520),
+    consegna_settimane_max: z.number().int().min(0).max(520),
+  }).refine((c) => c.consegna_settimane_max >= c.consegna_settimane_min, "Intervallo consegna non valido"),
+});
+const bodySchema = z.object({
+  richiesta: z.string().trim().min(1, "Richiesta mancante").max(10_000),
+  bozza: z.unknown().optional(),
+}).superRefine((value, ctx) => {
+  if (value.bozza !== undefined && Buffer.byteLength(JSON.stringify(value.bozza), "utf8") > 200_000) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["bozza"], message: "Bozza troppo grande" });
+  }
+});
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -53,9 +110,10 @@ export async function POST(request: NextRequest) {
     const rl = checkRateLimit(`ai-tpl:${user.id}`, { limit: 20, windowMs: 60_000 });
     if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
-    const body = await request.json().catch(() => ({}));
-    const richiesta = String(body?.richiesta ?? "").trim();
-    if (!richiesta) return NextResponse.json({ error: "Richiesta mancante" }, { status: 400 });
+    const bodyResult = bodySchema.safeParse(await request.json().catch(() => null));
+    if (!bodyResult.success) return NextResponse.json({ error: bodyResult.error.issues[0]?.message ?? "Payload non valido" }, { status: 400 });
+    const body = bodyResult.data;
+    const richiesta = body.richiesta;
 
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "OPENROUTER_API_KEY non configurata" }, { status: 500 });
@@ -94,7 +152,39 @@ export async function POST(request: NextRequest) {
     } catch { parsed = null; }
     if (!parsed) return NextResponse.json({ error: "Risposta AI non interpretabile", raw: content.slice(0, 500) }, { status: 502 });
 
-    return NextResponse.json({ template: parsed });
+    const templateResult = templateSchema.safeParse(parsed);
+    if (!templateResult.success) {
+      return NextResponse.json({
+        error: "La bozza AI non rispetta il formato del template",
+        dettagli: templateResult.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+      }, { status: 502 });
+    }
+    const template = templateResult.data;
+    const allowed = new Set<string>(template.parametri.map((p) => p.slug));
+    for (const riga of template.righe_materiale) if (riga.slug) allowed.add(riga.slug);
+    const formule = [
+      ...template.righe_materiale.flatMap((riga, index) => riga.qta_formula ? [{ campo: `righe_materiale.${index}.qta_formula`, formula: riga.qta_formula }] : []),
+      ...template.righe_manodopera.flatMap((riga, index) => riga.tempo_formula ? [{ campo: `righe_manodopera.${index}.tempo_formula`, formula: riga.tempo_formula }] : []),
+    ];
+    const formuleNonValide = formule.flatMap(({ campo, formula }) => {
+      const result = validateFormula(formula, allowed);
+      return result.ok ? [] : [`${campo}: ${result.error ?? "formula non valida"}`];
+    });
+    if (formuleNonValide.length > 0) {
+      return NextResponse.json({ error: "La bozza AI contiene formule non valide", dettagli: formuleNonValide }, { status: 502 });
+    }
+
+    const codici = [...new Set(template.righe_materiale.map((r) => r.codice_articolo?.trim()).filter((c): c is string => Boolean(c)))];
+    const avvisi: string[] = [];
+    if (codici.length > 0) {
+      const { data: prodotti, error: prodottiError } = await createAdminClient().schema("preventivatore")
+        .from("v_prodotti_costo").select("codice").in("codice", codici);
+      if (prodottiError) throw prodottiError;
+      const trovati = new Set((prodotti ?? []).map((p) => String(p.codice)));
+      for (const codice of codici) if (!trovati.has(codice)) avvisi.push(`Codice articolo non trovato: ${codice}`);
+    }
+
+    return NextResponse.json({ template, avvisi });
   } catch (error) {
     logError("preventivatore.template.ai-genera", "Template ai-genera error", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Errore del server" }, { status: 500 });

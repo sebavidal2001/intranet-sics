@@ -1,24 +1,5 @@
 #!/usr/bin/env node
-/**
- * Job batch: popola `chunks.embedding` per i chunks dei preventivatore.documenti
- * che ne sono privi (NULL). Utile dopo l'ingestion delle cartelle C e dopo i
- * salvataggi dei nuovi preventivi G dal builder.
- *
- * Strategy:
- *  - Gemini `gemini-embedding-2` (3072 dim) con fallback automatico a
- *    OpenRouter (`google/gemini-embedding-2-preview`) su 429/RESOURCE_EXHAUSTED.
- *  - Idempotente: skippa chunks con embedding gia' popolato.
- *  - Filtri: --tipo_cartella C|G|S, --solo-doc <codice>, --limit N
- *
- * Uso:
- *   node scripts/genera-embeddings-mancanti.cjs                  # tutti i chunks NULL
- *   node scripts/genera-embeddings-mancanti.cjs --tipo_cartella C
- *   node scripts/genera-embeddings-mancanti.cjs --limit 50
- *   node scripts/genera-embeddings-mancanti.cjs --dry-run
- *
- * Env (.env.local): NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
- *                   GEMINI_API_KEY (preferito), OPENROUTER_API_KEY (fallback).
- */
+/** Backfill idempotente degli embedding mancanti di chunk e schede approvate. */
 
 const fs = require("fs");
 const path = require("path");
@@ -30,180 +11,186 @@ const path = require("path");
     if (!line || line.startsWith("#")) continue;
     const eq = line.indexOf("=");
     if (eq < 0) continue;
-    const k = line.slice(0, eq).trim();
-    let v = line.slice(eq + 1).trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-    if (!process.env[k]) process.env[k] = v;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = value;
   }
 })();
 
 const { createClient } = require("@supabase/supabase-js");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const args = process.argv.slice(2);
-const flag = (n) => args.includes(n);
-const val = (n, def) => {
-  const i = args.indexOf(n);
-  return i >= 0 && args[i + 1] ? args[i + 1] : def;
+const flag = (name) => args.includes(name);
+const val = (name, fallback) => {
+  const index = args.indexOf(name);
+  return index >= 0 && args[index + 1] ? args[index + 1] : fallback;
 };
 
-const TIPO_CART_FILTER = val("--tipo_cartella", null); // C | G | S
-const SOLO_DOC = val("--solo-doc", null);
-const LIMIT = parseInt(val("--limit", "10000"), 10);
-const DRY = flag("--dry-run");
+const DIMENSIONE = 3072;
+// Tutta l'AI passa da OpenRouter: stesso modello gemini-embedding-2, vettori identici
+// a quelli calcolati prima via Google (verificato: coseno 1,00000).
+const MODELLO_DEFAULT = "google/gemini-embedding-2-preview";
+const tipoCartella = val("--tipo_cartella", null);
+const soloDocumento = val("--solo-doc", null);
+const limite = Number.parseInt(val("--limit", "10000"), 10);
+const dryRun = flag("--dry-run");
+const includiSchede = flag("--schede");
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-if (!URL || !KEY) {
-  console.error("Mancano NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
-if (!GEMINI_API_KEY && !OPENROUTER_API_KEY) {
-  console.error("Mancano GEMINI_API_KEY e OPENROUTER_API_KEY (almeno uno serve)");
-  process.exit(1);
-}
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const openRouterKey = process.env.OPENROUTER_API_KEY;
 
-const db = createClient(URL, KEY, { auth: { persistSession: false } });
-const geminiModelName = process.env.EMBEDDING_MODEL || "gemini-embedding-2";
-const openrouterModelName = process.env.OPENROUTER_EMBEDDING_MODEL || "google/gemini-embedding-2-preview";
-
-const geminiModel = GEMINI_API_KEY
-  ? new GoogleGenerativeAI(GEMINI_API_KEY).getGenerativeModel({ model: geminiModelName })
-  : null;
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-const state = {
-  geminiBlocked: false,
-  geminiCalls: 0,
-  openrouterCalls: 0,
-  errori: 0,
-};
-
-async function viaGemini(text) {
-  const r = await geminiModel.embedContent(text);
-  return r.embedding.values;
+function erroreConfigurazione(messaggio) {
+  console.error(messaggio);
+  process.exit(2);
 }
 
-async function viaOpenRouter(text) {
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/embeddings", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://intranet.s-ics.com",
-          "X-Title": "SICS preventivatore embedding backfill",
-        },
-        body: JSON.stringify({ model: openrouterModelName, input: text }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(`OpenRouter HTTP ${res.status}: ${JSON.stringify(json).slice(0, 200)}`);
-      const emb = json?.data?.[0]?.embedding;
-      if (!Array.isArray(emb)) throw new Error("OpenRouter: embedding mancante");
-      return emb;
-    } catch (err) {
-      if (attempt >= 3) throw err;
-      await sleep(2000 * attempt);
-    }
+if (!url || !serviceKey) erroreConfigurazione("Mancano NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
+if (!openRouterKey) erroreConfigurazione("Manca OPENROUTER_API_KEY");
+if (!Number.isInteger(limite) || limite <= 0) erroreConfigurazione("--limit deve essere un intero positivo");
+
+const db = createClient(url, serviceKey, { auth: { persistSession: false } });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function validaVettore(vettore) {
+  if (!Array.isArray(vettore) || vettore.length !== DIMENSIONE || !vettore.every(Number.isFinite)) {
+    const ricevuti = Array.isArray(vettore) ? vettore.length : "non-array";
+    throw new Error(`Embedding non valido: attesi ${DIMENSIONE} numeri finiti, ricevuti ${ricevuti}`);
   }
-  throw new Error("OpenRouter unreachable");
+  return vettore;
 }
 
-async function embed(text) {
-  if (!state.geminiBlocked && geminiModel) {
-    try {
-      const v = await viaGemini(text);
-      state.geminiCalls++;
-      return { values: v, provider: "gemini" };
-    } catch (err) {
-      const msg = String((err && err.message) || err);
-      if (/429|RESOURCE_EXHAUSTED|quota/i.test(msg)) {
-        console.warn(`  Gemini quota esaurita: passo a OpenRouter per il resto della run`);
-        state.geminiBlocked = true;
-      } else {
-        // Errore non legato a quota: ritento con OpenRouter una volta
-        console.warn(`  Gemini errore (${msg.slice(0, 100)}): fallback OpenRouter`);
+async function leggiModello() {
+  const { data, error } = await db
+    .schema("preventivatore")
+    .from("ai_config")
+    .select("valore")
+    .eq("chiave", "modello_embedding")
+    .maybeSingle();
+  if (error) throw new Error(`Configurazione ai_config illeggibile: ${error.message}`);
+  const valore = (data?.valore || process.env.EMBEDDING_MODEL || "").trim().replace(/^openrouter:/, "");
+  // Il vecchio valore "gemini-embedding-2" era l'ID Google dello stesso modello.
+  return !valore || valore === "gemini-embedding-2" ? MODELLO_DEFAULT : valore;
+}
+
+async function viaOpenRouter(testo, modello) {
+  const response = await fetch("https://openrouter.ai/api/v1/embeddings", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://intranet.s-ics.com",
+      "X-Title": "SICS preventivatore embedding backfill",
+    },
+    body: JSON.stringify({ model: modello, input: testo }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`OpenRouter HTTP ${response.status}`);
+  return validaVettore(payload?.data?.[0]?.embedding);
+}
+
+async function creaEmbedder(modello) {
+  return async (testo) => {
+    let ultimoErrore;
+    for (let tentativo = 1; tentativo <= 3; tentativo += 1) {
+      try {
+        return { vettore: await viaOpenRouter(testo, modello), modello };
+      } catch (errore) {
+        ultimoErrore = errore;
+        await sleep(1000 * tentativo);
       }
     }
-  }
-  if (!OPENROUTER_API_KEY) throw new Error("Gemini bloccato e OPENROUTER_API_KEY mancante");
-  const v = await viaOpenRouter(text);
-  state.openrouterCalls++;
-  return { values: v, provider: "openrouter" };
+    throw ultimoErrore;
+  };
+}
+
+async function caricaChunks() {
+  const { data, error } = await db
+    .schema("preventivatore")
+    .from("chunks")
+    .select("id, chunk_index, contenuto, documenti:documento_id(codice, tipo_cartella)")
+    .is("embedding", null)
+    .order("created_at", { ascending: true })
+    .limit(limite);
+  if (error) throw new Error(`Query chunks fallita: ${error.message}`);
+  return (data ?? []).filter((chunk) =>
+    (!tipoCartella || chunk.documenti?.tipo_cartella === tipoCartella) &&
+    (!soloDocumento || chunk.documenti?.codice === soloDocumento)
+  );
+}
+
+async function caricaSchede() {
+  if (!includiSchede) return [];
+  const { data, error } = await db
+    .schema("preventivatore")
+    .from("schede_approvate")
+    .select("id, contenuto_md")
+    .is("embedding", null)
+    .order("created_at", { ascending: true })
+    .limit(limite);
+  if (error) throw new Error(`Query schede fallita: ${error.message}`);
+  return data ?? [];
+}
+
+async function aggiorna(tabella, id, risultato) {
+  const { error } = await db
+    .schema("preventivatore")
+    .from(tabella)
+    .update({
+      embedding: risultato.vettore,
+      embedding_modello: risultato.modello,
+      embedded_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .is("embedding", null);
+  if (error) throw new Error(error.message);
 }
 
 (async () => {
-  console.log(`[${new Date().toISOString()}] Backfill embedding chunks (${DRY ? "DRY" : "APPLY"})`);
-  console.log(`  Provider: Gemini ${geminiModel ? "ON" : "OFF"} / OpenRouter ${OPENROUTER_API_KEY ? "ON" : "OFF"}`);
-
-  // 1) Trova chunks con embedding NULL, opzionale filtro tipo_cartella o doc
-  let q = db.schema("preventivatore").from("chunks")
-    .select("id, documento_id, chunk_index, contenuto, documenti:documento_id(codice, tipo_cartella)")
-    .is("embedding", null)
-    .order("created_at", { ascending: true })
-    .limit(LIMIT);
-
-  const { data: chunks, error: chErr } = await q;
-  if (chErr) { console.error("Errore query chunks:", chErr); process.exit(1); }
-
-  let candidati = chunks ?? [];
-
-  // Post-filter (l'inner join non supporta sempre filtro su tabella collegata in PostgREST con `.is()`)
-  if (TIPO_CART_FILTER) {
-    candidati = candidati.filter((c) => c.documenti?.tipo_cartella === TIPO_CART_FILTER);
+  let modello;
+  try {
+    modello = await leggiModello();
+  } catch (errore) {
+    erroreConfigurazione(errore instanceof Error ? errore.message : String(errore));
   }
-  if (SOLO_DOC) {
-    candidati = candidati.filter((c) => c.documenti?.codice === SOLO_DOC);
-  }
+  const embed = await creaEmbedder(modello);
+  const [chunks, schede] = await Promise.all([caricaChunks(), caricaSchede()]);
+  if (chunks.length === 0 && schede.length === 0) return;
 
-  console.log(`  Chunks da processare: ${candidati.length}`);
-  if (candidati.length === 0) {
-    console.log("  Niente da fare.");
-    return;
-  }
-  if (DRY) {
-    for (const c of candidati.slice(0, 5)) {
-      console.log(`  ${c.documenti?.codice}/${c.chunk_index} (${(c.contenuto ?? "").length} chars)`);
-    }
+  if (dryRun) {
+    console.log(`Da elaborare: ${chunks.length} chunk, ${schede.length} schede`);
     return;
   }
 
-  // 2) Loop sequenziale (rispetta rate limits Gemini 100 RPM = ~1.5/sec)
-  let done = 0;
-  for (const c of candidati) {
-    const text = (c.contenuto ?? "").slice(0, 30000); // limite token-safe
-    if (!text.trim()) {
-      state.errori++;
-      console.warn(`  skip ${c.documenti?.codice}/${c.chunk_index}: contenuto vuoto`);
+  let completati = 0;
+  let errori = 0;
+  const elementi = [
+    ...chunks.map((chunk) => ({ tabella: "chunks", id: chunk.id, testo: chunk.contenuto, max: 30000 })),
+    ...schede.map((scheda) => ({ tabella: "schede_approvate", id: scheda.id, testo: scheda.contenuto_md, max: 8000 })),
+  ];
+
+  for (const elemento of elementi) {
+    const testo = String(elemento.testo ?? "").trim().slice(0, elemento.max);
+    if (!testo) {
+      errori += 1;
       continue;
     }
     try {
-      const { values, provider } = await embed(text);
-      const { error: updErr } = await db
-        .schema("preventivatore")
-        .from("chunks")
-        .update({ embedding: values })
-        .eq("id", c.id);
-      if (updErr) {
-        state.errori++;
-        console.error(`  ERR update ${c.id}: ${updErr.message}`);
-      } else {
-        done++;
-        if (done % 10 === 0 || done === candidati.length) {
-          console.log(`  ${done}/${candidati.length}  (gemini=${state.geminiCalls} openrouter=${state.openrouterCalls} err=${state.errori})  ultimo provider=${provider}`);
-        }
-      }
-    } catch (err) {
-      state.errori++;
-      console.error(`  ERR embed ${c.documenti?.codice}/${c.chunk_index}: ${err instanceof Error ? err.message : err}`);
+      const risultato = await embed(testo);
+      await aggiorna(elemento.tabella, elemento.id, risultato);
+      completati += 1;
+    } catch (errore) {
+      errori += 1;
+      console.error(`Errore ${elemento.tabella}/${elemento.id}: ${errore instanceof Error ? errore.message : errore}`);
     }
-    // pausa leggera ogni 5 chiamate
-    if ((state.geminiCalls + state.openrouterCalls) % 5 === 0) await sleep(300);
+    if (completati % 5 === 0) await sleep(300);
   }
 
-  console.log(`\nDone. ${done} embedding popolati. errori=${state.errori}`);
-})().catch((e) => { console.error("FATAL:", e); process.exit(1); });
+  console.log(`Embedding aggiornati: ${completati}; errori: ${errori}`);
+})().catch((errore) => {
+  // Gli errori transitori di rete/DB non rendono il timer systemd permanentemente fallito.
+  console.error(errore instanceof Error ? errore.message : errore);
+});

@@ -9,13 +9,9 @@ import {
 } from "@/lib/portali/preventivatore/ruoli";
 import { idsMasterPerRagioneSociale } from "@/lib/portali/preventivatore/clienti-filtro";
 import { escapeIlike } from "@/lib/portali/preventivatore/postgrest";
-import {
-  STATI_IN_LAVORAZIONE,
-  STATI_ORDINATO,
-  STATI_RIFIUTATO,
-  statiDaFiltro,
-} from "@/lib/portali/preventivatore/stati";
-import { logError, logWarn } from "@/lib/logger";
+import { statiDaFiltro } from "@/lib/portali/preventivatore/stati";
+import { indicizzaDocumento } from "@/lib/portali/preventivatore/indicizzazione";
+import { logError } from "@/lib/logger";
 
 const ID_INESISTENTE = "00000000-0000-0000-0000-000000000000";
 
@@ -59,11 +55,10 @@ export async function GET(request: NextRequest) {
       // dell'import V2 (pending/ordinato/rifiutato) e quelli del workflow
       // (migration 039). Prima usavano solo i primi, e siccome nessun documento
       // li porta più tutte e tre le caselle mostravano zero.
-      const [totRes, pendRes, ordRes, rifRes, storRes, chunksRes] = await Promise.all([
+      const [totRes, apertiRes, definitiviRes, storRes, chunksRes] = await Promise.all([
         scoped(docsBase()),
-        scoped(docsBase()).in("stato", STATI_IN_LAVORAZIONE),
-        scoped(docsBase()).in("stato", STATI_ORDINATO),
-        scoped(docsBase()).in("stato", STATI_RIFIUTATO),
+        scoped(docsBase()).eq("stato", "aperta"),
+        scoped(docsBase()).eq("stato", "completato"),
         scoped(docsBase()).eq("stato", "storico"),
         adminClient.schema("preventivatore").from("chunks").select("*", { count: "exact", head: true }),
       ]);
@@ -75,9 +70,8 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         totale: totRes.count ?? 0,
-        pending: pendRes.count ?? 0,
-        ordinato: ordRes.count ?? 0,
-        rifiutato: rifRes.count ?? 0,
+        aperta: apertiRes.count ?? 0,
+        completato: definitiviRes.count ?? 0,
         storico: storRes.count ?? 0,
         total_chunks: chunksRes.count ?? 0,
       });
@@ -264,16 +258,7 @@ export async function POST(request: NextRequest) {
     // result è già {id, codice} dal RPC
     const r = result as { id: string; codice: string };
 
-    // Registra il tempo di preventivazione (cronometro builder) sul documento
-    // appena creato. Best-effort: se fallisce non compromette la creazione.
-    if (typeof body.tempo_preventivazione_sec === "number" && body.tempo_preventivazione_sec > 0) {
-      const { error: tempoErr } = await admin
-        .schema("preventivatore")
-        .from("documenti")
-        .update({ tempo_preventivazione_sec: body.tempo_preventivazione_sec })
-        .eq("id", r.id);
-      if (tempoErr) logWarn("preventivatore.documenti", "tempo_preventivazione non salvato", { reqId: r.id, dettaglio: tempoErr.message });
-    }
+    await indicizzaDocumento(r.id, { timeoutMs: 8000 });
 
     return NextResponse.json({ id: r.id, codice: r.codice });
   } catch (error) {

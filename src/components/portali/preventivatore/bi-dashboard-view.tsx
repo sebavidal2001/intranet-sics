@@ -570,7 +570,7 @@ const WidgetCard = memo(function WidgetCard({
         )}
       </div>
 
-      <WidgetRenderer widget={widget} data={data} />
+      <WidgetRenderer widget={widget} data={data} incompleto={result?.incompleto === true} />
 
       {mode === "edit" && (
         <div
@@ -582,9 +582,20 @@ const WidgetCard = memo(function WidgetCard({
   );
 });
 
-function WidgetRenderer({ widget, data }: { widget: BiWidgetConfig; data: BiWidgetResult["data"] }) {
+function WidgetRenderer({ widget, data, incompleto = false }: { widget: BiWidgetConfig; data: BiWidgetResult["data"]; incompleto?: boolean }) {
   const chartData = useMemo(() => data.map((d) => ({ ...d, ...d.stack })), [data]);
   const stackKeys = useMemo(() => Array.from(new Set(data.flatMap((d) => Object.keys(d.stack ?? {})))), [data]);
+
+  if (widget.type === "kpi" && incompleto) {
+    // Oltre il tetto di righe caricabili un totale sarebbe calcolato su una parte
+    // dei dati: meglio dirlo che mostrare un numero falso.
+    return (
+      <div className="flex h-[calc(100%-34px)] flex-col justify-end">
+        <p className="text-lg font-semibold text-amber-600">Dato incompleto</p>
+        <p className="mt-1 text-xs text-text-muted">Troppi dati per un calcolo completo: restringi i filtri.</p>
+      </div>
+    );
+  }
 
   if (widget.type === "kpi") {
     const value = data[0]?.value ?? 0;

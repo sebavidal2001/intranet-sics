@@ -61,7 +61,14 @@ const SchedaTecnicaDialog = dynamic(
 /** Preferenza "pannello AI aperto", per singolo browser. */
 const CHAT_APERTA_KEY = "preventivatore:chat-aperta"
 
-export function NuovoView() {
+export function NuovoView({
+  serviziIniziali,
+  templateIniziali,
+}: {
+  /** Precaricati dal server component: niente richieste dopo il mount. */
+  serviziIniziali?: ServizioDB[]
+  templateIniziali?: TemplateListItem[]
+} = {}) {
   const [titolo, setTitolo] = useState("")
   // Codice commessa inserito dall'utente (sostituisce il vecchio progressivo G).
   const [codiceCommessa, setCodiceCommessa] = useState("")
@@ -70,9 +77,9 @@ export function NuovoView() {
   const [settimaneMax, setSettimaneMax] = useState("")
   const [margineGlobale, setMargineGlobale] = useState(0)
   const [blocchi, setBlocchi] = useState<Blocco[]>([])
-  const [serviziDB, setServiziDB] = useState<ServizioDB[]>([])
-  const [loadingServizi, setLoadingServizi] = useState(true)
-  const [templates, setTemplates] = useState<TemplateListItem[]>([])
+  const [serviziDB, setServiziDB] = useState<ServizioDB[]>(serviziIniziali ?? [])
+  const [loadingServizi, setLoadingServizi] = useState(!serviziIniziali)
+  const [templates, setTemplates] = useState<TemplateListItem[]>(templateIniziali ?? [])
   const [schedaOpen, setSchedaOpen] = useState(false)
   const [savingPreventivo, setSavingPreventivo] = useState(false)
   // Fase del salvataggio, per dire all'utente cosa sta succedendo. Fra il POST
@@ -85,6 +92,10 @@ export function NuovoView() {
   const [baseAvviso, setBaseAvviso] = useState<string | null>(null)
   const [editCodice, setEditCodice] = useState<string | null>(null)
   const [editTempoIniziale, setEditTempoIniziale] = useState(0)
+  // updated_at letto all'apertura in modifica: la PUT lo rimanda come
+  // `_versione_attesa` e il server rifiuta (409) se nel frattempo qualcun altro
+  // ha salvato, invece di sovrascriverne il lavoro in silenzio.
+  const [versioneAttesa, setVersioneAttesa] = useState<string | null>(null)
   const [refreshingPrezzi, setRefreshingPrezzi] = useState(false)
   // Il pannello AI occupa 320 px fissi e non si poteva chiudere: con sidebar,
   // padding e gap fanno ~612 px di cornice, e sotto i ~1100 px le etichette
@@ -156,6 +167,7 @@ export function NuovoView() {
         // Tempo cronometrato per redigere il preventivo (produttività). Inviato
         // solo se > 0 (cronometro effettivamente usato).
         tempo_preventivazione_sec: getPreventivoTimerSeconds(timerKey) || undefined,
+        _versione_attesa: editId && versioneAttesa ? versioneAttesa : undefined,
         blocchi: blocchi.map((b) => ({
           nome: b.nome || undefined,
           tipo: b.tipo,
@@ -314,7 +326,7 @@ export function NuovoView() {
         if (annullato) return
 
         const d = data as {
-          documento?: { codice?: string | null; tempo_preventivazione_sec?: number | null }
+          documento?: { codice?: string | null; tempo_preventivazione_sec?: number | null; updated_at?: string | null }
           titolo?: string
           cliente?: Cliente | null
           note?: string
@@ -332,6 +344,7 @@ export function NuovoView() {
         setEditCodice(d.documento?.codice ?? null)
         setCodiceCommessa(d.documento?.codice ?? "")
         setEditTempoIniziale(d.documento?.tempo_preventivazione_sec ?? 0)
+        setVersioneAttesa(d.documento?.updated_at ?? null)
         if (d.titolo) setTitolo(d.titolo)
         if (d.cliente) setCliente(d.cliente)
         if (d.margine_trattativa_pct != null) setMargineGlobale(d.margine_trattativa_pct)
@@ -443,8 +456,10 @@ export function NuovoView() {
     }
   }
 
-  // Carica il catalogo servizi (per il picker delle lavorazioni nei blocchi)
+  // Carica il catalogo servizi (per il picker delle lavorazioni nei blocchi),
+  // solo se il server non l'ha già passato.
   useEffect(() => {
+    if (serviziIniziali) return
     async function caricaServizi() {
       try {
         const res = await fetch("/api/portali/preventivatore/servizi")
@@ -459,15 +474,16 @@ export function NuovoView() {
       }
     }
     caricaServizi()
-  }, [])
+  }, [serviziIniziali])
 
   // Carica i template prodotti attivi (per la generazione distinta nei blocchi)
   useEffect(() => {
+    if (templateIniziali) return
     fetch("/api/portali/preventivatore/template")
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setTemplates(Array.isArray(d) ? d : []))
       .catch(() => {})
-  }, [])
+  }, [templateIniziali])
 
   function aggiungiBlocco() {
     setBlocchi((prev) => [...prev, creaBlocco()])

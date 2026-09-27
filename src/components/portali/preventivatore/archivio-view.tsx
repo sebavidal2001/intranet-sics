@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { formattaNomeCliente } from "@/lib/portali/preventivatore/testo"
-import { badgeStato, type StatoDocumento } from "@/lib/portali/preventivatore/stati"
+import { badgeStato, FILTRI_STATO_DOCUMENTO, type StatoDocumento } from "@/lib/portali/preventivatore/stati"
 
 const ChatAI = dynamic(
   () => import("@/components/portali/preventivatore/chat-ai").then((m) => m.ChatAI),
@@ -84,18 +84,10 @@ interface MotivoRifiuto {
 
 // ─── Const ────────────────────────────────────────────────────────────────────
 
-// Le opzioni sono i GRUPPI di `lib/portali/preventivatore/stati.ts`: ognuno
-// copre sia gli stati legacy dell'import V2 sia quelli del workflow (migration
-// 039). Prima qui c'erano solo i tre legacy, che nessun documento porta più:
-// qualunque filtro si scegliesse il risultato era zero su 386.
-const FILTRI_STATO = [
-  { value: "tutti", label: "Tutti gli stati" },
-  { value: "in_lavorazione", label: "In lavorazione" },
-  { value: "inviata", label: "Offerta inviata" },
-  { value: "ordinato", label: "Ordinato" },
-  { value: "rifiutato", label: "Rifiutato" },
-  { value: "storico", label: "Archivio storico" },
-] as const
+// Le opzioni sono quelle di `lib/portali/preventivatore/stati.ts` (fonte unica):
+// dopo la rimozione del workflow (migration 111) esistono solo storico, bozze
+// aperte e definitivi. I filtri «inviata/ordinato/rifiutato» non trovavano nulla.
+const FILTRI_STATO = FILTRI_STATO_DOCUMENTO
 
 const FILTRI_TIPO = [
   { value: "tutti", label: "Tutti i tipi" },
@@ -595,9 +587,6 @@ export function ArchivioView() {
                           {r.data_offerta && <span>{r.data_offerta}</span>}
                           {!aiMode && r.importo_preventivo != null && (
                             <span className="text-text font-medium">{fmtEuro(r.importo_preventivo)}</span>
-                          )}
-                          {!aiMode && r.importo_ordinato != null && r.stato === "ordinato" && (
-                            <span className="text-green-700 font-medium">→ {fmtEuro(r.importo_ordinato)}</span>
                           )}
                         </div>
                       </div>

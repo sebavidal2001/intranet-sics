@@ -2,10 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso } from "@/lib/auth/portale";
-import {
-  getFiltroCommerciale,
-  getIdClientiVisibili,
-} from "@/lib/portali/preventivatore/ruoli";
+import { haRuoloFunzionaleAsync, PREVENTIVATORE_RUOLI } from "@/lib/portali/preventivatore/ruoli";
+import { requireDocumentoVisibile } from "@/lib/portali/preventivatore/documento-visibile";
 import { DettaglioPreventivoView } from "@/components/portali/preventivatore/dettaglio-view";
 import type {
   PreventivoDettaglio,
@@ -38,7 +36,16 @@ export default async function DettaglioPreventivoPage({
   const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
   if (livello === null) redirect("/");
 
-  const agenteCommerciale = await getFiltroCommerciale(user.id, livello);
+  // Visibilità PRIMA di leggere distinta, blocchi e chunk: prima si caricava tutto
+  // e si controllava il portfolio dopo. Fail-closed: per un commerciale ristretto
+  // un documento senza cliente master non è visibile.
+  const visibilita = await requireDocumentoVisibile({ userId: user.id, livello }, id);
+  if (!visibilita.ok) notFound();
+
+  // Stessa regola della route `correzioni`: admin o ruolo funzionale preventivatore.
+  const puoModificare =
+    livello === "admin" || livello === "superadmin" ||
+    (await haRuoloFunzionaleAsync(user.id, livello, [PREVENTIVATORE_RUOLI.preventivatore]));
 
   const sb = createAdminClient();
 
@@ -60,7 +67,7 @@ export default async function DettaglioPreventivoPage({
     sb
       .schema("preventivatore")
       .from("righe_distinta")
-      .select("id, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_pct, ricarico_coefficiente, tipo_riga, totale_riga, codice_blocco")
+      .select("id, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_pct, ricarico_coefficiente, tipo_riga, totale_riga, codice_blocco, scala_con_quantita")
       .eq("documento_id", id)
       // `ordine` (migration 065) preserva l'ordine builder; fallback legacy.
       .order("ordine", { ascending: true, nullsFirst: false })
@@ -81,17 +88,6 @@ export default async function DettaglioPreventivoPage({
   if (righeRes.error) throw righeRes.error;
   if (blocchiRes.error) throw blocchiRes.error;
 
-  // Enforce filtro commerciale ristretto sulla scheda dettaglio
-  if (agenteCommerciale) {
-    const cmId = (docRes.data as { cliente_master_id: string | null }).cliente_master_id;
-    if (!cmId) {
-      notFound();
-    } else {
-      const visibili = await getIdClientiVisibili(agenteCommerciale);
-      if (!visibili.includes(cmId)) notFound();
-    }
-  }
-
   let motivoRifiutoLabel: string | null = null;
   if (docRes.data.motivo_rifiuto_id) {
     const { data: mr } = await sb
@@ -109,6 +105,7 @@ export default async function DettaglioPreventivoPage({
     righe_distinta: (righeRes.data ?? []) as unknown as PreventivoRigaRaw[],
     blocchi: (blocchiRes.data ?? []) as unknown as PreventivoBloccoRaw[],
     motivo_rifiuto_label: motivoRifiutoLabel,
+    puo_modificare: puoModificare,
   };
 
   return <DettaglioPreventivoView dettaglio={dettaglio} />;
