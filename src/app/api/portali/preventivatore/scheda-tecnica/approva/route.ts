@@ -5,12 +5,13 @@ import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
 import { haRuoloFunzionale, PREVENTIVATORE_RUOLI } from "@/lib/portali/preventivatore/ruoli";
 import { getCachedEmbedding } from "@/lib/portali/preventivatore/chat/embedding-cache";
 import { logError, logWarn } from "@/lib/logger";
+import { MAX_CARATTERI_SCHEDA } from "@/lib/portali/preventivatore/scheda-tecnica/ai";
 
 export const dynamic = "force-dynamic";
 
 const requestSchema = z.object({
   scheda_id: z.string().uuid("scheda_id non valido"),
-  contenuto_md: z.string().trim().min(1, "contenuto_md obbligatorio").max(40_000),
+  contenuto_md: z.string().trim().min(1, "contenuto_md obbligatorio").max(MAX_CARATTERI_SCHEDA),
   builder_state: z.unknown().optional(),
   n_revisioni: z.number().int().min(0).max(10_000).optional(),
 }).superRefine((value, ctx) => {

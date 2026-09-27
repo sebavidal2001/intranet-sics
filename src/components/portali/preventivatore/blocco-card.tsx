@@ -46,6 +46,7 @@ function SearchArticoli({
   const [risultati, setRisultati] = useState<Prodotto[]>([])
   const [aperto, setAperto] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [erroreRicerca, setErroreRicerca] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -54,17 +55,23 @@ function SearchArticoli({
     if (q.length < 1) {
       setRisultati([])
       setAperto(false)
+      setErroreRicerca(null)
       return
     }
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
+      setErroreRicerca(null)
       try {
         const res = await fetch(`/api/portali/preventivatore/prodotti?q=${encodeURIComponent(q)}`)
-        if (res.ok) {
-          const data: Prodotto[] = await res.json()
-          setRisultati(data)
-          setAperto(true)
-        }
+        const data = await res.json().catch(() => null) as Prodotto[] | { error?: string } | null
+        if (!res.ok) throw new Error(!Array.isArray(data) ? data?.error ?? "Errore ricerca articoli" : "Errore ricerca articoli")
+        if (!Array.isArray(data)) throw new Error("Risposta articoli non valida")
+        setRisultati(data)
+        setAperto(true)
+      } catch (e) {
+        setRisultati([])
+        setAperto(false)
+        setErroreRicerca(e instanceof Error ? e.message : "Errore ricerca articoli")
       } finally {
         setLoading(false)
       }
@@ -95,6 +102,12 @@ function SearchArticoli({
           <Package className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
         )}
       </div>
+
+      {erroreRicerca && (
+        <p role="alert" className="mt-1 text-xs text-red-600">
+          {erroreRicerca}. <button type="button" className="font-semibold underline underline-offset-2" onClick={() => cerca(testo)}>Riprova</button>
+        </p>
+      )}
 
       {aperto && (
         <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-bg shadow-lg overflow-hidden max-h-64 overflow-y-auto">

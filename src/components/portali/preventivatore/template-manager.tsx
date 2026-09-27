@@ -38,8 +38,14 @@ export function TemplateManager() {
   const [aiLoading, setAiLoading] = useState(false)
 
   const caricaLista = useCallback(async () => {
-    const res = await fetch(`${BASE}?all=1`)
-    if (res.ok) setList(await res.json())
+    try {
+      const res = await fetch(`${BASE}?all=1`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Errore caricamento template")
+      setList(data as ListItem[])
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Errore caricamento template")
+    }
   }, [])
   useEffect(() => { caricaLista() }, [caricaLista])
 
@@ -77,8 +83,17 @@ export function TemplateManager() {
 
   async function elimina() {
     if (!selId || !window.confirm("Eliminare il template?")) return
-    const res = await fetch(`${BASE}/${selId}`, { method: "DELETE" })
-    if (res.ok) { setSelId(null); setDraft(null); caricaLista() }
+    setErr(null)
+    try {
+      const res = await fetch(`${BASE}/${selId}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Errore eliminazione template")
+      setSelId(null)
+      setDraft(null)
+      await caricaLista()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Errore eliminazione template")
+    }
   }
 
   async function aiGenera() {
@@ -335,14 +350,17 @@ export function TemplateManager() {
     if (inCache) { updArr("righe_materiale", idx, inCache); return }
     try {
       const res = await fetch(`/api/portali/preventivatore/prodotti/costo?codice=${encodeURIComponent(c)}`)
-      const d = await res.json()
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((d as { error?: string }).error ?? "Errore caricamento costo articolo")
       const valori = {
         costo_corrente: d?.trovato ? (d.ult_costo ?? null) : null,
         data_ult_costo: d?.trovato ? (d.data_ult_costo ?? null) : null,
       }
-      if (res.ok) cacheCosti.set(c, valori)
+      cacheCosti.set(c, valori)
       updArr("righe_materiale", idx, valori)
-    } catch { /* ignora */ }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Errore caricamento costo articolo")
+    }
   }
 }
 

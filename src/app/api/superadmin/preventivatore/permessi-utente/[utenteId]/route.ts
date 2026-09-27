@@ -58,6 +58,15 @@ export async function GET(
         .maybeSingle(),
     ]);
 
+    if (ruoliRes.error || utenteRes.error) {
+      logError(
+        "superadmin.preventivatore.permessi-utente",
+        "GET query permessi-utente",
+        ruoliRes.error ?? utenteRes.error,
+      );
+      return NextResponse.json({ error: "Errore recupero permessi utente" }, { status: 500 });
+    }
+
     const ruoli_slug = ((ruoliRes.data ?? []) as unknown as Array<{ ruolo: { slug: string } | null }>)
       .map((r) => r.ruolo?.slug)
       .filter((s): s is string => Boolean(s));

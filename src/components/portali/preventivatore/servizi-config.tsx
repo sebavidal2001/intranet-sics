@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Loader2, Plus, Trash2, Save, RefreshCw, Wrench, CheckCircle2, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { LIMITI_SERVIZIO } from "@/lib/portali/preventivatore/documenti-schema"
 
 interface Servizio {
   id: string
@@ -265,6 +266,7 @@ export function ServiziConfig() {
                       <td className="px-2 py-1.5">
                         <Input
                           value={valore(s, "nome")}
+                          maxLength={LIMITI_SERVIZIO.nome}
                           onChange={(e) => setCampo(s.id, "nome", e.target.value)}
                           className="h-8 text-sm"
                         />
@@ -272,6 +274,7 @@ export function ServiziConfig() {
                       <td className="px-2 py-1.5">
                         <Input
                           value={valore(s, "categoria")}
+                          maxLength={LIMITI_SERVIZIO.categoria}
                           onChange={(e) => setCampo(s.id, "categoria", e.target.value)}
                           className="h-8 text-sm"
                         />
@@ -280,6 +283,8 @@ export function ServiziConfig() {
                         <Input
                           type="number"
                           step={0.5}
+                          min={0}
+                          max={LIMITI_SERVIZIO.tariffaOra}
                           value={valore(s, "tariffa_ora")}
                           onChange={(e) => setCampo(s.id, "tariffa_ora", Number(e.target.value))}
                           className="h-8 text-sm text-right"

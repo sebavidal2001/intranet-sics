@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePreventivatore, scopeAgente } from "@/lib/portali/preventivatore/api-guard";
-import { logError } from "@/lib/logger";
+import { logError, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -105,8 +105,13 @@ export async function GET() {
     const topArticoli = (topArticoliRes.data ?? []) as TopArticoloRow[];
     const attivita = (attivitaRes.data ?? []) as AttivitaRow[];
 
-    const aiSpesaMese = ((usageRes.data ?? []) as { cost_amount: string | number }[])
-      .reduce((sum, r) => sum + Number(r.cost_amount ?? 0), 0);
+    if (usageRes.error) {
+      logWarn("preventivatore.dashboard", "Query usage AI fallita", { dettaglio: usageRes.error.message });
+    }
+    const aiSpesaMese = usageRes.error
+      ? null
+      : ((usageRes.data ?? []) as { cost_amount: string | number }[])
+          .reduce((sum, r) => sum + Number(r.cost_amount ?? 0), 0);
 
     return NextResponse.json({
       window_months: 12,

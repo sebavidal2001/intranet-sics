@@ -4,10 +4,13 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { Send, History, ChevronRight, Maximize2, Minimize2, Plus, Trash2, Square } from "lucide-react"
 import { Mascot, type MascotStato } from "@/components/portali/preventivatore/mascot"
 import { SessionsPanel, type Sessione } from "@/components/portali/preventivatore/chat-ai-sessions-panel"
+import { troncaStoria } from "@/lib/portali/preventivatore/chat/storia"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 import type { BuilderState } from "@/components/portali/preventivatore/nuovo-view-types"
+
+const MAX_CARATTERI_INPUT = 8_000
 
 interface ChatAIProps {
   contesto: "archivio" | "nuovo"
@@ -1177,7 +1180,10 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
           titolo: firstMessage.slice(0, 100),
         }),
       })
-      if (!res.ok) return null
+      if (!res.ok) {
+        setAvviso("La conversazione non verrà salvata.")
+        return null
+      }
       const data = await res.json() as { sessione: Sessione }
       const id = data.sessione.id
       setSessioneId(id)
@@ -1185,6 +1191,7 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
       setSessioni(prev => [data.sessione, ...prev])
       return id
     } catch {
+      setAvviso("La conversazione non verrà salvata.")
       return null
     }
   }, [sessioneId, contesto])
@@ -1218,9 +1225,9 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
         signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextMessages
+          messages: troncaStoria(nextMessages
             .filter((m) => m.content.trim().length > 0)
-            .map((m) => ({ role: m.role, content: m.content })),
+            .map((m) => ({ role: m.role, content: m.content }))),
           contesto,
           modalita,
           sessione_id: activeSessId,
@@ -1479,6 +1486,7 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            maxLength={MAX_CARATTERI_INPUT}
             placeholder={placeholder ?? "Chiedi ai preventivi..."}
             disabled={loading}
             className="flex-1 text-xs h-8 rounded-lg px-3 outline-none transition-all duration-150"
@@ -1491,6 +1499,11 @@ export function ChatAI({ contesto, placeholder, builderState }: ChatAIProps) {
             onFocus={e => { e.currentTarget.style.borderColor = "rgba(0,161,190,0.55)"; e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.11)" }}
             onBlur={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)" }}
           />
+          {input.length >= 7_000 && (
+            <span className="self-center text-[10px] tabular-nums" style={{ color: input.length >= MAX_CARATTERI_INPUT ? "#fca5a5" : "rgba(255,255,255,0.55)" }}>
+              {input.length.toLocaleString("it-IT")}/{MAX_CARATTERI_INPUT.toLocaleString("it-IT")}
+            </span>
+          )}
           {loading ? (
             <button
               onClick={() => abortRef.current?.abort()}

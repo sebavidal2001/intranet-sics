@@ -40,6 +40,7 @@ export function AutocompleteCliente({
   const [risultatiRaw, setRisultatiRaw] = useState<Cliente[]>([])
   const [aperto, setAperto] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [erroreRicerca, setErroreRicerca] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -48,6 +49,7 @@ export function AutocompleteCliente({
   const [ragioneScelta, setRagioneScelta] = useState<RagioneAggregata | null>(null)
   const [destinazioni, setDestinazioni] = useState<Cliente[]>([])
   const [loadingDest, setLoadingDest] = useState(false)
+  const [erroreDest, setErroreDest] = useState<string | null>(null)
 
   // Sync esterno: reset
   useEffect(() => {
@@ -102,26 +104,32 @@ export function AutocompleteCliente({
       setRisultatiRaw([])
       setAperto(false)
       setLoading(false)
+      setErroreRicerca(null)
       return
     }
     debounceRef.current = setTimeout(async () => {
       const controller = new AbortController()
       abortRef.current = controller
       setLoading(true)
+      setErroreRicerca(null)
       try {
         const res = await fetch(
           `/api/portali/preventivatore/clienti?q=${encodeURIComponent(q)}`,
           { signal: controller.signal }
         )
-        if (res.ok) {
-          const data: Cliente[] = await res.json()
-          if (controller.signal.aborted) return
-          setRisultatiRaw(data)
-          setAperto(true)
-        }
+        const data = await res.json().catch(() => null) as Cliente[] | { error?: string } | null
+        if (!res.ok) throw new Error(!Array.isArray(data) ? data?.error ?? "Errore ricerca clienti" : "Errore ricerca clienti")
+        if (!Array.isArray(data)) throw new Error("Risposta clienti non valida")
+        if (controller.signal.aborted) return
+        setRisultatiRaw(data)
+        setAperto(true)
       } catch (e) {
         // L'annullamento è la via normale quando si continua a digitare.
-        if (!(e instanceof DOMException && e.name === "AbortError")) throw e
+        if (!(e instanceof DOMException && e.name === "AbortError")) {
+          setRisultatiRaw([])
+          setAperto(false)
+          setErroreRicerca(e instanceof Error ? e.message : "Errore ricerca clienti")
+        }
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
@@ -134,12 +142,15 @@ export function AutocompleteCliente({
     setTesto(r.ragione_sociale)
     setAperto(false)
     setLoadingDest(true)
+    setErroreDest(null)
     try {
       const res = await fetch(
         `/api/portali/preventivatore/clienti/destinazioni?codice_cliente=${encodeURIComponent(r.codice_cliente)}`
       )
-      if (!res.ok) return
-      const dest: Cliente[] = await res.json()
+      const data = await res.json().catch(() => null) as Cliente[] | { error?: string } | null
+      if (!res.ok) throw new Error(!Array.isArray(data) ? data?.error ?? "Errore caricamento sedi" : "Errore caricamento sedi")
+      if (!Array.isArray(data)) throw new Error("Risposta sedi non valida")
+      const dest = data
       setDestinazioni(dest)
       // Auto-select se UNA sola destinazione (HQ pura unica)
       if (dest.length === 1) {
@@ -152,6 +163,9 @@ export function AutocompleteCliente({
           onSelect(hq)
         }
       }
+    } catch (e) {
+      setDestinazioni([])
+      setErroreDest(e instanceof Error ? e.message : "Errore caricamento sedi")
     } finally {
       setLoadingDest(false)
     }
@@ -216,6 +230,12 @@ export function AutocompleteCliente({
         {!valore && !ragioneScelta && testo.length > 0 && testo.length < MIN_CARATTERI && (
           <p className="mt-1 text-[11px] text-text-muted">
             Scrivi almeno {MIN_CARATTERI} caratteri per cercare.
+          </p>
+        )}
+
+        {erroreRicerca && (
+          <p role="alert" className="mt-1 text-xs text-red-600">
+            {erroreRicerca}. <button type="button" className="font-semibold underline underline-offset-2" onClick={() => cerca(testo)}>Riprova</button>
           </p>
         )}
 
@@ -285,6 +305,12 @@ export function AutocompleteCliente({
             })}
           </div>
         </div>
+      )}
+
+      {ragioneScelta && erroreDest && (
+        <p role="alert" className="text-xs text-red-600">
+          {erroreDest}. <button type="button" className="font-semibold underline underline-offset-2" onClick={() => void selezionaRagione(ragioneScelta)}>Riprova</button>
+        </p>
       )}
 
       {/* ── Riepilogo cliente scelto ─────────────────────────────────────── */}

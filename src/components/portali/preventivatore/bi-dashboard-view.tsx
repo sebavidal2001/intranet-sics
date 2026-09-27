@@ -63,6 +63,13 @@ const CHART_TYPES: BiChartType[] = ["kpi", "bar", "stacked_bar", "line", "combo"
 const DATASETS: BiDataset[] = ["documenti", "righe_distinta"];
 const METRICS: BiMetricOp[] = ["count", "sum", "avg", "min", "max"];
 const FIELDS = Object.keys(BI_FIELD_LABELS) as BiField[];
+const MAX_WIDGETS = 40;
+const MAX_LAYOUT_COORD = 1000;
+
+async function leggiErrore(res: Response, fallback: string) {
+  const json = await res.json().catch(() => ({})) as { error?: string };
+  return json.error ?? fallback;
+}
 
 function fmtNumber(value: number) {
   if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
@@ -107,6 +114,9 @@ export function BiDashboardView() {
   const [saving, setSaving] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<FiltroGlobaleOption>({ anni: [], clienti: [], categorie: [] });
 
   // useMemo per evitare ricerca lineare su ogni render
@@ -132,15 +142,23 @@ export function BiDashboardView() {
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setLoadError(null);
     fetch(`/api/portali/preventivatore/bi?scope=${scope}`, { cache: "no-store" })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(await leggiErrore(r, "Errore caricamento dashboard"));
+        return r.json() as Promise<{ dashboard?: BiDashboardRow }>;
+      })
       .then((json) => {
         if (!active) return;
-        const row = json.dashboard as BiDashboardRow;
+        const row = json.dashboard;
+        if (!row?.config) throw new Error("Configurazione dashboard non disponibile");
         setDashboard(row);
         const next = normalizeConfig(row.config);
         setConfig(next);
         setSelectedId(next.widgets[0]?.id ?? null);
+      })
+      .catch((e) => {
+        if (active) setLoadError(e instanceof Error ? e.message : "Errore caricamento dashboard");
       })
       .finally(() => active && setLoading(false));
     return () => { active = false; };
@@ -157,17 +175,20 @@ export function BiDashboardView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ config }),
       })
-        .then((r) => r.json())
+        .then(async (r) => {
+          if (!r.ok) throw new Error(await leggiErrore(r, "Errore aggiornamento dati BI"));
+          return r.json();
+        })
         .then((json) => {
           if (!active) return;
           const map: Record<string, BiWidgetResult> = {};
           for (const item of (json.results ?? []) as BiWidgetResult[]) map[item.widget_id] = item;
           setResults(map);
           setMeta((json.meta as BiMeta) ?? {});
+          setDataError(null);
         })
-        .catch(() => {
-          if (!active) return;
-          setResults({});
+        .catch((e) => {
+          if (active) setDataError(e instanceof Error ? e.message : "Errore aggiornamento dati BI");
         })
         .finally(() => active && setFetchingData(false));
     }, 350);
@@ -186,8 +207,13 @@ export function BiDashboardView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scope, title: dashboard.title, config }),
       });
-      const json = await res.json();
+      if (!res.ok) throw new Error(await leggiErrore(res, "Errore salvataggio dashboard"));
+      const json = await res.json() as { dashboard?: BiDashboardRow };
+      if (!json.dashboard) throw new Error("Dashboard salvata ma risposta non valida");
       setDashboard(json.dashboard);
+      setActionError(null);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Errore salvataggio dashboard");
     } finally {
       setSaving(false);
     }
@@ -201,6 +227,10 @@ export function BiDashboardView() {
   };
 
   const addWidget = (widget?: Partial<BiWidgetConfig>) => {
+    if (config.widgets.length >= MAX_WIDGETS) {
+      setActionError(`Puoi aggiungere al massimo ${MAX_WIDGETS} widget.`);
+      return false;
+    }
     const id = `w-${Date.now()}`;
     const next: BiWidgetConfig = {
       id,
@@ -208,7 +238,7 @@ export function BiDashboardView() {
       type: widget?.type ?? "bar",
       dataset: widget?.dataset ?? "documenti",
       x: 0,
-      y: Math.max(0, ...config.widgets.map((w) => w.y + w.h)),
+      y: Math.min(MAX_LAYOUT_COORD, Math.max(0, ...config.widgets.map((w) => w.y + w.h))),
       w: widget?.w ?? 4,
       h: widget?.h ?? 4,
       metric: widget?.metric ?? { op: "count", label: "Conteggio" },
@@ -221,20 +251,27 @@ export function BiDashboardView() {
     setConfig((cur) => ({ ...cur, widgets: [...cur.widgets, next] }));
     setSelectedId(id);
     setMode("edit");
+    setActionError(null);
+    return true;
   };
 
   const proposeAi = async () => {
-    if (!aiPrompt.trim() || aiLoading) return;
+    const prompt = aiPrompt.trim();
+    if (!prompt || aiLoading) return;
     setAiLoading(true);
+    setActionError(null);
     try {
       const res = await fetch("/api/portali/preventivatore/bi/ai-propose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: aiPrompt }),
+        body: JSON.stringify({ prompt }),
       });
-      const json = await res.json();
-      if (json.widget) addWidget(json.widget);
-      setAiPrompt("");
+      if (!res.ok) throw new Error(await leggiErrore(res, "Errore generazione proposta"));
+      const json = await res.json() as { widget?: Partial<BiWidgetConfig> };
+      if (!json.widget) throw new Error("La proposta non contiene un widget valido");
+      if (addWidget(json.widget)) setAiPrompt("");
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Errore generazione proposta");
     } finally {
       setAiLoading(false);
     }
@@ -270,6 +307,7 @@ export function BiDashboardView() {
     }
     return out;
   }, [meta]);
+  const error = actionError ?? loadError ?? dataError;
 
   return (
     <div className="space-y-5">
@@ -328,13 +366,21 @@ export function BiDashboardView() {
                 </span>
               )}
               <button
-                className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md border border-[#00a1be]/25 px-2.5 text-xs font-semibold text-[#007a91]"
+                className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md border border-[#00a1be]/25 px-2.5 text-xs font-semibold text-[#007a91] disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => addWidget()}
+                disabled={config.widgets.length >= MAX_WIDGETS}
+                title={config.widgets.length >= MAX_WIDGETS ? `Limite di ${MAX_WIDGETS} widget raggiunto` : "Aggiungi widget"}
               >
                 <Plus className="h-3.5 w-3.5" />
                 Widget
               </button>
             </div>
+            {error && (
+              <div role="alert" className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                <span>{error}</span>
+              </div>
+            )}
             {truncations.length > 0 && (
               <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs">
                 <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
@@ -519,7 +565,7 @@ const WidgetCard = memo(function WidgetCard({
     const dy = Math.round((e.clientY - dragRef.current.startY) / 72);
     if (dragRef.current.kind === "move") {
       const nextX = Math.min(12 - widget.w, Math.max(0, dragRef.current.startGridX + dx));
-      const nextY = Math.max(0, dragRef.current.startGridY + dy);
+      const nextY = Math.min(MAX_LAYOUT_COORD, Math.max(0, dragRef.current.startGridY + dy));
       setPreviewPos((p) => ({ ...(p ?? widget), x: nextX, y: nextY }));
     } else {
       setPreviewPos((p) => ({

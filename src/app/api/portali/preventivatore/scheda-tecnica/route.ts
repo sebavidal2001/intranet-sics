@@ -13,6 +13,7 @@ import {
   formattaEsempi,
   registraUsage,
   risolveModello,
+  MAX_CARATTERI_SCHEDA,
 } from "@/lib/portali/preventivatore/scheda-tecnica/ai";
 import { logError, logWarn } from "@/lib/logger";
 import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -133,6 +134,9 @@ export async function POST(request: NextRequest) {
     }
     const schedaMd = risposta.content.trim();
     if (!schedaMd) return NextResponse.json({ error: "L'AI non ha restituito la scheda" }, { status: 502 });
+    if (schedaMd.length > MAX_CARATTERI_SCHEDA) {
+      return NextResponse.json({ error: `La scheda supera il limite di ${MAX_CARATTERI_SCHEDA.toLocaleString("it-IT")} caratteri` }, { status: 502 });
+    }
 
     const admin = createAdminClient();
     const { data: insertRow, error: insErr } = await admin.schema("preventivatore").from("schede_generate").insert({
@@ -147,11 +151,14 @@ export async function POST(request: NextRequest) {
       tokens_output: risposta.usage?.completion_tokens ?? null,
       costo_stimato: risposta.usage?.cost ?? null,
     }).select("id").single();
-    if (insErr) logWarn("preventivatore.scheda-tecnica", "insert audit fallito", { dettaglio: insErr.message });
+    if (insErr || !insertRow?.id) {
+      logError("preventivatore.scheda-tecnica", "salvataggio scheda generata fallito", insErr ?? new Error("ID scheda mancante"));
+      return NextResponse.json({ error: "La scheda è stata generata ma non è stato possibile salvarla. Riprova." }, { status: 500 });
+    }
 
     return NextResponse.json({
       tipo: "scheda", contenuto_md: schedaMd, modello: model, provider: "openrouter",
-      scheda_id: insertRow?.id ?? "", costo: risposta.usage?.cost ?? null,
+      scheda_id: insertRow.id, costo: risposta.usage?.cost ?? null,
     });
   } catch (err) {
     logError("preventivatore.scheda-tecnica", "scheda-tecnica error", err);

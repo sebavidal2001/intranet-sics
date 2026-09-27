@@ -3,14 +3,19 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 import { logError } from "@/lib/logger";
+import { ServizioConfigurazioneSchema } from "@/lib/portali/preventivatore/documenti-schema";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-function parseNonNegativeNumber(value: unknown, fallback: number) {
-  if (value === undefined || value === null || value === "") return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-}
+const creaServizioSchema = ServizioConfigurazioneSchema.extend({
+  categoria: ServizioConfigurazioneSchema.shape.categoria.optional().default("Manodopera"),
+  tariffa_ora: ServizioConfigurazioneSchema.shape.tariffa_ora.optional().default(0),
+  unita: z.string().trim().min(1).max(16).optional().default("h"),
+  ordine: z.number().finite().nonnegative().optional().default(999),
+  is_attivo: z.boolean().optional().default(true),
+  scala_con_quantita: z.boolean().optional().default(true),
+});
 
 /**
  * GET  — elenco servizi/lavorazioni (default solo attivi; `?all=1` include i disattivati)
@@ -62,36 +67,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const nome = String(body?.nome ?? "").trim();
-    if (!nome) return NextResponse.json({ error: "Nome obbligatorio" }, { status: 400 });
-    // Tetto alla lunghezza: senza, un payload può scrivere stringhe illimitate
-    // in una tabella letta a ogni apertura del builder.
-    if (nome.length > 120) {
-      return NextResponse.json({ error: "Nome troppo lungo (max 120 caratteri)" }, { status: 400 });
+    const parsed = creaServizioSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Payload non valido" }, { status: 400 });
     }
-
-    const tariffaOra = parseNonNegativeNumber(body?.tariffa_ora, 0);
-    const ordine = parseNonNegativeNumber(body?.ordine, 999);
-    if (tariffaOra === null) {
-      return NextResponse.json({ error: "Tariffa non valida" }, { status: 400 });
-    }
-    if (ordine === null) {
-      return NextResponse.json({ error: "Ordine non valido" }, { status: 400 });
-    }
+    const body = parsed.data;
 
     const adminClient = createAdminClient();
     const { data, error } = await adminClient
       .schema("preventivatore")
       .from("servizi_manodopera")
       .insert({
-        nome,
-        categoria: String(body?.categoria ?? "").trim().slice(0, 120) || "Manodopera",
-        tariffa_ora: tariffaOra,
-        unita: String(body?.unita ?? "h").trim().slice(0, 16) || "h",
-        ordine,
-        is_attivo: body?.is_attivo !== false,
-        scala_con_quantita: body?.scala_con_quantita !== false,
+        nome: body.nome,
+        categoria: body.categoria || "Manodopera",
+        tariffa_ora: body.tariffa_ora,
+        unita: body.unita,
+        ordine: body.ordine,
+        is_attivo: body.is_attivo,
+        scala_con_quantita: body.scala_con_quantita,
       })
       .select("id, nome, categoria, tariffa_ora, unita, ordine, is_attivo, scala_con_quantita")
       .single();

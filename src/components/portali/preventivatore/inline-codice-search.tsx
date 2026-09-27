@@ -19,17 +19,27 @@ export function InlineCodiceSearch({
 }) {
   const [risultati, setRisultati] = useState<Prodotto[]>([])
   const [aperto, setAperto] = useState(false)
+  const [errore, setErrore] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   const cerca = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (q.trim().length < 1) { setRisultati([]); setAperto(false); return }
+    if (q.trim().length < 1) { setRisultati([]); setAperto(false); setErrore(null); return }
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/portali/preventivatore/prodotti?q=${encodeURIComponent(q)}`)
-        if (res.ok) { setRisultati(await res.json()); setAperto(true) }
-      } catch { /* ignora */ }
+        const data = await res.json().catch(() => null) as Prodotto[] | { error?: string } | null
+        if (!res.ok) throw new Error(!Array.isArray(data) ? data?.error ?? "Errore ricerca articoli" : "Errore ricerca articoli")
+        if (!Array.isArray(data)) throw new Error("Risposta articoli non valida")
+        setRisultati(data)
+        setAperto(true)
+        setErrore(null)
+      } catch (e) {
+        setRisultati([])
+        setAperto(false)
+        setErrore(e instanceof Error ? e.message : "Errore ricerca articoli")
+      }
     }, 250)
   }, [])
 
@@ -54,6 +64,11 @@ export function InlineCodiceSearch({
         className="w-full font-mono text-xs text-[#00a1be] bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1"
         title="Codice articolo: digita per cercarlo in anagrafica"
       />
+      {errore && (
+        <p role="alert" className="mt-1 text-[11px] text-red-600">
+          {errore}. <button type="button" className="font-semibold underline underline-offset-2" onClick={() => cerca(value)}>Riprova</button>
+        </p>
+      )}
       {aperto && risultati.length > 0 && (
         <div className="absolute z-50 mt-1 w-72 rounded-lg border border-border bg-bg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
           {risultati.map((p) => (

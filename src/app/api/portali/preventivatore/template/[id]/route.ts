@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 import { logError } from "@/lib/logger";
+import { TemplateCompatibileDocumentoSchema } from "@/lib/portali/preventivatore/documenti-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -85,8 +86,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const livello = await getPortaleAccesso(supabase, user.id, "preventivatore");
     if (!hasMinLivello(livello, "admin")) return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
 
-    const body = await request.json().catch(() => null);
-    if (!body) return NextResponse.json({ error: "Payload mancante" }, { status: 400 });
+    const parsed = TemplateCompatibileDocumentoSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({
+        error: parsed.error.issues[0]?.message ?? "Payload non valido",
+        dettagli: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+      }, { status: 400 });
+    }
+    const body = parsed.data;
     const admin = createAdminClient();
 
     // Salvataggio ATOMICO (update template + replace figli) in un'unica transazione.

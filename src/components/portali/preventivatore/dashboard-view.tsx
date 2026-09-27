@@ -52,7 +52,7 @@ type DashboardData = {
     data_offerta: string | null
     created_at: string
   }[]
-  ai: { spesa_mese_corrente: number; currency: string }
+  ai: { spesa_mese_corrente: number | null; currency: string }
 }
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -455,7 +455,7 @@ function Timeline({ data }: { data: DashboardData["attivita_recente"] }) {
 
 // ─── AI Quick Start ───────────────────────────────────────────────────────────
 
-function AIQuickStart({ spesaMese, currency }: { spesaMese: number; currency: string }) {
+function AIQuickStart({ spesaMese, currency }: { spesaMese: number | null; currency: string }) {
   return (
     <div className="rounded-2xl p-5 relative overflow-hidden" style={{ background: "linear-gradient(180deg, #0f1720 0%, #18222e 100%)", boxShadow: "0 1px 0 rgba(15,23,32,.04), 0 8px 24px rgba(0,0,0,.18)" }}>
       <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "linear-gradient(rgba(0,161,190,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,161,190,0.06) 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
@@ -474,9 +474,9 @@ function AIQuickStart({ spesaMese, currency }: { spesaMese: number; currency: st
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: "#95c11f" }} />
               <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: "#95c11f" }} />
             </span>
-            {spesaMese > 0 && (
+            {(spesaMese === null || spesaMese > 0) && (
               <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "rgba(149,193,31,0.18)", color: "#bfe25e" }} title="Spesa AI nel mese corrente">
-                <Wallet className="w-3 h-3" />{currency === "usd" ? fmtUsd(spesaMese) : spesaMese.toFixed(2)}
+                <Wallet className="w-3 h-3" />{spesaMese === null ? "n.d." : currency === "usd" ? fmtUsd(spesaMese) : spesaMese.toFixed(2)}
               </span>
             )}
           </div>
@@ -591,7 +591,7 @@ export function DashboardView() {
       {/* Bottom row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {data ? <Timeline data={data.attivita_recente} /> : <SkeletonCard h={280} />}
-        <AIQuickStart spesaMese={data?.ai.spesa_mese_corrente ?? 0} currency={data?.ai.currency ?? "usd"} />
+        <AIQuickStart spesaMese={data?.ai.spesa_mese_corrente ?? null} currency={data?.ai.currency ?? "usd"} />
       </div>
 
       {/* Articoli più ricorrenti (full width sotto) */}

@@ -3,18 +3,18 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
-import { chiamaOpenRouterChat, registraUsage, risolveModello, type ChatMsg } from "@/lib/portali/preventivatore/scheda-tecnica/ai";
+import { chiamaOpenRouterChat, registraUsage, risolveModello, MAX_CARATTERI_SCHEDA, type ChatMsg } from "@/lib/portali/preventivatore/scheda-tecnica/ai";
 import { logError, logWarn } from "@/lib/logger";
 import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 const requestSchema = z.object({
-  scheda_corrente: z.string().trim().min(1, "scheda_corrente obbligatoria").max(60_000),
+  scheda_corrente: z.string().trim().min(1, "scheda_corrente obbligatoria").max(MAX_CARATTERI_SCHEDA),
   istruzione: z.string().trim().min(1, "istruzione obbligatoria").max(2_000),
   storico: z.array(z.object({
     ruolo: z.enum(["utente", "ai"]),
-    testo: z.string().max(60_000),
+    testo: z.string().max(MAX_CARATTERI_SCHEDA),
   })).max(20).optional(),
   scheda_id: z.string().uuid().nullable().optional(),
 });
@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
     }
     const nuovaScheda = risposta.content.trim();
     if (!nuovaScheda) return NextResponse.json({ error: "L'AI non ha restituito la scheda revisionata" }, { status: 502 });
+    if (nuovaScheda.length > MAX_CARATTERI_SCHEDA) {
+      return NextResponse.json({ error: `La scheda revisionata supera il limite di ${MAX_CARATTERI_SCHEDA.toLocaleString("it-IT")} caratteri` }, { status: 502 });
+    }
 
     if (body.scheda_id) {
       try {

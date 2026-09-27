@@ -26,6 +26,8 @@ export function FlexmoveRiepilogoModal({
 }) {
   const [giac, setGiac] = useState<Record<string, Giac>>({})
   const [loading, setLoading] = useState(false)
+  const [giacenzaError, setGiacenzaError] = useState<string | null>(null)
+  const [retry, setRetry] = useState(0)
 
   const q = blocco.quantita_pezzi ?? 1
 
@@ -42,18 +44,24 @@ export function FlexmoveRiepilogoModal({
   useEffect(() => {
     if (!open) return
     const codici = voci.map((v) => v.codice).filter(Boolean)
-    if (codici.length === 0) { setGiac({}); return }
+    if (codici.length === 0) { setGiac({}); setGiacenzaError(null); return }
     setLoading(true)
+    setGiacenzaError(null)
     fetch(`/api/portali/preventivatore/prodotti/giacenza?codici=${encodeURIComponent(codici.join(","))}`)
-      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({})) as { error?: string; items?: Array<{ codice: string } & Giac> }
+        if (!r.ok) throw new Error(d.error ?? "Errore caricamento giacenze")
+        if (!Array.isArray(d.items)) throw new Error("Risposta giacenze non valida")
+        return { items: d.items }
+      })
       .then((d: { items: Array<{ codice: string } & Giac> }) => {
         const m: Record<string, Giac> = {}
         for (const it of d.items ?? []) m[it.codice] = { esistenza: it.esistenza, disponibilita: it.disponibilita, descrizione: it.descrizione }
         setGiac(m)
       })
-      .catch(() => setGiac({}))
+      .catch((e) => setGiacenzaError(e instanceof Error ? e.message : "Errore caricamento giacenze"))
       .finally(() => setLoading(false))
-  }, [open, voci])
+  }, [open, voci, retry])
 
   if (!open) return null
 
@@ -70,6 +78,12 @@ export function FlexmoveRiepilogoModal({
         </div>
 
         <div className="p-5">
+          {giacenzaError && (
+            <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <span>{giacenzaError}. Le giacenze mostrate potrebbero non essere aggiornate.</span>
+              <button type="button" className="shrink-0 font-semibold underline underline-offset-2" onClick={() => setRetry((n) => n + 1)}>Riprova</button>
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead className="bg-bg-page">
               <tr className="text-left text-[10px] uppercase tracking-wide text-text-muted">

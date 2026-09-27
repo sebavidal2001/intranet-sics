@@ -8,6 +8,7 @@ import { markdownToDocxBuffer } from "@/lib/portali/preventivatore/scheda-tecnic
 import { diffRighe, diffCompatto, contaModifiche, type RigaDiff } from "@/lib/portali/preventivatore/scheda-tecnica/diff"
 import type { BuilderStateForChat } from "@/lib/portali/preventivatore/chat/types"
 import type { BuilderState } from "@/components/portali/preventivatore/nuovo-view-types"
+import { MAX_CARATTERI_SCHEDA } from "@/lib/portali/preventivatore/documenti-schema"
 
 // ─── Tipi risposta API ────────────────────────────────────────────────────────
 
@@ -209,6 +210,12 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
    */
   async function approva(silenzioso = false): Promise<void> {
     if (!schedaMd) return
+    if (schedaMd.length > MAX_CARATTERI_SCHEDA) {
+      const messaggio = `La scheda supera il limite di ${MAX_CARATTERI_SCHEDA.toLocaleString("it-IT")} caratteri.`
+      setErrore(messaggio)
+      if (silenzioso) throw new Error(messaggio)
+      return
+    }
     setEsitoApprovazione(null)
     try {
       const res = await fetch("/api/portali/preventivatore/scheda-tecnica/approva", {
@@ -272,6 +279,7 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
   }
 
   const diffDaMostrare = diff ? diffCompatto(diff) : []
+  const schedaTroppoLunga = schedaMd.length > MAX_CARATTERI_SCHEDA
 
   return (
     <div
@@ -431,7 +439,7 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
                       <ClipboardCopy className="w-3.5 h-3.5 mr-1.5" />
                       {copiato ? "Copiato!" : "Copia testo"}
                     </Button>
-                    <Button size="sm" onClick={scaricaDocx} className="text-white" style={{ backgroundColor: "#00a1be" }}>
+                    <Button size="sm" onClick={scaricaDocx} disabled={schedaTroppoLunga} className="text-white" style={{ backgroundColor: "#00a1be" }}>
                       <Download className="w-3.5 h-3.5 mr-1.5" />
                       Scarica Word
                     </Button>
@@ -468,6 +476,11 @@ export function SchedaTecnicaDialog({ open, onClose, builderState }: Props) {
                   className="w-full flex-1 min-h-[280px] rounded-md border border-border bg-bg-page p-3 text-sm font-mono text-text focus:outline-none focus:ring-2 focus:ring-[#00a1be]/40"
                   spellCheck={false}
                 />
+                {schedaTroppoLunga && (
+                  <p className="text-xs text-red-700">
+                    La scheda supera il limite di {MAX_CARATTERI_SCHEDA.toLocaleString("it-IT")} caratteri. Riduci il testo prima di approvare o scaricare.
+                  </p>
+                )}
                 <p className="text-[10px] text-text-muted italic">
                   Il file Word avrà intestazione SICS, font Tenorite e formattazione completa — niente markdown raw.
                 </p>

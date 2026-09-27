@@ -8,6 +8,7 @@ import { logError } from "@/lib/logger";
 import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { validateFormula } from "@/lib/portali/preventivatore/template/formula";
 import type { TemplateParametro, TemplateRigaManodopera, TemplateRigaMateriale } from "@/lib/portali/preventivatore/template/types";
+import { LIMITI_TEMPLATE_DOCUMENTO } from "@/lib/portali/preventivatore/documenti-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -57,18 +58,18 @@ const parametroSchema = z.object({
 }) satisfies z.ZodType<TemplateParametro>;
 const materialeSchema = z.object({
   slug: slugSchema.nullable().optional(),
-  descrizione: z.string().trim().min(1).max(2_000),
-  codice_articolo: z.string().trim().max(500).nullable().optional(),
+  descrizione: z.string().trim().min(1).max(LIMITI_TEMPLATE_DOCUMENTO.descrizione),
+  codice_articolo: z.string().trim().max(LIMITI_TEMPLATE_DOCUMENTO.codiceArticolo).nullable().optional(),
   costo_manuale: z.number().finite().min(0).nullable().optional(),
   usa_listino: z.boolean().optional(),
   ricarico_default: z.number().finite().positive().max(1),
   qta_formula: z.string().max(2_000).nullable().optional(),
   qta_manuale: z.number().finite().min(0).optional(),
-  gruppo: z.string().max(500).nullable().optional(),
+  gruppo: z.string().max(LIMITI_TEMPLATE_DOCUMENTO.categoria).nullable().optional(),
 }) satisfies z.ZodType<TemplateRigaMateriale>;
 const manodoperaSchema = z.object({
-  label: z.string().trim().min(1).max(2_000),
-  tariffa_default: z.number().finite().min(0),
+  label: z.string().trim().min(1).max(LIMITI_TEMPLATE_DOCUMENTO.nomeLavorazione),
+  tariffa_default: z.number().finite().min(0).max(LIMITI_TEMPLATE_DOCUMENTO.tariffa),
   unita_tempo: z.enum(["min", "h"]),
   tempo_formula: z.string().max(2_000).nullable().optional(),
   tempo_default: z.number().finite().min(0).optional(),
@@ -77,7 +78,7 @@ const manodoperaSchema = z.object({
 }) satisfies z.ZodType<TemplateRigaManodopera>;
 const templateSchema = z.object({
   nome: z.string().trim().min(1).max(500),
-  descrizione: z.string().max(5_000).nullable().optional(),
+  descrizione: z.string().max(LIMITI_TEMPLATE_DOCUMENTO.descrizione).nullable().optional(),
   parametri: z.array(parametroSchema).max(100),
   righe_materiale: z.array(materialeSchema).max(500),
   righe_manodopera: z.array(manodoperaSchema).max(200),

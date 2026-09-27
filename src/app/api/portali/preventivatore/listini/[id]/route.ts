@@ -42,7 +42,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       .rpc("listino_confronto_anagrafica", { p_listino_id: id, p_campione: 15 });
     if (errC) {
       logError("preventivatore.listini", "Confronto listino error", errC);
-      return NextResponse.json({ listino, confronto: null });
+      return NextResponse.json({
+        listino,
+        confronto: null,
+        avviso: "Dettaglio listino disponibile, ma il confronto con l'anagrafica non è stato caricato.",
+      });
     }
 
     return NextResponse.json({ listino, confronto });

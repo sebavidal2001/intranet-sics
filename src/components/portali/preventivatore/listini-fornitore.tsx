@@ -61,6 +61,11 @@ interface Confronto {
 
 type Feedback = { type: "success" | "error"; msg: string } | null
 
+async function erroreRisposta(res: Response, fallback: string) {
+  const json = await res.json().catch(() => ({})) as { error?: string }
+  return json.error ?? fallback
+}
+
 const fmtEur = (n: number | null | undefined) =>
   n == null ? "—" : n.toLocaleString("it-IT", { style: "currency", currency: "EUR", minimumFractionDigits: 2 })
 
@@ -81,6 +86,7 @@ export function ListiniFornitore() {
 
   const [dettaglioId, setDettaglioId] = useState<string | null>(null)
   const [confronto, setConfronto] = useState<Confronto | null>(null)
+  const [avvisoConfronto, setAvvisoConfronto] = useState<string | null>(null)
   const [loadingConfronto, setLoadingConfronto] = useState(false)
 
   const inputFileRef = useRef<HTMLInputElement>(null)
@@ -89,11 +95,13 @@ export function ListiniFornitore() {
     setLoading(true)
     try {
       const res = await fetch("/api/portali/preventivatore/listini")
-      if (res.ok) {
-        const json = await res.json()
-        setListini(json.listini ?? [])
-      }
-    } catch { /* ignora */ } finally {
+      if (!res.ok) throw new Error(await erroreRisposta(res, "Errore caricamento listini"))
+      const json = await res.json() as { listini?: ListinoDB[] }
+      if (!Array.isArray(json.listini)) throw new Error("Risposta listini non valida")
+      setListini(json.listini)
+    } catch (e) {
+      setFeedback({ type: "error", msg: e instanceof Error ? e.message : "Errore caricamento listini" })
+    } finally {
       setLoading(false)
     }
   }, [])
@@ -186,25 +194,33 @@ export function ListiniFornitore() {
   }
 
   async function apriDettaglio(id: string) {
-    if (dettaglioId === id) { setDettaglioId(null); setConfronto(null); return }
+    if (dettaglioId === id) { setDettaglioId(null); setConfronto(null); setAvvisoConfronto(null); return }
     setDettaglioId(id)
     setConfronto(null)
+    setAvvisoConfronto(null)
     setLoadingConfronto(true)
     try {
       const res = await fetch(`/api/portali/preventivatore/listini/${id}`)
-      if (res.ok) setConfronto((await res.json()).confronto ?? null)
-    } catch { /* ignora */ } finally {
+      if (!res.ok) throw new Error(await erroreRisposta(res, "Errore caricamento dettaglio listino"))
+      const json = await res.json() as { confronto?: Confronto | null; avviso?: string }
+      setConfronto(json.confronto ?? null)
+      setAvvisoConfronto(json.avviso ?? null)
+    } catch (e) {
+      setFeedback({ type: "error", msg: e instanceof Error ? e.message : "Errore caricamento dettaglio listino" })
+    } finally {
       setLoadingConfronto(false)
     }
   }
 
   async function cambiaAttivo(l: ListinoDB) {
-    const res = await fetch(`/api/portali/preventivatore/listini/${l.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ attivo: !l.attivo }),
-    })
-    if (res.ok) {
+    setFeedback(null)
+    try {
+      const res = await fetch(`/api/portali/preventivatore/listini/${l.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attivo: !l.attivo }),
+      })
+      if (!res.ok) throw new Error(await erroreRisposta(res, "Errore aggiornamento listino"))
       setFeedback({
         type: "success",
         msg: l.attivo
@@ -212,16 +228,22 @@ export function ListiniFornitore() {
           : `Listino ${l.fornitore} riattivato.`,
       })
       await caricaListini()
+    } catch (e) {
+      setFeedback({ type: "error", msg: e instanceof Error ? e.message : "Errore aggiornamento listino" })
     }
   }
 
   async function elimina(l: ListinoDB) {
     if (!confirm(`Eliminare il listino ${l.fornitore} (${l.righe_valide} voci)? I preventivi già salvati non cambiano.`)) return
-    const res = await fetch(`/api/portali/preventivatore/listini/${l.id}`, { method: "DELETE" })
-    if (res.ok) {
+    setFeedback(null)
+    try {
+      const res = await fetch(`/api/portali/preventivatore/listini/${l.id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error(await erroreRisposta(res, "Errore eliminazione listino"))
       setFeedback({ type: "success", msg: `Listino ${l.fornitore} eliminato.` })
-      if (dettaglioId === l.id) { setDettaglioId(null); setConfronto(null) }
+      if (dettaglioId === l.id) { setDettaglioId(null); setConfronto(null); setAvvisoConfronto(null) }
       await caricaListini()
+    } catch (e) {
+      setFeedback({ type: "error", msg: e instanceof Error ? e.message : "Errore eliminazione listino" })
     }
   }
 
@@ -482,6 +504,9 @@ export function ListiniFornitore() {
 
                 {dettaglioId === l.id && (
                   <div className="border-t border-border px-4 py-3 bg-bg-page">
+                    {avvisoConfronto && (
+                      <p role="status" className="mb-3 text-xs text-amber-700">{avvisoConfronto}</p>
+                    )}
                     {loadingConfronto ? (
                       <div className="flex items-center gap-2 text-text-muted text-sm">
                         <Loader2 className="w-4 h-4 animate-spin" />Confronto con l&apos;anagrafica…

@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 import { invalidateAiConfigCache } from "@/lib/portali/preventivatore/chat/config-cache";
 import { logError } from "@/lib/logger";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ const ALLOWED_CONFIG_KEYS = new Set([
   "system_prompt_scheda_tecnica",
   "system_prompt_domande_scheda",
   "soglia_similarity",
+  "soglia_similarity_simili",
+  "match_count_simili",
   "soglia_similarity_scheda",
   "temperatura_precisa",
   "temperatura_creativa",
@@ -27,6 +30,8 @@ const ALLOWED_CONFIG_KEYS = new Set([
   "modello_template",
   "ai_cost_counter_enabled",
 ]);
+
+const configPatchSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
 
 export async function GET() {
   try {
@@ -81,11 +86,22 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
     }
 
-    const body = await request.json() as Record<string, unknown>;
+    const parsed = configPatchSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Payload di configurazione non valido" }, { status: 400 });
+    }
+    const body = parsed.data;
+    const chiaviSconosciute = Object.keys(body).filter((chiave) => !ALLOWED_CONFIG_KEYS.has(chiave));
+    if (chiaviSconosciute.length > 0) {
+      return NextResponse.json({
+        error: `Chiavi di configurazione non valide: ${chiaviSconosciute.join(", ")}`,
+        chiavi_sconosciute: chiaviSconosciute,
+      }, { status: 400 });
+    }
+
     const adminClient = createAdminClient();
 
     const upsertRows = Object.entries(body)
-      .filter(([chiave]) => ALLOWED_CONFIG_KEYS.has(chiave))
       .map(([chiave, valore]) => ({
         chiave,
         valore: String(valore ?? ""),

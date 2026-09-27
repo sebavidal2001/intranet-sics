@@ -1,11 +1,46 @@
 import { z } from "zod";
 
+export const MAX_CARATTERI_SCHEDA = 60_000;
+
 // ── Schema Zod del payload builder (create + update) ─────────────────────────
 // Condiviso tra POST /documenti (crea) e PUT /documenti/[id] (modifica in place).
 // Limiti severi per evitare valori sporchi (negativi, infinity, NaN, stringhe lunghe).
 
 const NUM_POS = z.number().finite().nonnegative();
 const COEFF = z.number().finite().gt(0).lte(2); // coeff > 0 e ≤ 2 (margine 0% al 100%)
+
+export const LIMITI_SERVIZIO = {
+  nome: 120,
+  categoria: 80,
+  tariffaOra: 1_000,
+} as const;
+
+export const ServizioConfigurazioneSchema = z.object({
+  nome: z.string().trim().min(1, "Nome obbligatorio").max(LIMITI_SERVIZIO.nome),
+  categoria: z.string().trim().max(LIMITI_SERVIZIO.categoria),
+  tariffa_ora: NUM_POS.max(LIMITI_SERVIZIO.tariffaOra),
+});
+
+export const LIMITI_TEMPLATE_DOCUMENTO = {
+  descrizione: 500,
+  codiceArticolo: 64,
+  nomeLavorazione: LIMITI_SERVIZIO.nome,
+  categoria: LIMITI_SERVIZIO.categoria,
+  tariffa: LIMITI_SERVIZIO.tariffaOra,
+} as const;
+
+export const TemplateCompatibileDocumentoSchema = z.object({
+  descrizione: z.string().max(LIMITI_TEMPLATE_DOCUMENTO.descrizione).nullable().optional(),
+  righe_materiale: z.array(z.object({
+    descrizione: z.string().trim().max(LIMITI_TEMPLATE_DOCUMENTO.descrizione),
+    codice_articolo: z.string().trim().max(LIMITI_TEMPLATE_DOCUMENTO.codiceArticolo).nullable().optional(),
+    gruppo: z.string().trim().max(LIMITI_TEMPLATE_DOCUMENTO.categoria).nullable().optional(),
+  }).passthrough()),
+  righe_manodopera: z.array(z.object({
+    label: z.string().trim().min(1).max(LIMITI_TEMPLATE_DOCUMENTO.nomeLavorazione),
+    tariffa_default: NUM_POS.max(LIMITI_TEMPLATE_DOCUMENTO.tariffa),
+  }).passthrough()),
+}).passthrough();
 
 const ArticoloSchema = z.object({
   codice: z.string().trim().max(64),
@@ -15,11 +50,11 @@ const ArticoloSchema = z.object({
   coeff_ricarico: COEFF,
 });
 
-const ServizioSchema = z.object({
-  nome: z.string().trim().min(1).max(120),
-  categoria: z.string().trim().max(80).optional(),
+export const ServizioSchema = z.object({
+  nome: ServizioConfigurazioneSchema.shape.nome,
+  categoria: ServizioConfigurazioneSchema.shape.categoria.optional(),
   ore: NUM_POS.max(100000),
-  tariffa_ora: NUM_POS.max(1000),
+  tariffa_ora: ServizioConfigurazioneSchema.shape.tariffa_ora,
   coeff_ricarico: COEFF,
   scala_con_quantita: z.boolean().optional(),
 });

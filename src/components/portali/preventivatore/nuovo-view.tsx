@@ -410,11 +410,14 @@ export function NuovoView({
       const costi = new Map<string, { costo: number; data: string | null }>()
       if (codici.length > 0) {
         const res = await fetch(`/api/portali/preventivatore/prodotti/costo?codici=${encodeURIComponent(codici.join(","))}`)
-        if (res.ok) {
-          const data = await res.json()
-          for (const it of ((data.items ?? []) as Array<{ codice: string; ult_costo: number | null; data_ult_costo: string | null }>)) {
-            if (it.ult_costo != null) costi.set(it.codice, { costo: Number(it.ult_costo), data: it.data_ult_costo })
-          }
+        const data = await res.json().catch(() => ({})) as {
+          error?: string
+          items?: Array<{ codice: string; ult_costo: number | null; data_ult_costo: string | null }>
+        }
+        if (!res.ok) throw new Error(data.error ?? "Errore recupero costi correnti")
+        if (!Array.isArray(data.items)) throw new Error("Risposta costi correnti non valida")
+        for (const it of data.items) {
+          if (it.ult_costo != null) costi.set(it.codice, { costo: Number(it.ult_costo), data: it.data_ult_costo })
         }
       }
       // Tariffe correnti dal catalogo già caricato (match per nome).

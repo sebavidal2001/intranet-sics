@@ -152,6 +152,10 @@ export function ArchivioView() {
   // Clienti dropdown + secondo livello (sedi/divisioni del cliente scelto)
   const [clientiDisponibili, setClientiDisponibili] = useState<string[]>([])
   const [destinazioniDisponibili, setDestinazioniDisponibili] = useState<Destinazione[]>([])
+  const [destinazioniCliente, setDestinazioniCliente] = useState("")
+  const [clientiError, setClientiError] = useState<string | null>(null)
+  const [destinazioniError, setDestinazioniError] = useState<string | null>(null)
+  const [filtriRetry, setFiltriRetry] = useState(0)
 
   // Modal stato
 
@@ -160,10 +164,15 @@ export function ArchivioView() {
   // ── Carica clienti unici ─────────────────────────────────────────────────────
   useEffect(() => {
     fetch("/api/portali/preventivatore/documenti/clienti")
-      .then(r => r.ok ? r.json() : [])
-      .then((d: string[]) => setClientiDisponibili(d))
-      .catch(() => {})
-  }, [])
+      .then(async (r) => {
+        const d = await r.json().catch(() => null) as string[] | { error?: string } | null
+        if (!r.ok) throw new Error(!Array.isArray(d) ? d?.error ?? "Errore caricamento clienti" : "Errore caricamento clienti")
+        if (!Array.isArray(d)) throw new Error("Risposta clienti non valida")
+        return d
+      })
+      .then((d) => { setClientiDisponibili(d); setClientiError(null) })
+      .catch((e) => setClientiError(e instanceof Error ? e.message : "Errore caricamento clienti"))
+  }, [filtriRetry])
 
   // ── Sedi/divisioni del cliente selezionato ──────────────────────────────────
   // Solo quelle con almeno un preventivo: elencare tutta l'anagrafica sarebbe
@@ -171,15 +180,30 @@ export function ArchivioView() {
   useEffect(() => {
     if (!filtroCliente) {
       setDestinazioniDisponibili([])
+      setDestinazioniCliente("")
+      setDestinazioniError(null)
       return
     }
     let cancelled = false
     fetch(`/api/portali/preventivatore/documenti/destinazioni?cliente=${encodeURIComponent(filtroCliente)}`)
-      .then(r => r.ok ? r.json() : [])
-      .then((d: Destinazione[]) => { if (!cancelled) setDestinazioniDisponibili(d ?? []) })
-      .catch(() => {})
+      .then(async (r) => {
+        const d = await r.json().catch(() => null) as Destinazione[] | { error?: string } | null
+        if (!r.ok) throw new Error(!Array.isArray(d) ? d?.error ?? "Errore caricamento sedi" : "Errore caricamento sedi")
+        if (!Array.isArray(d)) throw new Error("Risposta sedi non valida")
+        return d
+      })
+      .then((d) => {
+        if (!cancelled) {
+          setDestinazioniDisponibili(d)
+          setDestinazioniCliente(filtroCliente)
+          setDestinazioniError(null)
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setDestinazioniError(e instanceof Error ? e.message : "Errore caricamento sedi")
+      })
     return () => { cancelled = true }
-  }, [filtroCliente])
+  }, [filtroCliente, filtriRetry])
 
   // ── Build query string ──────────────────────────────────────────────────────
   const queryString = useMemo(() => {
@@ -428,7 +452,7 @@ export function ArchivioView() {
             </DropdownMenu>
 
             {/* Sede / divisione — solo se il cliente ne ha più di una con preventivi */}
-            {filtroCliente && destinazioniDisponibili.length > 1 && (
+            {filtroCliente && destinazioniCliente === filtroCliente && destinazioniDisponibili.length > 1 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="justify-between text-xs gap-1 w-full">
@@ -458,6 +482,15 @@ export function ArchivioView() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+            )}
+
+            {(clientiError || destinazioniError) && (
+              <div role="alert" className="col-span-full flex items-center gap-2 text-xs text-red-600">
+                <span>{destinazioniError ?? clientiError}</span>
+                <button type="button" className="font-semibold underline underline-offset-2" onClick={() => setFiltriRetry((n) => n + 1)}>
+                  Riprova
+                </button>
+              </div>
             )}
 
             {/* Tipo */}

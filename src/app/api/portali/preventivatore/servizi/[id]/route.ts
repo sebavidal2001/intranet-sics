@@ -3,13 +3,17 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortaleAccesso, hasMinLivello } from "@/lib/auth/portale";
 import { logError } from "@/lib/logger";
+import { ServizioConfigurazioneSchema } from "@/lib/portali/preventivatore/documenti-schema";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-function parseNonNegativeNumber(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-}
+const aggiornaServizioSchema = ServizioConfigurazioneSchema.partial().extend({
+  unita: z.string().trim().min(1).max(16).optional(),
+  ordine: z.number().finite().nonnegative().optional(),
+  is_attivo: z.boolean().optional(),
+  scala_con_quantita: z.boolean().optional(),
+});
 
 /**
  * PATCH  — aggiorna un servizio/lavorazione (solo admin del portale)
@@ -36,29 +40,14 @@ export async function PATCH(
     if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const { id } = await params;
-    const body = await request.json();
+    const parsed = aggiornaServizioSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Payload non valido" }, { status: 400 });
+    }
 
     // Solo i campi forniti vengono aggiornati
-    const patch: Record<string, unknown> = {};
-    if (body.nome !== undefined) patch.nome = String(body.nome).trim();
-    if (body.categoria !== undefined) patch.categoria = String(body.categoria).trim() || "Manodopera";
-    if (body.tariffa_ora !== undefined) {
-      const tariffaOra = parseNonNegativeNumber(body.tariffa_ora);
-      if (tariffaOra === null) {
-        return NextResponse.json({ error: "Tariffa non valida" }, { status: 400 });
-      }
-      patch.tariffa_ora = tariffaOra;
-    }
-    if (body.unita !== undefined) patch.unita = String(body.unita).trim() || "h";
-    if (body.ordine !== undefined) {
-      const ordine = parseNonNegativeNumber(body.ordine);
-      if (ordine === null) {
-        return NextResponse.json({ error: "Ordine non valido" }, { status: 400 });
-      }
-      patch.ordine = ordine;
-    }
-    if (body.is_attivo !== undefined) patch.is_attivo = Boolean(body.is_attivo);
-    if (body.scala_con_quantita !== undefined) patch.scala_con_quantita = Boolean(body.scala_con_quantita);
+    const patch: Record<string, unknown> = { ...parsed.data };
+    if (patch.categoria === "") patch.categoria = "Manodopera";
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "Nessun campo da aggiornare" }, { status: 400 });
@@ -71,7 +60,7 @@ export async function PATCH(
       .from("servizi_manodopera")
       .update(patch)
       .eq("id", id)
-      .select("id, nome, categoria, tariffa_ora, unita, ordine, is_attivo")
+      .select("id, nome, categoria, tariffa_ora, unita, ordine, is_attivo, scala_con_quantita")
       .single();
 
     if (error) {

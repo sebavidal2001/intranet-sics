@@ -8,7 +8,7 @@ import { getPreventivatoreScope } from "@/lib/portali/preventivatore/ruoli";
 import { checkRateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { loadAiConfig } from "@/lib/portali/preventivatore/chat/config-cache";
 import { handleOpenRouter, OpenRouterHandlerError } from "@/lib/portali/preventivatore/chat/openrouter-handler";
-import { troncaStoria } from "@/lib/portali/preventivatore/chat/orchestratore";
+import { MAX_CARATTERI_STORIA, troncaStoria } from "@/lib/portali/preventivatore/chat/storia";
 import {
   SICS_KNOWLEDGE_FALLBACK,
   PRECISO_FALLBACK,
@@ -24,13 +24,21 @@ export const dynamic = "force-dynamic";
 /** Modello di riserva della chat, su OpenRouter, se quello configurato non risponde. */
 const MODELLO_RISERVA = "google/gemini-2.5-flash";
 
-const chatBodySchema = z.object({
-  messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(8_000) })).min(1).max(100),
+const messaggioSchema = z.discriminatedUnion("role", [
+  // 8.000 dall'input, più il margine per l'avviso di troncatura che troncaStoria antepone.
+  z.object({ role: z.literal("user"), content: z.string().max(8_200) }),
+  z.object({ role: z.literal("assistant"), content: z.string().max(MAX_CARATTERI_STORIA) }),
+]);
+
+const chatBodyBaseSchema = z.object({
+  messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).min(1).max(200),
   contesto: z.enum(["archivio", "nuovo"]).default("archivio"),
   modalita: z.enum(["preciso", "creativo"]).default("preciso"),
   sessione_id: z.string().uuid().nullable().optional(),
   builder_state: builderStateSchema.optional(),
 });
+
+const chatBodySchema = chatBodyBaseSchema.extend({ messages: z.array(messaggioSchema).min(1).max(200) });
 
 // ─── Session persistence ──────────────────────────────────────────────────────
 
@@ -157,12 +165,13 @@ export async function POST(request: NextRequest) {
     const rl = checkRateLimit(`ai-chat:${user.id}`, { limit: 30, windowMs: 60_000 });
     if (!rl.ok) return tooManyRequests(rl.retryAfterSec);
 
-    const parsed = chatBodySchema.safeParse(await request.json());
+    const base = chatBodyBaseSchema.safeParse(await request.json().catch(() => null));
+    if (!base.success) return NextResponse.json({ error: "Formato richiesta non valido", dettagli: base.error.flatten() }, { status: 400 });
+    const messagesTroncati = troncaStoria(base.data.messages.filter((m) => m.content.trim().length > 0));
+    const parsed = chatBodySchema.safeParse({ ...base.data, messages: messagesTroncati });
     if (!parsed.success) return NextResponse.json({ error: "Formato richiesta non valido", dettagli: parsed.error.flatten() }, { status: 400 });
     const { contesto, modalita, sessione_id, builder_state } = parsed.data;
-    // Una risposta vuota dell'assistente (es. richiesta interrotta) non deve far
-    // fallire il turno successivo.
-    const messages = troncaStoria(parsed.data.messages.filter((m) => m.content.trim().length > 0));
+    const messages = parsed.data.messages;
     if (sessione_id && !(await sessioneAppartieneUtente(sessione_id, user.id)))
       return NextResponse.json({ error: "Sessione non trovata" }, { status: 404 });
 

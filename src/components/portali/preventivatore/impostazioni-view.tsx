@@ -12,7 +12,6 @@ interface AIConfig {
   id: string
   chiave: string
   valore: string
-  descrizione: string | null
 }
 
 // Forma di `GET /documenti?stats=true` dopo la rimozione del workflow (migration 111):
@@ -54,6 +53,8 @@ const LABEL_MAP: Record<string, string> = {
   system_prompt_scheda_tecnica: "Generazione scheda tecnica",
   system_prompt_domande_scheda: "Domande di completamento info (scheda tecnica)",
   soglia_similarity:     "Soglia similarità semantica",
+  soglia_similarity_simili: "Soglia similarità ricerca simili",
+  match_count_simili: "Numero risultati ricerca simili",
   soglia_similarity_scheda: "Soglia similarità per esempi scheda tecnica",
   temperatura_precisa:   "Temperatura modalità Preciso",
   temperatura_creativa:  "Temperatura modalità Creativo",
@@ -89,12 +90,13 @@ const SEZIONI: { titolo: string; descrizione?: string; chiavi: string[] }[] = [
 ]
 const CHIAVI_SLIDER: Record<string, { min: number; max: number; step: number }> = {
   soglia_similarity: { min: 0, max: 1, step: 0.05 },
+  soglia_similarity_simili: { min: 0, max: 1, step: 0.05 },
   soglia_similarity_scheda: { min: 0, max: 1, step: 0.05 },
   temperatura_precisa: { min: 0, max: 1, step: 0.1 },
   temperatura_creativa: { min: 0, max: 1, step: 0.1 },
   temperatura_scheda_tecnica: { min: 0, max: 1, step: 0.05 },
 }
-const CHIAVI_NUMBER = ["max_chunks_per_query", "max_esempi_scheda"]
+const CHIAVI_NUMBER = ["max_chunks_per_query", "max_esempi_scheda", "match_count_simili"]
 const CHIAVI_BOOLEAN = ["ai_cost_counter_enabled"]
 const CHIAVI_MODEL_SELECTOR = ["modello_generazione", "modello_scheda_tecnica", "modello_template"]
 const OPENROUTER_PREFIX = "openrouter:"
@@ -196,7 +198,7 @@ export function ImpostazioniView() {
     }
   }
 
-  const renderField = (chiave: string, valore: string, descrizione: string | null) => {
+  const renderField = (chiave: string, valore: string) => {
     if (CHIAVI_MODEL_SELECTOR.includes(chiave)) {
       return (
         <ModelSelector
@@ -214,7 +216,7 @@ export function ImpostazioniView() {
               ? "Modello OpenRouter per la generazione della scheda tecnica. Se vuoto, usa lo stesso modello della chat."
               : chiave === "modello_template"
                 ? "Modello OpenRouter per l'assistente di generazione template. Se vuoto eredita: scheda tecnica → chat. Consigliato un modello capace (es. Sonnet) perché ragiona sulle formule."
-                : descrizione ?? "Modello usato da OpenRouter per la chat del preventivatore."
+                : "Modello usato da OpenRouter per la chat del preventivatore."
           }
         />
       )
@@ -229,7 +231,7 @@ export function ImpostazioniView() {
               {LABEL_MAP[chiave] ?? chiave.replace(/_/g, " ")}
             </Label>
             <p className="text-xs text-text-muted mt-0.5">
-              {descrizione ?? "Mostra agli utenti il contatore di spesa OpenRouter nella chat AI."}
+              Mostra agli utenti il contatore di spesa OpenRouter nella chat AI.
             </p>
           </div>
           <button
@@ -258,9 +260,6 @@ export function ImpostazioniView() {
             <Label htmlFor={chiave}>
               {LABEL_MAP[chiave] ?? chiave.replace(/_/g, " ")}
             </Label>
-            {descrizione && (
-              <p className="text-xs text-text-muted mt-0.5">{descrizione}</p>
-            )}
           </div>
           <textarea
             id={chiave}
@@ -286,9 +285,6 @@ export function ImpostazioniView() {
               {num.toFixed(sliderConfig.step < 0.1 ? 2 : 1)}
             </span>
           </div>
-          {descrizione && (
-            <p className="text-xs text-text-muted">{descrizione}</p>
-          )}
           <input
             id={chiave}
             type="range"
@@ -309,9 +305,6 @@ export function ImpostazioniView() {
           <Label htmlFor={chiave}>
             {LABEL_MAP[chiave] ?? chiave.replace(/_/g, " ")}
           </Label>
-          {descrizione && (
-            <p className="text-xs text-text-muted mt-0.5">{descrizione}</p>
-          )}
           <Input
             id={chiave}
             type="number"
@@ -331,9 +324,6 @@ export function ImpostazioniView() {
         <Label htmlFor={chiave}>
           {LABEL_MAP[chiave] ?? chiave.replace(/_/g, " ")}
         </Label>
-        {descrizione && (
-          <p className="text-xs text-text-muted mt-0.5">{descrizione}</p>
-        )}
         <Input
           id={chiave}
           value={valore}
@@ -405,7 +395,7 @@ export function ImpostazioniView() {
                       </div>
                       {presenti.map((k) => {
                         const c = byKey.get(k)!
-                        return renderField(c.chiave, values[c.chiave] ?? c.valore, c.descrizione)
+                        return renderField(c.chiave, values[c.chiave] ?? c.valore)
                       })}
                     </section>
                   )

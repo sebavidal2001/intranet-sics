@@ -9,6 +9,8 @@ import { logWarn } from "@/lib/logger";
 
 export type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
 
+export { MAX_CARATTERI_SCHEDA } from "@/lib/portali/preventivatore/documenti-schema";
+
 type UsageAI = {
   prompt_tokens?: number;
   completion_tokens?: number;

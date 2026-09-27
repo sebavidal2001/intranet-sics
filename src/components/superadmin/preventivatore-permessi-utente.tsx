@@ -20,6 +20,7 @@ const RUOLI_DEFINIZIONE: Array<{ slug: string; nome: string; descrizione: string
  */
 export function PreventivatorePermessiUtente({ utenteId }: { utenteId: string }) {
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -29,14 +30,24 @@ export function PreventivatorePermessiUtente({ utenteId }: { utenteId: string })
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setLoaded(false);
+    setError(null);
     fetch(`/api/superadmin/preventivatore/permessi-utente/${utenteId}`)
-      .then((r) => r.json())
-      .then((d: { ruoli_slug?: string[]; agente_codice?: string | null }) => {
-        if (!alive) return;
-        setRuoliSlug(d.ruoli_slug ?? []);
-        setAgenteCodice(d.agente_codice ?? "");
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({})) as { error?: string; ruoli_slug?: string[]; agente_codice?: string | null };
+        if (!r.ok) throw new Error(d.error ?? "Errore caricamento permessi");
+        if (!Array.isArray(d.ruoli_slug)) throw new Error("Risposta permessi non valida");
+        return d;
       })
-      .catch(() => {})
+      .then((d) => {
+        if (!alive) return;
+        setRuoliSlug(d.ruoli_slug!);
+        setAgenteCodice(d.agente_codice ?? "");
+        setLoaded(true);
+      })
+      .catch((e) => {
+        if (alive) setError(e instanceof Error ? e.message : "Errore caricamento permessi");
+      })
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
   }, [utenteId]);
@@ -76,6 +87,10 @@ export function PreventivatorePermessiUtente({ utenteId }: { utenteId: string })
         Caricamento permessi…
       </div>
     );
+  }
+
+  if (!loaded) {
+    return <div role="alert" className="py-4 text-sm text-danger">{error ?? "Permessi non disponibili"}</div>;
   }
 
   const isCommerciale = ruoliSlug.includes("commerciale");
@@ -131,7 +146,7 @@ export function PreventivatorePermessiUtente({ utenteId }: { utenteId: string })
       <div className="flex items-center gap-2 pt-2 border-t border-border">
         <Button
           onClick={salva}
-          disabled={saving || (isCommerciale && !agenteCodice.trim() && ruoliSlug.length > 0)}
+          disabled={!loaded || saving || (isCommerciale && !agenteCodice.trim() && ruoliSlug.length > 0)}
           className="gap-1.5"
           style={{ backgroundColor: "#00a1be", color: "white" }}
         >

@@ -70,6 +70,7 @@ export function CorreggiTotaliDialog({
     currentChunk ? readCurrentTotals(currentChunk) : {}
   );
   const [importo, setImporto] = useState(importoCorrente != null ? String(importoCorrente) : "");
+  const [campiToccati, setCampiToccati] = useState<Set<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -77,6 +78,7 @@ export function CorreggiTotaliDialog({
   const handleChangeChunk = (i: number) => {
     setChunkIdx(i);
     setValori(readCurrentTotals(excelChunks[i]));
+    setCampiToccati(new Set());
   };
 
   const handleSave = async () => {
@@ -86,8 +88,12 @@ export function CorreggiTotaliDialog({
     try {
       const totalsPatch: Record<string, number | null> = {};
       for (const c of CAMPI) {
+        if (!campiToccati.has(c.key)) continue;
         const v = valori[c.key];
-        if (v === "" || v == null) continue;
+        if (v === "" || v == null) {
+          totalsPatch[c.key] = null;
+          continue;
+        }
         const n = Number(v);
         if (!Number.isFinite(n)) {
           setError(`Valore non numerico in: ${c.label}`);
@@ -100,7 +106,9 @@ export function CorreggiTotaliDialog({
         documento_id: documentoId,
         chunk_id: currentChunk?.id,
         totals_patch: totalsPatch,
-        importo_preventivo: importo !== "" ? Number(importo) : undefined,
+        importo_preventivo: campiToccati.has("importo_preventivo")
+          ? (importo !== "" ? Number(importo) : null)
+          : undefined,
       };
       const res = await fetch("/api/portali/preventivatore/correzioni", {
         method: "POST",
@@ -177,7 +185,10 @@ export function CorreggiTotaliDialog({
                   type="number"
                   step={c.coeff ? "0.01" : "0.01"}
                   value={valori[c.key] ?? ""}
-                  onChange={(e) => setValori({ ...valori, [c.key]: e.target.value })}
+                  onChange={(e) => {
+                    setValori({ ...valori, [c.key]: e.target.value });
+                    setCampiToccati((precedenti) => new Set(precedenti).add(c.key));
+                  }}
                   className="w-full border border-border rounded-md px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-[#00a1be]"
                 />
               </label>
@@ -193,7 +204,10 @@ export function CorreggiTotaliDialog({
                 type="number"
                 step="0.01"
                 value={importo}
-                onChange={(e) => setImporto(e.target.value)}
+                onChange={(e) => {
+                  setImporto(e.target.value);
+                  setCampiToccati((precedenti) => new Set(precedenti).add("importo_preventivo"));
+                }}
                 className="w-full border border-border rounded-md px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-[#00a1be]"
                 placeholder="es. 5471.31"
               />
