@@ -15,11 +15,13 @@ interface AIConfig {
   descrizione: string | null
 }
 
+// Forma di `GET /documenti?stats=true` dopo la rimozione del workflow (migration 111):
+// solo bozze aperte, definitivi e storico.
 interface DocumentiStats {
   totale: number
-  pending: number
-  ordinato: number
-  rifiutato: number
+  aperta: number
+  completato: number
+  storico: number
   total_chunks: number
 }
 
@@ -473,9 +475,9 @@ export function ImpostazioniView() {
           ) : stats ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <StatCard label="Totale documenti" value={stats.totale} />
-              <StatCard label="In attesa" value={stats.pending} color="yellow" />
-              <StatCard label="Ordinati" value={stats.ordinato} color="green" />
-              <StatCard label="Rifiutati" value={stats.rifiutato} color="red" />
+              <StatCard label="Bozze aperte" value={stats.aperta ?? 0} color="yellow" />
+              <StatCard label="Definitivi" value={stats.completato ?? 0} color="green" />
+              <StatCard label="Archivio storico" value={stats.storico ?? 0} />
               <StatCard label="Chunks totali" value={stats.total_chunks} />
             </div>
           ) : (
@@ -666,7 +668,7 @@ function StatCard({
 
   return (
     <div className={`rounded-lg px-4 py-3 border border-border ${colorClass}`}>
-      <p className="text-2xl font-tenorite">{value.toLocaleString("it-IT")}</p>
+      <p className="text-2xl font-tenorite">{(value ?? 0).toLocaleString("it-IT")}</p>
       <p className="text-xs mt-0.5 opacity-70">{label}</p>
     </div>
   )

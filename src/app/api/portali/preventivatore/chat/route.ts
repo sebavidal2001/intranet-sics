@@ -15,6 +15,7 @@ import {
   CREATIVO_FALLBACK,
 } from "@/lib/portali/preventivatore/chat/tool-definitions";
 import { formatBuilderStateForPrompt } from "@/lib/portali/preventivatore/chat/builder-state-prompt";
+import { builderStateSchema } from "@/lib/portali/preventivatore/chat/builder-state-schema";
 import type { ChatMessage, ToolName } from "@/lib/portali/preventivatore/chat/types";
 import type { ChatHandlerResult } from "@/lib/portali/preventivatore/chat/types";
 
@@ -22,19 +23,6 @@ export const dynamic = "force-dynamic";
 
 /** Modello di riserva della chat, su OpenRouter, se quello configurato non risponde. */
 const MODELLO_RISERVA = "google/gemini-2.5-flash";
-
-const builderStateSchema = z.object({
-  titolo: z.string().max(500).nullable(),
-  cliente: z.object({ id: z.string().uuid().nullable().optional(), ragione_sociale: z.string().max(500), piva: z.string().max(100).nullable(), citta: z.string().max(200).nullable(), provincia: z.string().max(20).nullable() }).nullable(),
-  data_consegna: z.string().max(100).nullable(),
-  blocchi: z.array(z.object({
-    numero: z.number(), tipo: z.string().max(200), nome: z.string().max(500), note: z.string().max(4_000),
-    articoli: z.array(z.object({ codice: z.string().max(200), descrizione: z.string().max(1_000), qty: z.number(), ult_costo: z.number(), coeff_ricarico: z.number(), netto: z.number() })).max(2_000),
-    lavorazioni: z.array(z.object({ nome: z.string().max(500), categoria: z.string().max(200), ore: z.number(), tariffa_ora: z.number(), markup_pct: z.number(), totale: z.number() })).max(1_000),
-    totale_materiali: z.number(), totale_servizi: z.number(), totale_blocco: z.number(),
-  })).max(500),
-  totali: z.object({ materiali: z.number(), servizi: z.number(), netto_totale: z.number(), n_blocchi: z.number(), n_articoli: z.number(), ore_totali: z.number(), coeff_ricarico_medio: z.number() }),
-});
 
 const chatBodySchema = z.object({
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(8_000) })).min(1).max(100),

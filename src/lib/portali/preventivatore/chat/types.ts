@@ -40,7 +40,9 @@ export interface BuilderStateForChat {
       categoria: string;
       ore: number;
       tariffa_ora: number;
-      markup_pct: number;
+      /** Il builder manda il coefficiente di ricarico; `markup_pct` resta per compatibilità. */
+      markup_pct?: number;
+      coeff_ricarico?: number;
       totale: number;
     }>;
     totale_materiali: number;

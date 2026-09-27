@@ -59,7 +59,9 @@ export function formatBuilderStateForPrompt(state: BuilderStateForChat): string 
     if (b.lavorazioni.length > 0) {
       out.push(`  Lavorazioni (${b.lavorazioni.length}) — totale servizi ${eur(b.totale_servizi)}:`);
       for (const l of b.lavorazioni) {
-        const markup = l.markup_pct > 0 ? ` +${l.markup_pct}%` : "";
+        const markup = (l.markup_pct ?? 0) > 0
+          ? ` +${l.markup_pct}%`
+          : l.coeff_ricarico && l.coeff_ricarico > 0 ? ` ÷${l.coeff_ricarico}` : "";
         out.push(`    · [${l.categoria}] ${l.nome}  ${l.ore}h × ${eur(l.tariffa_ora)}/h${markup} = ${eur(l.totale)}`);
       }
     }

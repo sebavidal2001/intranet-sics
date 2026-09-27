@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { builderStateSchema } from "@/lib/portali/preventivatore/chat/builder-state-schema";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePreventivatore } from "@/lib/portali/preventivatore/api-guard";
 import { getPreventivatoreScope } from "@/lib/portali/preventivatore/ruoli";
@@ -29,38 +30,8 @@ const rispostaSchema = z.object({
   id: z.string().trim().min(1).max(100),
   risposta: z.string().trim().min(1).max(10_000),
 });
-const builderStateSchema = z.object({
-  titolo: z.string().max(2_000).nullable(),
-  cliente: z.object({
-    id: z.string().uuid().nullable().optional(),
-    ragione_sociale: z.string().max(2_000),
-    piva: z.string().max(100).nullable(),
-    citta: z.string().max(500).nullable(),
-    provincia: z.string().max(100).nullable(),
-  }).nullable(),
-  data_consegna: z.string().max(100).nullable(),
-  blocchi: z.array(z.object({
-    numero: z.number().finite(),
-    tipo: z.string().max(500),
-    nome: z.string().max(2_000),
-    note: z.string().max(20_000),
-    articoli: z.array(z.object({
-      codice: z.string().max(500), descrizione: z.string().max(5_000), qty: z.number().finite(),
-      ult_costo: z.number().finite(), coeff_ricarico: z.number().finite(), netto: z.number().finite(),
-    })).max(2_000),
-    lavorazioni: z.array(z.object({
-      nome: z.string().max(2_000), categoria: z.string().max(500), ore: z.number().finite(),
-      tariffa_ora: z.number().finite(), markup_pct: z.number().finite().optional(),
-      coeff_ricarico: z.number().finite().optional(), totale: z.number().finite(),
-    })).max(1_000),
-    totale_materiali: z.number().finite(), totale_servizi: z.number().finite(), totale_blocco: z.number().finite(),
-  })).max(500),
-  totali: z.object({
-    materiali: z.number().finite(), servizi: z.number().finite(), netto_totale: z.number().finite(),
-    n_blocchi: z.number().finite(), n_articoli: z.number().finite(), ore_totali: z.number().finite(),
-    coeff_ricarico_medio: z.number().finite(),
-  }),
-});
+// Stesso schema tollerante della chat: il builder e il dettaglio mandano campi
+// calcolati (anche NaN) e `coeff_ricarico` sulle lavorazioni.
 const requestSchema = z.object({
   builder_state: builderStateSchema,
   risposte_domande: z.array(rispostaSchema).max(50).optional(),
