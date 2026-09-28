@@ -12,7 +12,8 @@ import { descriviListino, risolviListino } from "./listino-service";
 import type { FatturaLetta, RigaFattura } from "./fatture/tipi";
 import type { CostoAtteso } from "./tipi";
 import { righeConOneri } from "./confronto-fattura";
-import { datiFisici, type MisuraRiga } from "./misure";
+import { datiFisici, type MisuraBolla, type MisuraRiga } from "./misure";
+import { valutaOversizedGls } from "./oversized";
 import type { Rilevazione } from "./letture";
 
 /**
@@ -212,9 +213,9 @@ function periodo(righe: RigaFattura[]): { da: string; a: string } | null {
  * rifare, un'anomalia è una segnalazione che una persona deciderà. Le regole qui
  * sotto sono quelle che i dati giustificano, non tutte quelle immaginabili.
  */
-function anomalieDi(
+export function anomalieDi(
   riga: RigaFattura,
-  esito: EsitoAbbinamento,
+  esito: Pick<EsitoAbbinamento, "qualita" | "spedizione">,
   controllo: ControlloAcquisito | null
 ): AnomaliaAcquisita[] {
   const out: AnomaliaAcquisita[] = [];
@@ -265,6 +266,216 @@ function anomalieDi(
 }
 
 /**
+ * Quello che serve per calcolare il controllo di una riga e che vale per tutta
+ * la fattura. Le cache includono il giorno: una nuova tariffa può decorrere a
+ * metà mese.
+ */
+export interface ContestoControllo {
+  vettoreId: string;
+  vettoreCodice: string;
+  rilevazioni: Rilevazione[];
+  cacheListino: Map<string, Awaited<ReturnType<typeof risolviListino>>>;
+  cacheDescrizione: Map<string, Awaited<ReturnType<typeof descriviListino>>>;
+}
+
+export function nuovoContestoControllo(
+  vettoreId: string,
+  vettoreCodice: string,
+  rilevazioni: Rilevazione[]
+): ContestoControllo {
+  return { vettoreId, vettoreCodice, rilevazioni, cacheListino: new Map(), cacheDescrizione: new Map() };
+}
+
+/**
+ * `.in()` finisce nella query string: oltre qualche centinaio di identificativi
+ * nginx risponde 414. Si interroga a pezzi.
+ */
+async function aPezzi<T>(valori: T[], leggi: (pezzo: T[]) => Promise<void>, dimensione = 100): Promise<void> {
+  for (let i = 0; i < valori.length; i += dimensione) await leggi(valori.slice(i, i + dimensione));
+}
+
+/** Le misure del magazzino (pagina Bolle), per spedizione. */
+export async function misureBollaPerSpedizione(spedizioniId: string[]): Promise<Map<string, MisuraBolla[]>> {
+  const out = new Map<string, MisuraBolla[]>();
+  const admin = createAdminClient();
+  await aPezzi([...new Set(spedizioniId)], async (pezzo) => {
+    const { data, error } = await admin
+      .schema("vettori")
+      .from("bolla_misure")
+      .select("spedizione_id, quantita, lunghezza_cm, larghezza_cm, altezza_cm, peso_reale_kg")
+      .in("spedizione_id", pezzo);
+    if (error) throw new Error(`Lettura misure delle bolle fallita: ${error.message}`);
+    for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+      const id = String(r.spedizione_id);
+      const elenco = out.get(id) ?? [];
+      elenco.push({
+        quantita: Number(r.quantita),
+        lunghezzaCm: Number(r.lunghezza_cm),
+        larghezzaCm: Number(r.larghezza_cm),
+        altezzaCm: Number(r.altezza_cm),
+        pesoRealeKg: r.peso_reale_kg == null ? null : Number(r.peso_reale_kg),
+      });
+      out.set(id, elenco);
+    }
+  });
+  return out;
+}
+
+/**
+ * Le misure del magazzino per documento gestionale.
+ *
+ * In acquisizione le spedizioni arrivano dal gestionale e si riconoscono per
+ * documento: la spedizione del portale, a cui il magazzino ha attaccato le
+ * misure, si ritrova passando da `spedizioni_documenti`. Senza questo passaggio
+ * le misure inserite nella pagina Bolle non entravano mai nel controllo.
+ */
+export async function misureBollaPerDocumento(idDocumenti: number[]): Promise<Map<number, MisuraBolla[]>> {
+  const admin = createAdminClient();
+  const spedizionePerDocumento = new Map<number, string>();
+  await aPezzi([...new Set(idDocumenti)], async (pezzo) => {
+    const { data, error } = await admin
+      .schema("vettori")
+      .from("spedizioni_documenti")
+      .select("id_documento, spedizione_id")
+      .in("id_documento", pezzo);
+    if (error) throw new Error(`Lettura legami bolla-documento fallita: ${error.message}`);
+    for (const r of (data ?? []) as Array<{ id_documento: number; spedizione_id: string }>) {
+      spedizionePerDocumento.set(Number(r.id_documento), r.spedizione_id);
+    }
+  });
+  const perSpedizione = await misureBollaPerSpedizione([...spedizionePerDocumento.values()]);
+  const out = new Map<number, MisuraBolla[]>();
+  for (const [documento, spedizione] of spedizionePerDocumento) {
+    const misure = perSpedizione.get(spedizione);
+    if (misure?.length) out.set(documento, misure);
+  }
+  return out;
+}
+
+/**
+ * Il controllo di una riga: listino alla data, dati fisici, costo atteso,
+ * classificazione. È la stessa funzione per la fattura appena letta e per il
+ * ricalcolo di una già in archivio, così i due non possono divergere.
+ *
+ * Restituisce anche le anomalie che nascono dal calcolo stesso (oggi: il fuori
+ * misura GLS addebitato senza che i nostri dati lo confermino); quelle che
+ * dipendono dall'aggancio restano in `anomalieDi`.
+ */
+export async function calcolaControlloRiga(
+  riga: RigaFattura,
+  sped: SpedizioneLogica | null | undefined,
+  misura: MisuraRiga | undefined,
+  misureBolla: MisuraBolla[],
+  ctx: ContestoControllo
+): Promise<{ controllo: ControlloAcquisito | null; anomalie: AnomaliaAcquisita[] }> {
+  if (!riga.data) return { controllo: null, anomalie: [] };
+  const provincia = sped?.zonaProvincia || String(riga.dettaglio.provincia ?? "") || null;
+  const chiaveCache = `${provincia ?? "-"}|${riga.data}`;
+  let risolto = ctx.cacheListino.get(chiaveCache);
+  if (!risolto) {
+    risolto = await risolviListino({
+      vettoreId: ctx.vettoreId,
+      data: new Date(`${riga.data}T12:00:00Z`),
+      provincia,
+    });
+    ctx.cacheListino.set(chiaveCache, risolto);
+  }
+  let descr = ctx.cacheDescrizione.get(chiaveCache);
+  if (descr === undefined) {
+    descr = await descriviListino(ctx.vettoreId, new Date(`${riga.data}T12:00:00Z`));
+    ctx.cacheDescrizione.set(chiaveCache, descr);
+  }
+
+  if (!risolto.listino) {
+    return {
+      anomalie: [],
+      controllo: {
+        listino_id: null,
+        listino_etichetta: null,
+        zona_codice: null,
+        perc_adeguamento: null,
+        perc_carburante: null,
+        peso_reale: riga.peso,
+        peso_volumetrico: riga.pesoVolumetrico,
+        peso_tassabile: riga.pesoTassato,
+        peso_applicato: null,
+        atteso_nolo: 0,
+        atteso_imponibile: 0,
+        atteso_adeguamento: 0,
+        atteso_carburante: 0,
+        atteso_fuori_base: 0,
+        atteso_totale: 0,
+        atteso_dettaglio: [],
+        scostamento: null,
+        esito: "non_valutabile",
+        avvertenze: [risolto.motivo ?? "Listino non risolvibile per questa riga."],
+      },
+    };
+  }
+
+  const listino = risolto.listino;
+  const fisici = datiFisici(riga, sped, misura, ctx.rilevazioni, listino.vettore.divisoreVolumetrico, misureBolla);
+  const anomalie: AnomaliaAcquisita[] = [];
+  const noteOversized: string[] = [];
+  if (ctx.vettoreCodice === "gls") {
+    const ov = valutaOversizedGls(fisici.dati, String(riga.dettaglio.codiciSupplemento ?? ""));
+    if (ov) {
+      noteOversized.push(ov.motivo);
+      if (ov.applica) {
+        fisici.dati.condizioni = [...new Set([...(fisici.dati.condizioni ?? []), "oversized" as const])];
+        fisici.dati.colliOversized = ov.colli;
+      }
+      if (ov.dichiarato && ov.confermato !== true) {
+        const tariffa = listino.supplementi.find((s) => s.condizione === "oversized")?.valore ?? null;
+        anomalie.push({
+          tipo: "supplemento_non_previsto",
+          gravita: ov.confermato === false ? "anomalia" : "da_verificare",
+          descrizione: ov.motivo,
+          importo: ov.confermato === false ? tariffa : null,
+        });
+      }
+    }
+  }
+  riga.dettaglio.fonteMisure = fisici.fonte;
+  riga.dettaglio.condizioniApplicate = JSON.stringify(fisici.dati.condizioni ?? []);
+  riga.dettaglio.formulaVolumetrico = `Volume totale dei colli (m³) × ${listino.vettore.divisoreVolumetrico} kg/m³; per ogni collo: L × P × H in cm ÷ 1.000.000.`;
+  const calcolo = calcolaCostoAtteso(fisici.dati, listino);
+  const valutabile = riga.totale != null && listino.carburante != null &&
+    calcolo.pesoTassabile > 0 && calcolo.fasciaDescrizione !== "nessuna fascia";
+  const cls = valutabile ? classifica(riga.totale!, calcolo.totale, SOGLIE_DEFAULT)
+    : { esito: "non_valutabile", scostamento: null };
+  return {
+    anomalie,
+    controllo: {
+      listino_id: descr?.id ?? null,
+      listino_etichetta: descr?.etichetta ?? null,
+      zona_codice: listino.zonaCodice,
+      perc_adeguamento: listino.adeguamento,
+      perc_carburante: listino.carburante,
+      peso_reale: calcolo.pesoReale,
+      peso_volumetrico: calcolo.pesoVolumetrico,
+      peso_tassabile: calcolo.pesoTassabile,
+      peso_applicato: calcolo.pesoApplicato,
+      atteso_nolo: calcolo.nolo,
+      atteso_imponibile: calcolo.imponibileNolo,
+      atteso_adeguamento: calcolo.adeguamento,
+      atteso_carburante: calcolo.carburante,
+      atteso_fuori_base: calcolo.fuoriBase,
+      atteso_totale: calcolo.totale,
+      atteso_dettaglio: calcolo.supplementi,
+      scostamento: cls.scostamento,
+      esito: cls.esito,
+      avvertenze: [...calcolo.avvertenze, ...fisici.note, ...noteOversized, `Fonte peso volumetrico: ${fisici.fonte}.`,
+        ...(!provincia ? ["Provincia assente: applicata la zona predefinita del vettore, da verificare."] : []),
+        ...(calcolo.pesoTassabile <= 0 ? ["Peso assente: inserire il peso della spedizione."] : []),
+        ...(riga.totale == null ? ["Importo fatturato assente."] : []),
+        ...(ctx.vettoreCodice === "gls" ? ["ISTAT e carburante di fattura ripartiti sul nolo per confrontare importi completi."] : []),
+      ],
+    },
+  };
+}
+
+/**
  * Costruisce il payload completo: aggancia, calcola, classifica.
  */
 export async function preparaAcquisizione(params: {
@@ -293,16 +504,6 @@ export async function preparaAcquisizione(params: {
   const spedizioni = raggruppaInSpedizioni(bolle);
   const esiti = abbina(fattura.righe, spedizioni);
 
-  // La cache include il giorno: una nuova tariffa può decorrere a metà mese.
-  const cacheListino = new Map<
-    string,
-    Awaited<ReturnType<typeof risolviListino>>
-  >();
-  const cacheDescrizione = new Map<
-    string,
-    Awaited<ReturnType<typeof descriviListino>>
-  >();
-
   const admin = createAdminClient();
   const { data: misureRows, error: misureError } = p ? await admin.schema("vettori").from("rilevazioni")
     .select("*").gte("data_arrivo", giorni(p.da, -7)).lte("data_arrivo", giorni(p.a, 7)).limit(5000)
@@ -318,6 +519,10 @@ export async function preparaAcquisizione(params: {
   const vettoreId = (vRows ?? [])[0]?.id as string | undefined;
   if (vError) throw new Error(`Lettura vettore fallita: ${vError.message}`);
   if (!vettoreId) throw new Error(`Vettore ${fattura.vettore} non configurato.`);
+  const contesto = nuovoContestoControllo(vettoreId, fattura.vettore, rilevazioni);
+  const misureBolla = await misureBollaPerDocumento(esiti.flatMap((e) => e.spedizione?.idDocumenti ?? []));
+  const misureBollaDi = (sped: SpedizioneLogica | null | undefined): MisuraBolla[] =>
+    (sped?.idDocumenti ?? []).map((id) => misureBolla.get(id)).find((m) => m?.length) ?? [];
 
   const righe: RigaAcquisita[] = [];
   const spedizioniUsate = new Map<string, SpedizioneLogica>();
@@ -331,86 +536,11 @@ export async function preparaAcquisizione(params: {
     if (misura) riga.dettaglio.misureControllo = JSON.stringify(misura);
     let controllo: ControlloAcquisito | null = null;
 
+    let anomalieCalcolo: AnomaliaAcquisita[] = [];
     if (vettoreId && riga.data) {
-      const provincia = sped?.zonaProvincia || String(riga.dettaglio.provincia ?? "") || null;
-      const chiaveCache = `${provincia ?? "-"}|${riga.data}`;
-      let risolto = cacheListino.get(chiaveCache);
-      if (!risolto) {
-        risolto = await risolviListino({
-          vettoreId,
-          data: new Date(`${riga.data}T12:00:00Z`),
-          provincia,
-        });
-        cacheListino.set(chiaveCache, risolto);
-      }
-      let descr = cacheDescrizione.get(chiaveCache);
-      if (descr === undefined) {
-        descr = await descriviListino(vettoreId, new Date(`${riga.data}T12:00:00Z`));
-        cacheDescrizione.set(chiaveCache, descr);
-      }
-
-      if (risolto.listino) {
-        const fisici = datiFisici(riga, sped, misura, rilevazioni, risolto.listino.vettore.divisoreVolumetrico);
-        riga.dettaglio.fonteMisure = fisici.fonte;
-        riga.dettaglio.condizioniApplicate = JSON.stringify(fisici.dati.condizioni ?? []);
-        riga.dettaglio.formulaVolumetrico = `Volume totale dei colli (m³) × ${risolto.listino.vettore.divisoreVolumetrico} kg/m³; per ogni collo: L × P × H in cm ÷ 1.000.000.`;
-        const calcolo = calcolaCostoAtteso(
-          fisici.dati,
-          risolto.listino
-        );
-        const valutabile = riga.totale != null && risolto.listino.carburante != null &&
-          calcolo.pesoTassabile > 0 && calcolo.fasciaDescrizione !== "nessuna fascia";
-        const cls = valutabile ? classifica(riga.totale!, calcolo.totale, SOGLIE_DEFAULT)
-          : { esito: "non_valutabile", scostamento: null };
-        controllo = {
-          listino_id: descr?.id ?? null,
-          listino_etichetta: descr?.etichetta ?? null,
-          zona_codice: risolto.listino.zonaCodice,
-          perc_adeguamento: risolto.listino.adeguamento,
-          perc_carburante: risolto.listino.carburante,
-          peso_reale: calcolo.pesoReale,
-          peso_volumetrico: calcolo.pesoVolumetrico,
-          peso_tassabile: calcolo.pesoTassabile,
-          peso_applicato: calcolo.pesoApplicato,
-          atteso_nolo: calcolo.nolo,
-          atteso_imponibile: calcolo.imponibileNolo,
-          atteso_adeguamento: calcolo.adeguamento,
-          atteso_carburante: calcolo.carburante,
-          atteso_fuori_base: calcolo.fuoriBase,
-          atteso_totale: calcolo.totale,
-          atteso_dettaglio: calcolo.supplementi,
-          scostamento: cls.scostamento,
-          esito: cls.esito,
-          avvertenze: [...calcolo.avvertenze, ...fisici.note, `Fonte peso volumetrico: ${fisici.fonte}.`,
-            ...(!provincia ? ["Provincia assente: applicata la zona predefinita del vettore, da verificare."] : []),
-            ...(calcolo.pesoTassabile <= 0 ? ["Peso assente: inserire il peso della spedizione."] : []),
-            ...(riga.totale == null ? ["Importo fatturato assente."] : []),
-            ...(fattura.vettore === "gls" ? ["ISTAT e carburante di fattura ripartiti sul nolo per confrontare importi completi."] : []),
-          ],
-        };
-      } else {
-        controllo = {
-          listino_id: null,
-          listino_etichetta: null,
-          zona_codice: null,
-          perc_adeguamento: null,
-          perc_carburante: null,
-          peso_reale: riga.peso,
-          peso_volumetrico: riga.pesoVolumetrico,
-          peso_tassabile: riga.pesoTassato,
-          peso_applicato: null,
-          atteso_nolo: 0,
-          atteso_imponibile: 0,
-          atteso_adeguamento: 0,
-          atteso_carburante: 0,
-          atteso_fuori_base: 0,
-          atteso_totale: 0,
-          atteso_dettaglio: [],
-          scostamento: null,
-          esito: "non_valutabile",
-          avvertenze: [risolto.motivo ?? "Listino non risolvibile per questa riga."],
-        };
-      }
+      const calcolato = await calcolaControlloRiga(riga, sped, misura, misureBollaDi(sped), contesto);
+      controllo = calcolato.controllo;
+      anomalieCalcolo = calcolato.anomalie;
     }
 
     righe.push({
@@ -437,7 +567,7 @@ export async function preparaAcquisizione(params: {
       motivo_abbinamento: esito.motivo,
       candidati: esito.candidati,
       controllo,
-      anomalie: anomalieDi(riga, esito, controllo),
+      anomalie: [...anomalieDi(riga, esito, controllo), ...anomalieCalcolo],
     });
   }
 

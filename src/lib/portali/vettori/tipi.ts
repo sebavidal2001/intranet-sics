@@ -105,6 +105,11 @@ export interface DatiSpedizione {
   misureColli?: Array<{ quantita: number; lunghezzaCm: number; larghezzaCm: number; altezzaCm: number }>;
   /** Condizioni dichiarate che attivano i supplementi. */
   condizioni?: CondizioneSpedizione[];
+  /**
+   * Quanti colli sono fuori misura, quando si sa. Senza, il supplemento
+   * oversized «a collo» vale per tutti i colli della spedizione.
+   */
+  colliOversized?: number;
 }
 
 export type FonteBollaMisura = "manuale" | "magazzino" | "vettore";

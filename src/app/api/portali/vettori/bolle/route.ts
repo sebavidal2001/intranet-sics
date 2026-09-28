@@ -43,6 +43,8 @@ const Query = z.object({
   /** `1` mostra anche le bolle il cui trasporto non paghiamo noi. */
   tutte: z.enum(["0", "1"]).default("0"),
   cerca: z.string().trim().max(60).optional(),
+  /** Arrivi (BF) o partenze (BC): come in Spedizioni, l'amministrazione le tratta separate. */
+  direzione: z.enum(["tutte", "entrata", "uscita"]).default("tutte"),
 });
 
 /**
@@ -210,7 +212,7 @@ export async function GET(request: NextRequest) {
 
     await sincronizzaDocumentiRecenti();
 
-    const { pagina, perPagina, tutte } = parsed.data;
+    const { pagina, perPagina, tutte, direzione } = parsed.data;
     const cerca = testoRicerca(parsed.data.cerca);
     const da = (pagina - 1) * perPagina;
     const admin = createAdminClient();
@@ -233,6 +235,10 @@ export async function GET(request: NextRequest) {
       .eq("a_nostro_carico", false)
       .not("origine", "in", "(manuale,simulazione)");
     if (tutte === "0") elenco = elenco.or(FILTRO_A_NOSTRO_CARICO);
+    if (direzione !== "tutte") {
+      elenco = elenco.eq("direzione", direzione);
+      escluse = escluse.eq("direzione", direzione);
+    }
     if (cerca) {
       const filtro = `numero_riferimento.ilike.*${cerca}*,numero_protocollo.ilike.*${cerca}*,controparte_nome.ilike.*${cerca}*`;
       elenco = elenco.or(filtro);

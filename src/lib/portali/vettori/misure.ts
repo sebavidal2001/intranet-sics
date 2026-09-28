@@ -117,18 +117,36 @@ export function riepilogoMisureBolla(
   return { volumeM3, pesoVolumetricoKg, usaVolumeGestionale };
 }
 
-export function datiFisici(riga: RigaFattura, sped: SpedizioneLogica | null | undefined, misure: MisuraRiga | undefined, rilevazioni: Rilevazione[], divisore: number): { dati: DatiSpedizione; fonte: string; note: string[] } {
+/** Un gruppo di colli misurato dal magazzino nella pagina Bolle (`vettori.bolla_misure`). */
+export interface MisuraBolla {
+  quantita: number;
+  lunghezzaCm: number;
+  larghezzaCm: number;
+  altezzaCm: number;
+  pesoRealeKg: number | null;
+}
+
+/**
+ * I dati fisici con cui si calcola il costo atteso, dalla fonte più affidabile.
+ *
+ * Ordine delle misure: quelle inserite nel controllo della fattura, poi quelle
+ * del magazzino sulla bolla (pagina Bolle), poi la rilevazione d'arrivo, poi i
+ * volumi dichiarati da gestionale o vettore.
+ */
+export function datiFisici(riga: RigaFattura, sped: SpedizioneLogica | null | undefined, misure: MisuraRiga | undefined, rilevazioni: Rilevazione[], divisore: number, misureBolla: MisuraBolla[] = []): { dati: DatiSpedizione; fonte: string; note: string[] } {
   const candidati = riga.direzione === "entrata" ? rilevazioni.filter((r) =>
     riga.riferimento && normalizzaRiferimento(r.numero_bolla ?? "") === normalizzaRiferimento(riga.riferimento) &&
     nomiCompatibili(r.fornitore_testo, sped?.controparte ?? riga.controparte) &&
     riga.data && Math.abs(Date.parse(r.data_arrivo) - Date.parse(riga.data)) <= 7 * 86400000
   ) : [];
   const rilevata = candidati.length === 1 ? candidati[0] : undefined;
-  const colliMisurati = misure?.volumeMc ? undefined : misure?.colli?.length ? misure.colli : rilevata?.lunghezza_cm && rilevata.larghezza_cm && rilevata.altezza_cm ? [{ quantita: rilevata.colli, lunghezzaCm: rilevata.lunghezza_cm, larghezzaCm: rilevata.larghezza_cm, altezzaCm: rilevata.altezza_cm }] : undefined;
+  const colliBolla = misureBolla.filter((m) => m.quantita > 0).map(({ quantita, lunghezzaCm, larghezzaCm, altezzaCm }) => ({ quantita, lunghezzaCm, larghezzaCm, altezzaCm }));
+  const pesoBolla = misureBolla.length > 0 && misureBolla.every((m) => (m.pesoRealeKg ?? 0) > 0) ? misureBolla.reduce((t, m) => t + (m.pesoRealeKg ?? 0), 0) : null;
+  const colliMisurati = misure?.volumeMc ? undefined : misure?.colli?.length ? misure.colli : colliBolla.length ? colliBolla : rilevata?.lunghezza_cm && rilevata.larghezza_cm && rilevata.altezza_cm ? [{ quantita: rilevata.colli, lunghezzaCm: rilevata.lunghezza_cm, larghezzaCm: rilevata.larghezza_cm, altezzaCm: rilevata.altezza_cm }] : undefined;
   const volumeBolla = sped?.volumeMc && sped.volumeMc > 0 ? sped.volumeMc : null;
   const volumeFattura = Number(riga.dettaglio.volumeMc) > 0 ? Number(riga.dettaglio.volumeMc) : null;
   const volume = misure?.volumeMc ?? (colliMisurati ? null : volumeBolla ?? volumeFattura ?? (riga.pesoVolumetrico && riga.pesoVolumetrico > 0 ? riga.pesoVolumetrico / divisore : null));
-  const fonte = misure?.colli?.length || misure?.volumeMc ? "Misure inserite nel controllo" : colliMisurati ? "Misure di magazzino" : volumeBolla ? "Volume della bolla" : volumeFattura ? "Volume dichiarato in fattura" : volume ? "Peso volumetrico dichiarato dal vettore" : "Misure mancanti";
+  const fonte = misure?.colli?.length || misure?.volumeMc ? "Misure inserite nel controllo" : colliMisurati && colliMisurati === colliBolla ? "Misure della bolla" : colliMisurati ? "Misure di magazzino" : volumeBolla ? "Volume della bolla" : volumeFattura ? "Volume dichiarato in fattura" : volume ? "Peso volumetrico dichiarato dal vettore" : "Misure mancanti";
   /**
    * Zero non è un peso: è la casella lasciata vuota.
    *
@@ -149,7 +167,7 @@ export function datiFisici(riga: RigaFattura, sped: SpedizioneLogica | null | un
     ...(fonte.includes("fattura") || fonte.includes("vettore") ? ["Dato dichiarato dal vettore: inserire le misure per verificare indipendentemente il peso volumetrico."] : []),
   ], dati: {
     colli: colliMisurati?.reduce((s, c) => s + c.quantita, 0) ?? positivo(rilevata?.colli) ?? positivo(riga.colli) ?? positivo(sped?.colli) ?? 1,
-    pesoReale: misure?.pesoKg ?? positivo(rilevata?.peso_kg) ?? positivo(sped?.peso) ?? positivo(riga.peso) ?? positivo(riga.pesoTassato) ?? 0,
+    pesoReale: misure?.pesoKg ?? (colliMisurati === colliBolla ? pesoBolla : null) ?? positivo(rilevata?.peso_kg) ?? positivo(sped?.peso) ?? positivo(riga.peso) ?? positivo(riga.pesoTassato) ?? 0,
     volumeMc: volume, misureColli: colliMisurati,
     condizioni: [...(misure?.condizioni ?? rilevata?.condizioni ?? []).filter((c) => misure?.nonSovrapponibile === undefined || c !== "non_sovrapponibile"), ...(misure?.nonSovrapponibile ? ["non_sovrapponibile"] : [])] as DatiSpedizione["condizioni"],
   } };

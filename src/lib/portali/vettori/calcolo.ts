@@ -148,7 +148,8 @@ function importoSupplemento(
   s: Supplemento,
   peso: number,
   colli: number,
-  nolo: number
+  nolo: number,
+  colliOversized?: number
 ): number {
   let v: number;
   switch (s.tipoCalcolo) {
@@ -159,7 +160,7 @@ function importoSupplemento(
       v = s.valore * peso;
       break;
     case "per_collo":
-      v = s.valore * Math.max(1, colli);
+      v = s.valore * Math.max(1, s.condizione === "oversized" && colliOversized != null ? colliOversized : colli);
       break;
     case "percentuale_nolo":
       v = s.valore * nolo;
@@ -240,7 +241,7 @@ export function calcolaCostoAtteso(
 
   for (const s of listino.supplementi) {
     if (!supplementoApplicabile(s, peso, condizioni)) continue;
-    const importo = importoSupplemento(s, peso, dati.colli, nolo);
+    const importo = importoSupplemento(s, peso, dati.colli, nolo, dati.colliOversized);
     if (importo === 0) continue;
     (s.baseNolo ? inBase : fuoriBaseVoci).push({
       codice: s.codice,

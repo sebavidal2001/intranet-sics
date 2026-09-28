@@ -264,6 +264,19 @@ describe("bolle manuali e congelamento", () => {
     await waitFor(() => expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("tutte=1"));
   });
 
+  it("separa arrivi e partenze, come in Spedizioni (richiesta del 28/09)", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => ({ ok: true, json: async () => risposta([incompleta]) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<BolleView />);
+
+    await screen.findByRole("article", { name: "Bolla DV-101" });
+    expect(String(fetchMock.mock.calls[0][0])).toContain("direzione=tutte");
+    fireEvent.click(screen.getByRole("button", { name: "Arrivi · BF" }));
+    await waitFor(() => expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("direzione=entrata"));
+    fireEvent.click(screen.getByRole("button", { name: "Partenze · BC" }));
+    await waitFor(() => expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("direzione=uscita"));
+  });
+
   it("sugli arrivi mostra il nostro protocollo accanto al DDT del fornitore", async () => {
     const arrivo: BollaDocumento = {
       ...incompleta,

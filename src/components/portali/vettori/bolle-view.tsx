@@ -34,6 +34,7 @@ import type {
 } from "@/lib/portali/vettori/tipi";
 
 type Filtro = "tutte" | "da_misurare" | "congelate";
+type Direzione = "tutte" | "entrata" | "uscita";
 
 interface GruppoDraft {
   chiave: string;
@@ -269,6 +270,7 @@ export function BolleView() {
   const [filtro, setFiltro] = useState<Filtro>("tutte");
   const [creazioneAperta, setCreazioneAperta] = useState(false);
   const [mostraTutte, setMostraTutte] = useState(false);
+  const [direzione, setDirezione] = useState<Direzione>("tutte");
   const [cerca, setCerca] = useState("");
   const [cercaApplicata, setCercaApplicata] = useState("");
   const [nonANostroCarico, setNonANostroCarico] = useState(0);
@@ -285,6 +287,7 @@ export function BolleView() {
       pagina: String(paginaRichiesta),
       perPagina: "80",
       tutte: mostraTutte ? "1" : "0",
+      direzione,
     });
     if (cercaApplicata) parametri.set("cerca", cercaApplicata);
     const response = await fetch(`/api/portali/vettori/bolle?${parametri}`, { cache: "no-store" });
@@ -293,7 +296,7 @@ export function BolleView() {
       throw new Error(messaggioErrore(payload, "Risposta non valida dal server."));
     }
     return payload;
-  }, [mostraTutte, cercaApplicata]);
+  }, [mostraTutte, cercaApplicata, direzione]);
 
   const applica = useCallback((payload: BolleResponse) => {
     setVettori(payload.vettori);
@@ -386,6 +389,12 @@ export function BolleView() {
       ) : null}
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg p-1" role="group" aria-label="Arrivi o partenze">
+          <FiltroButton attivo={direzione === "tutte"} onClick={() => setDirezione("tutte")}>Arrivi e partenze</FiltroButton>
+          <FiltroButton attivo={direzione === "entrata"} onClick={() => setDirezione("entrata")}>Arrivi · BF</FiltroButton>
+          <FiltroButton attivo={direzione === "uscita"} onClick={() => setDirezione("uscita")}>Partenze · BC</FiltroButton>
+        </div>
         <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg p-1" aria-label="Filtra bolle">
           <FiltroButton attivo={filtro === "tutte"} onClick={() => setFiltro("tutte")}>Tutte</FiltroButton>
           <FiltroButton attivo={filtro === "da_misurare"} onClick={() => setFiltro("da_misurare")}>
@@ -394,6 +403,7 @@ export function BolleView() {
           <FiltroButton attivo={filtro === "congelate"} onClick={() => setFiltro("congelate")}>
             Congelate · {congelate}
           </FiltroButton>
+        </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label htmlFor="cerca-bolle" className="sr-only">Cerca bolla</label>
