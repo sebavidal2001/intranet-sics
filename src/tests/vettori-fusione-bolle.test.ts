@@ -195,6 +195,16 @@ describe("fusione delle bolle: si scrive solo dove e' cambiato qualcosa", () => 
     expect(scritture()).toEqual([]);
   });
 
+  it("il rumore dei decimali nella somma dei pesi non conta come modifica", async () => {
+    tabella("spedizioni").push(rigaDb({ peso_bolla: "0.300" }));
+    tabella("spedizioni_documenti").push(legameDb());
+
+    await sincronizzaSpedizioniGestionali([logica({ peso: 0.1 + 0.2 })], dettagli);
+
+    expect(0.1 + 0.2).not.toBe(0.3);
+    expect(scritture()).toEqual([]);
+  });
+
   it("il peso del gestionale cambia: una sola scrittura, e solo su quella spedizione", async () => {
     tabella("spedizioni").push(rigaDb(), rigaDb({ id: "sp-2", numero_riferimento_norm: "9", numero_riferimento: "9" }));
     tabella("spedizioni_documenti").push(legameDb());

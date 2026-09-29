@@ -573,10 +573,19 @@ function aBlocchi<T>(elementi: T[], dimensione: number): T[][] {
   return blocchi;
 }
 
-/** Stesso valore, anche se il database dice `0.340` e il codice `0.34`. */
+/**
+ * Stesso valore, anche se il database dice `0.340` e il codice `0.34`.
+ *
+ * I numeri si confrontano a meno di mezzo millesimo: i pesi sono numeric(_,3),
+ * mentre la somma dei pesi di piu' documenti in JavaScript da' rumore
+ * (64.41600000000001 contro 64.416) e la riga sembrerebbe cambiata a ogni
+ * fusione.
+ */
 function uguale(a: unknown, b: unknown): boolean {
   if (a == null || b == null) return a == null && b == null;
-  if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
+  if (typeof a === "number" || typeof b === "number") {
+    return Math.abs(Number(a) - Number(b)) < 0.0005;
+  }
   return a === b;
 }
 
