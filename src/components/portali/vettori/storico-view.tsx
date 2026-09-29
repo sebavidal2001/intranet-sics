@@ -110,6 +110,7 @@ interface Filtri {
   scostamentoMin: string;
   ordine: string;
   pagina: number;
+  tutte: boolean;
 }
 
 const FILTRI_INIZIALI: Filtri = {
@@ -131,6 +132,7 @@ const FILTRI_INIZIALI: Filtri = {
   scostamentoMin: "",
   ordine: "data_desc",
   pagina: 1,
+  tutte: false,
 };
 
 const numero = (v: string): number | null => {
@@ -161,6 +163,7 @@ function corpoRichiesta(f: Filtri, perPagina = 100) {
     ordine: f.ordine,
     pagina: f.pagina,
     perPagina,
+    tutte: f.tutte,
   };
 }
 
@@ -454,6 +457,27 @@ export function StoricoView({ iniziali, valori }: Props) {
               azzera
             </button>
           )}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-primary"
+              checked={filtri.tutte}
+              onChange={(evento) => aggiorna("tutte", evento.target.checked)}
+            />
+            Mostra anche le spedizioni che non paghiamo noi
+          </label>
+          <span>
+            {filtri.tutte
+              ? "· sono comprese le partenze in porto assegnato e gli arrivi franco."
+              : `· in elenco solo partenze in franco o franco addebito in fattura e arrivi in assegnato${
+                  (dati.non_a_nostro_carico ?? 0) > 0
+                    ? ` (${num(dati.non_a_nostro_carico ?? 0, 0)} escluse)`
+                    : ""
+                }. Le righe di fattura si vedono sempre.`}
+          </span>
         </div>
 
         {avanzati && (

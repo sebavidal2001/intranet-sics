@@ -342,6 +342,8 @@ export interface EsitoStorico {
   totali: TotaliStorico;
   /** Quante righe per direzione, calcolate ignorando il filtro di direzione. */
   per_direzione: Record<string, number> | null;
+  /** Spedizioni senza fattura nascoste perche' il trasporto non e' a nostro carico (0 con «mostra tutte»). */
+  non_a_nostro_carico?: number;
   pagina: number;
   per_pagina: number;
 }
@@ -366,6 +368,8 @@ export interface FiltriStorico {
   ordine?: string | null;
   pagina?: number;
   perPagina?: number;
+  /** Include anche le spedizioni senza fattura che non paghiamo noi (di norma nascoste). */
+  tutte?: boolean;
 }
 
 export interface ValoriFiltroStorico {

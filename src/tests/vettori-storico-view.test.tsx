@@ -146,3 +146,30 @@ describe("StoricoView: addebito al cliente e spunta di verifica", () => {
   });
 });
 
+
+describe("StoricoView: solo le spedizioni a nostro carico, salvo richiesta", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("dice quante ne nasconde e le mostra su richiesta, senza toccare le righe di fattura", async () => {
+    const richieste: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        richieste.push(JSON.parse(String(init?.body)));
+        return { ok: true, json: async () => ({ ...iniziali, non_a_nostro_carico: 0 }) };
+      })
+    );
+
+    render(<StoricoView iniziali={{ ...iniziali, non_a_nostro_carico: 191 }} valori={valori} />);
+
+    expect(screen.getByText(/191 escluse/)).toBeInTheDocument();
+    expect(screen.getByText(/Le righe di fattura si vedono sempre/)).toBeInTheDocument();
+    const casella = screen.getByLabelText("Mostra anche le spedizioni che non paghiamo noi") as HTMLInputElement;
+    expect(casella.checked).toBe(false);
+
+    fireEvent.click(casella);
+    await waitFor(() => expect(richieste.length).toBe(1));
+    expect(richieste[0]).toMatchObject({ tutte: true });
+    expect(screen.getByText(/sono comprese le partenze in porto assegnato/)).toBeInTheDocument();
+  });
+});

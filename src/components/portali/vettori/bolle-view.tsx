@@ -76,7 +76,7 @@ const ETICHETTE_CAMPI: Record<CampoBollaForzabile, string> = {
   direzione: "Direzione",
   numero_riferimento: "Numero bolla",
   data_documento: "Data documento",
-  controparte_nome: "Controparte",
+  controparte_nome: "Cliente/fornitore",
   vettore_id: "Vettore",
   colli_bolla: "Colli",
   peso_bolla: "Peso",
@@ -410,7 +410,7 @@ export function BolleView() {
           <Input
             id="cerca-bolle"
             type="search"
-            placeholder="Numero, protocollo o controparte"
+            placeholder="Numero, protocollo o cliente/fornitore"
             value={cerca}
             onChange={(evento) => setCerca(evento.target.value)}
             className="w-64 bg-bg"
@@ -579,7 +579,7 @@ function TestataFields({ draft, vettori, onChange, prefisso, forzati, onRipristi
       <CampoTestata label="Data documento" campo="data_documento" forzati={forzati} onRipristina={onRipristina}>
         <Input id={`${prefisso}-data`} type="date" value={draft.dataDocumento} onChange={(evento) => cambia("dataDocumento", evento.target.value)} />
       </CampoTestata>
-      <CampoTestata label="Controparte" campo="controparte_nome" forzati={forzati} onRipristina={onRipristina} className="sm:col-span-2 xl:col-span-1">
+      <CampoTestata label="Cliente/fornitore" campo="controparte_nome" forzati={forzati} onRipristina={onRipristina} className="sm:col-span-2 xl:col-span-1">
         <Input id={`${prefisso}-controparte`} value={draft.controparteNome} maxLength={240} onChange={(evento) => cambia("controparteNome", evento.target.value)} />
       </CampoTestata>
       <CampoTestata label="Vettore" campo="vettore_id" forzati={forzati} onRipristina={onRipristina}>
@@ -703,7 +703,7 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
             <StatoBadge documento={documento} />
             <OrigineBadge origine={documento.origine} />
           </div>
-          <p className="mt-1 break-words text-sm font-medium text-text">{documento.soggetto ?? "Controparte non indicata"}</p>
+          <p className="mt-1 break-words text-sm font-medium text-text">{documento.soggetto ?? "Cliente/fornitore non indicato"}</p>
           <p className="mt-0.5 text-xs text-text-muted">{documento.direzione === "entrata" ? "Entrata" : "Uscita"} · {mostraData(documento.dataDocumento)}{documento.direzione === "entrata" && documento.numeroProtocollo ? ` · Prot. BF ${documento.numeroProtocollo}` : ""}{documento.porto ? ` · ${documento.porto}` : ""}</p>
         </div>
         <dl className="grid grid-cols-2 gap-x-5 gap-y-1 text-sm lg:block">

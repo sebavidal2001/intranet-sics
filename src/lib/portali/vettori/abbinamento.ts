@@ -77,6 +77,24 @@ function n(v: string | number | null | undefined): number | null {
 }
 
 /**
+ * Il peso della bolla: il lordo se c'e', altrimenti il netto.
+ *
+ * Il gestionale scrive 0 e non NULL nel peso che nessuno ha compilato, quindi
+ * con `lordo ?? netto` lo zero del lordo batteva un netto vero. Sugli arrivi e'
+ * il caso normale: dal 1/1/2026 946 BF su 2.164 hanno solo il peso netto, e
+ * il programma le mostrava senza peso (segnalato dal magazzino il 29/09/2026).
+ * Se nessuno dei due e' positivo resta il primo valore presente, cioe' lo zero
+ * di prima: un peso che manca non diventa un peso.
+ */
+function pesoDiBolla(b: Pick<BollaGestionale, "peso_lordo" | "peso_netto">): number | null {
+  const lordo = n(b.peso_lordo);
+  const netto = n(b.peso_netto);
+  if (lordo != null && lordo > 0) return lordo;
+  if (netto != null && netto > 0) return netto;
+  return lordo ?? netto;
+}
+
+/**
  * Sigla di provincia, o niente.
  *
  * `vettori.spedizioni.zona_provincia` e' `char(2)`, ma il gestionale ci mette
@@ -102,8 +120,16 @@ export function siglaProvincia(valore: string | null | undefined): string | null
  * per `filiera_righe`, e il profilo serve da conferma. I 114 documenti dei
  * quattro profili di riparazione usano invece GA/GV: lì è il profilo a dire se
  * la riparazione entra (`RIPEF`, `RIPEC`) o esce (`RIPUF`, `RIPUC`).
+ *
+ * Eccezione nel registro DA: i resi a fornitore (`RF`, `RVF`) sono merce che
+ * esce, anche se stanno fra i documenti d'acquisto. Segnalato dal magazzino il
+ * 29/09/2026: letti come arrivi, con il porto invertito, un reso franco
+ * risultava «non a nostro carico» e uno in assegnato «a nostro carico».
  */
+const PROFILI_RESO_A_FORNITORE = ["RF", "RVF"];
+
 export function direzioneDi(b: BollaGestionale): Direzione | null {
+  if (PROFILI_RESO_A_FORNITORE.includes(b.codice_profilo ?? "")) return "uscita";
   if (b.tipo_registro === "DA") return "entrata";
   if (b.tipo_registro === "DV") return "uscita";
   if (["BF", "RIPEF", "RIPEC"].includes(b.codice_profilo ?? "")) {
@@ -183,7 +209,7 @@ export function raggruppaInSpedizioni(
       esistente.idDocumenti.push(b.id_documento);
       const c = n(b.num_colli);
       if (c != null) esistente.colli = (esistente.colli ?? 0) + c;
-      const p = n(b.peso_lordo) ?? n(b.peso_netto);
+      const p = pesoDiBolla(b);
       if (p != null) esistente.peso = (esistente.peso ?? 0) + p;
       const volume = n(b.volume);
       if (volume != null) esistente.volumeMc = (esistente.volumeMc ?? 0) + volume;
@@ -205,7 +231,7 @@ export function raggruppaInSpedizioni(
       aNostroCarico: aNostroCarico(direzione, b.tipo_trasporto_codice),
       vettoreCodice: b.vettore_codice,
       colli: n(b.num_colli),
-      peso: n(b.peso_lordo) ?? n(b.peso_netto),
+      peso: pesoDiBolla(b),
       volumeMc: n(b.volume),
       idDocumenti: [b.id_documento],
     });

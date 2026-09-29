@@ -144,7 +144,7 @@ describe("bolle manuali e congelamento", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nuova bolla manuale" }));
     fireEvent.change(screen.getByLabelText("N. DDT fornitore"), { target: { value: "BF-900" } });
     fireEvent.change(screen.getByLabelText(/Nostro protocollo BF/), { target: { value: "1616" } });
-    fireEvent.change(screen.getByLabelText("Controparte"), { target: { value: "Fornitore Beta" } });
+    fireEvent.change(screen.getByLabelText("Cliente/fornitore"), { target: { value: "Fornitore Beta" } });
     fireEvent.change(screen.getByLabelText("Peso totale (kg)"), { target: { value: "12.5" } });
     fireEvent.change(screen.getByLabelText("Lunghezza (cm)"), { target: { value: "60" } });
     fireEvent.change(screen.getByLabelText("Larghezza (cm)"), { target: { value: "40" } });

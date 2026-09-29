@@ -35,6 +35,7 @@ const Filtri = z.object({
     .optional(),
   pagina: z.number().int().min(1).max(10_000).optional(),
   perPagina: z.number().int().min(10).max(500).optional(),
+  tutte: z.boolean().optional(),
   /** Con `csv` la risposta è il file invece dell'elenco. */
   formato: z.enum(["json", "csv"]).optional(),
 });

@@ -54,6 +54,7 @@ export async function elencoSpedizioni(f: FiltriStorico = {}): Promise<EsitoStor
     p_ordine: f.ordine || "data_desc",
     p_pagina: f.pagina ?? 1,
     p_per_pagina: f.perPagina ?? 100,
+    p_tutte: f.tutte ?? false,
   });
   if (error) throw new Error(`Lettura storico fallita: ${error.message}`);
   const esito = data as EsitoStorico;

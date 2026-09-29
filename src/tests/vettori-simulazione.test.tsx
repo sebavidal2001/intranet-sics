@@ -76,7 +76,7 @@ describe("simulazione vettori", () => {
     fireEvent.click(within(gls).getByRole("button", { name: "Scegli" }));
     fireEvent.click(screen.getByRole("button", { name: "Conferma e crea la bolla" }));
     fireEvent.click(screen.getByLabelText("Lo inserisco dopo"));
-    fireEvent.change(screen.getByLabelText("Controparte"), { target: { value: "Cliente Alfa" } });
+    fireEvent.change(screen.getByLabelText("Cliente/fornitore"), { target: { value: "Cliente Alfa" } });
     fireEvent.click(screen.getByRole("button", { name: "Crea bolla" }));
 
     await screen.findByText("Bolla creata");
@@ -114,7 +114,7 @@ describe("simulazione vettori", () => {
     fireEvent.click(screen.getByRole("button", { name: "Conferma e crea la bolla" }));
     expect(screen.getByLabelText(/Addebito al cliente/)).toHaveValue("26,40");
     fireEvent.change(screen.getByLabelText("Numero bolla"), { target: { value: "2631" } });
-    fireEvent.change(screen.getByLabelText("Controparte"), { target: { value: "Cliente Alfa" } });
+    fireEvent.change(screen.getByLabelText("Cliente/fornitore"), { target: { value: "Cliente Alfa" } });
     fireEvent.change(screen.getByLabelText(/Addebito al cliente/), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "Crea bolla" }));
 

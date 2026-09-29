@@ -373,3 +373,69 @@ describe("sigle di provincia che non sono province", () => {
     expect(spedizione.zonaCap).toBe("47896");
   });
 });
+
+describe("peso e verso delle bolle, dai riscontri del magazzino del 29/09", () => {
+  const bf = (extra: Record<string, unknown>) =>
+    ({
+      id_documento: 1,
+      codice_profilo: "BF",
+      tipo_registro: "DA",
+      numero_progressivo: "2149",
+      numero_documento: "4745",
+      data_documento: "2026-09-28",
+      codice_soggetto: "F1",
+      soggetto: "Fornitore",
+      zona_cap: "40023",
+      zona_provincia: "BO",
+      tipo_trasporto_codice: "02",
+      tipo_trasporto: "Assegnato",
+      vettore_codice: "gls",
+      num_colli: 0,
+      peso_lordo: 0,
+      peso_netto: 0,
+      volume: null,
+      ...extra,
+    }) as unknown as BollaGestionale;
+
+  it("il peso netto vale quando il lordo e' zero: e' il caso normale sugli arrivi", () => {
+    const [spedizione] = raggruppaInSpedizioni([bf({ peso_lordo: "0.000", peso_netto: "1.330" })]);
+    expect(spedizione.peso).toBe(1.33);
+  });
+
+  it("il lordo, quando c'e', resta preferito al netto", () => {
+    const [spedizione] = raggruppaInSpedizioni([bf({ peso_lordo: "32.000", peso_netto: "30.000" })]);
+    expect(spedizione.peso).toBe(32);
+  });
+
+  it("senza nessun peso resta lo zero di prima, non si inventa niente", () => {
+    const [spedizione] = raggruppaInSpedizioni([bf({ peso_lordo: "0.000", peso_netto: "0.000" })]);
+    expect(spedizione.peso).toBe(0);
+    const [senzaPesi] = raggruppaInSpedizioni([bf({ peso_lordo: null, peso_netto: null })]);
+    expect(senzaPesi.peso).toBeNull();
+  });
+
+  it("nel gruppo di piu' documenti ogni documento porta il suo peso, lordo o netto", () => {
+    const [spedizione] = raggruppaInSpedizioni([
+      bf({ id_documento: 1, peso_lordo: 0, peso_netto: 2.5 }),
+      bf({ id_documento: 2, peso_lordo: 4, peso_netto: 3 }),
+    ]);
+    expect(spedizione.idDocumenti).toEqual([1, 2]);
+    expect(spedizione.peso).toBe(6.5);
+  });
+
+  it("un reso a fornitore e' merce che esce, anche se sta nel registro degli acquisti", () => {
+    expect(direzioneDi(bf({ codice_profilo: "RF" }))).toBe("uscita");
+    expect(direzioneDi(bf({ codice_profilo: "RVF" }))).toBe("uscita");
+    expect(direzioneDi(bf({ codice_profilo: "BF" }))).toBe("entrata");
+    // Un reso da cliente resta un arrivo.
+    expect(direzioneDi(bf({ codice_profilo: "RC" }))).toBe("entrata");
+  });
+
+  it("col verso giusto il porto del reso si legge giusto: franco lo paghiamo noi, assegnato no", () => {
+    const franco = raggruppaInSpedizioni([bf({ codice_profilo: "RF", numero_documento: null, numero_progressivo: "20", tipo_trasporto_codice: "01" })])[0];
+    const assegnato = raggruppaInSpedizioni([bf({ id_documento: 2, codice_profilo: "RF", numero_documento: null, numero_progressivo: "21", tipo_trasporto_codice: "02" })])[0];
+    expect(franco.direzione).toBe("uscita");
+    expect(franco.aNostroCarico).toBe(true);
+    expect(assegnato.aNostroCarico).toBe(false);
+  });
+});
