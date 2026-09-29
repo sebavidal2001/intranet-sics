@@ -729,13 +729,23 @@ async function fondiBlocco(
     let riga = spedizioneId ? righe.get(spedizioneId) : undefined;
 
     if (!spedizioneId && spedizione.riferimentoNorm) {
-      const { data: candidati, error: candidatiError } = await admin
+      let cerca = admin
         .schema("vettori")
         .from("spedizioni")
         .select(COLONNE_SPEDIZIONE)
         .eq("direzione", spedizione.direzione)
         .eq("numero_riferimento_norm", spedizione.riferimentoNorm)
-        .eq("data_documento", spedizione.dataDocumento as string)
+        .eq("data_documento", spedizione.dataDocumento as string);
+      // Due clienti diversi possono avere lo stesso numero nello stesso giorno
+      // (il 25/09/2026 due BC «2694»): senza guardare la controparte la seconda
+      // bolla adottava la riga della prima e le due si sovrascrivevano a ogni
+      // fusione. Restano adottabili le righe senza controparte, cioe' quelle
+      // importate dai fogli Excel: e' il caso per cui il riuso esiste.
+      const codice = spedizione.codiceControparte;
+      if (codice && /^[\w.-]+$/.test(codice)) {
+        cerca = cerca.or(`controparte_codice.is.null,controparte_codice.eq.${codice}`);
+      }
+      const { data: candidati, error: candidatiError } = await cerca
         .order("creata_il", { ascending: true })
         .limit(2);
       if (candidatiError) throw new Error(candidatiError.message);

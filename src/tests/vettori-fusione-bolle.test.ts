@@ -38,6 +38,15 @@ vi.mock("@/lib/supabase/admin", () => {
     select() { return this; }
     in(colonna: string, valori: unknown[]) { this.filtri.push((r) => valori.includes(r[colonna])); return this; }
     eq(colonna: string, valore: unknown) { this.filtri.push((r) => r[colonna] === valore); return this; }
+    or(espressione: string) {
+      const condizioni = espressione.split(",").map((parte) => {
+        const [colonna, operatore, ...resto] = parte.split(".");
+        const valore = resto.join(".");
+        return (r: Riga) => (operatore === "is" && valore === "null" ? r[colonna] == null : r[colonna] === valore);
+      });
+      this.filtri.push((r) => condizioni.some((c) => c(r)));
+      return this;
+    }
     order(colonna: string, opzioni?: { ascending?: boolean }) { this.ordine = { colonna, crescente: opzioni?.ascending !== false }; return this; }
     limit(n: number) { this.massimo = n; return this; }
     single() { this.unico = true; return this; }
@@ -264,6 +273,35 @@ describe("fusione delle bolle: si scrive solo dove e' cambiato qualcosa", () => 
     expect(tabella("spedizioni")).toHaveLength(1);
     expect(tabella("spedizioni_documenti")).toHaveLength(1);
     expect(scritture().map((c) => `${c.op} ${c.tabella}`)).toEqual(["upsert spedizioni_documenti"]);
+  });
+
+  it("una riga importata dai fogli, senza controparte, si adotta ancora", async () => {
+    tabella("spedizioni").push(rigaDb({ origine: "excel_storico", controparte_codice: null }));
+
+    await sincronizzaSpedizioniGestionali([logica()], dettagli);
+
+    expect(tabella("spedizioni")).toHaveLength(1);
+    expect(tabella("spedizioni_documenti")[0]).toMatchObject({ spedizione_id: "sp-1" });
+  });
+
+  it("due clienti con lo stesso numero nello stesso giorno restano due spedizioni", async () => {
+    tabella("spedizioni").push(rigaDb({ direzione: "uscita", controparte_codice: "05003762" }));
+    tabella("spedizioni_documenti").push(legameDb({ id_documento: 575715 }));
+    const dettagliDue = new Map([
+      [575723, { codiceProfilo: "BC", tipoRegistro: "DV", numeroProgressivo: "4745", numeroDocumento: "4745" }],
+    ]);
+
+    await sincronizzaSpedizioniGestionali(
+      [logica({ direzione: "uscita", codiceControparte: "05001221", controparte: "Altro cliente", idDocumenti: [575723] })],
+      dettagliDue
+    );
+
+    expect(tabella("spedizioni")).toHaveLength(2);
+    expect(tabella("spedizioni")[0]).toMatchObject({ id: "sp-1", controparte_codice: "05003762" });
+    expect(tabella("spedizioni")[1]).toMatchObject({ controparte_codice: "05001221" });
+    expect(tabella("spedizioni_documenti").find((l) => l.id_documento === 575723)).toMatchObject({
+      spedizione_id: tabella("spedizioni")[1].id,
+    });
   });
 
   it("se cambia solo il dettaglio del documento si riscrive il legame e basta", async () => {
