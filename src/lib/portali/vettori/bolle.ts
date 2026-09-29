@@ -84,6 +84,7 @@ interface SpedizioneRow {
   colli_bolla: number | null;
   peso_bolla: number | null;
   origine: "gestionale" | "manuale" | "excel_storico";
+  numero_protocollo: string | null;
   campi_forzati: unknown;
   congelata: boolean;
 }
@@ -554,6 +555,82 @@ export async function sincronizzaBolleGestionali(bolle: BollaGestionale[]): Prom
   );
 }
 
+type ClienteAdmin = ReturnType<typeof createAdminClient>;
+
+const COLONNE_SPEDIZIONE =
+  "id,direzione,vettore_id,numero_riferimento,numero_riferimento_norm,data_documento,controparte_codice,controparte_nome,zona_cap,zona_provincia,fonte_zona,porto_codice,porto_descrizione,a_nostro_carico,colli_bolla,peso_bolla,numero_protocollo,origine,campi_forzati,congelata";
+
+/** Elementi per richiesta in un filtro `in`: tiene la URL sotto i limiti dei proxy. */
+const PER_RICHIESTA = 150;
+/** Spedizioni fuse alla volta: la lettura anticipata delle righe non invecchia. */
+const PER_BLOCCO = 100;
+
+function aBlocchi<T>(elementi: T[], dimensione: number): T[][] {
+  const blocchi: T[][] = [];
+  for (let i = 0; i < elementi.length; i += dimensione) {
+    blocchi.push(elementi.slice(i, i + dimensione));
+  }
+  return blocchi;
+}
+
+/** Stesso valore, anche se il database dice `0.340` e il codice `0.34`. */
+function uguale(a: unknown, b: unknown): boolean {
+  if (a == null || b == null) return a == null && b == null;
+  if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
+  return a === b;
+}
+
+interface LegameRow {
+  spedizione_id: string;
+  id_documento: number;
+  codice_profilo: string | null;
+  tipo_registro: string | null;
+  numero_progressivo: string | null;
+  numero_documento: string | null;
+}
+
+/**
+ * Cosa scrivere sulla spedizione per allinearla al gestionale, o `null` se e'
+ * gia' allineata.
+ *
+ * Le regole sono quelle di sempre (`pianificaFusioneCampi`: i campi forzati e
+ * quelli che il gestionale non sa restano); cambia solo che una spedizione
+ * invariata non si riscrive. Prima ogni apertura della pagina Bolle scriveva
+ * 350 righe su 350 anche quando non era cambiato niente.
+ */
+export function pianificaAggiornamentoSpedizione(
+  riga: SpedizioneRow,
+  valori: ReturnType<typeof valoriGestionali>,
+  protocollo: string | null
+): Record<string, unknown> | null {
+  const forzati = campiForzatiDaDb(riga.campi_forzati);
+  const piano = pianificaFusioneCampi(
+    Object.fromEntries(
+      CAMPI_BOLLA_FORZABILI.map((campo) => [campo, valoreRiga(riga, campo)])
+    ) as ValoriForzabili,
+    Object.fromEntries(
+      CAMPI_BOLLA_FORZABILI.map((campo) => [campo, valori[campo]])
+    ) as ValoriForzabili,
+    forzati,
+    false
+  );
+  const aggiornamento: Record<string, unknown> = { ...valori, origine: riga.origine };
+  for (const campo of CAMPI_BOLLA_FORZABILI) {
+    aggiornamento[campo] =
+      campo in piano.aggiornamenti ? piano.aggiornamenti[campo] : valoreRiga(riga, campo);
+  }
+  if (!("numero_riferimento" in piano.aggiornamenti)) {
+    aggiornamento.numero_riferimento_norm = riga.numero_riferimento_norm;
+  }
+  if (protocollo) aggiornamento.numero_protocollo = protocollo;
+
+  const attuale = riga as unknown as Record<string, unknown>;
+  const cambia = Object.entries(aggiornamento).some(
+    ([campo, valore]) => !uguale(attuale[campo], valore)
+  );
+  return cambia ? aggiornamento : null;
+}
+
 export async function sincronizzaSpedizioniGestionali(
   spedizioni: SpedizioneLogica[],
   dettagli = new Map<number, DettaglioDocumento>()
@@ -586,22 +663,67 @@ export async function sincronizzaSpedizioniGestionali(
     ])
   );
 
-  for (const spedizione of valide) {
-    const idDocumenti = spedizione.idDocumenti;
-    const { data: legami, error: legamiError } = await admin
+  for (const blocco of aBlocchi(valide, PER_BLOCCO)) {
+    await fondiBlocco(admin, blocco, dettagli, codiciGestionali);
+  }
+}
+
+/**
+ * Fonde un blocco di spedizioni logiche.
+ *
+ * I legami e le righe attuali si leggono una volta per blocco invece che una
+ * volta per spedizione: 1.402 chiamate per 350 spedizioni diventano una
+ * manciata, e con la stessa fusione le scritture avvengono solo dove qualcosa
+ * e' cambiato. Il blocco e' piccolo apposta: le righe lette in anticipo non
+ * devono invecchiare troppo rispetto a chi modifica una bolla nel frattempo.
+ */
+async function fondiBlocco(
+  admin: ClienteAdmin,
+  blocco: SpedizioneLogica[],
+  dettagli: Map<number, DettaglioDocumento>,
+  codiciGestionali: ReadonlyMap<string, CodiceGestionaleVettore>
+): Promise<void> {
+  const idDocumenti = [...new Set(blocco.flatMap((spedizione) => spedizione.idDocumenti))];
+  const legami = new Map<string, LegameRow>();
+  const spedizionePerDocumento = new Map<number, string>();
+  for (const parte of aBlocchi(idDocumenti, PER_RICHIESTA)) {
+    const { data, error } = await admin
       .schema("vettori")
       .from("spedizioni_documenti")
-      .select("spedizione_id")
-      .in("id_documento", idDocumenti)
-      .limit(1);
-    if (legamiError) throw new Error(legamiError.message);
+      .select("spedizione_id,id_documento,codice_profilo,tipo_registro,numero_progressivo,numero_documento")
+      .in("id_documento", parte);
+    if (error) throw new Error(error.message);
+    for (const legame of (data ?? []) as unknown as LegameRow[]) {
+      legami.set(`${legame.spedizione_id}|${legame.id_documento}`, legame);
+      if (!spedizionePerDocumento.has(legame.id_documento)) {
+        spedizionePerDocumento.set(legame.id_documento, legame.spedizione_id);
+      }
+    }
+  }
 
-    let spedizioneId = (legami?.[0] as { spedizione_id?: string } | undefined)?.spedizione_id;
+  const righe = new Map<string, SpedizioneRow>();
+  for (const parte of aBlocchi([...new Set(spedizionePerDocumento.values())], PER_RICHIESTA)) {
+    const { data, error } = await admin
+      .schema("vettori")
+      .from("spedizioni")
+      .select(COLONNE_SPEDIZIONE)
+      .in("id", parte);
+    if (error) throw new Error(error.message);
+    for (const riga of (data ?? []) as unknown as SpedizioneRow[]) righe.set(riga.id, riga);
+  }
+
+  for (const spedizione of blocco) {
+    const idDocumentiSpedizione = spedizione.idDocumenti;
+    let spedizioneId = idDocumentiSpedizione
+      .map((idDocumento) => spedizionePerDocumento.get(idDocumento))
+      .find((id): id is string => Boolean(id));
+    let riga = spedizioneId ? righe.get(spedizioneId) : undefined;
+
     if (!spedizioneId && spedizione.riferimentoNorm) {
       const { data: candidati, error: candidatiError } = await admin
         .schema("vettori")
         .from("spedizioni")
-        .select("id")
+        .select(COLONNE_SPEDIZIONE)
         .eq("direzione", spedizione.direzione)
         .eq("numero_riferimento_norm", spedizione.riferimentoNorm)
         .eq("data_documento", spedizione.dataDocumento as string)
@@ -609,7 +731,8 @@ export async function sincronizzaSpedizioniGestionali(
         .limit(2);
       if (candidatiError) throw new Error(candidatiError.message);
       if ((candidati ?? []).length === 1) {
-        spedizioneId = (candidati?.[0] as { id: string }).id;
+        riga = (candidati as unknown as SpedizioneRow[])[0];
+        spedizioneId = riga.id;
       }
     }
 
@@ -629,37 +752,57 @@ export async function sincronizzaSpedizioniGestionali(
           origine: "gestionale",
           stato: "attesa",
         })
-        .select("id")
+        .select(COLONNE_SPEDIZIONE)
         .single();
       if (insertError) throw new Error(insertError.message);
-      spedizioneId = (nuova as { id: string }).id;
+      riga = nuova as unknown as SpedizioneRow;
+      spedizioneId = riga.id;
     }
 
-    const legamiDaInserire = idDocumenti.map((idDocumento) => {
-      const dettaglio = dettagli.get(idDocumento);
-      return {
-        spedizione_id: spedizioneId,
-        id_documento: idDocumento,
-        codice_profilo: dettaglio?.codiceProfilo ?? null,
-        tipo_registro: dettaglio?.tipoRegistro ?? null,
-        numero_progressivo: dettaglio?.numeroProgressivo ?? null,
-        numero_documento: dettaglio?.numeroDocumento ?? null,
-      };
-    });
-    const { error: linkError } = await admin
-      .schema("vettori")
-      .from("spedizioni_documenti")
-      .upsert(legamiDaInserire, { onConflict: "spedizione_id,id_documento" });
-    if (linkError) throw new Error(linkError.message);
+    if (!riga) {
+      // Legata ma non letta in anticipo: e' stata creata o cancellata nel frattempo.
+      const { data: corrente, error: correnteError } = await admin
+        .schema("vettori")
+        .from("spedizioni")
+        .select(COLONNE_SPEDIZIONE)
+        .eq("id", spedizioneId)
+        .single();
+      if (correnteError) throw new Error(correnteError.message);
+      riga = corrente as unknown as SpedizioneRow;
+    }
 
-    const { data: corrente, error: correnteError } = await admin
-      .schema("vettori")
-      .from("spedizioni")
-      .select("id,direzione,vettore_id,numero_riferimento,numero_riferimento_norm,data_documento,controparte_codice,controparte_nome,zona_cap,zona_provincia,fonte_zona,porto_codice,porto_descrizione,a_nostro_carico,colli_bolla,peso_bolla,origine,campi_forzati,congelata")
-      .eq("id", spedizioneId)
-      .single();
-    if (correnteError) throw new Error(correnteError.message);
-    const riga = corrente as unknown as SpedizioneRow;
+    const legamiDaScrivere = idDocumentiSpedizione
+      .map((idDocumento) => {
+        const dettaglio = dettagli.get(idDocumento);
+        return {
+          spedizione_id: spedizioneId as string,
+          id_documento: idDocumento,
+          codice_profilo: dettaglio?.codiceProfilo ?? null,
+          tipo_registro: dettaglio?.tipoRegistro ?? null,
+          numero_progressivo: dettaglio?.numeroProgressivo ?? null,
+          numero_documento: dettaglio?.numeroDocumento ?? null,
+        };
+      })
+      .filter((voluto) => {
+        const attuale = legami.get(`${voluto.spedizione_id}|${voluto.id_documento}`);
+        return (
+          !attuale ||
+          !uguale(attuale.codice_profilo, voluto.codice_profilo) ||
+          !uguale(attuale.tipo_registro, voluto.tipo_registro) ||
+          !uguale(attuale.numero_progressivo, voluto.numero_progressivo) ||
+          !uguale(attuale.numero_documento, voluto.numero_documento)
+        );
+      });
+    if (legamiDaScrivere.length > 0) {
+      const { error: linkError } = await admin
+        .schema("vettori")
+        .from("spedizioni_documenti")
+        .upsert(legamiDaScrivere, { onConflict: "spedizione_id,id_documento" });
+      if (linkError) throw new Error(linkError.message);
+      for (const scritto of legamiDaScrivere) {
+        legami.set(`${scritto.spedizione_id}|${scritto.id_documento}`, scritto);
+      }
+    }
 
     if (riga.congelata) {
       const differenze = differenzeGestionali(riga, valori);
@@ -674,7 +817,7 @@ export async function sincronizzaSpedizioniGestionali(
         .schema("vettori")
         .from("spedizioni_scostamenti")
         .upsert(
-          idDocumenti.map((idDocumento) => ({
+          idDocumentiSpedizione.map((idDocumento) => ({
             spedizione_id: spedizioneId,
             id_documento: idDocumento,
             differenze,
@@ -686,36 +829,94 @@ export async function sincronizzaSpedizioniGestionali(
       continue;
     }
 
-    const forzati = campiForzatiDaDb(riga.campi_forzati);
-    const piano = pianificaFusioneCampi(
-      Object.fromEntries(
-        CAMPI_BOLLA_FORZABILI.map((campo) => [campo, valoreRiga(riga, campo)])
-      ) as ValoriForzabili,
-      Object.fromEntries(
-        CAMPI_BOLLA_FORZABILI.map((campo) => [campo, valori[campo]])
-      ) as ValoriForzabili,
-      forzati,
-      false
+    const aggiornamento = pianificaAggiornamentoSpedizione(
+      riga,
+      valori,
+      protocolloDaDocumenti(spedizione, dettagli)
     );
-    const aggiornamento: Record<string, unknown> = {
-      ...valori,
-      origine: riga.origine,
-      aggiornata_il: new Date().toISOString(),
-    };
-    for (const campo of CAMPI_BOLLA_FORZABILI) {
-      aggiornamento[campo] =
-        campo in piano.aggiornamenti ? piano.aggiornamenti[campo] : valoreRiga(riga, campo);
-    }
-    if (!("numero_riferimento" in piano.aggiornamenti)) {
-      aggiornamento.numero_riferimento_norm = riga.numero_riferimento_norm;
-    }
-    const protocollo = protocolloDaDocumenti(spedizione, dettagli);
-    if (protocollo) aggiornamento.numero_protocollo = protocollo;
+    if (!aggiornamento) continue;
     const { error: updateError } = await admin
       .schema("vettori")
       .from("spedizioni")
-      .update(aggiornamento)
+      .update({ ...aggiornamento, aggiornata_il: new Date().toISOString() })
       .eq("id", spedizioneId);
     if (updateError) throw new Error(updateError.message);
+    // Un'altra spedizione logica dello stesso blocco puo' risolversi sulla
+    // stessa riga: deve vedere lo stato aggiornato, non quello letto prima.
+    righe.set(spedizioneId, { ...riga, ...aggiornamento } as SpedizioneRow);
   }
+}
+
+/**
+ * Le testate recenti del gestionale, fuse nelle spedizioni operative.
+ *
+ * La pagina Bolle lo chiama a ogni lettura (apertura, ricerca, filtro, «carica
+ * altri», e dopo ogni salvataggio una volta per pagina aperta). Rifondere 500
+ * documenti costava circa 4 secondi e 1.400 chiamate ogni volta, anche quando
+ * il gestionale non aveva mandato niente di nuovo: misurato il 29/09/2026.
+ *
+ * Ora si guarda prima se il grezzo e' cambiato (una query): se l'ultimo
+ * `aggiornato_il` dei documenti e dei codici vettore e' lo stesso dell'ultima
+ * fusione, non c'e' niente da fondere. Per non fidarsi in eterno, si rifonde
+ * comunque ogni 10 minuti. Piu' richieste contemporanee aspettano la stessa
+ * fusione invece di lanciarne una ciascuna.
+ */
+const RINNOVO_FUSIONE_MS = 10 * 60 * 1000;
+let ultimaFusione: { marca: string; alle: number } | null = null;
+let fusioneInCorso: Promise<void> | null = null;
+
+export function dimenticaUltimaFusione(): void {
+  ultimaFusione = null;
+}
+
+export function fondiDocumentiRecenti(): Promise<void> {
+  if (!fusioneInCorso) {
+    fusioneInCorso = eseguiFusioneRecenti().finally(() => {
+      fusioneInCorso = null;
+    });
+  }
+  return fusioneInCorso;
+}
+
+async function eseguiFusioneRecenti(): Promise<void> {
+  const admin = createAdminClient();
+  const ultimo = async (schema: "bi" | "vettori", tabella: string) => {
+    const { data, error } = await admin
+      .schema(schema)
+      .from(tabella)
+      .select("aggiornato_il")
+      .order("aggiornato_il", { ascending: false, nullsFirst: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    return ((data ?? [])[0] as { aggiornato_il?: string | null } | undefined)?.aggiornato_il ?? null;
+  };
+  const [documenti, codici] = await Promise.all([
+    ultimo("bi", "trasporti_documenti"),
+    ultimo("vettori", "codici_gestionale"),
+  ]);
+  const marca = documenti ? `${documenti}|${codici ?? ""}` : null;
+  if (
+    marca &&
+    ultimaFusione &&
+    ultimaFusione.marca === marca &&
+    Date.now() - ultimaFusione.alle < RINNOVO_FUSIONE_MS
+  ) {
+    return;
+  }
+
+  // La pipeline scrive soltanto il grezzo in `bi`. 500 documenti coprono
+  // ampiamente la finestra di lavoro al banco senza rileggere lo storico.
+  const { data, error } = await admin
+    .schema("bi")
+    .from("trasporti_documenti")
+    .select(
+      "id_documento,codice_profilo,tipo_registro,numero_progressivo,numero_documento,data_documento,data_registrazione,id_sog_commerciale,codice_soggetto,soggetto,zona_cap,zona_provincia,fonte_zona,tipo_trasporto_codice,tipo_trasporto,tras_mezzo,vettore_codice,vettore,num_colli,peso_netto,peso_lordo,volume"
+    )
+    .order("data_creazione", { ascending: false, nullsFirst: false })
+    .limit(500);
+  if (error) throw new Error(error.message);
+  await sincronizzaBolleGestionali((data ?? []) as unknown as BollaGestionale[]);
+  // La marca e' letta PRIMA della fusione: se il grezzo cambia nel frattempo,
+  // la prossima richiesta se ne accorge e rifonde.
+  ultimaFusione = marca ? { marca, alle: Date.now() } : null;
 }

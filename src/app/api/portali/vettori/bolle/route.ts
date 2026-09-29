@@ -12,17 +12,16 @@ import {
   creaBollaManuale,
   ErroreBollaCongelata,
   ErroreBollaDuplicata,
+  fondiDocumentiRecenti,
   MutazioneTestataBolla,
   ripristinaCampoBolla,
   risolviVettoreGestionale,
-  sincronizzaBolleGestionali,
 } from "@/lib/portali/vettori/bolle";
 import type { CodiceGestionaleVettore } from "@/lib/portali/vettori/bolle";
 import {
   MutazioneBollaMisura,
   volumeGruppoM3,
 } from "@/lib/portali/vettori/misure";
-import type { BollaGestionale } from "@/lib/portali/vettori/abbinamento";
 import type {
   BollaDocumento,
   BollaFattura,
@@ -177,24 +176,6 @@ function mappaVettore(riga: VettoreRow): BollaVettoreOpzione {
   };
 }
 
-async function sincronizzaDocumentiRecenti(): Promise<void> {
-  const admin = createAdminClient();
-  // La pipeline scrive soltanto il grezzo in `bi`. La lettura della coda e'
-  // il punto in cui le testate recenti vengono fuse nelle spedizioni operative;
-  // 500 documenti coprono ampiamente la finestra di lavoro al banco senza
-  // rileggere a ogni apertura l'intero storico.
-  const { data, error } = await admin
-    .schema("bi")
-    .from("trasporti_documenti")
-    .select(
-      "id_documento,codice_profilo,tipo_registro,numero_progressivo,numero_documento,data_documento,data_registrazione,id_sog_commerciale,codice_soggetto,soggetto,zona_cap,zona_provincia,fonte_zona,tipo_trasporto_codice,tipo_trasporto,tras_mezzo,vettore_codice,vettore,num_colli,peso_netto,peso_lordo,volume"
-    )
-    .order("data_creazione", { ascending: false, nullsFirst: false })
-    .limit(500);
-  if (error) throw new Error(error.message);
-  await sincronizzaBolleGestionali((data ?? []) as unknown as BollaGestionale[]);
-}
-
 /** Elenco paginato delle spedizioni operative, dopo la fusione del grezzo recente. */
 export async function GET(request: NextRequest) {
   try {
@@ -210,7 +191,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Paginazione non valida." }, { status: 400 });
     }
 
-    await sincronizzaDocumentiRecenti();
+    await fondiDocumentiRecenti();
 
     const { pagina, perPagina, tutte, direzione } = parsed.data;
     const cerca = testoRicerca(parsed.data.cerca);
