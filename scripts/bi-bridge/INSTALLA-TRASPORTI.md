@@ -34,8 +34,8 @@ Copiare poi:
 |---|---|
 | scripts\bi-bridge\Invoke-BIPipeline-Trasporti.ps1 | C:\Impresa\BI_Bridge\Invoke-BIPipeline-Trasporti.ps1 |
 | scripts\bi-bridge\config.trasporti.json | C:\Impresa\BI_Bridge\config.trasporti.json |
-| scripts\bi-bridge\query\TRASPORTI_DOCUMENTI_LIVE.sql | C:\Impresa\Viste_BI\TRASPORTI_DOCUMENTI_LIVE.sql |
-| scripts\bi-bridge\query\TRASPORTI_DOCUMENTI.sql | C:\Impresa\Viste_BI\TRASPORTI_DOCUMENTI.sql |
+| scripts\bi-bridge\query\TRASPORTI_DOCUMENTI_LIVE.sql | C:\Impresa\BI_Bridge\query\TRASPORTI_DOCUMENTI_LIVE.sql |
+| scripts\bi-bridge\query\TRASPORTI_DOCUMENTI.sql | C:\Impresa\BI_Bridge\query\TRASPORTI_DOCUMENTI.sql |
 
 L'ultima query è quella a 90 giorni già collaudata e già presente nel repository. Non
 modificarla. Verificare che la configurazione punti esattamente al client a 32 bit:
