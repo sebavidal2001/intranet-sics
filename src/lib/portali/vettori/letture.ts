@@ -207,6 +207,9 @@ export interface ListinoRiepilogo {
     valore: number;
     base_nolo: boolean;
     condizione: string | null;
+    /** Il supplemento vale solo da/fino a questo peso (kg), es. l'assicurazione GLS da 10 kg. */
+    soglia_kg_da?: number | null;
+    soglia_kg_a?: number | null;
   }>;
   adeguamento: number | null;
   carburante: Array<{ anno: number; mese: number; percentuale: number; fonte: string }>;
@@ -249,7 +252,7 @@ export async function riepilogoListini(oggiISO: string): Promise<ListinoRiepilog
     admin
       .schema(SCHEMA)
       .from("listini_supplementi")
-      .select("listino_id, codice, nome, tipo_calcolo, valore, base_nolo, condizione, ordine")
+      .select("listino_id, codice, nome, tipo_calcolo, valore, base_nolo, condizione, soglia_kg_da, soglia_kg_a, ordine")
       .order("ordine"),
     admin
       .schema(SCHEMA)
@@ -333,6 +336,8 @@ export async function riepilogoListini(oggiISO: string): Promise<ListinoRiepilog
             valore: number;
             base_nolo: boolean;
             condizione: string | null;
+            soglia_kg_da: number | null;
+            soglia_kg_a: number | null;
           }>)
             .filter((s) => s.listino_id === listino.id)
             .map(({ listino_id: _ignora, ...resto }) => resto)

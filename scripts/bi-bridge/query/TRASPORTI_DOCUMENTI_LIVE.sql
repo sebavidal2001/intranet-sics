@@ -7,6 +7,14 @@
   sostituisce con (ultimo_id_visto - 50) prima di invocare dbisql. Non
   sostituire questo predicato con un filtro sulle date: id_documento e' la
   chiave primaria indicizzata usata per la scansione di intervallo.
+
+  MODIFICATI_DAL (stesse doppie graffe) e' il secondo segnaposto: il launcher
+  lo sostituisce con l'inizio dell'ultimo run live riuscito, meno due minuti.
+  Serve a portare nel portale anche i documenti gia' esistenti che qualcuno ha
+  corretto in Impresa: prima arrivavano solo quando nasceva un documento nuovo
+  o con la riconciliazione notturna (segnalazione del 29-30/09/2026: una BF
+  completata con i dati di trasporto compariva dopo 1,5-2 ore). data_modifica
+  non ha indici: misurata il 30/09/2026 la query intera gira in circa 1 s.
 */
 SELECT d.id_documento,
        -- Fuori dai registri DV e DA decide il profilo: la riparazione che entra
@@ -102,7 +110,8 @@ LEFT OUTER JOIN dba.anagrafica av ON av.id_anagrafica=v.id_anagrafica
 LEFT OUTER JOIN dba.unita_misura ump ON ump.id_unita_misura=d.id_unita_misura_peso
 LEFT OUTER JOIN dba.unita_misura umv ON umv.id_unita_misura=d.id_unita_misura_volume
 LEFT OUTER JOIN dba.utenti u ON u.id_utenti=d.id_utente_crea
-WHERE d.id_documento > {{ULTIMO_ID_SOGLIA}}
+WHERE (d.id_documento > {{ULTIMO_ID_SOGLIA}}
+       OR d.data_modifica >= '{{MODIFICATI_DAL}}')
   -- I quattro profili di riparazione viaggiano davvero (114 documenti dal
   -- 2025), ma usano i registri GA/GV e il solo filtro DV/DA li escludeva.
   AND (d.tipo_registro IN ('DV','DA')

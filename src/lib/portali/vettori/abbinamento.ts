@@ -128,8 +128,16 @@ export function siglaProvincia(valore: string | null | undefined): string | null
  */
 const PROFILI_RESO_A_FORNITORE = ["RF", "RVF"];
 
+/**
+ * Eccezione simmetrica nel registro DV: il reso visione da cliente (`RVC`) è
+ * merce che rientra. Confermato dall'amministrazione il 30/09/2026 («RVC: reso
+ * visione in ENTRATA da cliente, paghiamo noi se in porto assegnato»).
+ */
+const PROFILI_ENTRATA_IN_REGISTRO_VENDITE = ["RVC"];
+
 export function direzioneDi(b: BollaGestionale): Direzione | null {
   if (PROFILI_RESO_A_FORNITORE.includes(b.codice_profilo ?? "")) return "uscita";
+  if (PROFILI_ENTRATA_IN_REGISTRO_VENDITE.includes(b.codice_profilo ?? "")) return "entrata";
   if (b.tipo_registro === "DA") return "entrata";
   if (b.tipo_registro === "DV") return "uscita";
   if (["BF", "RIPEF", "RIPEC"].includes(b.codice_profilo ?? "")) {

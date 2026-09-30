@@ -102,6 +102,12 @@ export interface CodiceGestionaleVettore {
   vettoreId: string | null;
   tipo: "vettore" | "regola" | "non_nostro" | "da_mappare";
   regolaTesto: string | null;
+  /**
+   * Le bolle con questo vettore non arrivano al banco: nascono gia'
+   * `ignorata`. L'amministrazione non ne controlla le fatture (Trascoop,
+   * 30/09/2026). Facoltativo: chi non lo legge si comporta come prima.
+   */
+  nascondiBolle?: boolean;
 }
 
 export interface RisoluzioneVettoreGestionale {
@@ -651,7 +657,7 @@ export async function sincronizzaSpedizioniGestionali(
   const { data: codiciData, error: codiciError } = await admin
     .schema("vettori")
     .from("codici_gestionale")
-    .select("codice_gestionale,ragione_sociale,vettore_id,tipo,regola_testo");
+    .select("codice_gestionale,ragione_sociale,vettore_id,tipo,regola_testo,nascondi_bolle");
   if (codiciError) throw new Error(codiciError.message);
   const codiciGestionali = new Map(
     ((codiciData ?? []) as unknown as Array<{
@@ -660,6 +666,7 @@ export async function sincronizzaSpedizioniGestionali(
       vettore_id: string | null;
       tipo: CodiceGestionaleVettore["tipo"];
       regola_testo: string | null;
+      nascondi_bolle: boolean | null;
     }>).map((riga): [string, CodiceGestionaleVettore] => [
       riga.codice_gestionale.trim().toUpperCase(),
       {
@@ -668,6 +675,7 @@ export async function sincronizzaSpedizioniGestionali(
         vettoreId: riga.vettore_id,
         tipo: riga.tipo,
         regolaTesto: riga.regola_testo,
+        nascondiBolle: riga.nascondi_bolle === true,
       },
     ])
   );
@@ -769,7 +777,9 @@ async function fondiBlocco(
           ...valori,
           numero_protocollo: protocolloDaDocumenti(spedizione, dettagli),
           origine: "gestionale",
-          stato: "attesa",
+          stato: codiciGestionali.get((spedizione.vettoreCodice ?? "").trim().toUpperCase())?.nascondiBolle
+            ? "ignorata"
+            : "attesa",
         })
         .select(COLONNE_SPEDIZIONE)
         .single();

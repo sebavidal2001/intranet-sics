@@ -81,6 +81,7 @@ function Get-CheckpointFromState {
         available = $false
         last_seen_id = $null
         seen_ids_window = @()
+        modificati_dal = $null
         path = $Path
     }
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -99,6 +100,10 @@ function Get-CheckpointFromState {
             if ([long]::TryParse([string]$savedLastSeen, [ref]$parsedLastSeen)) {
                 $result.available = $true
                 $result.last_seen_id = $parsedLastSeen
+                $savedModificatiDal = Get-PropertyValue -Object $saved -Name "modificati_dal"
+                if ($null -ne $savedModificatiDal) {
+                    $result.modificati_dal = [string]$savedModificatiDal
+                }
                 $savedSeenIds = Get-PropertyValue -Object $saved -Name "seen_ids_window"
                 foreach ($savedId in @($savedSeenIds)) {
                     $parsedSavedId = 0L
@@ -353,6 +358,11 @@ function Test-TransportConfiguration {
     if ($RunMode -eq "riconciliazione" -and $placeholderCount -ne 0) {
         throw "La query di riconciliazione non deve contenere $placeholder"
     }
+    $placeholderModifiche = "{{MODIFICATI_DAL}}"
+    $modificheCount = ([regex]::Matches($sqlText, [regex]::Escape($placeholderModifiche))).Count
+    if ($RunMode -eq "live" -and $modificheCount -ne 1) {
+        throw "La query live deve contenere una sola volta $placeholderModifiche"
+    }
     if ($sqlText -notmatch [regex]::Escape([string]$Query.OutputFile)) {
         throw "La query non scrive il file configurato $($Query.OutputFile)"
     }
@@ -485,6 +495,7 @@ $checkpoint = [pscustomobject]([ordered]@{
     available = $false
     last_seen_id = $null
     seen_ids_window = @()
+    modificati_dal = $null
     path = ""
 })
 $checkpointSource = "nessuno"
@@ -528,6 +539,23 @@ if ($Modo -eq "live" -and $UltimoIdVisto -ge 0) {
     $checkpointUploaded = $false
 }
 
+# Documenti modificati: dall'inizio dell'ultimo run live riuscito, meno due
+# minuti di margine. Senza stato si guardano gli ultimi 10 minuti; uno stato
+# troppo vecchio (pipeline ferma) si limita a 2 giorni, poi ci pensa la
+# riconciliazione notturna a 90 giorni.
+$runStartedAt = Get-Date
+$modificatiDal = $runStartedAt.AddMinutes(-10)
+if ($checkpoint.modificati_dal) {
+    $parsedModificatiDal = [datetime]::MinValue
+    if ([datetime]::TryParseExact([string]$checkpoint.modificati_dal, "yyyy-MM-dd HH:mm:ss", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$parsedModificatiDal)) {
+        $modificatiDal = $parsedModificatiDal
+    }
+}
+if ($modificatiDal -lt $runStartedAt.AddDays(-2)) {
+    $modificatiDal = $runStartedAt.AddDays(-2)
+}
+$modificatiDalText = $modificatiDal.ToString("yyyy-MM-dd HH:mm:ss", [Globalization.CultureInfo]::InvariantCulture)
+
 $status = [ordered]@{
     run_id = $runId
     mode = $Modo
@@ -544,6 +572,8 @@ $status = [ordered]@{
     checkpoint_source = $checkpointSource
     checkpoint_uploaded = $checkpointUploaded
     seen_ids_window = @($seenIdsWindow)
+    modificati_dal = $checkpoint.modificati_dal
+    modified_rows = 0
     uploaded = $false
     empty = $false
     skipped_lock = $false
@@ -632,6 +662,7 @@ try {
         $templateSql = Get-Content -LiteralPath $sqlPath -Raw
         $thresholdText = $thresholdId.ToString([Globalization.CultureInfo]::InvariantCulture)
         $generatedSql = $templateSql.Replace("{{ULTIMO_ID_SOGLIA}}", $thresholdText)
+        $generatedSql = $generatedSql.Replace("{{MODIFICATI_DAL}}", $modificatiDalText)
         New-DirectoryIfMissing -Path $tempRoot
         $generatedSqlPath = Join-Path $tempRoot ("TRASPORTI_DOCUMENTI_LIVE_{0}.sql" -f $runId)
         [IO.File]::WriteAllText(
@@ -640,7 +671,7 @@ try {
             (New-Object System.Text.UTF8Encoding($false))
         )
         $sqlPath = $generatedSqlPath
-        Write-PipelineLog ("Query live preparata: ultimo_id_visto={0}; soglia={1}" -f $lastSeenId, $thresholdId)
+        Write-PipelineLog ("Query live preparata: ultimo_id_visto={0}; soglia={1}; modificati_dal={2}" -f $lastSeenId, $thresholdId, $modificatiDalText)
     }
 
     $credential = Import-Clixml -LiteralPath $dbCredentialPath
@@ -721,6 +752,14 @@ try {
         if ($newIds.Count -gt 0) {
             $uploadRequired = $true
         }
+        # Un ID sotto la soglia puo' arrivare solo dal ramo data_modifica: e' un
+        # documento gia' consegnato che qualcuno ha corretto in Impresa.
+        $modifiedIds = @($ids | Where-Object { $_ -le $status.threshold_id })
+        $status.modified_rows = $modifiedIds.Count
+        if ($modifiedIds.Count -gt 0) {
+            $uploadRequired = $true
+            Write-PipelineLog ("Documenti modificati da consegnare: {0}" -f $modifiedIds.Count)
+        }
     }
 
     if (-not $uploadRequired) {
@@ -785,6 +824,9 @@ try {
 
     $status.status = "SUCCESS"
     $status.step = "complete"
+    if ($Modo -eq "live" -and -not $SkipUpload) {
+        $status.modificati_dal = $runStartedAt.AddMinutes(-2).ToString("yyyy-MM-dd HH:mm:ss", [Globalization.CultureInfo]::InvariantCulture)
+    }
     $status.finished = (Get-Date).ToString("s")
     if ($status.empty) {
         $status.message = "Nessun nuovo documento; nessun upload necessario."

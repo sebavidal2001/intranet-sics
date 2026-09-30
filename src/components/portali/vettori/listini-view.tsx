@@ -32,6 +32,22 @@ const TIPO_CALCOLO: Record<string, string> = {
 const pct = (n: number | null | undefined) =>
   n == null ? "—" : `${(n * 100).toLocaleString("it-IT", { maximumFractionDigits: 3 })}%`;
 
+/**
+ * Quando un supplemento si applica: la condizione e, se c'è, la soglia di peso.
+ * Mostrare solo «sempre» per l'assicurazione GLS, che vale da 10 kg, faceva
+ * credere all'amministrazione che la applicassimo a ogni spedizione (30/09).
+ */
+function quandoSiApplica(s: { condizione: string | null; soglia_kg_da?: number | null; soglia_kg_a?: number | null }): string {
+  const condizione = s.condizione && s.condizione !== "sempre" ? s.condizione.replace(/_/g, " ") : "sempre";
+  const kg = (n: number) => `${Number(n).toLocaleString("it-IT", { maximumFractionDigits: 3 })} kg`;
+  const soglie = [
+    s.soglia_kg_da != null ? `da ${kg(s.soglia_kg_da)}` : null,
+    s.soglia_kg_a != null ? `fino a ${kg(s.soglia_kg_a)}` : null,
+  ].filter(Boolean).join(" ");
+  if (!soglie) return condizione;
+  return condizione === "sempre" ? soglie : `${condizione}, ${soglie}`;
+}
+
 export function ListiniView({ iniziali, anno, mese }: Props) {
   const [listini, setListini] = useState(iniziali);
   useEffect(() => setListini(iniziali), [iniziali]);
@@ -364,7 +380,7 @@ function Scheda({ l }: { l: ListinoRiepilogo }) {
                           })}
                     </td>
                     <td className="py-1 pl-4 text-text-muted">
-                      {s.condizione ? s.condizione.replace(/_/g, " ") : "sempre"}
+                      {quandoSiApplica(s)}
                     </td>
                     <td className="py-1 text-center text-text-muted">
                       {s.base_nolo ? "sì" : "no"}

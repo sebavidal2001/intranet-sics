@@ -431,6 +431,23 @@ describe("peso e verso delle bolle, dai riscontri del magazzino del 29/09", () =
     expect(direzioneDi(bf({ codice_profilo: "RC" }))).toBe("entrata");
   });
 
+  it("i profili elencati dall'amministrazione il 30/09 hanno il verso giusto", () => {
+    const verso = (codice_profilo: string, tipo_registro: string) =>
+      direzioneDi({ codice_profilo, tipo_registro } as BollaGestionale);
+    // Registro vendite: visione a cliente esce, reso visione da cliente entra.
+    expect(verso("VC", "DV")).toBe("uscita");
+    expect(verso("RVC", "DV")).toBe("entrata");
+    // Registro acquisti: visione da fornitore entra, il suo reso esce.
+    expect(verso("VF", "DA")).toBe("entrata");
+    expect(verso("RVF", "DA")).toBe("uscita");
+    expect(verso("RC", "DA")).toBe("entrata");
+    // Riparazioni: decide il profilo.
+    expect(verso("RIPEC", "GV")).toBe("entrata");
+    expect(verso("RIPEF", "GA")).toBe("entrata");
+    expect(verso("RIPUC", "GV")).toBe("uscita");
+    expect(verso("RIPUF", "GA")).toBe("uscita");
+  });
+
   it("col verso giusto il porto del reso si legge giusto: franco lo paghiamo noi, assegnato no", () => {
     const franco = raggruppaInSpedizioni([bf({ codice_profilo: "RF", numero_documento: null, numero_progressivo: "20", tipo_trasporto_codice: "01" })])[0];
     const assegnato = raggruppaInSpedizioni([bf({ id_documento: 2, codice_profilo: "RF", numero_documento: null, numero_progressivo: "21", tipo_trasporto_codice: "02" })])[0];
