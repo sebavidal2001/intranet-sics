@@ -76,9 +76,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Tests use mocks — no real Supabase env vars required
+      # Solo il progetto `unita`: le 11 suite del progetto `database` leggono dal
+      # database vero e in CI non ci sono credenziali. Girano in locale con `npm test`.
       - name: Run Vitest test suite
-        run: npm test
+        run: npx vitest run --project unita
 
   build:
     name: Build

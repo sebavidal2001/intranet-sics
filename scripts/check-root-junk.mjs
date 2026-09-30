@@ -11,7 +11,7 @@ const ALLOW = new Set([
   ".env.example", ".env.local.example", ".eslintrc.json", ".gitattributes", ".gitignore", ".mcp.json",
   "CLAUDE.md", "DEPLOYMENT.md", "README.md", "deploy.sh",
   "next.config.mjs", "package.json", "package-lock.json",
-  "postcss.config.mjs", "tailwind.config.mjs", "tsconfig.json", "vitest.config.ts",
+  "postcss.config.mjs", "tailwind.config.mjs", "tsconfig.json", "vitest.config.ts", "vitest.dalvivo.config.ts",
   // ambiente/locali ignorati da git ma legittimi
   ".env", ".env.local", "tsconfig.tsbuildinfo", "next-env.d.ts",
 ]);

@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 /**
- * Gli otto file che leggono dal database vero.
+ * Gli undici file che leggono dal database vero.
  *
  * Ognuno costruisce uno snapshot scaricando ~66.000 righe via PostgREST. In
  * parallelo si mettono in coda a vicenda e sforano il timeout: `npx vitest run
@@ -21,10 +21,12 @@ const LEGGONO_DAL_DATABASE = [
   "prototipo-bi/business-unit.test.ts",
   "prototipo-bi/costo-storico-dal-database.test.ts",
   "prototipo-bi/cruscotto-margine.test.ts",
+  "prototipo-bi/cruscotto-margine.test.ts",
   "prototipo-bi/margine-riconciliazione.test.ts",
   "prototipo-bi/documenti.test.ts",
   "prototipo-bi/eta-dettaglio.test.ts",
   "prototipo-bi/integrazione.test.ts",
+  "prototipo-bi/margine-riconciliazione.test.ts",
   "prototipo-bi/preventivi-backoffice.test.ts",
   "prototipo-bi/verifica.test.ts",
 ];
