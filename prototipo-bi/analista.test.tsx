@@ -66,8 +66,7 @@ describe("Instradamento del modello", () => {
 
 describe("Costi", () => {
   it("calcola il costo dai token e dal listino", () => {
-    // Sonnet 5: 2 $/Mtok in ingresso, 10 in uscita (listino del 17/09/2026).
-    // Era Sonnet 4.5 a 3/15: il passaggio ha tolto un terzo del costo.
+    // Livello standard: 2 $/Mtok in ingresso, 10 in uscita (listino del 30/09/2026).
     const c = calcolaCosto(MODELLI.standard, 10_000, 2_000);
     expect(c.costoUsd).toBeCloseTo(10_000 / 1e6 * 2 + 2_000 / 1e6 * 10, 6);
     expect(c.costoUsd).toBeCloseTo(0.04, 4);
@@ -115,7 +114,7 @@ describe("Costi", () => {
     expect(MODELLI.standard.ingresso).toBeGreaterThan(0);
     console.log(
       `   Listino: Haiku ${MODELLI.leggero.ingresso}/${MODELLI.leggero.uscita} · ` +
-        `Sonnet ${MODELLI.standard.ingresso}/${MODELLI.standard.uscita} $/Mtok`
+        `${MODELLI.standard.nome} ${MODELLI.standard.ingresso}/${MODELLI.standard.uscita} $/Mtok`
     );
   }, 60_000);
 });

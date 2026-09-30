@@ -33,11 +33,15 @@ export const MODELLI: Record<string, Modello> = {
     note: "Veloce ed economico. Adatto a letture dirette e riassunti.",
   },
   standard: {
-    // Era Sonnet 4.5 (3,00 / 15,00). Sonnet 5 costa un terzo meno ED e' piu'
-    // recente: restare sul 4.5 non aveva giustificazione ne' di prezzo ne' di
-    // qualita'. Verificato sul listino OpenRouter il 17/09/2026.
-    id: "anthropic/claude-sonnet-5",
-    nome: "Sonnet 5",
+    // Era Sonnet 5 (stesso prezzo: 2,00 / 10,00). Il 30/09/2026 due giri del
+    // banco (12 domande, docs/bi/ESITO-confronto-modelli-20260930*.json) hanno
+    // dato a gpt-6-sol zero cifre non verificate come a Sonnet 5, risposte
+    // ugualmente oneste sul dato mancante, un quinto del costo ($0,108 contro
+    // $0,547 su 8 domande) e meta' del tempo. Non e' un modello piu' bravo a
+    // scrivere: i riassunti sono piu' brevi. Sonnet 5.5 e gpt-6.1-sol misurati
+    // e scartati: non miglioravano, e costavano o tardavano di piu'.
+    id: "openai/gpt-6-sol",
+    nome: "GPT-6 Sol",
     ingresso: 2.0,
     uscita: 10.0,
     note: "Ragionamento multi-passo: scomposizioni, confronti, previsioni.",
