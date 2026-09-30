@@ -31,6 +31,7 @@ vi.mock("@/lib/supabase/admin", () => {
 
   const from = (tabella: string) => ({
     select: (_campi?: string, _opzioni?: { count?: string; head?: boolean }) => {
+      if (tabella === "bi_preventivi_backoffice" && _opzioni?.head) ricostruzioni += 1;
       if (tabella === "bi_runs") {
         return risposta(
           [{ run_id: runPubblicato, received_at: "2026-09-14T01:31:00Z", status: "current" }],
@@ -47,20 +48,6 @@ vi.mock("@/lib/supabase/admin", () => {
   };
 });
 
-/** Finto file di cache: tiene contenuto e istante di scrittura. */
-let fileContenuto: unknown = null;
-let fileScrittoIl = 0;
-
-vi.mock("@/lib/prototipo-bi/archivio", () => ({
-  etaSnapshot: async () => (fileContenuto === null ? null : Date.now() - fileScrittoIl),
-  leggiSnapshotDaCache: async () => fileContenuto,
-  salvaSnapshotInCache: async (s: unknown) => {
-    fileContenuto = s;
-    fileScrittoIl = Date.now();
-    ricostruzioni += 1;
-  },
-}));
-
 import { ottieniSnapshot, invalidaCacheMemoria } from "@/lib/prototipo-bi/sorgente";
 
 const ORA = 60 * 60 * 1000;
@@ -72,8 +59,6 @@ describe("Freschezza dello snapshot", () => {
     vi.setSystemTime(new Date("2026-09-14T19:28:00Z"));
     runPubblicato = "20260914_013001";
     ricostruzioni = 0;
-    fileContenuto = null;
-    fileScrittoIl = 0;
     invalidaCacheMemoria();
   });
 
@@ -113,17 +98,6 @@ describe("Freschezza dello snapshot", () => {
     vi.setSystemTime(Date.now() + 6 * MINUTO);
     const dopo = await ottieniSnapshot();
     expect(ricostruzioni).toBe(2);
-    expect(dopo.runCorrente).toBe("20260917_013001");
-  });
-
-  it("il file vecchio non viene riletto quando il run e' cambiato", async () => {
-    await ottieniSnapshot();
-    // Il file su disco resta quello del run vecchio, scritto adesso: senza il
-    // salto esplicito verrebbe riletto come se fosse fresco.
-    runPubblicato = "20260917_013001";
-    vi.setSystemTime(Date.now() + 11 * MINUTO);
-
-    const dopo = await ottieniSnapshot();
     expect(dopo.runCorrente).toBe("20260917_013001");
   });
 

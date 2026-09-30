@@ -14,7 +14,6 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { salvaSnapshotInCache, leggiSnapshotDaCache, etaSnapshot } from "./archivio";
 import { etichettaBusinessUnit, controllaTassonomia } from "./business-unit";
 import type { ChiaveDataset, ChiaveDatasetVendite, RigaFatto, Snapshot } from "./tipi";
 import { comeFatti, daVista, type RigaAcquisto } from "./acquisti";
@@ -592,43 +591,19 @@ let inCorso: Promise<Snapshot> | null = null;
  * `forza` ignora la cache e rilegge dal database.
  */
 export async function ottieniSnapshot(forza = false): Promise<Snapshot> {
-  // Il file su disco e' una scorciatoia valida solo finche' descrive lo stesso
-  // caricamento che abbiamo in mano: se e' arrivato un run nuovo va saltato,
-  // altrimenti si sostituisce un dato vecchio con lo stesso dato vecchio.
-  let ignoraFile = forza;
-
   if (!forza && inMemoria) {
     const adesso = Date.now();
     if (adesso - inMemoriaIl < SCADENZA_MS) {
       if (adesso - controllatoIl < CONTROLLO_RUN_MS) return inMemoria;
       controllatoIl = adesso;
       if (!(await runCambiato(inMemoria))) return inMemoria;
-      ignoraFile = true;
     }
   }
 
   if (!forza && inCorso) return inCorso;
 
   const lavoro = (async () => {
-    if (!ignoraFile) {
-      const eta = await etaSnapshot();
-      if (eta !== null && eta < SCADENZA_MS) {
-        const daFile = await leggiSnapshotDaCache<Snapshot>();
-        if (daFile && daFile.versioneForma === VERSIONE_FORMA) {
-          inMemoria = daFile;
-          // L'eta' e' quella del file: uno snapshot scritto cinque ore fa da un
-          // altro processo ha un'ora di vita davanti, non sei.
-          inMemoriaIl = Date.now() - eta;
-          // Azzerato apposta: il file puo' venire da un run precedente, quindi
-          // la prossima richiesta deve poter chiedere subito se e' cambiato.
-          controllatoIl = 0;
-          return daFile;
-        }
-      }
-    }
-
     const fresco = await costruisciSnapshot();
-    await salvaSnapshotInCache(fresco);
     inMemoria = fresco;
     inMemoriaIl = Date.now();
     controllatoIl = Date.now();
@@ -641,6 +616,11 @@ export async function ottieniSnapshot(forza = false): Promise<Snapshot> {
   } finally {
     if (inCorso === lavoro) inCorso = null;
   }
+}
+
+/** Eta' in ms dello snapshot in memoria, `null` se non ce n'e' uno. */
+export function etaSnapshotMemoria(): number | null {
+  return inMemoria ? Date.now() - inMemoriaIl : null;
 }
 
 /** Svuota la cache in memoria (usato dopo un aggiornamento forzato). */

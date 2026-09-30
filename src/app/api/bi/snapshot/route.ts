@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { preliminari, negato, snapshotPerimetrato } from "../_comune";
-import { invalidaCacheMemoria } from "@/lib/prototipo-bi/sorgente";
-import { etaSnapshot } from "@/lib/prototipo-bi/archivio";
+import { invalidaCacheMemoria, etaSnapshotMemoria } from "@/lib/prototipo-bi/sorgente";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -13,7 +12,7 @@ export async function GET() {
 
   try {
     const s = await snapshotPerimetrato(pre.accesso);
-    const eta = await etaSnapshot();
+    const eta = etaSnapshotMemoria();
     return NextResponse.json({
       generatoIl: s.generatoIl,
       runCorrente: s.runCorrente,
