@@ -84,6 +84,12 @@ language sql immutable as $$
     '');
 $$;
 
+-- La normalizzazione del portale (`normalizzaRiferimento`).
+create or replace function pg_temp.norma(v text) returns text
+language sql immutable as $$
+  select nullif(ltrim(regexp_replace(upper(coalesce(v, '')), '[^A-Z0-9]', '', 'g'), '0'), '');
+$$;
+
 create temp table coppie_candidate on commit drop as
 select
   e.id                     as excel_id,
@@ -100,7 +106,19 @@ from vettori.spedizioni e
 join vettori.spedizioni g
   on g.origine = 'gestionale'
  and g.direzione = e.direzione
- and g.numero_riferimento_norm = e.numero_riferimento_norm
+ and (
+       g.numero_riferimento_norm = e.numero_riferimento_norm
+       -- Il foglio somma piu' DDT dello stesso arrivo («294+314»): il gestionale
+       -- li ha come bolle separate, e il primo basta a riconoscerle (01/10/2026).
+    or g.numero_riferimento_norm = pg_temp.norma(split_part(e.numero_riferimento, '+', 1))
+       -- Il foglio scrive il profilo davanti al numero («RIPEF 12»).
+    or g.numero_riferimento_norm = pg_temp.norma(regexp_replace(e.numero_riferimento,
+         '^\s*(RIPEF|RIPUF|RIPEC|RIPUC|RVC|RVF|RF|RC|VC|VF)\s*', '', 'i'))
+       -- Il gestionale ha il numero del fornitore con anno e lettere davanti
+       -- («26SW03838», «2600582»), il foglio solo il numero («3838», «582»).
+    or (length(e.numero_riferimento_norm) >= 3
+        and g.numero_riferimento_norm ~ ('^[0-9]{2}[A-Z]*0*' || e.numero_riferimento_norm || '$'))
+     )
  and abs(g.data_documento - e.data_documento) <= 7
 where e.origine = 'excel_storico'
   and not e.congelata
@@ -179,6 +197,10 @@ delete from vettori.bolla_misure m
 -- 3. Controlli e anomalie delle fatture gia' acquisite.
 update vettori.controlli x set spedizione_id = c.bolla_id
   from coppie c where x.spedizione_id = c.excel_id;
+
+-- Le proposte di aggancio fatte dal modello seguono la bolla vera.
+update vettori.agganci_proposti x set spedizione_id = c.bolla_id
+  from accoppiate c where x.spedizione_id = c.excel_id;
 
 update vettori.anomalie x set spedizione_id = c.bolla_id
   from coppie c where x.spedizione_id = c.excel_id;

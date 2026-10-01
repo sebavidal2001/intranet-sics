@@ -166,6 +166,11 @@ export async function candidatePer(riga: RigaDaAgganciare, codiciVettore: Map<st
     else if (numeroSomigliante(riga.riferimento, s.numero_riferimento as string | null)) indizi.push("numero simile");
     else if (numeroSomigliante(riga.riferimento, s.numero_protocollo as string | null)) indizi.push("numero = nostro protocollo");
     if (nomiCompatibili(riga.controparte, s.controparte_nome as string | null)) indizi.push("nome compatibile");
+    // Un numero solo «simile» con un fornitore diverso non e' un indizio: il
+    // 01/10/2026 «DDT260306» (una data, 06/03/26) ha portato alla bolla 306 di
+    // EFFECTO invece che alla 3066 di LOXEAL, che era quella giusta.
+    const simile = indizi.findIndex((i) => i === "numero simile" || i === "numero = nostro protocollo");
+    if (simile >= 0 && !indizi.includes("nome compatibile")) indizi.splice(simile, 1);
     return { s, indizi, giorni: distanza(riga.data!, String(s.data_documento)) };
   }).filter((v) => v.indizi.length > 0);
 
@@ -256,6 +261,8 @@ Come si legge una riga di fattura:
 - la data della fattura e' quella del ritiro: di solito coincide con la bolla o la segue di 1-3 giorni; sugli arrivi la bolla del fornitore puo' precedere il ritiro di qualche giorno in piu'.
 - sugli arrivi colli e peso spesso NON sono registrati nel gestionale («non registrato»): e' un dato mancante, non un indizio contro.
 - alcuni corrieri (TNT) nel campo numero mettono un riferimento libero del mittente (es. «AIRFLUIDS»), non il numero di bolla: in quel caso decidono nome, sede, data e peso.
+- un riferimento di 6 cifre come «260306» puo' essere una DATA (06/03/26), non un numero di DDT.
+- «numero simile» con un cliente/fornitore DIVERSO da quello in fattura e' un indizio debole: il nome del fornitore conta di piu' di una somiglianza di cifre.
 
 Regole:
 - scegli SOLO fra le candidate elencate, indicando l'etichetta (C1, C2...). Se nessuna e' convincente rispondi scelta null.
