@@ -34,6 +34,8 @@ interface Proposta {
   spedizioneId: string | null;
   sicurezza: "alta" | "media" | "bassa" | null;
   motivo: string | null;
+  /** Etichetta che ogni bolla aveva quando il modello ha scritto il motivo. */
+  etichette?: Record<string, string>;
 }
 
 interface Dettaglio {
@@ -111,9 +113,11 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
 
   const proposta = dettaglio?.proposta ?? null;
   const puo = dettaglio?.puoDecidere ?? false;
+  const presenti = new Set((dettaglio?.candidate ?? []).map((c) => c.etichetta));
+  const sparite = Object.values(proposta?.etichette ?? {}).filter((e) => !presenti.has(e)).sort();
 
   return (
-    <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50/60 p-3" aria-label="Aggancio alla bolla">
+    <section className="mt-4 max-w-3xl rounded-lg border border-amber-200 bg-amber-50/60 p-3" aria-label="Aggancio alla bolla">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-tenorite text-sm font-bold text-text">Riga senza bolla</p>
@@ -142,6 +146,11 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
                   : "L'AI non ha risposto"}
           </p>
           {proposta.motivo && proposta.esito !== "senza_candidati" ? <p className="mt-0.5 leading-relaxed text-text-muted">{proposta.motivo}</p> : null}
+          {sparite.length > 0 ? (
+            <p className="mt-1 text-[11px] text-text-muted">
+              {sparite.join(", ")} {sparite.length === 1 ? "non è più fra le candidate" : "non sono più fra le candidate"}: la bolla è stata unita a un&apos;altra o tolta dall&apos;elenco dopo la proposta.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
