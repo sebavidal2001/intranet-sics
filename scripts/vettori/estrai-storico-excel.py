@@ -66,6 +66,19 @@ def testo(v):
     return s or None
 
 
+def numero_documento(v):
+    """Il numero di bolla come lo scrive chi lo legge.
+
+    I fogli .xls (Trading Post) restituiscono le celle numeriche come float:
+    «2373» arrivava come «2373.0», e la normalizzazione, togliendo il punto, ne
+    faceva «23730». Le 225 partenze Trading Post del primo import non hanno mai
+    trovato la loro BC per questo (scoperto l'01/10/2026).
+    """
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return testo(v)
+
+
 def riga_da(valori, mappa, vettore, direzione, foglio, data):
     def prendi(chiave, conv=numero):
         i = mappa.get(chiave)
@@ -77,7 +90,7 @@ def riga_da(valori, mappa, vettore, direzione, foglio, data):
         "direzione": direzione,
         "data": data.isoformat(),
         "controparte": prendi("controparte", testo),
-        "numero_ddt": prendi("ddt", testo),
+        "numero_ddt": prendi("ddt", numero_documento),
         "colli": prendi("colli"),
         "peso_kg": prendi("peso"),
         "lunghezza_cm": prendi("lung"),

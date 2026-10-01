@@ -167,6 +167,15 @@ update vettori.bolla_misure m
      select 1 from vettori.bolla_misure b where b.spedizione_id = c.bolla_id
    );
 
+-- 2b. Se la bolla aveva gia' le sue misure (prese al banco, o travasate da un
+--     giro precedente di questo script), quelle rimaste sulla riga del foglio
+--     sono un doppione: valgono le misure della bolla. Senza questo passo la
+--     cancellazione al punto 5 si ferma sulla chiave esterna, ed e' cio' che
+--     succedeva rilanciando lo script dopo il primo import (01/10/2026).
+delete from vettori.bolla_misure m
+ using coppie c
+ where m.spedizione_id = c.excel_id;
+
 -- 3. Controlli e anomalie delle fatture gia' acquisite.
 update vettori.controlli x set spedizione_id = c.bolla_id
   from coppie c where x.spedizione_id = c.excel_id;
