@@ -161,6 +161,8 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
               >
                 <div className="min-w-0">
                   <p className="font-semibold text-text">
+                    {/* L'etichetta e' quella che il modello cita nel motivo («C1 coincide…»). */}
+                    <span className="mr-1.5 rounded bg-bg-page px-1 font-mono text-[10px] text-text-muted">{c.etichetta}</span>
                     {c.numero ?? "senza numero"}
                     {c.protocollo ? <span className="font-normal text-text-muted"> · prot. {c.protocollo}</span> : null}
                     <span className="font-normal text-text-muted"> · {data(c.data)}</span>

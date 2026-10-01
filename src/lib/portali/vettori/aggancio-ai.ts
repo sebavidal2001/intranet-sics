@@ -366,6 +366,8 @@ export interface PropostaViva {
   motivo: string | null;
   modello: string | null;
   creataIl: string;
+  /** Etichetta (C1, C2...) che ogni bolla aveva quando il modello ha scritto il motivo. */
+  etichette: Record<string, string>;
 }
 
 export interface DettaglioAggancio {
@@ -383,7 +385,7 @@ async function propostaViva(rigaId: string): Promise<PropostaViva | null> {
   const { data, error } = await createAdminClient()
     .schema("vettori")
     .from("agganci_proposti")
-    .select("id, esito, spedizione_id, sicurezza, motivo, modello, creata_il")
+    .select("id, esito, spedizione_id, sicurezza, motivo, modello, creata_il, candidati")
     .eq("fattura_riga_id", rigaId)
     .eq("stato", "proposta")
     .maybeSingle();
@@ -398,6 +400,9 @@ async function propostaViva(rigaId: string): Promise<PropostaViva | null> {
     motivo: (r.motivo as string | null) ?? null,
     modello: (r.modello as string | null) ?? null,
     creataIl: String(r.creata_il),
+    etichette: Object.fromEntries(
+      ((r.candidati ?? []) as Array<{ etichetta: string; spedizioneId: string }>).map((c) => [c.spedizioneId, c.etichetta])
+    ),
   };
 }
 
@@ -410,6 +415,21 @@ export async function dettaglioAggancio(rigaId: string): Promise<DettaglioAgganc
   const [riga] = await righeDaAgganciare({ rigaIds: [rigaId] });
   if (!riga) return null;
   const [candidate, proposta] = await Promise.all([candidatePer(riga, await vettoriPerCodice()), propostaViva(rigaId)]);
+  // Il motivo cita le bolle per etichetta («C1 coincide…»): ognuna riprende
+  // quella che aveva allora; le bolle nuove continuano la numerazione.
+  if (proposta) {
+    const usate = new Set(Object.values(proposta.etichette));
+    let prossima = usate.size + 1;
+    for (const c of candidate) {
+      const vecchia = proposta.etichette[c.spedizioneId];
+      if (vecchia) c.etichetta = vecchia;
+      else {
+        while (usate.has(`C${prossima}`)) prossima += 1;
+        c.etichetta = `C${prossima}`;
+        usate.add(c.etichetta);
+      }
+    }
+  }
   return { riga, proposta, candidate };
 }
 
