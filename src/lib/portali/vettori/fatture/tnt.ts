@@ -1,6 +1,10 @@
 import type { FatturaLetta, RigaFattura, TotaliDichiarati } from "./tipi";
 import { dataIt, interoIt, numeroIt, normalizzaRiferimento, righe } from "./testo";
 
+/** «AIRFLUID» anche storpiato: AIFFLUID, AIRLFLUID, AIRFLUIDS. */
+export const NOSTRO_NOME = /\bAI[A-Z]{0,3}FLUIDS?\b/i;
+const NOSTRO_NOME_SEPARATORE = /\s+AI[A-Z]{0,3}FLUIDS?\b/i;
+
 /**
  * Lettura della fattura TNT.
  *
@@ -107,7 +111,10 @@ export function leggiTnt(testo: string): FatturaLetta {
     const peso = pesi.length ? pesi.at(-1)! : null;
 
     const [, data, riferimento, ldv, resto] = m;
-    const controparte = resto.split(/\s+AIRFLUID/i)[0]?.trim() ?? resto.trim();
+    // Il nostro nome sulle bolle TNT e' scritto a mano dal mittente, e a volte
+    // storpiato: «AIFFLUID», «AIRLFLUID» (GAMAVUOTO, aprile 2026). Cercando solo
+    // «AIRFLUID» quelle righe restavano senza verso e sparivano da Spedizioni.
+    const controparte = resto.split(NOSTRO_NOME_SEPARATORE)[0]?.trim() ?? resto.trim();
 
     righeLette.push({
       numero: righeLette.length + 1,
@@ -118,7 +125,7 @@ export function leggiTnt(testo: string): FatturaLetta {
       // Sulla fattura TNT esaminata la controparte è sempre il mittente e
       // AIRFLUID il destinatario: sono spedizioni in arrivo. Il verso va
       // comunque riletto dagli indirizzi quando compariranno delle partenze.
-      direzione: /AIRFLUID/i.test(resto) ? "entrata" : null,
+      direzione: NOSTRO_NOME.test(resto) ? "entrata" : null,
       colli: Math.round(colli),
       peso,
       pesoVolumetrico: volumetrico,

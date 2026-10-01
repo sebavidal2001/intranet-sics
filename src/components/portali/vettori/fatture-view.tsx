@@ -189,7 +189,10 @@ export function FattureView() {
         }
       } else {
         setSalvata(
-          `Acquisita: ${dati.esito.righe} spedizioni, ${dati.esito.spedizioni_nuove} nuove bolle collegate, ${dati.esito.anomalie} anomalie da decidere.`
+          `Acquisita: ${dati.esito.righe} spedizioni, ${dati.esito.spedizioni_nuove} nuove bolle collegate, ${dati.esito.anomalie} anomalie da decidere.` +
+            (rigaSenzaBolla(dati.riepilogo)
+              ? " Per le righe senza bolla l'AI sta preparando una proposta: fra qualche secondo le trovi in Spedizioni, filtro Aggancio «Assistito» e «Senza bolla»."
+              : "")
         );
       }
     } catch {
@@ -444,7 +447,7 @@ export function FattureView() {
               valore={`${r.agganciate} / ${r.righe}`}
               nota={
                 r.daConfermare > 0
-                  ? `${r.daConfermare} da confermare a mano`
+                  ? `${r.daConfermare} senza bolla certa: dopo l'acquisizione l'AI propone la bolla, si conferma in Spedizioni`
                   : "nessuna in coda"
               }
               colore="var(--color-primary)"
@@ -608,4 +611,10 @@ function Tessera({
       <p className="text-[11px] text-text-muted mt-0.5 leading-snug">{nota}</p>
     </div>
   );
+}
+
+/** Ci sono righe rimaste senza bolla certa nel riepilogo restituito dal server? */
+function rigaSenzaBolla(riepilogo: unknown): boolean {
+  const r = riepilogo as { daConfermare?: number; senzaCandidati?: number } | null | undefined;
+  return (r?.daConfermare ?? 0) + (r?.senzaCandidati ?? 0) > 0;
 }

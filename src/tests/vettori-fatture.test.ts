@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { NOSTRO_NOME } from "@/lib/portali/vettori/fatture/tnt";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -482,5 +483,13 @@ describe("quello che non si può leggere lo dice, invece di fingere", () => {
     const f = leggiFattura(fattura("tp1260-002218-07-26"));
     f.righeNonLette.push("una riga che il parser non ha capito");
     expect(quadra(f).ok).toBe(false);
+  });
+});
+
+describe("TNT: il nostro nome storpiato dal mittente", () => {
+  it("riconosce AIFFLUID e AIRLFLUID come AIRFLUID (GAMAVUOTO, aprile 2026)", () => {
+    const re = NOSTRO_NOME;
+    for (const t of ["PARMA PR AIFFLUID .", "PARMA PR AIRLFLUID .", "AIRFLUID SRL", "AIRFLUIDS"]) expect(re.test(t)).toBe(true);
+    for (const t of ["FLUIDTECH", "MEDIPROJEC", "TRAIFLUIDO"]) expect(re.test(t)).toBe(false);
   });
 });
