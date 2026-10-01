@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AggancioBolla } from "./aggancio-bolla";
 import type {
   DirezioneStorico,
   EsitoStorico,
@@ -722,6 +723,8 @@ export function StoricoView({ iniziali, valori }: Props) {
                     conAddebito={filtri.direzione === "uscita"}
                     aperta={aperta === r.id}
                     onApri={() => setAperta((v) => (v === r.id ? null : r.id))}
+                    // Un oggetto nuovo con gli stessi filtri rilegge la pagina.
+                    onAgganciata={() => setFiltri((f) => ({ ...f }))}
                     onVerificato={(verificatoIl) =>
                       setDati((correnti) => ({
                         ...correnti,
@@ -780,12 +783,14 @@ function Riga({
   aperta,
   onApri,
   onVerificato,
+  onAgganciata,
 }: {
   r: RigaStorico;
   conAddebito: boolean;
   aperta: boolean;
   onApri: () => void;
   onVerificato: (verificatoIl: string | null) => void;
+  onAgganciata?: () => void;
 }) {
   const differenza = r.fatturato != null && r.atteso != null ? r.fatturato - r.atteso : null;
   const senzaFattura = r.stato_fatturazione === "non_fatturata";
@@ -1002,6 +1007,10 @@ function Riga({
                 />
               </Blocco>
             </div>
+
+            {!senzaFattura && !r.spedizione_id ? (
+              <AggancioBolla rigaId={r.id} onAgganciata={() => onAgganciata?.()} />
+            ) : null}
 
             {r.avvertenze && r.avvertenze.length > 0 && (
               <ul className="mt-3 space-y-0.5">

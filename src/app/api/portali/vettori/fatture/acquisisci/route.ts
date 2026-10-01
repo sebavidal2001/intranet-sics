@@ -14,7 +14,9 @@ import {
   risolviEstremiFattura,
   salvaAcquisizione,
 } from "@/lib/portali/vettori/acquisizione";
-import { logError } from "@/lib/logger";
+import { logError, logInfo } from "@/lib/logger";
+import { proponiPerFattura } from "@/lib/portali/vettori/aggancio-ai";
+import { chiaveConfigurata } from "@/lib/ai/openrouter";
 import { MisureFattura } from "@/lib/portali/vettori/misure";
 import { leggiFedexOcr, type LetturaOcr } from "@/lib/portali/vettori/fatture/fedex";
 import { leggiFatturaConModello, type LetturaConModello } from "@/lib/portali/vettori/fatture/llm";
@@ -258,6 +260,14 @@ export async function POST(request: NextRequest) {
     }
 
     const esito = await salvaAcquisizione(payload);
+    // Le righe rimaste senza bolla ricevono subito la proposta del modello, in
+    // sottofondo: chi carica non aspetta. Quelle con sicurezza alta su una bolla
+    // libera si agganciano da sole; le altre si confermano in Spedizioni.
+    if (chiaveConfigurata() && esito.fattura_id) {
+      void proponiPerFattura(esito.fattura_id, { applicaAlta: true })
+        .then((r) => logInfo("vettori.agganci", "proposte dopo acquisizione", { fattura: esito.fattura_id, ...r }))
+        .catch((e) => logError("vettori.agganci", "proposte dopo acquisizione fallite", e));
+    }
     return NextResponse.json({ salvata: true, esito, riepilogo, quadratura });
   } catch (e) {
     if (e instanceof FatturaNonLeggibile) {

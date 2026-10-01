@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { chiediVisione } from "@/lib/ai/openrouter";
 import { nomiCompatibili } from "./abbinamento";
 import { normalizzaRiferimento } from "./fatture/testo";
+import { ricalcolaFattura } from "./ricalcolo";
 
 /**
  * Aggancio fattura -> bolla con l'aiuto di un modello.
@@ -56,6 +57,8 @@ export interface Candidata {
   profilo: string | null;
   origine: string;
   giaAgganciataA: number;
+  /** Gia' congelata da un'altra fattura: non si puo' agganciare. */
+  congelata?: boolean;
   indizi: string[];
 }
 
@@ -101,13 +104,25 @@ function distanza(a: string, b: string): number {
   return Math.round(Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000);
 }
 
-/** Le righe di fattura senza bolla agganciata. */
-export async function righeDaAgganciare(): Promise<RigaDaAgganciare[]> {
+/**
+ * Le righe di fattura senza bolla agganciata: tutte, quelle di una fattura, o
+ * quelle indicate.
+ */
+export async function righeDaAgganciare(filtro: { fatturaId?: string; rigaIds?: string[] } = {}): Promise<RigaDaAgganciare[]> {
   const db = createAdminClient().schema("vettori");
-  const { data: controlli, error } = await db
+  let rigaIds = filtro.rigaIds;
+  if (filtro.fatturaId) {
+    const { data, error: fErr } = await db.from("fatture_righe").select("id").eq("fattura_id", filtro.fatturaId);
+    if (fErr) throw new Error(`Lettura righe della fattura fallita: ${fErr.message}`);
+    rigaIds = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
+  }
+  if (rigaIds && rigaIds.length === 0) return [];
+  let qControlli = db
     .from("controlli")
     .select("id, fattura_riga_id")
     .is("spedizione_id", null);
+  if (rigaIds) qControlli = qControlli.in("fattura_riga_id", rigaIds);
+  const { data: controlli, error } = await qControlli;
   if (error) throw new Error(`Lettura controlli fallita: ${error.message}`);
   const perRiga = new Map(((controlli ?? []) as Array<{ id: string; fattura_riga_id: string }>).map((c) => [c.fattura_riga_id, c.id]));
 
@@ -149,7 +164,7 @@ export async function candidatePer(riga: RigaDaAgganciare, codiciVettore: Map<st
   const db = createAdminClient().schema("vettori");
   let q = db
     .from("spedizioni")
-    .select("id, direzione, numero_riferimento, numero_riferimento_norm, numero_protocollo, data_documento, controparte_nome, zona_provincia, colli_bolla, peso_bolla, vettore_id, origine")
+    .select("id, direzione, numero_riferimento, numero_riferimento_norm, numero_protocollo, data_documento, controparte_nome, zona_provincia, colli_bolla, peso_bolla, vettore_id, origine, congelata")
     .gte("data_documento", giorni(riga.data, -GIORNI_FINESTRA))
     .lte("data_documento", giorni(riga.data, GIORNI_FINESTRA))
     .neq("stato", "ignorata")
@@ -226,6 +241,7 @@ export async function candidatePer(riga: RigaDaAgganciare, codiciVettore: Map<st
       profilo: doc?.codice_profilo ?? null,
       origine: String(v.s.origine),
       giaAgganciataA: agganciate.get(id) ?? 0,
+      congelata: v.s.congelata === true,
       indizi: v.indizi,
     };
   });
@@ -336,4 +352,145 @@ export async function righeConProposta(): Promise<Set<string>> {
   const { data, error } = await createAdminClient().schema("vettori").from("agganci_proposti").select("fattura_riga_id").eq("stato", "proposta");
   if (error) throw new Error(`Lettura proposte fallita: ${error.message}`);
   return new Set(((data ?? []) as Array<{ fattura_riga_id: string }>).map((r) => r.fattura_riga_id));
+}
+
+// ---------------------------------------------------------------------------
+// Conferma, scarto e proposte dal portale
+// ---------------------------------------------------------------------------
+
+export interface PropostaViva {
+  id: string;
+  esito: PropostaAggancio["esito"];
+  spedizioneId: string | null;
+  sicurezza: PropostaAggancio["sicurezza"];
+  motivo: string | null;
+  modello: string | null;
+  creataIl: string;
+}
+
+export interface DettaglioAggancio {
+  riga: RigaDaAgganciare;
+  proposta: PropostaViva | null;
+  candidate: Candidata[];
+}
+
+async function vettoriPerCodice(): Promise<Map<string, string>> {
+  const { data } = await createAdminClient().schema("vettori").from("vettori").select("id, codice");
+  return new Map(((data ?? []) as Array<{ id: string; codice: string }>).map((v) => [v.id, v.codice]));
+}
+
+async function propostaViva(rigaId: string): Promise<PropostaViva | null> {
+  const { data, error } = await createAdminClient()
+    .schema("vettori")
+    .from("agganci_proposti")
+    .select("id, esito, spedizione_id, sicurezza, motivo, modello, creata_il")
+    .eq("fattura_riga_id", rigaId)
+    .eq("stato", "proposta")
+    .maybeSingle();
+  if (error) throw new Error(`Lettura proposta fallita: ${error.message}`);
+  if (!data) return null;
+  const r = data as Record<string, unknown>;
+  return {
+    id: String(r.id),
+    esito: r.esito as PropostaAggancio["esito"],
+    spedizioneId: (r.spedizione_id as string | null) ?? null,
+    sicurezza: (r.sicurezza as PropostaAggancio["sicurezza"]) ?? null,
+    motivo: (r.motivo as string | null) ?? null,
+    modello: (r.modello as string | null) ?? null,
+    creataIl: String(r.creata_il),
+  };
+}
+
+/**
+ * Quello che serve per decidere su una riga: la proposta gia' pagata, se c'e',
+ * e le candidate ricalcolate adesso (gratis), perche' nel frattempo una bolla
+ * puo' essere stata agganciata a un'altra fattura.
+ */
+export async function dettaglioAggancio(rigaId: string): Promise<DettaglioAggancio | null> {
+  const [riga] = await righeDaAgganciare({ rigaIds: [rigaId] });
+  if (!riga) return null;
+  const [candidate, proposta] = await Promise.all([candidatePer(riga, await vettoriPerCodice()), propostaViva(rigaId)]);
+  return { riga, proposta, candidate };
+}
+
+/** Aggancia la riga alla bolla e rifa' il controllo della fattura. */
+export async function applicaAggancio(rigaId: string, spedizioneId: string, utenteId: string | null): Promise<{ fatturaId: string }> {
+  const { data, error } = await createAdminClient()
+    .schema("vettori")
+    .rpc("applica_aggancio", { p_riga: rigaId, p_spedizione: spedizioneId, p_utente: utenteId });
+  if (error) throw new Error(error.message);
+  const fatturaId = String((data as { fattura_id: string }).fattura_id);
+  await ricalcolaFattura(fatturaId, { scrivi: true });
+  return { fatturaId };
+}
+
+/** «Nessuna di queste»: chiude la proposta senza agganciare. */
+export async function scartaAggancio(rigaId: string, utenteId: string | null): Promise<void> {
+  const { error } = await createAdminClient()
+    .schema("vettori")
+    .rpc("scarta_aggancio", { p_riga: rigaId, p_utente: utenteId });
+  if (error) throw new Error(error.message);
+}
+
+export function modelloAggancio(): string {
+  return process.env.VETTORI_AGGANCI_MODELLO || MODELLO_AGGANCIO_PREDEFINITO;
+}
+
+/** Chiede una proposta al modello per una riga e la salva. */
+export async function proponiPerRiga(rigaId: string, modello = modelloAggancio()): Promise<PropostaAggancio | null> {
+  const [riga] = await righeDaAgganciare({ rigaIds: [rigaId] });
+  if (!riga) return null;
+  const p = await proponiAggancio(riga, await candidatePer(riga, await vettoriPerCodice()), modello);
+  await salvaProposta(riga.rigaId, p);
+  return p;
+}
+
+/**
+ * Dopo l'acquisizione di una fattura: per ogni riga rimasta senza bolla chiede
+ * una proposta al modello, e aggancia da sola quella con sicurezza «alta» su
+ * una bolla libera. Le altre restano proposte da confermare in Spedizioni.
+ */
+export async function proponiPerFattura(
+  fatturaId: string,
+  opzioni: { applicaAlta: boolean; massimoRighe?: number } = { applicaAlta: true }
+): Promise<{ proposte: number; applicate: number; costo: number }> {
+  const righe = (await righeDaAgganciare({ fatturaId })).slice(0, opzioni.massimoRighe ?? 300);
+  if (righe.length === 0) return { proposte: 0, applicate: 0, costo: 0 };
+  const codici = await vettoriPerCodice();
+  const modello = modelloAggancio();
+  const coda = [...righe];
+  const risultati: Array<{ riga: RigaDaAgganciare; p: PropostaAggancio }> = [];
+  let costo = 0;
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (coda.length) {
+      const riga = coda.shift()!;
+      const p = await proponiAggancio(riga, await candidatePer(riga, codici), modello);
+      await salvaProposta(riga.rigaId, p);
+      costo += p.costo ?? 0;
+      risultati.push({ riga, p });
+    }
+  }));
+
+  let applicate = 0;
+  if (opzioni.applicaAlta) {
+    const usate = new Set<string>();
+    const scelte = risultati
+      .filter(({ p }) => p.esito === "scelta" && p.sicurezza === "alta" && p.spedizioneId)
+      .map(({ riga, p }) => ({ riga, scelta: p.candidati.find((c) => c.spedizioneId === p.spedizioneId) }));
+    // Due righe sulla stessa bolla non si decidono qui: restano proposte.
+    const contaBolle = new Map<string, number>();
+    for (const { scelta } of scelte) if (scelta) contaBolle.set(scelta.spedizioneId, (contaBolle.get(scelta.spedizioneId) ?? 0) + 1);
+    for (const { riga, scelta } of scelte) {
+      if (!scelta || scelta.congelata || (contaBolle.get(scelta.spedizioneId) ?? 0) > 1 || usate.has(scelta.spedizioneId)) continue;
+      const { error } = await createAdminClient()
+        .schema("vettori")
+        .rpc("applica_aggancio", { p_riga: riga.rigaId, p_spedizione: scelta.spedizioneId, p_utente: null });
+      if (!error) {
+        usate.add(scelta.spedizioneId);
+        applicate += 1;
+      }
+    }
+    if (applicate > 0) await ricalcolaFattura(fatturaId, { scrivi: true });
+  }
+  return { proposte: risultati.length, applicate, costo };
 }
