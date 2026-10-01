@@ -213,8 +213,10 @@ export async function candidatePer(riga: RigaDaAgganciare, codiciVettore: Map<st
       controparte: (v.s.controparte_nome as string | null) ?? null,
       localita: luogo?.localita ?? null,
       provincia: (luogo?.provincia ?? (v.s.zona_provincia as string | null))?.trim() || null,
-      colli: num(v.s.colli_bolla),
-      peso: num(v.s.peso_bolla),
+      // Zero non e' un dato: sugli arrivi il gestionale scrive 0 dove il campo
+      // e' vuoto, e il modello lo leggeva come «0 kg contro 8,5 in fattura».
+      colli: num(v.s.colli_bolla) || null,
+      peso: num(v.s.peso_bolla) || null,
       vettore: v.s.vettore_id ? codiciVettore.get(String(v.s.vettore_id)) ?? null : null,
       profilo: doc?.codice_profilo ?? null,
       origine: String(v.s.origine),
@@ -239,7 +241,7 @@ function istruzioni(riga: RigaDaAgganciare, candidate: Candidata[]): string {
   const fmt = (v: unknown) => (v == null || v === "" ? "-" : String(v));
   const elenco = candidate.map((c) =>
     `${c.etichetta}: numero ${fmt(c.numero)}${c.protocollo ? ` (nostro protocollo ${c.protocollo})` : ""}, data ${c.data}, ` +
-    `cliente/fornitore «${fmt(c.controparte)}», sede ${fmt(c.localita)} (${fmt(c.provincia)}), colli ${fmt(c.colli)}, peso ${fmt(c.peso)} kg, ` +
+    `cliente/fornitore «${fmt(c.controparte)}», sede ${fmt(c.localita)} (${fmt(c.provincia)}), colli ${c.colli ?? "non registrati"}, peso ${c.peso != null ? `${c.peso} kg` : "non registrato"}, ` +
     `vettore in gestionale ${fmt(c.vettore)}, profilo ${fmt(c.profilo)}, origine ${c.origine}` +
     `${c.giaAgganciataA ? `, GIA' agganciata a ${c.giaAgganciataA} altra/e riga/e di fattura` : ""}; indizi: ${c.indizi.join(", ")}.`
   ).join("\n");
@@ -251,7 +253,9 @@ Come si legge una riga di fattura:
 - sulle PARTENZE (uscita) il numero e' il nostro numero di bolla (BC); sugli ARRIVI (entrata) e' il numero del DDT del fornitore, che il fornitore puo' scrivere con prefissi o suffissi suoi (anno davanti, lettere in coda: «694DTV» = 694, «260020147» = 20147).
 - il nome in fattura e' spesso il PUNTO DI CONSEGNA o di ritiro, non la ragione sociale: puo' essere un magazzino, una sede, un logistico o l'utilizzatore finale del cliente, ed e' abbreviato e troncato («NCR BIOCHEMIC» = «N.C.R. BIOCHEMICAL»).
 - il peso in fattura puo' essere arrotondato o portato al minimo tassabile del corriere (Trading Post fattura almeno 3 kg; i corrieri arrotondano al kg); colli e peso uguali o vicini sono un indizio forte.
-- la data della fattura e' quella del ritiro: di solito coincide con la bolla o la segue di 1-3 giorni.
+- la data della fattura e' quella del ritiro: di solito coincide con la bolla o la segue di 1-3 giorni; sugli arrivi la bolla del fornitore puo' precedere il ritiro di qualche giorno in piu'.
+- sugli arrivi colli e peso spesso NON sono registrati nel gestionale («non registrato»): e' un dato mancante, non un indizio contro.
+- alcuni corrieri (TNT) nel campo numero mettono un riferimento libero del mittente (es. «AIRFLUIDS»), non il numero di bolla: in quel caso decidono nome, sede, data e peso.
 
 Regole:
 - scegli SOLO fra le candidate elencate, indicando l'etichetta (C1, C2...). Se nessuna e' convincente rispondi scelta null.
