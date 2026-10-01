@@ -36,7 +36,7 @@ BEGIN
     RAISE EXCEPTION 'Riga di fattura senza controllo.' USING ERRCODE = 'P0001';
   END IF;
   IF v_controllo.spedizione_id IS NOT NULL THEN
-    RAISE EXCEPTION 'La riga e'' gia'' agganciata a una bolla.' USING ERRCODE = 'P0001';
+    RAISE EXCEPTION 'La riga è già agganciata a una bolla.' USING ERRCODE = 'P0001';
   END IF;
 
   SELECT * INTO v_spedizione FROM vettori.spedizioni WHERE id = p_spedizione FOR UPDATE;
@@ -44,10 +44,10 @@ BEGIN
     RAISE EXCEPTION 'Bolla non trovata.' USING ERRCODE = 'P0001';
   END IF;
   IF v_spedizione.stato = 'ignorata' THEN
-    RAISE EXCEPTION 'La bolla e'' esclusa dal controllo.' USING ERRCODE = 'P0001';
+    RAISE EXCEPTION 'La bolla è esclusa dal controllo.' USING ERRCODE = 'P0001';
   END IF;
   IF v_spedizione.congelata THEN
-    RAISE EXCEPTION 'La bolla e'' gia'' agganciata a un''altra fattura.' USING ERRCODE = 'P0001';
+    RAISE EXCEPTION 'La bolla è già agganciata a un''altra fattura.' USING ERRCODE = 'P0001';
   END IF;
 
   SELECT f.vettore_id, f.id INTO v_vettore, v_fattura

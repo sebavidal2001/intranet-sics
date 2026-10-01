@@ -41,12 +41,12 @@ export async function GET(request: NextRequest) {
 
     const dettaglio = await dettaglioAggancio(riga.data);
     if (!dettaglio) {
-      return NextResponse.json({ error: "La riga e' gia' agganciata o non esiste." }, { status: 404 });
+      return NextResponse.json({ error: "La riga è già agganciata o non esiste." }, { status: 404 });
     }
     return NextResponse.json({ ...dettaglio, puoDecidere: puoGestire(guard.ctx) });
   } catch (error) {
     logError("vettori.agganci", "lettura aggancio fallita", error);
-    return NextResponse.json({ error: "Non e' stato possibile leggere le bolle candidate." }, { status: 500 });
+    return NextResponse.json({ error: "Non è stato possibile leggere le bolle candidate." }, { status: 500 });
   }
 }
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
     const proposta = await proponiPerRiga(c.riga);
     if (!proposta) {
-      return NextResponse.json({ error: "La riga e' gia' agganciata o non esiste." }, { status: 404 });
+      return NextResponse.json({ error: "La riga è già agganciata o non esiste." }, { status: 404 });
     }
     return NextResponse.json({ proposta: { esito: proposta.esito, spedizioneId: proposta.spedizioneId, sicurezza: proposta.sicurezza, motivo: proposta.motivo } });
   } catch (error) {

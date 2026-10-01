@@ -62,12 +62,12 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
       const res = await fetch(`/api/portali/vettori/agganci?riga=${encodeURIComponent(rigaId)}`, { cache: "no-store" });
       const corpo = await res.json();
       if (!res.ok) {
-        setErrore(corpo.error ?? "Non e' stato possibile leggere le bolle candidate.");
+        setErrore(corpo.error ?? "Non è stato possibile leggere le bolle candidate.");
         return;
       }
       setDettaglio(corpo as Dettaglio);
     } catch {
-      setErrore("Non e' stato possibile contattare il server.");
+      setErrore("Non è stato possibile contattare il server.");
     } finally {
       setCaricamento(false);
     }
@@ -94,7 +94,7 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
       if (azione === "conferma") onAgganciata();
       else await leggi();
     } catch {
-      setErrore("Non e' stato possibile contattare il server.");
+      setErrore("Non è stato possibile contattare il server.");
     } finally {
       setInCorso(null);
     }
@@ -141,7 +141,7 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
                   ? "Nessuna bolla candidata trovata"
                   : "L'AI non ha risposto"}
           </p>
-          {proposta.motivo ? <p className="mt-0.5 leading-relaxed text-text-muted">{proposta.motivo}</p> : null}
+          {proposta.motivo && proposta.esito !== "senza_candidati" ? <p className="mt-0.5 leading-relaxed text-text-muted">{proposta.motivo}</p> : null}
         </div>
       ) : null}
 
@@ -198,7 +198,8 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
         </ul>
       ) : (
         <p className="mt-2 text-xs text-text-muted">
-          Nessuna bolla con numero, nome o data compatibili entro 10 giorni: va chiesta all&apos;amministrazione o al magazzino.
+          Nessuna bolla con numero, nome o data compatibili entro 10 giorni. Se la spedizione è nostra, la bolla manca o ha dati diversi
+          in Impresa: va verificata con il magazzino. La riga resta nel controllo con il peso dichiarato in fattura.
         </p>
       )}
 
