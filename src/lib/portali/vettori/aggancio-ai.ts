@@ -164,7 +164,7 @@ export async function candidatePer(riga: RigaDaAgganciare, codiciVettore: Map<st
   const db = createAdminClient().schema("vettori");
   let q = db
     .from("spedizioni")
-    .select("id, direzione, numero_riferimento, numero_riferimento_norm, numero_protocollo, data_documento, controparte_nome, zona_provincia, colli_bolla, peso_bolla, vettore_id, origine, congelata")
+    .select(COLONNE_BOLLA)
     .gte("data_documento", giorni(riga.data, -GIORNI_FINESTRA))
     .lte("data_documento", giorni(riga.data, GIORNI_FINESTRA))
     .neq("stato", "ignorata")
@@ -197,7 +197,26 @@ export async function candidatePer(riga: RigaDaAgganciare, codiciVettore: Map<st
   const scelte = valutate.sort((a, b) => punteggio(b) - punteggio(a)).slice(0, MASSIMO_CANDIDATI);
   if (scelte.length === 0) return [];
 
-  const idSpedizioni = scelte.map((v) => String(v.s.id));
+  return arricchisci(scelte.map((v) => ({ riga: v.s, indizi: v.indizi })), codiciVettore, "C");
+}
+
+const COLONNE_BOLLA =
+  "id, direzione, numero_riferimento, numero_riferimento_norm, numero_protocollo, data_documento, controparte_nome, zona_provincia, colli_bolla, peso_bolla, vettore_id, origine, congelata";
+
+/**
+ * Da righe di `vettori.spedizioni` a candidate da mostrare: localita' dal
+ * documento gestionale, se la bolla e' gia' usata da un'altra riga di fattura o
+ * congelata. Le etichette sono «C1, C2…» per le candidate proposte al modello,
+ * «R1, R2…» per i risultati della ricerca libera.
+ */
+async function arricchisci(
+  elenco: Array<{ riga: Record<string, unknown>; indizi: string[] }>,
+  codiciVettore: Map<string, string>,
+  prefisso: "C" | "R"
+): Promise<Candidata[]> {
+  if (elenco.length === 0) return [];
+  const db = createAdminClient().schema("vettori");
+  const idSpedizioni = elenco.map((v) => String(v.riga.id));
   const [{ data: legami }, { data: gia }] = await Promise.all([
     db.from("spedizioni_documenti").select("spedizione_id, id_documento, codice_profilo").in("spedizione_id", idSpedizioni),
     db.from("controlli").select("spedizione_id").in("spedizione_id", idSpedizioni),
@@ -220,31 +239,70 @@ export async function candidatePer(riga: RigaDaAgganciare, codiciVettore: Map<st
   const agganciate = new Map<string, number>();
   for (const g of (gia ?? []) as Array<{ spedizione_id: string }>) agganciate.set(g.spedizione_id, (agganciate.get(g.spedizione_id) ?? 0) + 1);
 
-  return scelte.map((v, i) => {
-    const id = String(v.s.id);
+  return elenco.map(({ riga: s, indizi }, i) => {
+    const id = String(s.id);
     const doc = documenti.find((d) => d.spedizione_id === id);
     const luogo = doc ? luoghi.get(doc.id_documento) : undefined;
     return {
-      etichetta: `C${i + 1}`,
+      etichetta: `${prefisso}${i + 1}`,
       spedizioneId: id,
-      numero: (v.s.numero_riferimento as string | null) ?? null,
-      protocollo: (v.s.numero_protocollo as string | null) ?? null,
-      data: String(v.s.data_documento),
-      controparte: (v.s.controparte_nome as string | null) ?? null,
+      numero: (s.numero_riferimento as string | null) ?? null,
+      protocollo: (s.numero_protocollo as string | null) ?? null,
+      data: String(s.data_documento),
+      controparte: (s.controparte_nome as string | null) ?? null,
       localita: luogo?.localita ?? null,
-      provincia: (luogo?.provincia ?? (v.s.zona_provincia as string | null))?.trim() || null,
+      provincia: (luogo?.provincia ?? (s.zona_provincia as string | null))?.trim() || null,
       // Zero non e' un dato: sugli arrivi il gestionale scrive 0 dove il campo
       // e' vuoto, e il modello lo leggeva come «0 kg contro 8,5 in fattura».
-      colli: num(v.s.colli_bolla) || null,
-      peso: num(v.s.peso_bolla) || null,
-      vettore: v.s.vettore_id ? codiciVettore.get(String(v.s.vettore_id)) ?? null : null,
+      colli: num(s.colli_bolla) || null,
+      peso: num(s.peso_bolla) || null,
+      vettore: s.vettore_id ? codiciVettore.get(String(s.vettore_id)) ?? null : null,
       profilo: doc?.codice_profilo ?? null,
-      origine: String(v.s.origine),
+      origine: String(s.origine),
       giaAgganciataA: agganciate.get(id) ?? 0,
-      congelata: v.s.congelata === true,
-      indizi: v.indizi,
+      congelata: s.congelata === true,
+      indizi,
     };
   });
+}
+
+/**
+ * Ricerca libera di una bolla per una riga di fattura: quando quella giusta non
+ * e' fra le candidate (oltre 10 giorni, numero e nome diversi). Cerca nel
+ * numero, nel nostro protocollo e nel cliente/fornitore, senza limiti di data,
+ * nello stesso verso della riga; le piu' vicine per data vengono prima.
+ */
+export async function cercaBolle(rigaId: string, testo: string): Promise<Candidata[]> {
+  const pulito = testo.replace(/[^\p{L}\p{N} .&'/-]/gu, "").trim();
+  if (pulito.length < 2) return [];
+  const [riga] = await righeDaAgganciare({ rigaIds: [rigaId] });
+  if (!riga) return [];
+  const db = createAdminClient().schema("vettori");
+  const filtro = `numero_riferimento.ilike.*${pulito}*,numero_protocollo.ilike.*${pulito}*,controparte_nome.ilike.*${pulito}*`;
+  let q = db.from("spedizioni").select(COLONNE_BOLLA).neq("stato", "ignorata").or(filtro).limit(200);
+  if (riga.direzione) q = q.eq("direzione", riga.direzione);
+  const { data, error } = await q;
+  if (error) throw new Error(`Ricerca bolle fallita: ${error.message}`);
+  const vicinanza = (s: Record<string, unknown>) => (riga.data ? distanza(riga.data, String(s.data_documento)) : 0);
+  const ordinate = ((data ?? []) as Array<Record<string, unknown>>)
+    .sort((a, b) => vicinanza(a) - vicinanza(b))
+    .slice(0, 15);
+  return arricchisci(
+    ordinate.map((s) => ({ riga: s, indizi: [riga.data ? `${vicinanza(s)} giorni dalla fattura` : "trovata con la ricerca"] })),
+    await vettoriPerCodice(),
+    "R"
+  );
+}
+
+/** Annulla un aggancio sbagliato, con il motivo, e rifa' il controllo della fattura. */
+export async function sganciaAggancio(rigaId: string, utenteId: string | null, motivo: string): Promise<{ fatturaId: string; bollaScongelata: boolean }> {
+  const { data, error } = await createAdminClient()
+    .schema("vettori")
+    .rpc("sgancia_aggancio", { p_riga: rigaId, p_utente: utenteId, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+  const esito = data as { fattura_id: string; bolla_scongelata: boolean };
+  await ricalcolaFattura(String(esito.fattura_id), { scrivi: true });
+  return { fatturaId: String(esito.fattura_id), bollaScongelata: esito.bolla_scongelata };
 }
 
 const SCHEMA = {

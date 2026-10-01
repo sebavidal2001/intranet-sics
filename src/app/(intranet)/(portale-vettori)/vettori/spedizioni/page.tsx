@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
-import { getVettoriContext, vedeImporti } from "@/lib/portali/vettori/ruoli";
+import { getVettoriContext, puoGestire, vedeImporti } from "@/lib/portali/vettori/ruoli";
 import { elencoSpedizioni, valoriFiltro } from "@/lib/portali/vettori/storico";
 import { StoricoView } from "@/components/portali/vettori/storico-view";
 
@@ -27,5 +27,5 @@ export default async function SpedizioniPage() {
     valoriFiltro(),
   ]);
 
-  return <StoricoView iniziali={iniziali} valori={valori} />;
+  return <StoricoView iniziali={iniziali} valori={valori} puoSganciare={puoGestire(ctx)} />;
 }

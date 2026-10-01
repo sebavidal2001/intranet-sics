@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AggancioBolla } from "./aggancio-bolla";
+import { SganciaBolla } from "./sgancia-bolla";
 import type {
   DirezioneStorico,
   EsitoStorico,
@@ -39,6 +40,8 @@ import type {
 interface Props {
   iniziali: EsitoStorico;
   valori: ValoriFiltroStorico;
+  /** Amministrazione: puo' annullare un aggancio fattura-bolla sbagliato. */
+  puoSganciare?: boolean;
 }
 
 const MESI = [
@@ -168,7 +171,7 @@ function corpoRichiesta(f: Filtri, perPagina = 100) {
   };
 }
 
-export function StoricoView({ iniziali, valori }: Props) {
+export function StoricoView({ iniziali, valori, puoSganciare = false }: Props) {
   const [filtri, setFiltri] = useState<Filtri>(FILTRI_INIZIALI);
   const [dati, setDati] = useState(iniziali);
   const [inCorso, setInCorso] = useState(false);
@@ -725,6 +728,7 @@ export function StoricoView({ iniziali, valori }: Props) {
                     onApri={() => setAperta((v) => (v === r.id ? null : r.id))}
                     // Un oggetto nuovo con gli stessi filtri rilegge la pagina.
                     onAgganciata={() => setFiltri((f) => ({ ...f }))}
+                    puoSganciare={puoSganciare}
                     onVerificato={(verificatoIl) =>
                       setDati((correnti) => ({
                         ...correnti,
@@ -784,6 +788,7 @@ function Riga({
   onApri,
   onVerificato,
   onAgganciata,
+  puoSganciare = false,
 }: {
   r: RigaStorico;
   conAddebito: boolean;
@@ -791,6 +796,7 @@ function Riga({
   onApri: () => void;
   onVerificato: (verificatoIl: string | null) => void;
   onAgganciata?: () => void;
+  puoSganciare?: boolean;
 }) {
   const differenza = r.fatturato != null && r.atteso != null ? r.fatturato - r.atteso : null;
   const senzaFattura = r.stato_fatturazione === "non_fatturata";
@@ -1010,6 +1016,9 @@ function Riga({
 
             {!senzaFattura && !r.spedizione_id ? (
               <AggancioBolla rigaId={r.id} onAgganciata={() => onAgganciata?.()} />
+            ) : null}
+            {!senzaFattura && r.spedizione_id && puoSganciare ? (
+              <SganciaBolla rigaId={r.id} onSganciata={() => onAgganciata?.()} />
             ) : null}
 
             {r.avvertenze && r.avvertenze.length > 0 && (

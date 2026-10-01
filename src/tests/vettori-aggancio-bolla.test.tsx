@@ -63,3 +63,27 @@ describe("aggancio di una riga di fattura alla bolla", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some((c) => c[1]?.method === "POST" && String(c[1].body).includes("proponi"))).toBe(true));
   });
 });
+
+describe("ricerca libera di una bolla", () => {
+  it("cerca per numero o fornitore e aggancia un risultato", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => ({
+      ok: true,
+      json: async () => {
+        if (init?.method === "POST") return { agganciata: true };
+        if (String(url).includes("cerca=")) return { risultati: [{ ...candidata("b9", "2734"), etichetta: "R1", controparte: "AIRON srl", indizi: ["3 giorni dalla fattura"] }] };
+        return { ...dettaglio(true), candidate: [] };
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onAgganciata = vi.fn();
+    render(<AggancioBolla rigaId="r1" onAgganciata={onAgganciata} />);
+    fireEvent.change(await screen.findByLabelText(/Cercala per numero/), { target: { value: "2734" } });
+    fireEvent.click(screen.getByRole("button", { name: /Cerca/ }));
+    expect(await screen.findByText(/AIRON srl/)).toBeTruthy();
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("cerca=2734"))).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /Aggancia questa/ }));
+    await waitFor(() => expect(onAgganciata).toHaveBeenCalled());
+    const post = fetchMock.mock.calls.find((c) => c[1]?.method === "POST")!;
+    expect(JSON.parse(String(post[1].body))).toEqual({ azione: "conferma", riga: "r1", spedizione: "b9" });
+  });
+});

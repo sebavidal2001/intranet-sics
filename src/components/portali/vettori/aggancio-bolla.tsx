@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Link2, Loader2, Sparkles, X } from "lucide-react";
+import { Link2, Loader2, Search, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -56,6 +56,8 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
   const [caricamento, setCaricamento] = useState(true);
   const [inCorso, setInCorso] = useState<string | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
+  const [testo, setTesto] = useState("");
+  const [risultati, setRisultati] = useState<Candidata[] | null>(null);
 
   const leggi = useCallback(async () => {
     setCaricamento(true);
@@ -78,6 +80,25 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
   useEffect(() => {
     void leggi();
   }, [leggi]);
+
+  async function cerca() {
+    if (testo.trim().length < 2) return;
+    setInCorso("cerca");
+    setErrore(null);
+    try {
+      const res = await fetch(`/api/portali/vettori/agganci?riga=${encodeURIComponent(rigaId)}&cerca=${encodeURIComponent(testo.trim())}`, { cache: "no-store" });
+      const corpo = await res.json();
+      if (!res.ok) {
+        setErrore(corpo.error ?? "Ricerca non riuscita.");
+        return;
+      }
+      setRisultati((corpo.risultati ?? []) as Candidata[]);
+    } catch {
+      setErrore("Non è stato possibile contattare il server.");
+    } finally {
+      setInCorso(null);
+    }
+  }
 
   async function invia(azione: "conferma" | "nessuna" | "proponi", spedizione?: string) {
     setInCorso(spedizione ?? azione);
@@ -115,6 +136,53 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
   const puo = dettaglio?.puoDecidere ?? false;
   const presenti = new Set((dettaglio?.candidate ?? []).map((c) => c.etichetta));
   const sparite = Object.values(proposta?.etichette ?? {}).filter((e) => !presenti.has(e)).sort();
+
+  const voce = (c: Candidata) => {
+    const proposta_ = proposta?.spedizioneId === c.spedizioneId;
+    const bloccata = c.congelata === true;
+    return (
+      <li
+        key={c.spedizioneId}
+        className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs ${proposta_ ? "border-primary bg-primary/5" : "border-border bg-white"}`}
+      >
+        <div className="min-w-0">
+          <p className="font-semibold text-text">
+            {/* L'etichetta e' quella che il modello cita nel motivo («C1 coincide…»). */}
+            <span className="mr-1.5 rounded bg-bg-page px-1 font-mono text-[10px] text-text-muted">{c.etichetta}</span>
+            {c.numero ?? "senza numero"}
+            {c.protocollo ? <span className="font-normal text-text-muted"> · prot. {c.protocollo}</span> : null}
+            <span className="font-normal text-text-muted"> · {data(c.data)}</span>
+            {proposta_ ? <span className="ml-2 rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-white">proposta AI</span> : null}
+          </p>
+          <p className="text-text-muted">
+            {c.controparte ?? "—"}
+            {c.localita ? ` · ${c.localita}` : ""}
+            {c.provincia ? ` (${c.provincia})` : ""}
+            {" · "}
+            {c.peso != null ? `${c.peso.toLocaleString("it-IT")} kg` : "peso non registrato"}
+            {c.colli != null ? ` · ${c.colli} colli` : ""}
+            {c.vettore ? ` · ${c.vettore}` : ""}
+          </p>
+          <p className="text-[11px] text-text-muted">
+            {c.indizi.join(" · ")}
+            {bloccata ? " · già agganciata a un'altra fattura" : c.giaAgganciataA > 0 ? " · già usata da un'altra riga" : ""}
+          </p>
+        </div>
+        {puo ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={proposta_ ? "default" : "outline"}
+            disabled={bloccata || inCorso !== null}
+            onClick={() => void invia("conferma", c.spedizioneId)}
+          >
+            {inCorso === c.spedizioneId ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Link2 className="h-4 w-4" aria-hidden="true" />}
+            Aggancia questa
+          </Button>
+        ) : null}
+      </li>
+    );
+  };
 
   return (
     <section className="mt-4 max-w-3xl rounded-lg border border-amber-200 bg-amber-50/60 p-3" aria-label="Aggancio alla bolla">
@@ -160,52 +228,7 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
 
       {dettaglio && dettaglio.candidate.length > 0 ? (
         <ul className="mt-2 space-y-1.5">
-          {dettaglio.candidate.map((c) => {
-            const proposta_ = proposta?.spedizioneId === c.spedizioneId;
-            const bloccata = c.congelata === true;
-            return (
-              <li
-                key={c.spedizioneId}
-                className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs ${proposta_ ? "border-primary bg-primary/5" : "border-border bg-white"}`}
-              >
-                <div className="min-w-0">
-                  <p className="font-semibold text-text">
-                    {/* L'etichetta e' quella che il modello cita nel motivo («C1 coincide…»). */}
-                    <span className="mr-1.5 rounded bg-bg-page px-1 font-mono text-[10px] text-text-muted">{c.etichetta}</span>
-                    {c.numero ?? "senza numero"}
-                    {c.protocollo ? <span className="font-normal text-text-muted"> · prot. {c.protocollo}</span> : null}
-                    <span className="font-normal text-text-muted"> · {data(c.data)}</span>
-                    {proposta_ ? <span className="ml-2 rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-white">proposta AI</span> : null}
-                  </p>
-                  <p className="text-text-muted">
-                    {c.controparte ?? "—"}
-                    {c.localita ? ` · ${c.localita}` : ""}
-                    {c.provincia ? ` (${c.provincia})` : ""}
-                    {" · "}
-                    {c.peso != null ? `${c.peso.toLocaleString("it-IT")} kg` : "peso non registrato"}
-                    {c.colli != null ? ` · ${c.colli} colli` : ""}
-                    {c.vettore ? ` · ${c.vettore}` : ""}
-                  </p>
-                  <p className="text-[11px] text-text-muted">
-                    {c.indizi.join(" · ")}
-                    {bloccata ? " · già agganciata a un'altra fattura" : c.giaAgganciataA > 0 ? " · già usata da un'altra riga" : ""}
-                  </p>
-                </div>
-                {puo ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={proposta_ ? "default" : "outline"}
-                    disabled={bloccata || inCorso !== null}
-                    onClick={() => void invia("conferma", c.spedizioneId)}
-                  >
-                    {inCorso === c.spedizioneId ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Link2 className="h-4 w-4" aria-hidden="true" />}
-                    Aggancia questa
-                  </Button>
-                ) : null}
-              </li>
-            );
-          })}
+          {dettaglio.candidate.map(voce)}
         </ul>
       ) : (
         <p className="mt-2 text-xs text-text-muted">
@@ -213,6 +236,41 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
           in Impresa: va verificata con il magazzino. La riga resta nel controllo con il peso dichiarato in fattura.
         </p>
       )}
+
+      {puo ? (
+        <form
+          className="mt-3 border-t border-amber-200 pt-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void cerca();
+          }}
+        >
+          <label htmlFor={`cerca-bolla-${rigaId}`} className="text-[11px] font-semibold text-text">
+            La bolla giusta non c&apos;è? Cercala per numero, protocollo o cliente/fornitore
+          </label>
+          <div className="mt-1 flex gap-2">
+            <input
+              id={`cerca-bolla-${rigaId}`}
+              type="search"
+              value={testo}
+              onChange={(e) => setTesto(e.target.value)}
+              placeholder="es. 2734 oppure AIRON"
+              className="h-8 w-full max-w-xs rounded-md border border-border bg-white px-2 text-xs focus:border-primary focus:outline-none"
+            />
+            <Button type="submit" size="sm" variant="outline" disabled={inCorso !== null || testo.trim().length < 2}>
+              {inCorso === "cerca" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Search className="h-4 w-4" aria-hidden="true" />}
+              Cerca
+            </Button>
+          </div>
+          {risultati ? (
+            risultati.length > 0 ? (
+              <ul className="mt-2 space-y-1.5" aria-label="Risultati della ricerca">{risultati.map(voce)}</ul>
+            ) : (
+              <p className="mt-1 text-xs text-text-muted">Nessuna bolla trovata con «{testo.trim()}» nello stesso verso.</p>
+            )
+          ) : null}
+        </form>
+      ) : null}
 
       {puo && proposta && proposta.esito === "scelta" ? (
         <div className="mt-2 flex justify-end">
