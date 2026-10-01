@@ -5,6 +5,7 @@ import {
   abbina,
   aNostroCarico,
   direzioneDi,
+  profiloControllabile,
   nomiCompatibili,
   raggruppaInSpedizioni,
   riepilogoAbbinamento,
@@ -108,7 +109,7 @@ describe("raggruppamento in spedizioni logiche", () => {
 
   it("ogni documento finisce in una spedizione e in una sola", () => {
     const visti = spedizioni.flatMap((s) => s.idDocumenti);
-    const conVerso = BOLLE.filter((b) => direzioneDi(b) !== null);
+    const conVerso = BOLLE.filter((b) => direzioneDi(b) !== null && profiloControllabile(b));
     expect(visti.length).toBe(conVerso.length);
     expect(new Set(visti).size).toBe(visti.length);
   });
@@ -446,6 +447,18 @@ describe("peso e verso delle bolle, dai riscontri del magazzino del 29/09", () =
     expect(verso("RIPEF", "GA")).toBe("entrata");
     expect(verso("RIPUC", "GV")).toBe("uscita");
     expect(verso("RIPUF", "GA")).toBe("uscita");
+    // 01/10: il conto lavoro da cliente entra.
+    expect(verso("CLAVCL", "DV")).toBe("entrata");
+  });
+
+  it("carico e reso del deposito cliente non diventano spedizioni (01/10)", () => {
+    const deposito = raggruppaInSpedizioni([
+      bf({ id_documento: 1, codice_profilo: "CARDEP3", tipo_registro: "DV", numero_progressivo: "5" }),
+      bf({ id_documento: 2, codice_profilo: "RESDEP3", tipo_registro: "DV", numero_progressivo: "6" }),
+      bf({ id_documento: 3, codice_profilo: "BF", numero_documento: "77" }),
+    ]);
+    expect(deposito).toHaveLength(1);
+    expect(deposito[0].idDocumenti).toEqual([3]);
   });
 
   it("col verso giusto il porto del reso si legge giusto: franco lo paghiamo noi, assegnato no", () => {

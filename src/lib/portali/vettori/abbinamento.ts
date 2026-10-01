@@ -129,11 +129,22 @@ export function siglaProvincia(valore: string | null | undefined): string | null
 const PROFILI_RESO_A_FORNITORE = ["RF", "RVF"];
 
 /**
- * Eccezione simmetrica nel registro DV: il reso visione da cliente (`RVC`) è
- * merce che rientra. Confermato dall'amministrazione il 30/09/2026 («RVC: reso
- * visione in ENTRATA da cliente, paghiamo noi se in porto assegnato»).
+ * Eccezione simmetrica nel registro DV: il reso visione da cliente (`RVC`) e
+ * il conto lavoro da cliente (`CLAVCL`) sono merce che rientra. Confermati
+ * dall'amministrazione il 30/09 e l'01/10/2026.
  */
-const PROFILI_ENTRATA_IN_REGISTRO_VENDITE = ["RVC"];
+const PROFILI_ENTRATA_IN_REGISTRO_VENDITE = ["RVC", "CLAVCL"];
+
+/**
+ * Profili che non generano mai una spedizione da controllare: carico e reso
+ * del deposito cliente DEP 3. Esclusi dall'amministrazione l'01/10/2026.
+ */
+const PROFILI_ESCLUSI = ["CARDEP3", "RESDEP3"];
+
+/** Il profilo del documento entra nel controllo dei vettori? */
+export function profiloControllabile(b: BollaGestionale): boolean {
+  return !PROFILI_ESCLUSI.includes((b.codice_profilo ?? "").trim().toUpperCase());
+}
 
 export function direzioneDi(b: BollaGestionale): Direzione | null {
   if (PROFILI_RESO_A_FORNITORE.includes(b.codice_profilo ?? "")) return "uscita";
@@ -195,6 +206,7 @@ export function raggruppaInSpedizioni(
 
   for (const b of bolle) {
     if (!viaggiaConVettore(b)) continue;
+    if (!profiloControllabile(b)) continue;
 
     const direzione = direzioneDi(b);
     if (!direzione) continue;
