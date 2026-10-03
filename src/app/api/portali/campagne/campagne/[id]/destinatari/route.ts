@@ -30,7 +30,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 /**
  * POST — modifica i destinatari. Risponde con l'esito e la campagna aggiornata.
- *   { azione: "applica_standard" }                     copia il pubblico standard salvato
+ *   { azione: "applica_pubblico" }                     aggiunge i clienti del pubblico della campagna
  *   { azione: "aggiungi" | "rimuovi", codici: [...] }
  *   { azione: "aggiungi_categorie" | "rimuovi_categorie", categorie: [...] }
  * Chi ha già un invio non si toglie.

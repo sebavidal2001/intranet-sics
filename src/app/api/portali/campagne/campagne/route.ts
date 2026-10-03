@@ -17,7 +17,7 @@ export async function GET() {
   }
 }
 
-/** POST — crea una campagna (admin). Con `applica_pubblico_standard` copia il pubblico salvato. */
+/** POST — crea una campagna (admin). Il pubblico è `pubblico_id` (assente = lo standard); con `applica_pubblico` (di default sì) ne copia i clienti fra i destinatari. */
 export async function POST(request: NextRequest) {
   try {
     const guard = await requireCampagne({ chi: "admin" });

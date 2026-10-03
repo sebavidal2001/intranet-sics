@@ -31,7 +31,7 @@ const VOCI_OPERATIVE = [
 
 const VOCI_ADMIN = [
   { name: "Campagne", url: "/campagne/gestione", icon: Megaphone, esatta: false },
-  { name: "Pubblico standard", url: "/campagne/pubblico", icon: Users, esatta: false },
+  { name: "Pubblici", url: "/campagne/pubblico", icon: Users, esatta: false },
   { name: "Analisi", url: "/campagne/analisi", icon: BarChart3, esatta: false },
 ]
 

@@ -32,6 +32,8 @@ function catena(tabella: string, ops: Op[] = []): unknown {
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
+    // Tabelle dello schema public (qui solo `utenti`, per i nomi di chi segue gli invii).
+    from: (t: string) => catena(`public.${t}`),
     schema: () => ({
       from: (t: string) => catena(t),
       rpc: (nome: string, args: unknown) => catena(`rpc:${nome}`, [["rpc", [args]]]),
@@ -39,7 +41,18 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
-import { aggiornaInvio, creaInvio, ErroreCampagne, pulisciRicerca } from "@/lib/portali/campagne/dati";
+import {
+  aggiornaCampagna,
+  aggiornaInvio,
+  creaCampagna,
+  creaInvio,
+  elencoInvii,
+  ErroreCampagne,
+  modificaDestinatari,
+  pubblicoMancanti,
+  pulisciRicerca,
+  utentiInvii,
+} from "@/lib/portali/campagne/dati";
 import { oggiRoma } from "@/lib/portali/campagne/stati";
 
 const CLIENTE = { codice_cliente: "05000002", ragione_sociale: "POLETTI srl", rivenditore: false };
@@ -246,5 +259,140 @@ describe("pulisciRicerca", () => {
   it("limita la lunghezza e normalizza gli spazi", () => {
     expect(pulisciRicerca("  ab   cd ")).toBe("ab cd");
     expect(pulisciRicerca("x".repeat(200))).toHaveLength(60);
+  });
+});
+
+describe("chi ha seguito gli invii", () => {
+  const U1 = "aaaaaaaa-0000-4000-8000-000000000001";
+  const U2 = "aaaaaaaa-0000-4000-8000-000000000002";
+  const invio = (id: string, assegnata_da: string | null, consegna_registrata_da: string | null = null) => ({
+    id, codice_cliente: "1", ragione_sociale: "A", stato: "consegnata", assegnata_da, consegna_registrata_da, campagna: { codice: "C_01_26", nome: "x" },
+  });
+
+  it("l'elenco porta nome e cognome intranet di chi ha assegnato l'invio e di chi ha segnato la consegna", async () => {
+    risolvi = ({ tabella }) => {
+      if (tabella === "invii") return { data: [invio("a", U1), invio("b", U1, U2), invio("c", null)], count: 3 };
+      if (tabella === "public.utenti") return { data: [{ id: U1, nome: "Silvia", cognome: "Varas" }, { id: U2, nome: "Lucia", cognome: "Roda" }] };
+      return { data: null };
+    };
+    const { invii } = await elencoInvii({ limit: 50, offset: 0 });
+    expect(invii.map((i) => [i.assegnata_da_nome, i.consegna_registrata_da_nome])).toEqual([
+      ["Silvia Varas", null],
+      ["Silvia Varas", "Lucia Roda"],
+      [null, null], // lo storico importato dall'Excel non ha utente
+    ]);
+    // Gli id non escono verso la schermata: solo i nomi.
+    expect(invii[0]).not.toHaveProperty("assegnata_da");
+    // Una lettura sola per tutti gli utenti, senza doppioni.
+    const lettura = opsDi("public.utenti", "in")[0];
+    expect(lettura[0]).toBe("id");
+    expect([...(lettura[1] as string[])].sort()).toEqual([U1, U2]);
+  });
+
+  it("un utente non piu' presente resta null: non si inventa un nome", async () => {
+    risolvi = ({ tabella }) => (tabella === "invii" ? { data: [invio("a", U1)], count: 1 } : { data: [] });
+    expect((await elencoInvii({ limit: 50, offset: 0 })).invii[0].assegnata_da_nome).toBeNull();
+  });
+
+  it("senza invii assegnati da qualcuno non legge nemmeno gli utenti", async () => {
+    risolvi = ({ tabella }) => (tabella === "invii" ? { data: [invio("a", null)], count: 1 } : { data: [] });
+    await elencoInvii({ limit: 50, offset: 0 });
+    expect(opsDi("public.utenti", "in")).toHaveLength(0);
+  });
+
+  it("filtra per l'utente che ha assegnato", async () => {
+    risolvi = () => ({ data: [], count: 0 });
+    await elencoInvii({ utente_id: U1, limit: 50, offset: 0 });
+    expect(opsDi("invii", "eq")).toContainEqual(["assegnata_da", U1]);
+  });
+
+  it("l'elenco degli utenti per il filtro e' in ordine alfabetico, col nome intranet", async () => {
+    risolvi = ({ tabella }) => {
+      if (tabella === "rpc:utenti_invii") return { data: [U1, U2] };
+      if (tabella === "public.utenti") return { data: [{ id: U1, nome: "Silvia", cognome: "Varas" }, { id: U2, nome: "Lucia", cognome: "Roda" }] };
+      return { data: [] };
+    };
+    expect(await utentiInvii()).toEqual([{ id: U2, nome: "Lucia Roda" }, { id: U1, nome: "Silvia Varas" }]);
+  });
+
+  it("nessun utente: elenco vuoto, senza interrogare gli utenti", async () => {
+    risolvi = () => ({ data: [] });
+    expect(await utentiInvii()).toEqual([]);
+    expect(opsDi("public.utenti", "in")).toHaveLength(0);
+  });
+});
+
+describe("il pubblico di una campagna", () => {
+  const PUB = "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e";
+  const campagna = { id: C1.id, codice: "C_04_26", nome: "Quattro", stato: "attiva", articoli_promossi: [], pubblico_id: PUB, pubblico: { nome: "Standard", standard: true } };
+  const nuova = { codice: "C_04_26", nome: "Quattro", articolo_codice: "ART-04", testo_riconoscimento: [], articoli_promossi: [], stato: "sospesa" as const, applica_pubblico: true };
+
+  function scenarioCampagna() {
+    risolvi = ({ tabella }) => {
+      if (tabella === "campagne") return { data: campagna };
+      if (tabella === "v_campagne_riepilogo") return { data: { id: C1.id, destinatari: 0, preparate: 0, da_spedire: 0, consegnate: 0, consegnate_banco: 0 } };
+      if (tabella === "rpc:applica_pubblico") return { data: 5 };
+      return { data: null };
+    };
+  }
+
+  it("senza un pubblico indicato non lo scrive: ci pensa il database a mettere lo standard", async () => {
+    scenarioCampagna();
+    await creaCampagna(nuova, "u1");
+    expect(opsDi("campagne", "insert")[0][0]).not.toHaveProperty("pubblico_id");
+  });
+
+  it("con un pubblico indicato lo assegna", async () => {
+    scenarioCampagna();
+    await creaCampagna({ ...nuova, pubblico_id: PUB }, "u1");
+    expect(opsDi("campagne", "insert")[0][0]).toMatchObject({ pubblico_id: PUB });
+  });
+
+  it("alla creazione aggiunge subito i clienti del pubblico DELLA CAMPAGNA (non dello standard per forza)", async () => {
+    scenarioCampagna();
+    await creaCampagna({ ...nuova, pubblico_id: PUB }, "u1");
+    expect(opsDi("rpc:applica_pubblico", "rpc")[0][0]).toEqual({ p_campagna: C1.id, p_pubblico: null, p_utente: "u1" });
+  });
+
+  it("senza «aggiungi subito» la campagna nasce senza destinatari", async () => {
+    scenarioCampagna();
+    await creaCampagna({ ...nuova, applica_pubblico: false }, "u1");
+    expect(opsDi("rpc:applica_pubblico", "rpc")).toHaveLength(0);
+  });
+
+  it("cambiare il pubblico di una campagna aggiorna solo quel campo e non tocca i destinatari", async () => {
+    scenarioCampagna();
+    await aggiornaCampagna(C1.id, { pubblico_id: PUB }, "u1");
+    expect(opsDi("campagne", "update")[0][0]).toEqual({ pubblico_id: PUB });
+    expect(opsDi("destinatari", "delete")).toHaveLength(0);
+    expect(opsDi("rpc:applica_pubblico", "rpc")).toHaveLength(0);
+  });
+
+  it("un pubblico inesistente e' un errore chiaro, non un 500", async () => {
+    risolvi = ({ tabella, ops }) => {
+      if (tabella === "campagne" && ops.some(([n]) => n === "update")) return { data: null, error: { code: "23503", message: 'insert or update on table "campagne" violates foreign key constraint "campagne_pubblico_id_fkey"' } };
+      if (tabella === "campagne") return { data: campagna };
+      return { data: null };
+    };
+    await expect(aggiornaCampagna(C1.id, { pubblico_id: PUB }, "u1")).rejects.toMatchObject({ status: 400, message: expect.stringContaining("pubblico") });
+  });
+
+  it("«aggiungi i clienti che rientrano» usa il pubblico della campagna e riporta quanti ne ha aggiunti", async () => {
+    scenarioCampagna();
+    const r = await modificaDestinatari(C1.id, { azione: "applica_pubblico" }, "u1");
+    expect(r.esito.aggiunti).toBe(5);
+    expect(opsDi("rpc:applica_pubblico", "rpc")[0][0]).toEqual({ p_campagna: C1.id, p_pubblico: null, p_utente: "u1" });
+  });
+
+  it("una campagna terminata non riceve altri destinatari", async () => {
+    risolvi = ({ tabella }) => (tabella === "campagne" ? { data: { ...campagna, stato: "terminata" } } : { data: null });
+    await expect(modificaDestinatari(C1.id, { azione: "applica_pubblico" }, "u1")).rejects.toMatchObject({ status: 409 });
+    expect(opsDi("rpc:applica_pubblico", "rpc")).toHaveLength(0);
+  });
+
+  it("quanti clienti mancano: il numero arriva dal database", async () => {
+    risolvi = ({ tabella }) => (tabella === "rpc:pubblico_mancanti" ? { data: 42 } : { data: null });
+    expect(await pubblicoMancanti(C1.id)).toBe(42);
+    expect(opsDi("rpc:pubblico_mancanti", "rpc")[0][0]).toEqual({ p_campagna: C1.id });
   });
 });

@@ -4,7 +4,7 @@ import { FiltriInvii } from "@/components/portali/campagne/filtri-invii";
 import { TabellaClienti } from "@/components/portali/campagne/tabella-clienti";
 import { Pannello, StatoInvioChip, TitoloPagina, Vuoto, classeRiga, classeTh } from "@/components/portali/campagne/ui";
 import { formattaData, formattaDataOra } from "@/components/portali/campagne/api-client";
-import { clientiPerCampagne, elencoCampagne, elencoInvii } from "@/lib/portali/campagne/dati";
+import { clientiPerCampagne, elencoCampagne, elencoInvii, utentiInvii } from "@/lib/portali/campagne/dati";
 import { richiediOperatore } from "@/lib/portali/campagne/pagine";
 import { FiltroClientiCampagne, FiltroInvii } from "@/lib/portali/campagne/schemi";
 import { STATO_INVIO_UI, etichettaOrdine } from "@/lib/portali/campagne/stati";
@@ -57,7 +57,11 @@ export default async function InviiPage({ searchParams }: { searchParams: Promis
   const selezionate = (vista === "clienti" ? filtroClienti.campagna_id : filtroInvii.campagna_id) ?? [];
   const q = (vista === "clienti" ? filtroClienti.q : filtroInvii.q) ?? "";
 
-  const base: Parametri = { vista: vista === "clienti" ? "clienti" : undefined, campagna_id: selezionate, q };
+  // Chi ha seguito gli invii: serve al filtro della vista per invio. Se non e' leggibile la pagina funziona lo stesso.
+  const utenti = vista === "invii" ? await utentiInvii().catch(() => []) : [];
+  const utente = vista === "invii" ? filtroInvii.utente_id : undefined;
+
+  const base: Parametri = { vista: vista === "clienti" ? "clienti" : undefined, campagna_id: selezionate, q, utente_id: utente };
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -74,7 +78,7 @@ export default async function InviiPage({ searchParams }: { searchParams: Promis
       {/* Le due viste */}
       <div className="mb-4 inline-flex rounded-xl border border-border bg-white p-1 shadow-sm" role="tablist" aria-label="Vista">
         <Link
-          href={indirizzo({ campagna_id: selezionate, q })}
+          href={indirizzo({ campagna_id: selezionate, q, utente_id: utente })}
           role="tab"
           aria-selected={vista === "invii"}
           className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${vista === "invii" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:bg-bg-page hover:text-text"}`}
@@ -121,6 +125,8 @@ export default async function InviiPage({ searchParams }: { searchParams: Promis
         stato={filtroInvii.stato}
         modo={filtroClienti.modo}
         min={filtroClienti.min}
+        utenti={utenti}
+        utente={utente}
       />
 
       {vista === "clienti" ? (
@@ -192,6 +198,7 @@ async function VistaInvii({ filtro, base }: { filtro: ReturnType<typeof FiltroIn
                 <th className={classeTh}>Stato</th>
                 <th className={classeTh}>Ordine</th>
                 <th className={classeTh}>Referente</th>
+                <th className={classeTh}>Seguita da</th>
                 <th className={`${classeTh} pr-5`}>Consegna</th>
               </tr>
             </thead>
@@ -210,6 +217,16 @@ async function VistaInvii({ filtro, base }: { filtro: ReturnType<typeof FiltroIn
                   </td>
                   <td className="py-3 pr-3 whitespace-nowrap">{etichettaOrdine(i) ?? <span className="text-text-muted">—</span>}</td>
                   <td className="py-3 pr-3">{i.referente ?? <span className="text-text-muted">—</span>}</td>
+                  <td className="py-3 pr-3">
+                    {i.assegnata_da_nome ? (
+                      <span className="font-medium text-text">{i.assegnata_da_nome}</span>
+                    ) : (
+                      <span className="text-text-muted">{i.origine === "import_excel" ? "storico Excel" : "—"}</span>
+                    )}
+                    {i.consegna_registrata_da_nome && i.consegna_registrata_da_nome !== i.assegnata_da_nome ? (
+                      <span className="block text-xs text-text-muted">consegna: {i.consegna_registrata_da_nome}</span>
+                    ) : null}
+                  </td>
                   <td className="py-3 pr-5 whitespace-nowrap">
                     {i.data_consegna ? formattaData(i.data_consegna) : <span className="text-text-muted">assegnata {formattaDataOra(i.assegnata_il)}</span>}
                     {i.ddt_numero ? <span className="block text-xs text-text-muted">DDT {i.ddt_numero}</span> : null}

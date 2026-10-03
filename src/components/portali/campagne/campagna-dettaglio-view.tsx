@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CampagnaRiepilogo, StatoCampagna } from "@/lib/portali/campagne/tipi";
 import { chiamaApi, daElenco, formattaDataOra } from "./api-client";
-import { Campo, Messaggio, Pannello, StatoCampagnaChip } from "./ui";
+import { Campo, Messaggio, Pannello, StatoCampagnaChip, classeSelect } from "./ui";
+import type { PubblicoScelta } from "./gestione-campagne-view";
 import { SelezioneDestinatari } from "./selezione-destinatari";
 
 interface Esito {
@@ -15,8 +16,18 @@ interface Esito {
   testo: string;
 }
 
-export function CampagnaDettaglioView({ iniziale }: { iniziale: CampagnaRiepilogo }) {
+export function CampagnaDettaglioView({
+  iniziale,
+  pubblici,
+  mancanti: mancantiIniziali,
+}: {
+  iniziale: CampagnaRiepilogo;
+  pubblici: PubblicoScelta[];
+  /** Clienti che rientrano nel pubblico della campagna e non ne sono ancora destinatari. */
+  mancanti: number;
+}) {
   const [campagna, setCampagna] = useState(iniziale);
+  const [mancanti, setMancanti] = useState(mancantiIniziali);
   const [nome, setNome] = useState(iniziale.nome);
   const [note, setNote] = useState(iniziale.note ?? "");
   const [articolo, setArticolo] = useState(iniziale.articolo_codice);
@@ -65,18 +76,36 @@ export function CampagnaDettaglioView({ iniziale }: { iniziale: CampagnaRiepilog
     else setCampagna(r.dati.campagna);
   }
 
-  async function applicaStandard() {
-    if (!window.confirm("Aggiungere ai destinatari tutti i clienti del pubblico standard? Nessuno viene tolto.")) return;
-    setOccupato("standard");
+  async function cambiaPubblico(pubblicoId: string) {
+    setOccupato("pubblico");
+    setEsitoPubblico(null);
+    const r = await chiamaApi<{ campagna: CampagnaRiepilogo; mancanti: number }>(`/api/portali/campagne/campagne/${campagna.id}`, {
+      metodo: "PATCH",
+      corpo: { pubblico_id: pubblicoId },
+    });
+    setOccupato(null);
+    if (!r.ok) setEsitoPubblico({ tipo: "errore", testo: r.errore });
+    else {
+      setCampagna(r.dati.campagna);
+      setMancanti(r.dati.mancanti);
+      setEsitoPubblico({ tipo: "ok", testo: "Pubblico cambiato. I destinatari che la campagna ha già non sono stati toccati." });
+    }
+  }
+
+  async function applicaPubblico() {
+    const nomePubblico = campagna.pubblico?.nome ?? "della campagna";
+    if (!window.confirm(`Aggiungere ai destinatari i ${mancanti.toLocaleString("it-IT")} clienti del pubblico «${nomePubblico}» che ancora non ci sono? Nessuno viene tolto.`)) return;
+    setOccupato("pubblico");
     setEsitoPubblico(null);
     const r = await chiamaApi<{ esito: { aggiunti: number }; campagna: CampagnaRiepilogo }>(
       `/api/portali/campagne/campagne/${campagna.id}/destinatari`,
-      { corpo: { azione: "applica_standard" } }
+      { corpo: { azione: "applica_pubblico" } }
     );
     setOccupato(null);
     if (!r.ok) setEsitoPubblico({ tipo: "errore", testo: r.errore });
     else {
       setCampagna(r.dati.campagna);
+      setMancanti(0);
       setEsitoPubblico({ tipo: "ok", testo: `${r.dati.esito.aggiunti} clienti aggiunti ai destinatari.` });
     }
   }
@@ -162,20 +191,53 @@ export function CampagnaDettaglioView({ iniziale }: { iniziale: CampagnaRiepilog
         {esito ? <div className="mt-3"><Messaggio tipo={esito.tipo}>{esito.testo}</Messaggio></div> : null}
       </Pannello>
 
+      <Pannello titolo="Pubblico">
+        <div className="grid items-end gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <Campo
+            etichetta="A chi si rivolge"
+            aiuto="Di default lo standard. Cambiarlo non toglie né aggiunge destinatari da solo: i clienti si aggiungono col pulsante qui sotto."
+          >
+            <select
+              className={classeSelect}
+              value={campagna.pubblico_id}
+              disabled={terminata || occupato !== null}
+              onChange={(e) => cambiaPubblico(e.target.value)}
+              aria-label="Pubblico della campagna"
+            >
+              {pubblici.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                  {p.standard ? " (standard)" : ""}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <Link href={`/campagne/pubblico/${campagna.pubblico_id}`} className="pb-2 text-sm font-medium text-primary hover:underline">
+            Modifica questo pubblico →
+          </Link>
+        </div>
+        {!terminata ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={applicaPubblico} disabled={occupato !== null || mancanti === 0}>
+              {occupato === "pubblico" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Aggiungi i clienti che rientrano
+            </Button>
+            <span className="text-sm text-text-muted">
+              {mancanti === 0
+                ? "Tutti i clienti del pubblico sono già destinatari."
+                : `${mancanti.toLocaleString("it-IT")} ${mancanti === 1 ? "cliente rientra" : "clienti rientrano"} nel pubblico e non ${mancanti === 1 ? "è ancora destinatario" : "sono ancora destinatari"}.`}
+            </span>
+          </div>
+        ) : null}
+        {esitoPubblico ? <div className="mt-3"><Messaggio tipo={esitoPubblico.tipo}>{esitoPubblico.testo}</Messaggio></div> : null}
+      </Pannello>
+
       <Pannello titolo={`Destinatari · ${campagna.destinatari.toLocaleString("it-IT")}`}>
         <p className="mb-4 text-sm text-text-muted">
           {campagna.preparate + campagna.da_spedire} buste in corso · {campagna.consegnate + campagna.consegnate_banco} consegnate.
-          Il pubblico è una fotografia: cambiare il pubblico standard non modifica questa campagna.
+          I destinatari sono una fotografia: cambiare il pubblico non modifica questa campagna finché non aggiungi i clienti. Qui sotto puoi anche
+          aggiungere o togliere singoli clienti.
         </p>
-        {!terminata ? (
-          <div className="mb-5">
-            <Button variant="outline" onClick={applicaStandard} disabled={occupato !== null}>
-              {occupato === "standard" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Applica il pubblico standard
-            </Button>
-            {esitoPubblico ? <div className="mt-3"><Messaggio tipo={esitoPubblico.tipo}>{esitoPubblico.testo}</Messaggio></div> : null}
-          </div>
-        ) : null}
         <SelezioneDestinatari campagnaId={campagna.id} bloccata={terminata} onAggiornata={setCampagna} />
       </Pannello>
     </div>

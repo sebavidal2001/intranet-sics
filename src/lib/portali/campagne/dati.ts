@@ -6,9 +6,10 @@ import type {
   AggiornaInvioInput,
   AssegnaInvioInput,
   CreaCampagnaInput,
+  CreaPubblicoInput,
   DestinatariInput,
   FiltroClientiCampagneInput,
-  PubblicoStandardInput,
+  PubblicoInput,
 } from "./schemi";
 import type {
   Campagna,
@@ -22,8 +23,9 @@ import type {
   ElencoClientiCampagne,
   ElencoInvii,
   Invio,
-  PubblicoStandard,
-  PubblicoStandardResponse,
+  Pubblico,
+  PubblicoResponse,
+  PubblicoRiepilogo,
   SchedaCliente,
 } from "./tipi";
 
@@ -70,7 +72,13 @@ function traduci(contesto: string, e: ErroreDb): Error {
     if (e.message.includes("campagne_codice_key")) {
       return new ErroreCampagne(409, "Esiste già una campagna con questo codice.");
     }
+    if (e.message.includes("pubblici_nome_uq")) {
+      return new ErroreCampagne(409, "Esiste già un pubblico con questo nome.");
+    }
     return new ErroreCampagne(409, "Il dato esiste già.");
+  }
+  if (e.code === "23503" && e.message.includes("pubblico_id")) {
+    return new ErroreCampagne(400, "Il pubblico scelto non esiste.");
   }
   if (e.code === "PT409") return new ErroreCampagne(409, e.message);
   if (e.code === "23514" && e.message.includes("invii_referente_ordine_obbligatori")) {
@@ -102,6 +110,39 @@ export const aBlocchi = <T,>(v: T[], dim: number): T[][] =>
 
 const COLONNE_CLIENTE = "codice_cliente, ragione_sociale, agente_nome, cat_commerciale, cat_attivita, rivenditore";
 const COLONNE_INVIO = "*, campagna:campagne(codice, nome)";
+const COLONNE_CAMPAGNA = "*, pubblico:pubblici(nome, standard)";
+
+/**
+ * Nome e cognome (intranet) di chi ha assegnato la campagna o segnato la consegna.
+ * Gli invii portano solo gli id degli utenti: si risolvono qui, in una lettura sola,
+ * invece di lasciare alla schermata un id che non dice niente. Lo storico importato
+ * dall'Excel non ha utente: resta `null`.
+ */
+async function nomiUtenti(ids: string[]): Promise<Map<string, string>> {
+  const nomi = new Map<string, string>();
+  for (const blocco of aBlocchi([...new Set(ids)], 100)) {
+    const r = await createAdminClient().from("utenti").select("id, nome, cognome").in("id", blocco);
+    for (const u of (ok("nomi utenti", r) ?? []) as { id: string; nome: string; cognome: string }[]) {
+      nomi.set(u.id, `${u.nome} ${u.cognome}`.trim());
+    }
+  }
+  return nomi;
+}
+
+type InvioGrezzo = Omit<Invio, "assegnata_da_nome" | "consegna_registrata_da_nome"> & {
+  assegnata_da?: string | null;
+  consegna_registrata_da?: string | null;
+};
+
+async function conNomi(invii: InvioGrezzo[]): Promise<Invio[]> {
+  const ids = invii.flatMap((i) => [i.assegnata_da, i.consegna_registrata_da]).filter((x): x is string => !!x);
+  const nomi = ids.length > 0 ? await nomiUtenti(ids) : new Map<string, string>();
+  return invii.map(({ assegnata_da, consegna_registrata_da, ...resto }) => ({
+    ...resto,
+    assegnata_da_nome: assegnata_da ? (nomi.get(assegnata_da) ?? null) : null,
+    consegna_registrata_da_nome: consegna_registrata_da ? (nomi.get(consegna_registrata_da) ?? null) : null,
+  }));
+}
 
 /** Toglie dalla ricerca i caratteri che spezzerebbero la sintassi dei filtri PostgREST. */
 export function pulisciRicerca(q: string): string {
@@ -136,7 +177,7 @@ export async function schedaCliente(codice: string): Promise<Omit<SchedaCliente,
   ]);
   return {
     cliente,
-    invii: (ok("invii del cliente", invii) ?? []) as unknown as Invio[],
+    invii: await conNomi((ok("invii del cliente", invii) ?? []) as unknown as InvioGrezzo[]),
     assegnabili: (ok("campagne assegnabili", assegnabili) ?? []) as Campagna[],
   };
 }
@@ -144,9 +185,9 @@ export async function schedaCliente(codice: string): Promise<Omit<SchedaCliente,
 // ─── Invii ─────────────────────────────────────────────────────────────────
 async function leggiInvio(id: string): Promise<Invio> {
   const r = await db().from("invii").select(COLONNE_INVIO).eq("id", id).maybeSingle();
-  const i = ok("lettura invio", r) as unknown as Invio | null;
+  const i = ok("lettura invio", r) as unknown as InvioGrezzo | null;
   if (!i) throw new ErroreCampagne(404, "Invio non trovato.");
-  return i;
+  return (await conNomi([i]))[0];
 }
 
 async function spiegaCampagnaNonAssegnabile(codiceCliente: string, campagnaId: string): Promise<ErroreCampagne> {
@@ -203,7 +244,7 @@ export async function creaInvio(input: AssegnaInvioInput, userId: string): Promi
         };
 
   const r = await db().from("invii").insert(riga).select(COLONNE_INVIO).single();
-  return ok("creazione invio", r) as unknown as Invio;
+  return (await conNomi([ok("creazione invio", r) as unknown as InvioGrezzo]))[0];
 }
 
 /** Cambia un invio. Le azioni ammesse dipendono dallo stato (`azioniConsentite`). */
@@ -258,7 +299,7 @@ export async function aggiornaInvio(id: string, input: AggiornaInvioInput, userI
   // Condizionato allo stato letto: se nel frattempo l'ha cambiato un collega,
   // non si sovrascrive in silenzio.
   const r = await db().from("invii").update(patch).eq("id", id).eq("stato", invio.stato).select(COLONNE_INVIO);
-  const righe = (ok("aggiornamento invio", r) ?? []) as unknown as Invio[];
+  const righe = await conNomi((ok("aggiornamento invio", r) ?? []) as unknown as InvioGrezzo[]);
   if (righe.length === 0) throw new ErroreCampagne(409, "L'invio è stato modificato da qualcun altro: ricarica la pagina.");
   return righe[0];
 }
@@ -266,6 +307,8 @@ export async function aggiornaInvio(id: string, input: AggiornaInvioInput, userI
 export interface FiltroElencoInvii {
   stato?: Invio["stato"];
   campagna_id?: string[];
+  /** Chi ha seguito la campagna: l'utente che ha assegnato l'invio. */
+  utente_id?: string;
   q?: string;
   limit: number;
   offset: number;
@@ -275,11 +318,12 @@ export async function elencoInvii(f: FiltroElencoInvii): Promise<ElencoInvii> {
   let query = db().from("invii").select(COLONNE_INVIO, { count: "exact" });
   query = f.stato ? query.eq("stato", f.stato) : query.neq("stato", "annullata");
   if (f.campagna_id && f.campagna_id.length > 0) query = query.in("campagna_id", f.campagna_id);
+  if (f.utente_id) query = query.eq("assegnata_da", f.utente_id);
   const t = f.q ? pulisciRicerca(f.q) : "";
   if (t.length >= 2) query = query.or(`codice_cliente.ilike.%${t}%,ragione_sociale.ilike.%${t}%`);
   const r = await query.order("assegnata_il", { ascending: false }).range(f.offset, f.offset + f.limit - 1);
   if (r.error) throw traduci("elenco invii", r.error);
-  return { invii: (r.data ?? []) as unknown as ElencoInvii["invii"], totale: r.count ?? 0 };
+  return { invii: await conNomi((r.data ?? []) as unknown as InvioGrezzo[]), totale: r.count ?? 0 };
 }
 
 export async function dashboard(): Promise<Pick<DashboardCampagne, "preparate" | "da_spedire" | "consegnate_30_giorni">> {
@@ -310,7 +354,7 @@ export async function inviiAperti(limit = 10): Promise<ElencoInvii["invii"]> {
     .in("stato", ["preparata", "da_spedire"])
     .order("assegnata_il", { ascending: false })
     .limit(limit);
-  return (ok("buste aperte", r) ?? []) as unknown as ElencoInvii["invii"];
+  return conNomi((ok("buste aperte", r) ?? []) as unknown as InvioGrezzo[]);
 }
 
 // ─── Campagne ──────────────────────────────────────────────────────────────
@@ -334,7 +378,7 @@ const unisci = (c: Campagna, r?: RigaRiepilogo): CampagnaRiepilogo => ({
 
 export async function elencoCampagne(): Promise<CampagnaRiepilogo[]> {
   const [c, r] = await Promise.all([
-    db().from("campagne").select("*").order("ordine"),
+    db().from("campagne").select(COLONNE_CAMPAGNA).order("ordine"),
     db().from("v_campagne_riepilogo").select("*"),
   ]);
   const per = new Map(((ok("riepilogo campagne", r) ?? []) as RigaRiepilogo[]).map((x) => [x.id, x]));
@@ -343,7 +387,7 @@ export async function elencoCampagne(): Promise<CampagnaRiepilogo[]> {
 
 export async function leggiCampagna(id: string): Promise<CampagnaRiepilogo> {
   const [c, r] = await Promise.all([
-    db().from("campagne").select("*").eq("id", id).maybeSingle(),
+    db().from("campagne").select(COLONNE_CAMPAGNA).eq("id", id).maybeSingle(),
     db().from("v_campagne_riepilogo").select("*").eq("id", id).maybeSingle(),
   ]);
   const campagna = ok("lettura campagna", c) as Campagna | null;
@@ -363,14 +407,16 @@ export async function creaCampagna(input: CreaCampagnaInput, userId: string): Pr
       marchio: input.marchio?.trim() || null,
       articoli_promossi: input.articoli_promossi,
       stato: input.stato,
+      // Assente = il database mette lo standard.
+      ...(input.pubblico_id ? { pubblico_id: input.pubblico_id } : {}),
       created_by: userId,
       stato_cambiato_da: userId,
     })
-    .select("*")
+    .select("id")
     .single();
-  const campagna = ok("creazione campagna", r) as Campagna;
-  if (input.applica_pubblico_standard) {
-    ok("pubblico standard", await db().rpc("applica_pubblico_standard", { p_campagna_id: campagna.id, p_utente_id: userId }));
+  const campagna = ok("creazione campagna", r) as { id: string };
+  if (input.applica_pubblico) {
+    ok("pubblico della campagna", await db().rpc("applica_pubblico", { p_campagna: campagna.id, p_pubblico: null, p_utente: userId }));
   }
   return leggiCampagna(campagna.id);
 }
@@ -486,9 +532,9 @@ export async function modificaDestinatari(
   const esito = esitoVuoto();
 
   switch (input.azione) {
-    case "applica_standard": {
-      const r = await db().rpc("applica_pubblico_standard", { p_campagna_id: campagnaId, p_utente_id: userId });
-      esito.aggiunti = Number(ok("pubblico standard", r) ?? 0);
+    case "applica_pubblico": {
+      const r = await db().rpc("applica_pubblico", { p_campagna: campagnaId, p_pubblico: null, p_utente: userId });
+      esito.aggiunti = Number(ok("pubblico della campagna", r) ?? 0);
       break;
     }
     case "aggiungi": {
@@ -531,13 +577,46 @@ export async function modificaDestinatari(
   return { esito, campagna: await leggiCampagna(campagnaId) };
 }
 
-// ─── Pubblico standard ─────────────────────────────────────────────────────
-const COLONNE_PUBBLICO = "agenti, categorie_commerciali, categorie_attivita, clienti_extra, aggiornato_il";
+// ─── Pubblici ──────────────────────────────────────────────────────────────
+const COLONNE_PUBBLICO = "id, nome, descrizione, standard, agenti, categorie_commerciali, categorie_attivita, clienti_extra, aggiornato_il";
 
-export async function leggiPubblicoStandard(): Promise<PubblicoStandardResponse> {
-  const [cfg, conteggio, clienti] = await Promise.all([
-    db().from("pubblico_standard").select(COLONNE_PUBBLICO).eq("id", true).single(),
-    db().rpc("pubblico_standard_conteggio"),
+/** Tutti i pubblici, lo standard per primo, con a quanti clienti arrivano e quante campagne li usano. */
+export async function elencoPubblici(): Promise<PubblicoRiepilogo[]> {
+  const [p, r] = await Promise.all([
+    db().from("pubblici").select(COLONNE_PUBBLICO).order("standard", { ascending: false }).order("nome"),
+    db().rpc("pubblici_riepilogo"),
+  ]);
+  const per = new Map(((ok("riepilogo pubblici", r) ?? []) as { id: string; raggiunti: number; campagne: number }[]).map((x) => [x.id, x]));
+  return ((ok("elenco pubblici", p) ?? []) as Pubblico[]).map((x) => ({
+    ...x,
+    raggiunti: Number(per.get(x.id)?.raggiunti ?? 0),
+    campagne: Number(per.get(x.id)?.campagne ?? 0),
+  }));
+}
+
+/** Per i menu a tendina: solo id, nome e se e' lo standard. */
+export async function pubbliciPerScelta(): Promise<{ id: string; nome: string; standard: boolean }[]> {
+  const r = await db().from("pubblici").select("id, nome, standard").order("standard", { ascending: false }).order("nome");
+  return (ok("pubblici", r) ?? []) as { id: string; nome: string; standard: boolean }[];
+}
+
+/** Quanti clienti rientrano nel pubblico della campagna e non ne sono ancora destinatari. */
+export async function pubblicoMancanti(campagnaId: string): Promise<number> {
+  return Number(ok("clienti mancanti", await db().rpc("pubblico_mancanti", { p_campagna: campagnaId })) ?? 0);
+}
+
+async function leggiConfigPubblico(id: string): Promise<Pubblico> {
+  const r = await db().from("pubblici").select(COLONNE_PUBBLICO).eq("id", id).maybeSingle();
+  const p = ok("lettura pubblico", r) as Pubblico | null;
+  if (!p) throw new ErroreCampagne(404, "Pubblico non trovato.");
+  return p;
+}
+
+export async function leggiPubblico(id: string): Promise<PubblicoResponse> {
+  const [config, conteggio, usato, clienti] = await Promise.all([
+    leggiConfigPubblico(id),
+    db().rpc("pubblico_conteggio", { p_pubblico: id }),
+    db().from("campagne").select("id, codice, nome, stato").eq("pubblico_id", id).order("ordine"),
     // Tutti i clienti non rivenditori (circa 3.800): la pagina ci calcola il conteggio
     // in tempo reale mentre si sceglie, senza un'andata e ritorno a ogni clic.
     tuttePagine<ClientePubblicoRiga>("clienti del pubblico", (da, a) =>
@@ -549,22 +628,67 @@ export async function leggiPubblicoStandard(): Promise<PubblicoStandardResponse>
         .range(da, a)
     ),
   ]);
-  const config = ok("pubblico standard", cfg) as PubblicoStandard;
-  return { config, raggiunti: Number(ok("conteggio pubblico", conteggio) ?? 0), clienti };
+  return {
+    config,
+    raggiunti: Number(ok("conteggio pubblico", conteggio) ?? 0),
+    campagne: (ok("campagne del pubblico", usato) ?? []) as PubblicoResponse["campagne"],
+    clienti,
+  };
 }
 
-export async function salvaPubblicoStandard(input: PubblicoStandardInput, userId: string): Promise<PubblicoStandardResponse> {
-  const patch: Record<string, unknown> = {
+/** Un pubblico nuovo, vuoto oppure copia di un altro: da li' lo si modifica nella sua pagina. */
+export async function creaPubblico(input: CreaPubblicoInput, userId: string): Promise<Pubblico> {
+  const base = input.copia_da ? await leggiConfigPubblico(input.copia_da) : null;
+  const r = await db()
+    .from("pubblici")
+    .insert({
+      nome: input.nome,
+      descrizione: input.descrizione?.trim() || null,
+      standard: false,
+      agenti: base?.agenti ?? [],
+      categorie_commerciali: base?.categorie_commerciali ?? ["Attivo"],
+      categorie_attivita: base?.categorie_attivita ?? [],
+      clienti_extra: base?.clienti_extra ?? [],
+      created_by: userId,
+      aggiornato_da: userId,
+    })
+    .select(COLONNE_PUBBLICO)
+    .single();
+  return ok("creazione pubblico", r) as Pubblico;
+}
+
+export async function salvaPubblico(id: string, input: PubblicoInput, userId: string): Promise<PubblicoResponse> {
+  await leggiConfigPubblico(id);
+  const patch = {
+    nome: input.nome,
+    descrizione: input.descrizione?.trim() || null,
     agenti: input.agenti,
     categorie_commerciali: input.categorie_commerciali,
+    categorie_attivita: [...new Set(input.categorie_attivita)],
     clienti_extra: [...new Set(input.clienti_extra)],
     aggiornato_il: new Date().toISOString(),
     aggiornato_da: userId,
   };
-  // Assente = non si tocca; `[]` = tutte le categorie.
-  if (input.categorie_attivita !== undefined) patch.categorie_attivita = [...new Set(input.categorie_attivita)];
-  ok("salvataggio pubblico standard", await db().from("pubblico_standard").update(patch).eq("id", true).select("id").single());
-  return leggiPubblicoStandard();
+  ok("salvataggio pubblico", await db().from("pubblici").update(patch).eq("id", id).select("id").single());
+  return leggiPubblico(id);
+}
+
+export async function eliminaPubblico(id: string): Promise<void> {
+  const p = await leggiConfigPubblico(id);
+  if (p.standard) throw new ErroreCampagne(409, "Il pubblico standard non si può eliminare.");
+  const { count } = await db().from("campagne").select("id", { count: "exact", head: true }).eq("pubblico_id", id);
+  if ((count ?? 0) > 0) {
+    throw new ErroreCampagne(409, `Il pubblico è usato da ${count} campagn${count === 1 ? "a" : "e"}: assegna prima un altro pubblico.`);
+  }
+  ok("eliminazione pubblico", await db().from("pubblici").delete().eq("id", id).select("id").single());
+}
+
+/** Chi ha seguito degli invii, per il filtro della pagina Invii: id e «Nome Cognome». */
+export async function utentiInvii(): Promise<{ id: string; nome: string }[]> {
+  const ids = ((ok("utenti degli invii", await db().rpc("utenti_invii")) ?? []) as string[]).filter(Boolean);
+  if (ids.length === 0) return [];
+  const nomi = await nomiUtenti(ids);
+  return ids.map((id) => ({ id, nome: nomi.get(id) ?? "Utente non più presente" })).sort((a, b) => a.nome.localeCompare(b.nome));
 }
 
 // ─── Clienti per campagne ricevute ─────────────────────────────────────────

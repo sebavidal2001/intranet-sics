@@ -1,7 +1,7 @@
 /**
- * La regola del pubblico standard, in TypeScript.
+ * La regola di un pubblico (lo standard o uno costruito per una campagna), in TypeScript.
  *
- * E' la STESSA regola di `campagne.pubblico_standard_codici()` (migration 133):
+ * E' la STESSA regola di `campagne.pubblico_codici()` (migration 135, già `pubblico_standard_codici()` nella 133):
  * serve alla pagina per mostrare subito, mentre si sceglie, a quanti clienti
  * arriverebbe, senza salvare e senza interrogare il server a ogni clic. Dopo il
  * salvataggio il server restituisce il suo conteggio: se i due non coincidessero

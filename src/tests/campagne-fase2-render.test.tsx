@@ -180,6 +180,8 @@ describe("scheda cliente con i dati di Impresa", () => {
     ordine: 1,
     stato_cambiato_il: "2026-10-01T08:00:00Z",
     created_at: "2026-10-01T08:00:00Z",
+    pubblico_id: "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e",
+    pubblico: { nome: "Standard", standard: true },
   }
   const scheda = (over: Partial<SchedaCliente> = {}): SchedaCliente => ({
     cliente: { codice_cliente: "05000002", ragione_sociale: "POLETTI srl", agente_nome: "AIRFLUID", cat_commerciale: "Attivo", cat_attivita: null, rivenditore: false },
@@ -238,6 +240,8 @@ describe("scheda cliente con i dati di Impresa", () => {
       note: null,
       annullata_il: null,
       motivo_annullo: null,
+      assegnata_da_nome: null,
+      consegna_registrata_da_nome: null,
       campagna: { codice: "C_01_26", nome: "CP SICS" },
       ordine_profilo: null,
       ordine_data: null,

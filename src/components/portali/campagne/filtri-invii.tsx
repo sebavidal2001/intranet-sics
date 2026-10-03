@@ -20,6 +20,8 @@ export function FiltriInvii({
   stato,
   modo,
   min,
+  utenti = [],
+  utente,
 }: {
   vista: "invii" | "clienti";
   campagne: Pick<CampagnaRiepilogo, "id" | "codice" | "nome">[];
@@ -28,6 +30,9 @@ export function FiltriInvii({
   stato?: StatoInvio;
   modo: "almeno_una" | "tutte" | "nessuna";
   min: number;
+  /** Chi ha seguito degli invii (nome e cognome intranet), per il filtro «seguita da». */
+  utenti?: { id: string; nome: string }[];
+  utente?: string;
 }) {
   const MODI = MODI_CLIENTI;
   return (
@@ -86,10 +91,23 @@ export function FiltriInvii({
             <span className="mb-1 block text-xs text-text-muted">Cliente</span>
             <input name="q" defaultValue={q} placeholder="Nome o codice" className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm" />
           </label>
+          {vista === "invii" ? (
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-text-muted">Seguita da</span>
+              <select name="utente_id" defaultValue={utente ?? ""} className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm" aria-label="Seguita da">
+                <option value="">Tutti</option>
+                {utenti.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <button type="submit" className="h-9 rounded-lg bg-primary px-5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark">
             Applica
           </button>
-          {selezionate.length > 0 || q ? (
+          {selezionate.length > 0 || q || utente ? (
             <Link href={vista === "clienti" ? "/campagne/invii?vista=clienti" : "/campagne/invii"} className="text-sm text-text-muted hover:underline">
               Azzera
             </Link>

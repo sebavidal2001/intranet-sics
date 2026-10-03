@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCampagne } from "@/lib/portali/campagne/api-guard";
-import { aggiornaCampagna } from "@/lib/portali/campagne/dati";
+import { aggiornaCampagna, pubblicoMancanti } from "@/lib/portali/campagne/dati";
 import { datiNonValidi, IdUuid, leggiJson, rispondiErrore } from "@/lib/portali/campagne/risposte";
 import { AggiornaCampagnaBody } from "@/lib/portali/campagne/schemi";
 
@@ -22,7 +22,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const parsed = AggiornaCampagnaBody.safeParse(await leggiJson(request));
     if (!parsed.success) return datiNonValidi(parsed.error);
 
-    return NextResponse.json({ campagna: await aggiornaCampagna(id.data, parsed.data, guard.user.id) });
+    const campagna = await aggiornaCampagna(id.data, parsed.data, guard.user.id);
+    // Quanti clienti del pubblico non sono ancora destinatari: cambia col pubblico, la scheda lo aggiorna.
+    return NextResponse.json({ campagna, mancanti: await pubblicoMancanti(id.data) });
   } catch (e) {
     return rispondiErrore("campagne.aggiorna", e);
   }

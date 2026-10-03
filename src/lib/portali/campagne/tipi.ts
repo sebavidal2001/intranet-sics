@@ -39,6 +39,9 @@ export interface Campagna {
   ordine: number;
   stato_cambiato_il: string;
   created_at: string;
+  /** Il pubblico (target) della campagna: di default lo standard. */
+  pubblico_id: string;
+  pubblico: { nome: string; standard: boolean } | null;
 }
 
 export interface CampagnaRiepilogo extends Campagna {
@@ -67,6 +70,10 @@ export interface Invio {
   annullata_il: string | null;
   motivo_annullo: string | null;
   campagna: { codice: string; nome: string } | null;
+  /** Nome e cognome (intranet) di chi ha assegnato la campagna; null per lo storico importato dall'Excel. */
+  assegnata_da_nome: string | null;
+  /** Chi ha segnato la consegna a mano (banco). */
+  consegna_registrata_da_nome: string | null;
   // Fase 2: cosa ha trovato il controllo contro Impresa.
   ordine_profilo: string | null;
   ordine_data: string | null;
@@ -177,7 +184,13 @@ export interface DashboardCampagne {
   ultimo_controllo: ControlloEseguito | null;
 }
 
-export interface PubblicoStandard {
+/** Un pubblico (target): la regola con cui si scelgono i clienti di una campagna. */
+export interface Pubblico {
+  id: string;
+  nome: string;
+  descrizione: string | null;
+  /** Lo standard è uno solo: il pubblico di partenza di ogni campagna nuova. */
+  standard: boolean;
   /** Agenti presi con tutti i loro clienti (che rientrano nei filtri). */
   agenti: string[];
   categorie_commerciali: string[];
@@ -186,6 +199,13 @@ export interface PubblicoStandard {
   /** Clienti scelti a mano, fuori dai filtri. */
   clienti_extra: string[];
   aggiornato_il: string;
+}
+
+export interface PubblicoRiepilogo extends Pubblico {
+  /** A quanti clienti arriva oggi. */
+  raggiunti: number;
+  /** Quante campagne lo usano. */
+  campagne: number;
 }
 
 /** Un cliente non rivenditore, con quanto serve a scegliere il pubblico. */
@@ -197,8 +217,10 @@ export interface ClientePubblicoRiga {
   cat_attivita: string | null;
 }
 
-export interface PubblicoStandardResponse {
-  config: PubblicoStandard;
+export interface PubblicoResponse {
+  config: Pubblico;
+  /** Le campagne che usano questo pubblico. */
+  campagne: { id: string; codice: string; nome: string; stato: StatoCampagna }[];
   /** Quanti clienti raggiunge la regola salvata, secondo il database. */
   raggiunti: number;
   /** Tutti i clienti non rivenditori: la pagina ci calcola in tempo reale quanti ne raggiunge la regola in modifica. */

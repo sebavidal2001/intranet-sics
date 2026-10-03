@@ -75,6 +75,8 @@ export const FiltroInvii = z.object({
   stato: z.enum(["preparata", "da_spedire", "consegnata", "consegnata_banco", "annullata"]).optional(),
   // Piu' campagne insieme: l'invio e' di una di quelle scelte.
   campagna_id: unoOPiu(uuid),
+  // Chi ha seguito la campagna (l'utente che ha assegnato l'invio).
+  utente_id: uuid.optional(),
   q: testo(60).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
@@ -113,8 +115,10 @@ export const CreaCampagnaBody = z.object({
   marchio: testo(80).nullish(),
   articoli_promossi: z.array(z.string().trim().min(1).max(60)).max(100).default([]),
   stato: z.enum(["attiva", "sospesa"]).default("sospesa"),
-  // Propone lo scenario standard salvato: si applica alla creazione.
-  applica_pubblico_standard: z.boolean().default(false),
+  // Il pubblico della campagna. Assente = lo standard.
+  pubblico_id: uuid.optional(),
+  // Copia subito nei destinatari i clienti del pubblico (di default si').
+  applica_pubblico: z.boolean().default(true),
 });
 export type CreaCampagnaInput = z.infer<typeof CreaCampagnaBody>;
 
@@ -127,6 +131,8 @@ export const AggiornaCampagnaBody = z
     marchio: testo(80).nullable(),
     articoli_promossi: z.array(z.string().trim().min(1).max(60)).max(100),
     stato: z.enum(["attiva", "sospesa", "terminata"]),
+    // Cambiare pubblico non toglie i destinatari che la campagna ha già.
+    pubblico_id: uuid,
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nessuna modifica");
@@ -136,7 +142,7 @@ const elencoCodici = z.array(codiceCliente).min(1).max(5000);
 const elencoCategorie = z.array(z.string().trim().min(1).max(120)).min(1).max(100);
 
 export const DestinatariBody = z.discriminatedUnion("azione", [
-  z.object({ azione: z.literal("applica_standard") }),
+  z.object({ azione: z.literal("applica_pubblico") }),
   z.object({ azione: z.literal("aggiungi"), codici: elencoCodici }),
   z.object({ azione: z.literal("rimuovi"), codici: elencoCodici }),
   z.object({ azione: z.literal("aggiungi_categorie"), categorie: elencoCategorie }),
@@ -144,15 +150,30 @@ export const DestinatariBody = z.discriminatedUnion("azione", [
 ]);
 export type DestinatariInput = z.infer<typeof DestinatariBody>;
 
-export const PubblicoStandardBody = z.object({
+const regolaPubblico = {
   agenti: z.array(z.string().trim().min(1).max(80)).max(20),
   categorie_commerciali: z.array(z.string().trim().min(1).max(40)).max(10),
-  // Opzionale: un client vecchio che non la conosce non azzera il filtro per sbaglio
-  // (assente = non si tocca), mentre `[]` significa «tutte le categorie».
-  categorie_attivita: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
-  clienti_extra: z.array(codiceCliente).max(2000),
+  // `[]` significa «tutte le categorie»: per questo e' obbligatoria, mai «assente = non si tocca».
+  categorie_attivita: z.array(z.string().trim().min(1).max(120)).max(200),
+  clienti_extra: z.array(codiceCliente).max(5000),
+};
+const nomePubblico = z.string().trim().min(1, "Dai un nome al pubblico").max(80);
+
+/** Salva un pubblico: nome, descrizione e regola. */
+export const PubblicoBody = z.object({
+  nome: nomePubblico,
+  descrizione: testo(300).nullish(),
+  ...regolaPubblico,
 });
-export type PubblicoStandardInput = z.infer<typeof PubblicoStandardBody>;
+export type PubblicoInput = z.infer<typeof PubblicoBody>;
+
+/** Crea un pubblico, vuoto oppure copiando la regola di un altro (di solito lo standard). */
+export const CreaPubblicoBody = z.object({
+  nome: nomePubblico,
+  descrizione: testo(300).nullish(),
+  copia_da: uuid.optional(),
+});
+export type CreaPubblicoInput = z.infer<typeof CreaPubblicoBody>;
 
 // ─── Anomalie ──────────────────────────────────────────────────────────────
 export const FiltroAnomalieQuery = z.object({

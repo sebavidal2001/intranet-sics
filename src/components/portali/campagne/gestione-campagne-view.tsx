@@ -10,12 +10,18 @@ import type { CampagnaRiepilogo, StatoCampagna } from "@/lib/portali/campagne/ti
 import { chiamaApi, daElenco } from "./api-client";
 import { Campo, Messaggio, Pannello, StatoCampagnaChip, classeSelect } from "./ui";
 
+export interface PubblicoScelta {
+  id: string;
+  nome: string;
+  standard: boolean;
+}
+
 interface Esito {
   tipo: "errore" | "ok";
   testo: string;
 }
 
-export function GestioneCampagneView({ campagne }: { campagne: CampagnaRiepilogo[] }) {
+export function GestioneCampagneView({ campagne, pubblici }: { campagne: CampagnaRiepilogo[]; pubblici: PubblicoScelta[] }) {
   const router = useRouter();
   const [apri, setApri] = useState(false);
   const [esito, setEsito] = useState<Esito | null>(null);
@@ -46,7 +52,7 @@ export function GestioneCampagneView({ campagne }: { campagne: CampagnaRiepilogo
         </Button>
       </div>
 
-      {apri ? <NuovaCampagna onCreata={() => { setApri(false); router.refresh(); }} /> : null}
+      {apri ? <NuovaCampagna pubblici={pubblici} onCreata={() => { setApri(false); router.refresh(); }} /> : null}
       {esito ? <Messaggio tipo={esito.tipo}>{esito.testo}</Messaggio> : null}
 
       <Pannello>
@@ -60,6 +66,7 @@ export function GestioneCampagneView({ campagne }: { campagne: CampagnaRiepilogo
                   <th className="py-2 pr-3 font-medium">#</th>
                   <th className="py-2 pr-3 font-medium">Campagna</th>
                   <th className="py-2 pr-3 font-medium">Stato</th>
+                  <th className="py-2 pr-3 font-medium">Pubblico</th>
                   <th className="py-2 pr-3 text-right font-medium">Destinatari</th>
                   <th className="py-2 pr-3 text-right font-medium">In corso</th>
                   <th className="py-2 pr-3 text-right font-medium">Consegnate</th>
@@ -79,6 +86,7 @@ export function GestioneCampagneView({ campagne }: { campagne: CampagnaRiepilogo
                     <td className="py-3 pr-3">
                       <StatoCampagnaChip stato={c.stato} />
                     </td>
+                    <td className="py-3 pr-3 text-text-muted">{c.pubblico?.nome ?? "—"}</td>
                     <td className="py-3 pr-3 text-right tabular-nums">{c.destinatari.toLocaleString("it-IT")}</td>
                     <td className="py-3 pr-3 text-right tabular-nums">{(c.preparate + c.da_spedire).toLocaleString("it-IT")}</td>
                     <td className="py-3 pr-3 text-right tabular-nums">{(c.consegnate + c.consegnate_banco).toLocaleString("it-IT")}</td>
@@ -110,7 +118,7 @@ export function GestioneCampagneView({ campagne }: { campagne: CampagnaRiepilogo
   );
 }
 
-function NuovaCampagna({ onCreata }: { onCreata: () => void }) {
+function NuovaCampagna({ pubblici, onCreata }: { pubblici: PubblicoScelta[]; onCreata: () => void }) {
   const [codice, setCodice] = useState("");
   const [nome, setNome] = useState("");
   const [articolo, setArticolo] = useState("");
@@ -118,7 +126,9 @@ function NuovaCampagna({ onCreata }: { onCreata: () => void }) {
   const [marchio, setMarchio] = useState("");
   const [parole, setParole] = useState("");
   const [stato, setStato] = useState<"attiva" | "sospesa">("sospesa");
-  const [standard, setStandard] = useState(true);
+  // Di default lo standard: e' quello che quasi ogni campagna riceve.
+  const [pubblicoId, setPubblicoId] = useState(pubblici.find((p) => p.standard)?.id ?? pubblici[0]?.id ?? "");
+  const [applica, setApplica] = useState(true);
   const [occupato, setOccupato] = useState(false);
   const [esito, setEsito] = useState<Esito | null>(null);
 
@@ -134,7 +144,8 @@ function NuovaCampagna({ onCreata }: { onCreata: () => void }) {
         marchio: marchio || null,
         testo_riconoscimento: daElenco(parole),
         stato,
-        applica_pubblico_standard: standard,
+        ...(pubblicoId ? { pubblico_id: pubblicoId } : {}),
+        applica_pubblico: applica,
       },
     });
     setOccupato(false);
@@ -179,12 +190,25 @@ function NuovaCampagna({ onCreata }: { onCreata: () => void }) {
         </Campo>
       </div>
 
-      <label className="mt-4 flex items-start gap-2 text-sm">
-        <input type="checkbox" checked={standard} onChange={(e) => setStandard(e.target.checked)} className="mt-1" />
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <Campo etichetta="Pubblico" aiuto="A chi si rivolge la campagna. Di default lo standard; per un target diverso crealo nella pagina Pubblici.">
+          <select className={classeSelect} value={pubblicoId} onChange={(e) => setPubblicoId(e.target.value)} aria-label="Pubblico della campagna">
+            {pubblici.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+                {p.standard ? " (standard)" : ""}
+              </option>
+            ))}
+          </select>
+        </Campo>
+      </div>
+
+      <label className="mt-3 flex items-start gap-2 text-sm">
+        <input type="checkbox" checked={applica} onChange={(e) => setApplica(e.target.checked)} className="mt-1" />
         <span>
-          Applica il <strong>pubblico standard</strong> salvato
+          Aggiungi subito i clienti di questo pubblico come destinatari
           <span className="block text-xs text-text-muted">
-            Copia i destinatari adesso; poi si possono ritoccare nella pagina della campagna. Se la campagna è mirata, lascia vuoto e scegli per categoria.
+            Poi si possono ritoccare nella pagina della campagna. Se la campagna è mirata a pochi clienti, togli la spunta e scegli solo quelli.
           </span>
         </span>
       </label>

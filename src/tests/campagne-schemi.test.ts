@@ -6,7 +6,7 @@ import {
   CreaCampagnaBody,
   DestinatariBody,
   FiltroInvii,
-  PubblicoStandardBody,
+  PubblicoBody,
 } from "@/lib/portali/campagne/schemi";
 import { azioniConsentite, etichettaOrdine, oggiRoma } from "@/lib/portali/campagne/stati";
 
@@ -93,10 +93,10 @@ describe("FiltroInvii", () => {
 describe("campagne", () => {
   const nuova = { codice: "C_04_26", nome: "Nuova", articolo_codice: "ART-04" };
 
-  it("crea con i default: sospesa, nessun pubblico", () => {
+  it("crea con i default: sospesa, pubblico standard (nessuno indicato) con i destinatari aggiunti subito", () => {
     expect(CreaCampagnaBody.parse(nuova)).toMatchObject({
       stato: "sospesa",
-      applica_pubblico_standard: false,
+      applica_pubblico: true,
       testo_riconoscimento: [],
       articoli_promossi: [],
     });
@@ -123,7 +123,9 @@ describe("campagne", () => {
 
 describe("destinatari e pubblico standard", () => {
   it("accetta le cinque azioni e rifiuta elenchi vuoti", () => {
-    expect(DestinatariBody.safeParse({ azione: "applica_standard" }).success).toBe(true);
+    expect(DestinatariBody.safeParse({ azione: "applica_pubblico" }).success).toBe(true);
+    // Il vecchio nome non esiste piu': il pubblico e' quello della campagna, non «lo standard».
+    expect(DestinatariBody.safeParse({ azione: "applica_standard" }).success).toBe(false);
     expect(DestinatariBody.safeParse({ azione: "aggiungi", codici: ["1", "2"] }).success).toBe(true);
     expect(DestinatariBody.safeParse({ azione: "rimuovi_categorie", categorie: ["UFSTAB"] }).success).toBe(true);
     expect(DestinatariBody.safeParse({ azione: "aggiungi", codici: [] }).success).toBe(false);
@@ -135,11 +137,10 @@ describe("destinatari e pubblico standard", () => {
     expect(DestinatariBody.safeParse({ azione: "aggiungi", codici: tanti }).success).toBe(false);
   });
 
-  it("il pubblico standard accetta elenchi vuoti di extra", () => {
-    expect(
-      PubblicoStandardBody.safeParse({ agenti: ["AIRFLUID"], categorie_commerciali: ["Attivo"], clienti_extra: [] }).success
-    ).toBe(true);
-    expect(PubblicoStandardBody.safeParse({ agenti: ["AIRFLUID"] }).success).toBe(false);
+  it("il pubblico accetta elenchi vuoti di extra, ma non una regola incompleta", () => {
+    const regola = { nome: "Standard", agenti: ["AIRFLUID"], categorie_commerciali: ["Attivo"], categorie_attivita: [], clienti_extra: [] };
+    expect(PubblicoBody.safeParse(regola).success).toBe(true);
+    expect(PubblicoBody.safeParse({ nome: "Standard", agenti: ["AIRFLUID"] }).success).toBe(false);
   });
 });
 

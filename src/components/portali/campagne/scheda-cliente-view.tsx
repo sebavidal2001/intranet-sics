@@ -319,6 +319,7 @@ function RigaInvio({ invio, oggi, annoCorrente }: { invio: Invio; oggi: string; 
           </p>
           <p className="mt-0.5 text-xs text-text-muted">
             Assegnata {formattaDataOra(invio.assegnata_il)}
+            {invio.assegnata_da_nome ? ` da ${invio.assegnata_da_nome}` : ""}
             {invio.data_consegna
               ? ` · consegna ${formattaData(invio.data_consegna)}${invio.fonte_consegna ? ` (${ETICHETTA_FONTE[invio.fonte_consegna] ?? invio.fonte_consegna})` : ""}`
               : ""}

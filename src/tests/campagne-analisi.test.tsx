@@ -156,6 +156,8 @@ const campagna = (over: Partial<CampagnaRiepilogo> = {}): CampagnaRiepilogo => (
   ordine: 1,
   stato_cambiato_il: "2026-10-01T08:00:00Z",
   created_at: "2026-10-01T08:00:00Z",
+  pubblico_id: "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e",
+  pubblico: { nome: "Standard", standard: true },
   destinatari: 100,
   preparate: 0,
   da_spedire: 0,

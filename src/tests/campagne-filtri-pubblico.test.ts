@@ -32,8 +32,8 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
-import { clientiPerCampagne, elencoInvii, leggiPubblicoStandard, salvaPubblicoStandard } from "@/lib/portali/campagne/dati";
-import { FiltroClientiCampagne, FiltroInvii, PubblicoStandardBody } from "@/lib/portali/campagne/schemi";
+import { clientiPerCampagne, creaPubblico, elencoInvii, eliminaPubblico, leggiPubblico, salvaPubblico } from "@/lib/portali/campagne/dati";
+import { CreaPubblicoBody, FiltroClientiCampagne, FiltroInvii, PubblicoBody } from "@/lib/portali/campagne/schemi";
 
 const opsDi = (tabella: string, nome: string) =>
   chiamate.filter((c) => c.tabella === tabella).flatMap((c) => c.ops.filter(([n]) => n === nome).map(([, a]) => a));
@@ -77,25 +77,33 @@ describe("filtri a più campagne (schemi)", () => {
   });
 });
 
-describe("pubblico standard con categorie di attività (schema)", () => {
-  const base = { agenti: ["AIRFLUID"], categorie_commerciali: ["Attivo"], clienti_extra: [] };
+describe("pubblico: regola e nome (schema)", () => {
+  const base = { nome: "Standard", agenti: ["AIRFLUID"], categorie_commerciali: ["Attivo"], clienti_extra: [] };
 
-  it("la categoria di attività è facoltativa: un client vecchio che non la manda non la azzera", () => {
-    expect(PubblicoStandardBody.parse(base)).not.toHaveProperty("categorie_attivita");
-  });
-
-  it("l'elenco vuoto è una scelta esplicita: tutte le categorie", () => {
-    expect(PubblicoStandardBody.parse({ ...base, categorie_attivita: [] }).categorie_attivita).toEqual([]);
+  it("le categorie di attività sono obbligatorie: `[]` vuol dire «tutte», mai «non toccare»", () => {
+    expect(PubblicoBody.safeParse(base).success).toBe(false);
+    expect(PubblicoBody.parse({ ...base, categorie_attivita: [] }).categorie_attivita).toEqual([]);
   });
 
   it("accetta le categorie reali, con spazi e punti", () => {
-    const r = PubblicoStandardBody.parse({ ...base, categorie_attivita: ["  COSTR. macch.automatiche ", "UT.FIN. tornerie/off.mecc."] });
+    const r = PubblicoBody.parse({ ...base, categorie_attivita: ["  COSTR. macch.automatiche ", "UT.FIN. tornerie/off.mecc."] });
     expect(r.categorie_attivita).toEqual(["COSTR. macch.automatiche", "UT.FIN. tornerie/off.mecc."]);
   });
 
   it("rifiuta voci vuote e troppo lunghe", () => {
-    expect(PubblicoStandardBody.safeParse({ ...base, categorie_attivita: ["  "] }).success).toBe(false);
-    expect(PubblicoStandardBody.safeParse({ ...base, categorie_attivita: ["x".repeat(121)] }).success).toBe(false);
+    expect(PubblicoBody.safeParse({ ...base, categorie_attivita: ["  "] }).success).toBe(false);
+    expect(PubblicoBody.safeParse({ ...base, categorie_attivita: ["x".repeat(121)] }).success).toBe(false);
+  });
+
+  it("il nome è obbligatorio e ripulito", () => {
+    expect(PubblicoBody.safeParse({ ...base, nome: "   ", categorie_attivita: [] }).success).toBe(false);
+    expect(PubblicoBody.parse({ ...base, nome: "  Costruttori  ", categorie_attivita: [] }).nome).toBe("Costruttori");
+  });
+
+  it("creare un pubblico: nome obbligatorio, copia da un uuid", () => {
+    expect(CreaPubblicoBody.safeParse({ nome: "" }).success).toBe(false);
+    expect(CreaPubblicoBody.safeParse({ nome: "X", copia_da: "non-un-uuid" }).success).toBe(false);
+    expect(CreaPubblicoBody.parse({ nome: "X", copia_da: A }).copia_da).toBe(A);
   });
 });
 
@@ -155,46 +163,84 @@ describe("clientiPerCampagne", () => {
   });
 });
 
-describe("pubblico standard: lettura e salvataggio", () => {
-  const input = { agenti: ["AIRFLUID"], categorie_commerciali: ["Attivo"], clienti_extra: ["1", "1", "2"] };
+describe("pubblici: lettura, salvataggio, creazione, eliminazione", () => {
+  const ID = "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e";
+  const input = { nome: "Standard", agenti: ["AIRFLUID"], categorie_commerciali: ["Attivo"], categorie_attivita: [], clienti_extra: ["1", "1", "2"] };
+  const config = { id: ID, nome: "Standard", descrizione: null as string | null, standard: true as boolean, agenti: ["AIRFLUID"] as string[], categorie_commerciali: ["Attivo"] as string[], categorie_attivita: [] as string[], clienti_extra: [] as string[], aggiornato_il: "x" };
 
-  function scenarioPubblico() {
+  function scenario(over: Partial<typeof config> = {}, campagneUsano = 0) {
     risolvi = ({ tabella }) => {
-      if (tabella === "pubblico_standard") return { data: { agenti: ["AIRFLUID"], categorie_commerciali: ["Attivo"], categorie_attivita: [], clienti_extra: [] } };
-      if (tabella === "rpc:pubblico_standard_conteggio") return { data: 3 };
+      if (tabella === "pubblici") return { data: { ...config, ...over }, count: 0 };
+      if (tabella === "rpc:pubblico_conteggio") return { data: 3 };
+      if (tabella === "campagne") return { data: [], count: campagneUsano };
       if (tabella === "v_clienti") return { data: [{ codice_cliente: "1", ragione_sociale: "A", agente_nome: "AIRFLUID", cat_commerciale: "Attivo", cat_attivita: "IMP. impiantisti" }] };
       return { data: [] };
     };
   }
 
-  it("senza categorie di attività nella richiesta non tocca quelle salvate", async () => {
-    scenarioPubblico();
-    await salvaPubblicoStandard(input, "u1");
-    const patch = opsDi("pubblico_standard", "update")[0][0] as Record<string, unknown>;
-    expect(patch).not.toHaveProperty("categorie_attivita");
-    expect(patch).toMatchObject({ agenti: ["AIRFLUID"], aggiornato_da: "u1", clienti_extra: ["1", "2"] });
+  it("salva sul pubblico giusto, toglie i doppioni e registra chi l'ha fatto", async () => {
+    scenario();
+    await salvaPubblico(ID, { ...input, categorie_attivita: ["IMP. impiantisti", "IMP. impiantisti"] }, "u1");
+    const patch = opsDi("pubblici", "update")[0][0] as Record<string, unknown>;
+    expect(patch).toMatchObject({ nome: "Standard", agenti: ["AIRFLUID"], aggiornato_da: "u1", clienti_extra: ["1", "2"], categorie_attivita: ["IMP. impiantisti"] });
+    expect(opsDi("pubblici", "eq")).toContainEqual(["id", ID]);
   });
 
-  it("con l'elenco vuoto lo azzera di proposito (tutte le categorie)", async () => {
-    scenarioPubblico();
-    await salvaPubblicoStandard({ ...input, categorie_attivita: [] }, "u1");
-    expect((opsDi("pubblico_standard", "update")[0][0] as Record<string, unknown>).categorie_attivita).toEqual([]);
+  it("con l'elenco vuoto azzera le categorie di proposito (tutte)", async () => {
+    scenario();
+    await salvaPubblico(ID, input, "u1");
+    expect((opsDi("pubblici", "update")[0][0] as Record<string, unknown>).categorie_attivita).toEqual([]);
   });
 
-  it("toglie i doppioni dalle categorie", async () => {
-    scenarioPubblico();
-    await salvaPubblicoStandard({ ...input, categorie_attivita: ["IMP. impiantisti", "IMP. impiantisti"] }, "u1");
-    expect((opsDi("pubblico_standard", "update")[0][0] as Record<string, unknown>).categorie_attivita).toEqual(["IMP. impiantisti"]);
-  });
-
-  it("la lettura dà la regola, il conteggio del server e TUTTI i clienti non rivenditori", async () => {
-    scenarioPubblico();
-    const r = await leggiPubblicoStandard();
+  it("la lettura dà la regola, il conteggio del server, le campagne che lo usano e TUTTI i clienti non rivenditori", async () => {
+    scenario();
+    const r = await leggiPubblico(ID);
     expect(r.raggiunti).toBe(3);
     expect(r.clienti).toHaveLength(1);
-    expect(r.config.categorie_attivita).toEqual([]);
-    // Si leggono solo i non rivenditori, e a pagine.
+    expect(opsDi("rpc:pubblico_conteggio", "rpc")[0][0]).toEqual({ p_pubblico: ID });
+    expect(opsDi("campagne", "eq")).toContainEqual(["pubblico_id", ID]);
     expect(opsDi("v_clienti", "eq")).toContainEqual(["rivenditore", false]);
     expect(opsDi("v_clienti", "range")).toContainEqual([0, 999]);
+  });
+
+  it("un pubblico che non esiste è un 404, non un errore generico", async () => {
+    risolvi = ({ tabella }) => (tabella === "pubblici" ? { data: null } : { data: [] });
+    await expect(leggiPubblico(ID)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("crea un pubblico copiando la regola di un altro, ma non lo fa diventare standard", async () => {
+    scenario({ agenti: ["AIRFLUID", "BONI"], clienti_extra: ["9"], categorie_attivita: ["IMP. impiantisti"] });
+    await creaPubblico({ nome: "Mirata", copia_da: ID }, "u1");
+    const riga = opsDi("pubblici", "insert")[0][0] as Record<string, unknown>;
+    expect(riga).toMatchObject({ nome: "Mirata", standard: false, agenti: ["AIRFLUID", "BONI"], clienti_extra: ["9"], categorie_attivita: ["IMP. impiantisti"], created_by: "u1" });
+  });
+
+  it("crea un pubblico vuoto: nessun commerciale, solo gli attivi, nessun cliente a mano", async () => {
+    scenario();
+    await creaPubblico({ nome: "Da zero" }, "u1");
+    expect(opsDi("pubblici", "insert")[0][0]).toMatchObject({ agenti: [], categorie_commerciali: ["Attivo"], categorie_attivita: [], clienti_extra: [], standard: false });
+  });
+
+  it("un nome già usato diventa un messaggio comprensibile", async () => {
+    risolvi = ({ tabella }) => (tabella === "pubblici" ? { data: null, error: { code: "23505", message: 'duplicate key value violates unique constraint "pubblici_nome_uq"' } } : { data: [] });
+    await expect(creaPubblico({ nome: "Standard" }, "u1")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("già un pubblico") });
+  });
+
+  it("lo standard non si elimina", async () => {
+    scenario();
+    await expect(eliminaPubblico(ID)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("standard") });
+    expect(opsDi("pubblici", "delete")).toHaveLength(0);
+  });
+
+  it("un pubblico usato da una campagna non si elimina", async () => {
+    scenario({ standard: false }, 2);
+    await expect(eliminaPubblico(ID)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("2 campagne") });
+    expect(opsDi("pubblici", "delete")).toHaveLength(0);
+  });
+
+  it("un pubblico non standard e non usato si elimina", async () => {
+    scenario({ standard: false }, 0);
+    await eliminaPubblico(ID);
+    expect(opsDi("pubblici", "delete")).toHaveLength(1);
   });
 });
