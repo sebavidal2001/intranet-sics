@@ -146,7 +146,7 @@ export function CampagnaDettaglioView({ iniziale }: { iniziale: CampagnaRiepilog
             <Input value={marchio} onChange={(e) => setMarchio(e.target.value)} maxLength={80} disabled={terminata} />
           </Campo>
           <div className="sm:col-span-2">
-            <Campo etichetta="Articoli promossi" aiuto="Codici separati da virgola: servono all'analisi.">
+            <Campo etichetta="Articoli promossi" aiuto="Codici articolo separati da virgola. Con l'asterisco un prefisso: AFD.00.* = tutti i codici che iniziano per AFD.00. Servono all'Analisi.">
               <Input value={promossi} onChange={(e) => setPromossi(e.target.value)} disabled={terminata} />
             </Campo>
           </div>
