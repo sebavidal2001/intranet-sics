@@ -130,7 +130,7 @@ function Confronto({ riepiloghi, mesi }: { riepiloghi: RiepilogoAnalisi[]; mesi:
 export function AnalisiView({ analisi, ordine }: { analisi: AnalisiCampagna; ordine: OrdineAnalisi }) {
   const { campagna, righe, confronto, mesi, storico } = analisi;
   const attuale = confronto.find((r) => r.mesi === mesi) as RiepilogoAnalisi;
-  const promossiConfigurati = campagna.articoli_promossi.length > 0;
+  const promossiConfigurati = campagna.articoli_promossi.length > 0 || (campagna.promossi_albero?.length ?? 0) > 0;
   const ordinate = ordina(righe, ordine);
 
   if (righe.length === 0) {
@@ -156,8 +156,8 @@ export function AnalisiView({ analisi, ordine }: { analisi: AnalisiCampagna; ord
       {!promossiConfigurati ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Per questa campagna non sono indicati gli <strong>articoli promossi</strong>: vedi solo gli acquisti totali.{" "}
-          <Link href={`/campagne/gestione/${campagna.id}`} className="font-medium underline">Indicali nella scheda della campagna</Link>{" "}
-          (codici separati da virgola; con l&apos;asterisco un prefisso, es. <code className="rounded bg-white/70 px-1">AFD.00.*</code>) per sapere chi li compra e chi non li aveva mai presi.
+          <Link href={`/campagne/gestione/${campagna.id}`} className="font-medium underline">Scegli i prodotti nella scheda della campagna</Link>{" "}
+          (fornitore, gruppo, categoria o singoli articoli) per sapere chi li compra e chi non li aveva mai presi.
         </div>
       ) : null}
 

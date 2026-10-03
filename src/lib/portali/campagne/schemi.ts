@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { percorsoValido } from "./albero";
 
 /**
  * Validazione delle richieste del Portale Campagne.
@@ -98,6 +99,37 @@ export const FiltroClientiCampagne = z.object({
 });
 export type FiltroClientiCampagneInput = z.infer<typeof FiltroClientiCampagne>;
 
+// ─── Albero degli articoli promossi ────────────────────────────────────────
+const livelloAlbero = z.string().trim().min(1).max(200);
+
+/** Un percorso dell'albero: fornitore > gruppo > categoria > articolo, senza buchi. */
+export const SelettoreArticoloSchema = z
+  .object({ f: livelloAlbero.optional(), g: livelloAlbero.optional(), c: livelloAlbero.optional(), a: livelloAlbero.optional() })
+  .strict()
+  .refine(percorsoValido, "Percorso non valido: un livello non può mancare se ce n'è uno sotto");
+
+export const ElencoSelettori = z.array(SelettoreArticoloSchema).max(300);
+
+/** Un livello dell'albero: i livelli sopra sono obbligatori, senza buchi. */
+export const FiltroAlbero = z
+  .object({
+    f: livelloAlbero.optional(),
+    g: livelloAlbero.optional(),
+    c: livelloAlbero.optional(),
+    q: testo(60).optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(100),
+    offset: z.coerce.number().int().min(0).default(0),
+  })
+  .refine((v) => (v.g === undefined || v.f !== undefined) && (v.c === undefined || v.g !== undefined), "Percorso non valido");
+export type FiltroAlberoInput = z.infer<typeof FiltroAlbero>;
+
+export const CercaArticoliQuery = z.object({
+  cerca: z.string().trim().min(2, "Scrivi almeno due caratteri").max(60),
+  limit: z.coerce.number().int().min(1).max(100).default(40),
+});
+
+export const ConteggioPromossiBody = z.object({ selettori: ElencoSelettori });
+
 // ─── Campagne (admin) ──────────────────────────────────────────────────────
 const parole = z.array(z.string().trim().min(1).max(60)).max(10);
 
@@ -114,6 +146,7 @@ export const CreaCampagnaBody = z.object({
   testo_riconoscimento: parole.default([]),
   marchio: testo(80).nullish(),
   articoli_promossi: z.array(z.string().trim().min(1).max(60)).max(100).default([]),
+  promossi_albero: ElencoSelettori.default([]),
   stato: z.enum(["attiva", "sospesa"]).default("sospesa"),
   // Il pubblico della campagna. Assente = lo standard.
   pubblico_id: uuid.optional(),
@@ -130,6 +163,7 @@ export const AggiornaCampagnaBody = z
     testo_riconoscimento: parole,
     marchio: testo(80).nullable(),
     articoli_promossi: z.array(z.string().trim().min(1).max(60)).max(100),
+    promossi_albero: ElencoSelettori,
     stato: z.enum(["attiva", "sospesa", "terminata"]),
     // Cambiare pubblico non toglie i destinatari che la campagna ha già.
     pubblico_id: uuid,

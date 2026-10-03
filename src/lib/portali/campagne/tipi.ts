@@ -1,3 +1,4 @@
+import type { Livello, SelettoreArticolo } from "./albero";
 /**
  * Tipi del Portale Campagne Marketing (migration 131).
  *
@@ -35,6 +36,8 @@ export interface Campagna {
   testo_riconoscimento: string[];
   marchio: string | null;
   articoli_promossi: string[];
+  /** Articoli promossi scelti sull'albero fornitore > gruppo > categoria > articolo (percorsi). Si sommano ai codici di `articoli_promossi`. */
+  promossi_albero: SelettoreArticolo[];
   stato: StatoCampagna;
   ordine: number;
   stato_cambiato_il: string;
@@ -275,4 +278,37 @@ export interface InvioElenco extends Omit<Invio, "campagna"> {
 export interface ElencoInvii {
   invii: InvioElenco[];
   totale: number;
+}
+
+/** Un nodo dell'albero degli articoli: un fornitore, un gruppo, una categoria o un articolo. */
+export interface NodoAlbero {
+  livello: Livello;
+  /** Il valore che identifica il nodo nel suo livello (nome del fornitore, gruppo, categoria o codice articolo). */
+  valore: string;
+  /** Solo per gli articoli: la descrizione. */
+  descrizione: string | null;
+  /** Quanti articoli stanno sotto il nodo. */
+  n: number;
+}
+
+export interface AlberoRisposta {
+  nodi: NodoAlbero[];
+  /** Quanti nodi in tutto a questo livello (per «mostra altri»). */
+  totale: number;
+}
+
+/** Un articolo trovato con la ricerca libera, col suo percorso. */
+export interface ArticoloTrovato {
+  codice: string;
+  descrizione: string | null;
+  fornitore: string;
+  gruppo: string;
+  categoria: string;
+}
+
+export interface ConteggioPromossi {
+  /** Quanti articoli prende la selezione. */
+  articoli: number;
+  /** Quanti di questi compaiono nel fatturato (sono stati venduti dal 13/01/2025). */
+  venduti: number;
 }

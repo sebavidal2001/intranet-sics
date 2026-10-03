@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CampagnaRiepilogo, StatoInvio } from "@/lib/portali/campagne/tipi";
+import { SelezioneCampagne } from "./selezione-campagne";
 
 export const MODI_CLIENTI = [
   { valore: "almeno_una", etichetta: "Hanno ricevuto almeno" },
@@ -40,23 +41,17 @@ export function FiltriInvii({
         {vista === "clienti" ? <input type="hidden" name="vista" value="clienti" /> : null}
         {vista === "invii" && stato ? <input type="hidden" name="stato" value={stato} /> : null}
 
-        <fieldset>
-          <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <div>
+          <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-text-muted">
             Campagne <span className="font-normal normal-case tracking-normal">(scegline quante vuoi; nessuna = tutte)</span>
-          </legend>
-          <div className="flex flex-wrap gap-2">
-            {campagne.map((c) => (
-              <label key={c.id} className="cursor-pointer">
-                <input type="checkbox" name="campagna_id" value={c.id} defaultChecked={selezionate.includes(c.id)} className="peer sr-only" />
-                <span className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-3.5 py-1.5 text-sm font-medium text-text transition-colors hover:border-primary/50 peer-checked:border-primary peer-checked:bg-primary peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2">
-                  {c.codice}
-                  <span className="text-xs font-normal opacity-80">{c.nome}</span>
-                </span>
-              </label>
-            ))}
-            {campagne.length === 0 ? <span className="text-sm text-text-muted">Nessuna campagna.</span> : null}
-          </div>
-        </fieldset>
+          </span>
+          {campagne.length === 0 ? (
+            <span className="text-sm text-text-muted">Nessuna campagna.</span>
+          ) : (
+            // `key`: se cambiano le campagne scelte nell'indirizzo il menu riparte dalla nuova scelta.
+            <SelezioneCampagne key={selezionate.join(",")} campagne={campagne} selezionate={selezionate} />
+          )}
+        </div>
 
         {vista === "clienti" ? (
           <fieldset className="mt-4">

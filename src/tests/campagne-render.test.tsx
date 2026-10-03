@@ -24,6 +24,7 @@ const campagna = (n: number, over: Partial<Campagna> = {}): Campagna => ({
   testo_riconoscimento: [],
   marchio: null,
   articoli_promossi: [],
+  promossi_albero: [],
   stato: "attiva",
   ordine: n,
   stato_cambiato_il: "2026-10-01T08:00:00Z",

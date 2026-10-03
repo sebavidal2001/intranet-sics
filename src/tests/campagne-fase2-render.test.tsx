@@ -176,6 +176,7 @@ describe("scheda cliente con i dati di Impresa", () => {
     testo_riconoscimento: ["SICS"],
     marchio: null,
     articoli_promossi: [],
+    promossi_albero: [],
     stato: "attiva",
     ordine: 1,
     stato_cambiato_il: "2026-10-01T08:00:00Z",

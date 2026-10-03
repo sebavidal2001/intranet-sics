@@ -152,6 +152,7 @@ const campagna = (over: Partial<CampagnaRiepilogo> = {}): CampagnaRiepilogo => (
   testo_riconoscimento: [],
   marchio: null,
   articoli_promossi: [],
+  promossi_albero: [],
   stato: "attiva",
   ordine: 1,
   stato_cambiato_il: "2026-10-01T08:00:00Z",
@@ -187,7 +188,7 @@ describe("AnalisiView", () => {
   it("senza articoli promossi lo dice e rimanda alla scheda, e non mostra la colonna dei promossi", () => {
     render(<AnalisiView analisi={analisi([riga("A")])} ordine="nome" />)
     const avviso = screen.getByText(/non sono indicati gli/).closest("div") as HTMLElement
-    expect(within(avviso).getByRole("link", { name: /Indicali/ }).getAttribute("href")).toBe(
+    expect(within(avviso).getByRole("link", { name: /Scegli i prodotti/ }).getAttribute("href")).toBe(
       "/campagne/gestione/00000000-0000-4000-8000-000000000001"
     )
     expect(screen.queryByText(/Promossi prima/)).toBeNull()

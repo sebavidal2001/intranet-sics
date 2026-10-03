@@ -18,6 +18,8 @@ vi.mock("next/link", () => ({
   ),
 }))
 vi.mock("@/components/portali/campagne/selezione-destinatari", () => ({ SelezioneDestinatari: () => <div>selezione destinatari</div> }))
+// L'albero degli articoli ha i suoi test: qui non deve andare a leggere l'anagrafica.
+vi.mock("@/components/portali/campagne/albero-articoli", () => ({ AlberoArticoli: () => <div>albero articoli</div> }))
 
 const STD = "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e"
 const MIR = "6c5e1f4b-8a7d-4b9e-8d0f-4a5b6c7d8e9f"
@@ -102,6 +104,7 @@ const campagna = (over: Partial<CampagnaRiepilogo> = {}): CampagnaRiepilogo => (
   testo_riconoscimento: [],
   marchio: null,
   articoli_promossi: [],
+  promossi_albero: [],
   stato: "attiva",
   ordine: 4,
   stato_cambiato_il: "2026-10-01T08:00:00Z",
@@ -245,5 +248,41 @@ describe("filtro «seguita da» degli invii", () => {
   it("«Azzera» compare anche quando c'è solo l'utente", () => {
     render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="" modo="almeno_una" min={1} utenti={utenti} utente="u1" />)
     expect(screen.getByText("Azzera")).toBeInTheDocument()
+  })
+})
+
+describe("scheda campagna: gli articoli promossi", () => {
+  it("«Salva gli articoli promossi» manda l'albero e i codici a mano, e non tocca gli altri dati", async () => {
+    const fetchFinto = installaFetchFinta([
+      {
+        url: "/api/portali/campagne/campagne/11111111-1111-4111-8111-111111111111",
+        metodo: "PATCH",
+        risposta: { campagna: campagna({ promossi_albero: [{ f: "SMC 38% (ex 33%)" }] }), mancanti: 0 },
+      },
+    ])
+    render(<CampagnaDettaglioView iniziale={campagna({ promossi_albero: [{ f: "SMC 38% (ex 33%)" }], articoli_promossi: ["AFD.00.*", "ABC"] })} pubblici={scelta} mancanti={0} />)
+    fireEvent.click(screen.getByRole("button", { name: /Salva gli articoli promossi/ }))
+    await waitFor(() => expect(screen.getByText(/Articoli promossi salvati/)).toBeInTheDocument())
+    expect(JSON.parse(String(fetchFinto.mock.calls[0][1]?.body))).toEqual({
+      promossi_albero: [{ f: "SMC 38% (ex 33%)" }],
+      articoli_promossi: ["AFD.00.*", "ABC"],
+    })
+  })
+
+  it("il salvataggio dei dati della campagna non manda più gli articoli promossi (hanno il loro pannello)", async () => {
+    const fetchFinto = installaFetchFinta([
+      { url: "/api/portali/campagne/campagne/11111111-1111-4111-8111-111111111111", metodo: "PATCH", risposta: { campagna: campagna(), mancanti: 0 } },
+    ])
+    render(<CampagnaDettaglioView iniziale={campagna({ articoli_promossi: ["ABC"] })} pubblici={scelta} mancanti={0} />)
+    fireEvent.click(screen.getByRole("button", { name: /^Salva$/ }))
+    await waitFor(() => expect(fetchFinto).toHaveBeenCalled())
+    const corpo = JSON.parse(String(fetchFinto.mock.calls[0][1]?.body))
+    expect(corpo).not.toHaveProperty("articoli_promossi")
+    expect(corpo).not.toHaveProperty("promossi_albero")
+  })
+
+  it("una campagna terminata non permette di salvare gli articoli promossi", () => {
+    render(<CampagnaDettaglioView iniziale={campagna({ stato: "terminata" })} pubblici={scelta} mancanti={0} />)
+    expect(screen.queryByRole("button", { name: /Salva gli articoli promossi/ })).not.toBeInTheDocument()
   })
 })

@@ -329,8 +329,9 @@ describe("filtri della pagina Invii", () => {
     { id: "c", codice: "C_03_26", nome: "AIGNEP" },
   ]
 
-  it("le campagne sono caselle che si possono scegliere in più, quelle scelte risultano accese", () => {
+  it("le campagne sono caselle in un menu a tendina, si possono scegliere in più e quelle scelte risultano spuntate", () => {
     render(<FiltriInvii vista="clienti" campagne={camp} selezionate={["a", "c"]} q="" modo="almeno_una" min={2} />)
+    fireEvent.click(screen.getByRole("button", { name: /C_01_26, C_03_26/ }))
     const caselle = screen.getAllByRole("checkbox") as HTMLInputElement[]
     expect(caselle.map((x) => [x.value, x.checked])).toEqual([["a", true], ["b", false], ["c", true]])
     expect(caselle.every((x) => x.name === "campagna_id")).toBe(true)

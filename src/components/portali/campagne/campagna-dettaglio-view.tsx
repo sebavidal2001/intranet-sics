@@ -10,6 +10,8 @@ import { chiamaApi, daElenco, formattaDataOra } from "./api-client";
 import { Campo, Messaggio, Pannello, StatoCampagnaChip, classeSelect } from "./ui";
 import type { PubblicoScelta } from "./gestione-campagne-view";
 import { SelezioneDestinatari } from "./selezione-destinatari";
+import { AlberoArticoli } from "./albero-articoli";
+import type { SelettoreArticolo } from "@/lib/portali/campagne/albero";
 
 interface Esito {
   tipo: "errore" | "ok";
@@ -34,6 +36,8 @@ export function CampagnaDettaglioView({
   const [parole, setParole] = useState(iniziale.testo_riconoscimento.join(", "));
   const [marchio, setMarchio] = useState(iniziale.marchio ?? "");
   const [promossi, setPromossi] = useState(iniziale.articoli_promossi.join(", "));
+  const [albero, setAlbero] = useState<SelettoreArticolo[]>(iniziale.promossi_albero ?? []);
+  const [esitoPromossi, setEsitoPromossi] = useState<Esito | null>(null);
   const [occupato, setOccupato] = useState<string | null>(null);
   const [esito, setEsito] = useState<Esito | null>(null);
   const [esitoPubblico, setEsitoPubblico] = useState<Esito | null>(null);
@@ -52,7 +56,6 @@ export function CampagnaDettaglioView({
         articolo_codice: articolo,
         testo_riconoscimento: daElenco(parole),
         marchio: marchio.trim() || null,
-        articoli_promossi: daElenco(promossi),
       },
     });
     setOccupato(null);
@@ -60,6 +63,21 @@ export function CampagnaDettaglioView({
     else {
       setCampagna(r.dati.campagna);
       setEsito({ tipo: "ok", testo: "Campagna aggiornata." });
+    }
+  }
+
+  async function salvaPromossi() {
+    setOccupato("promossi");
+    setEsitoPromossi(null);
+    const r = await chiamaApi<{ campagna: CampagnaRiepilogo }>(`/api/portali/campagne/campagne/${campagna.id}`, {
+      metodo: "PATCH",
+      corpo: { promossi_albero: albero, articoli_promossi: daElenco(promossi) },
+    });
+    setOccupato(null);
+    if (!r.ok) setEsitoPromossi({ tipo: "errore", testo: r.errore });
+    else {
+      setCampagna(r.dati.campagna);
+      setEsitoPromossi({ tipo: "ok", testo: "Articoli promossi salvati. L'Analisi li usa subito." });
     }
   }
 
@@ -171,14 +189,9 @@ export function CampagnaDettaglioView({
           <Campo etichetta="Parole di riconoscimento" aiuto="Solo con articolo condiviso: parole nella descrizione della riga d'ordine.">
             <Input value={parole} onChange={(e) => setParole(e.target.value)} disabled={terminata} />
           </Campo>
-          <Campo etichetta="Marchio" aiuto="Per l'analisi delle vendite.">
+          <Campo etichetta="Marchio" aiuto="Un'etichetta: non serve a riconoscere gli articoli (per quelli c'è il pannello qui sotto).">
             <Input value={marchio} onChange={(e) => setMarchio(e.target.value)} maxLength={80} disabled={terminata} />
           </Campo>
-          <div className="sm:col-span-2">
-            <Campo etichetta="Articoli promossi" aiuto="Codici articolo separati da virgola. Con l'asterisco un prefisso: AFD.00.* = tutti i codici che iniziano per AFD.00. Servono all'Analisi.">
-              <Input value={promossi} onChange={(e) => setPromossi(e.target.value)} disabled={terminata} />
-            </Campo>
-          </div>
         </div>
         {!terminata ? (
           <div className="mt-4 flex items-center gap-3">
@@ -189,6 +202,24 @@ export function CampagnaDettaglioView({
           </div>
         ) : null}
         {esito ? <div className="mt-3"><Messaggio tipo={esito.tipo}>{esito.testo}</Messaggio></div> : null}
+      </Pannello>
+
+      <Pannello titolo="Articoli promossi" descrizione="I prodotti della campagna: servono all'Analisi per sapere chi li compra e chi non li aveva mai presi.">
+        <AlberoArticoli selezione={albero} onChange={setAlbero} disabled={terminata} />
+        <div className="mt-4">
+          <Campo etichetta="Altri codici a mano" aiuto="Facoltativo: codici che nell'anagrafica non ci sono, separati da virgola. Con l'asterisco un prefisso (AFD.00.* = tutti i codici che iniziano per AFD.00.).">
+            <Input value={promossi} onChange={(e) => setPromossi(e.target.value)} disabled={terminata} aria-label="Altri codici a mano" />
+          </Campo>
+        </div>
+        {!terminata ? (
+          <div className="mt-4 flex items-center gap-3">
+            <Button onClick={salvaPromossi} disabled={occupato !== null}>
+              {occupato === "promossi" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Salva gli articoli promossi
+            </Button>
+          </div>
+        ) : null}
+        {esitoPromossi ? <div className="mt-3"><Messaggio tipo={esitoPromossi.tipo}>{esitoPromossi.testo}</Messaggio></div> : null}
       </Pannello>
 
       <Pannello titolo="Pubblico">
