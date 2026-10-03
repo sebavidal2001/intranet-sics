@@ -6,6 +6,16 @@ export async function middleware(request: NextRequest) {
   if (request.nextUrl.pathname === "/api/portali/vettori/outlook/ritira" && request.method === "POST") {
     return NextResponse.next({ request });
   }
+  // Il controllo notturno delle campagne gira da un timer sulla VM, senza cookie:
+  // passa solo la forma POST + Bearer, e la route verifica il token da sola (503 se
+  // non configurato, 401 se sbagliato). Una richiesta con sessione segue la via normale.
+  if (
+    request.nextUrl.pathname === "/api/portali/campagne/controllo" &&
+    request.method === "POST" &&
+    request.headers.get("authorization")?.startsWith("Bearer ")
+  ) {
+    return NextResponse.next({ request });
+  }
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

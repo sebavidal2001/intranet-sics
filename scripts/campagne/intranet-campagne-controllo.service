@@ -1,0 +1,25 @@
+[Unit]
+Description=Campagne marketing — controllo notturno contro i dati di Impresa
+# I dati sono quelli del run notturno della pipeline BI: l'app deve essere su.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=impresa-bi
+Group=impresa-bi
+Environment=CAMPAGNE_CONTROLLO_TOKEN_FILE=/etc/intranet-sics/campagne-controllo.token
+ExecStart=/opt/intranet-sics/scripts/campagne/controllo-notturno.sh
+TimeoutStartSec=5min
+UMask=0027
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictRealtime=true

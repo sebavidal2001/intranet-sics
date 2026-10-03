@@ -1,0 +1,14 @@
+[Unit]
+Description=Campagne marketing — controllo notturno (dopo il caricamento BI delle 01:30)
+
+[Timer]
+# 03:30 ora di Roma, qualunque sia il fuso della VM (e' in UTC): il caricamento
+# commerciale parte alle 01:30 e il cruscotto alle 02:30, e con il controllo
+# alle 03:30 i dati sono gia' tutti attivati.
+OnCalendar=*-*-* 03:30:00 Europe/Rome
+# Se la VM era spenta all'ora prevista, lo recupera all'avvio.
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
