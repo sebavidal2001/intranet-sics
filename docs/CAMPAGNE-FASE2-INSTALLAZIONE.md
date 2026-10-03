@@ -68,7 +68,6 @@ riavvio di pm2 rilegge `.env.local`.
 ```bash
 sudo cp /opt/intranet-sics/scripts/campagne/intranet-campagne-controllo.service /etc/systemd/system/
 sudo cp /opt/intranet-sics/scripts/campagne/intranet-campagne-controllo.timer   /etc/systemd/system/
-sudo chmod +x /opt/intranet-sics/scripts/campagne/controllo-notturno.sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now intranet-campagne-controllo.timer
 systemctl list-timers intranet-campagne-controllo.timer      # prossima esecuzione: 03:30 Europe/Rome

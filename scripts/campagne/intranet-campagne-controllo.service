@@ -9,7 +9,8 @@ Type=oneshot
 User=impresa-bi
 Group=impresa-bi
 Environment=CAMPAGNE_CONTROLLO_TOKEN_FILE=/etc/intranet-sics/campagne-controllo.token
-ExecStart=/opt/intranet-sics/scripts/campagne/controllo-notturno.sh
+# Con /bin/bash il bit eseguibile non serve: `deploy.sh` fa `git reset --hard` e lo perderebbe.
+ExecStart=/bin/bash /opt/intranet-sics/scripts/campagne/controllo-notturno.sh
 TimeoutStartSec=5min
 UMask=0027
 
