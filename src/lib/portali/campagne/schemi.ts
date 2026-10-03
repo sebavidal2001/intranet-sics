@@ -67,13 +67,34 @@ export const AggiornaInvioBody = z.discriminatedUnion("azione", [
 ]);
 export type AggiornaInvioInput = z.infer<typeof AggiornaInvioBody>;
 
+/** Un parametro che puo' comparire una volta o piu' volte nell'indirizzo (`?campagna_id=a&campagna_id=b`). */
+const unoOPiu = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((v) => (v === undefined || v === "" ? undefined : Array.isArray(v) ? v : [v]), z.array(schema).max(50).optional());
+
 export const FiltroInvii = z.object({
   stato: z.enum(["preparata", "da_spedire", "consegnata", "consegnata_banco", "annullata"]).optional(),
-  campagna_id: uuid.optional(),
+  // Piu' campagne insieme: l'invio e' di una di quelle scelte.
+  campagna_id: unoOPiu(uuid),
   q: testo(60).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/**
+ * La vista «per cliente» della pagina Invii: chi ha ricevuto quali campagne.
+ *   almeno_una  ha ricevuto almeno `min` delle campagne scelte
+ *   tutte       le ha ricevute tutte
+ *   nessuna     non ne ha ricevuta nessuna (fra i destinatari di quelle scelte)
+ */
+export const FiltroClientiCampagne = z.object({
+  campagna_id: unoOPiu(uuid),
+  modo: z.enum(["almeno_una", "tutte", "nessuna"]).default("almeno_una"),
+  min: z.coerce.number().int().min(1).max(50).default(1),
+  q: testo(60).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type FiltroClientiCampagneInput = z.infer<typeof FiltroClientiCampagne>;
 
 // ─── Campagne (admin) ──────────────────────────────────────────────────────
 const parole = z.array(z.string().trim().min(1).max(60)).max(10);
@@ -126,6 +147,9 @@ export type DestinatariInput = z.infer<typeof DestinatariBody>;
 export const PubblicoStandardBody = z.object({
   agenti: z.array(z.string().trim().min(1).max(80)).max(20),
   categorie_commerciali: z.array(z.string().trim().min(1).max(40)).max(10),
+  // Opzionale: un client vecchio che non la conosce non azzera il filtro per sbaglio
+  // (assente = non si tocca), mentre `[]` significa «tutte le categorie».
+  categorie_attivita: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
   clienti_extra: z.array(codiceCliente).max(2000),
 });
 export type PubblicoStandardInput = z.infer<typeof PubblicoStandardBody>;

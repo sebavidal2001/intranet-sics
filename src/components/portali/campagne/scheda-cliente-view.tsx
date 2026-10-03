@@ -6,7 +6,7 @@ import { Loader2, Package, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { testoRigaCampagna } from "@/lib/portali/campagne/controllo";
-import { azioniConsentite, etichettaOrdine, type AzioneInvio } from "@/lib/portali/campagne/stati";
+import { STATO_INVIO_UI, azioniConsentite, etichettaOrdine, type AzioneInvio } from "@/lib/portali/campagne/stati";
 import type { EsitoControlloInvio, Invio, OrdineAperto, SchedaCliente } from "@/lib/portali/campagne/tipi";
 import { chiamaApi, formattaData, formattaDataOra } from "./api-client";
 import { CartaAnomalia } from "./anomalie-view";
@@ -26,6 +26,17 @@ const ETICHETTA_FONTE: Record<string, string> = {
 };
 
 /** Cosa ha trovato l'ultimo controllo con Impresa, detto all'operatrice. */
+/** Le due lettere del tondo accanto al nome: «POLETTI srl» → «PO». */
+function iniziali(nome: string): string {
+  const parole = nome.replace(/[^A-Za-zÀ-ÿ0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+  const prime = parole.length > 1 ? parole[0][0] + parole[1][0] : (parole[0] ?? "?").slice(0, 2);
+  return prime.toUpperCase();
+}
+
+function Etichetta({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-md bg-bg-page px-2.5 py-1 text-xs font-medium text-text-muted">{children}</span>;
+}
+
 const ESITO_CONTROLLO: Partial<Record<EsitoControlloInvio, string>> = {
   attesa_dati: "In attesa del prossimo aggiornamento dei dati di Impresa (ogni notte).",
   riga_trovata: "Riga DOCUMENTAZIONE trovata nell'ordine: in attesa della spedizione.",
@@ -42,19 +53,25 @@ export function SchedaClienteView({ scheda, annoCorrente, oggi }: { scheda: Sche
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <header>
-        <h1 className="font-tenorite text-2xl font-bold text-text">{cliente.ragione_sociale}</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          {cliente.codice_cliente}
-          {cliente.agente_nome ? ` · agente ${cliente.agente_nome}` : ""}
-          {cliente.cat_commerciale ? ` · ${cliente.cat_commerciale}` : ""}
-          {cliente.cat_attivita ? ` · ${cliente.cat_attivita}` : ""}
-        </p>
-        {cliente.rivenditore ? (
-          <p className="mt-2 inline-block rounded-md bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">
-            Rivenditore: di norma escluso dalle campagne
-          </p>
-        ) : null}
+      <header className="flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-white p-5 shadow-[0_1px_2px_rgba(15,23,32,0.04),0_4px_16px_rgba(15,23,32,0.04)]">
+        <span
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary-dark font-tenorite text-xl font-bold text-white shadow-sm"
+          aria-hidden
+        >
+          {iniziali(cliente.ragione_sociale)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-tenorite text-2xl font-bold tracking-tight text-text">{cliente.ragione_sociale}</h1>
+          <p className="mt-0.5 text-sm text-text-muted">Codice {cliente.codice_cliente}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {cliente.agente_nome ? <Etichetta>{cliente.agente_nome}</Etichetta> : null}
+            {cliente.cat_commerciale && cliente.cat_commerciale !== "-" ? <Etichetta>{cliente.cat_commerciale}</Etichetta> : null}
+            {cliente.cat_attivita ? <Etichetta>{cliente.cat_attivita}</Etichetta> : null}
+            {cliente.rivenditore ? (
+              <span className="rounded-md bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">Rivenditore: di norma escluso dalle campagne</span>
+            ) : null}
+          </div>
+        </div>
       </header>
 
       {anomalie.length > 0 ? (
@@ -158,7 +175,7 @@ function AzioneSuggerita({
   }
 
   return (
-    <section className="rounded-xl border-2 border-primary/40 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-white to-primary/5 p-5 shadow-[0_8px_24px_rgba(0,161,190,0.10)]">
       <p className="text-xs font-semibold uppercase tracking-wider text-primary">Azione suggerita</p>
       <h2 className="mt-1 font-tenorite text-xl font-bold text-text">
         Preparare {assegnabili[0].codice} · {assegnabili[0].nome}
@@ -289,7 +306,7 @@ function RigaInvio({ invio, oggi, annoCorrente }: { invio: Invio; oggi: string; 
   const ordine = etichettaOrdine(invio);
 
   return (
-    <li className="py-4">
+    <li className="border-l-[3px] py-4 pl-4" style={{ borderColor: STATO_INVIO_UI[invio.stato].pallino }}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-text">

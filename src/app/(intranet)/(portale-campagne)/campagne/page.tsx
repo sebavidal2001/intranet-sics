@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { ClipboardList, PackageCheck, PackagePlus, Search, TriangleAlert, Truck } from "lucide-react";
 import { AlertRigheMancanti } from "@/components/portali/campagne/alert-righe-mancanti";
 import { RicercaCliente } from "@/components/portali/campagne/ricerca-cliente";
 import { Ricontrolla } from "@/components/portali/campagne/ricontrolla";
-import { StatoInvioChip, Pannello, TitoloPagina } from "@/components/portali/campagne/ui";
+import { Pannello, StatoInvioChip, Tessera, TitoloPagina, Vuoto } from "@/components/portali/campagne/ui";
 import { formattaDataOra } from "@/components/portali/campagne/api-client";
 import { inviiAperti } from "@/lib/portali/campagne/dati";
 import { dashboardCompleta, elencoAnomalie } from "@/lib/portali/campagne/impresa";
@@ -22,16 +23,16 @@ export default async function CampagneHomePage() {
   ]);
 
   const tessere = [
-    { chiave: "da_preparare", numero: conteggi.da_preparare, testo: "da preparare", href: "/campagne/da-preparare", pallino: "#ef4444" },
-    { chiave: "preparata", numero: conteggi.preparate, testo: "buste preparate", href: "/campagne/invii?stato=preparata", pallino: STATO_INVIO_UI.preparata.pallino },
-    { chiave: "da_spedire", numero: conteggi.da_spedire, testo: "da spedire", href: "/campagne/invii?stato=da_spedire", pallino: STATO_INVIO_UI.da_spedire.pallino },
-    { chiave: "anomalie", numero: conteggi.anomalie, testo: "anomalie", href: "/campagne/anomalie", pallino: null },
+    { chiave: "da_preparare", numero: conteggi.da_preparare, testo: "da preparare", href: "/campagne/da-preparare", colore: "#ef4444", icona: PackagePlus },
+    { chiave: "preparata", numero: conteggi.preparate, testo: "buste preparate", href: "/campagne/invii?stato=preparata", colore: STATO_INVIO_UI.preparata.pallino, icona: PackageCheck },
+    { chiave: "da_spedire", numero: conteggi.da_spedire, testo: "da spedire", href: "/campagne/invii?stato=da_spedire", colore: STATO_INVIO_UI.da_spedire.pallino, icona: Truck },
+    { chiave: "anomalie", numero: conteggi.anomalie, testo: "anomalie da vedere", href: "/campagne/anomalie", colore: "#dc2626", icona: TriangleAlert },
   ];
 
   return (
     <div className="mx-auto max-w-4xl">
       <AlertRigheMancanti anomalie={righeMancanti} />
-      <TitoloPagina titolo="Campagne Marketing" sottotitolo="Cerca il cliente: il programma ti dice cosa fare." />
+      <TitoloPagina icona={Search} titolo="Campagne Marketing" sottotitolo="Cerca il cliente: il programma ti dice cosa fare." />
 
       <Pannello className="mb-6">
         <RicercaCliente autoFocus />
@@ -39,20 +40,8 @@ export default async function CampagneHomePage() {
 
       <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tessere.map((t) => (
-          <Link
-            key={t.chiave}
-            href={t.href}
-            className="rounded-xl border border-border bg-white p-4 shadow-sm transition-transform hover:-translate-y-0.5"
-          >
-            <div className="flex items-center gap-2">
-              {t.pallino ? (
-                <span className="h-3 w-3 rounded-full" style={{ background: t.pallino }} aria-hidden />
-              ) : (
-                <span aria-hidden className="text-base leading-none">⚠️</span>
-              )}
-              <span className="font-tenorite text-3xl font-bold text-text">{t.numero.toLocaleString("it-IT")}</span>
-            </div>
-            <p className="mt-1 text-sm text-text-muted">{t.testo}</p>
+          <Link key={t.chiave} href={t.href} className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+            <Tessera numero={t.numero.toLocaleString("it-IT")} testo={t.testo} colore={t.colore} icona={t.icona} />
           </Link>
         ))}
       </div>
@@ -65,6 +54,7 @@ export default async function CampagneHomePage() {
 
       <Pannello
         titolo="Buste in lavorazione"
+        icona={ClipboardList}
         azioni={
           <Link href="/campagne/invii" className="text-xs font-medium text-primary hover:underline">
             Tutti gli invii
@@ -72,7 +62,7 @@ export default async function CampagneHomePage() {
         }
       >
         {aperti.length === 0 ? (
-          <p className="text-sm text-text-muted">Nessuna busta in lavorazione.</p>
+          <Vuoto icona={PackageCheck} titolo="Nessuna busta in lavorazione" testo="Cerca un cliente per prepararne una." />
         ) : (
           <ul className="divide-y divide-border">
             {aperti.map((i) => (

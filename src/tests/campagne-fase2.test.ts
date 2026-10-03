@@ -229,6 +229,50 @@ describe("eseguiControlloCompleto", () => {
     expect(chiusa).toMatchObject({ stato: "risolta", risolta_con: "automatica" });
   });
 
+  it("ricostruisce il numero d'ordine dello storico dell'Excel e lo scrive SOLO dove è ancora vuoto", async () => {
+    scenarioControllo({
+      invii: (ops) => {
+        const colonne = String(ops.find(([n]) => n === "select")?.[1][0] ?? "");
+        if (ops.some(([n]) => n === "update")) return { data: [{ id: "s1" }] };
+        // Gli invii storici: importati, consegnati, senza ordine.
+        if (colonne.startsWith("id, campagna_id, codice_cliente, stato, data_consegna")) {
+          return { data: [{ id: "s1", campagna_id: "c1", codice_cliente: "K1", stato: "consegnata", data_consegna: "2026-10-01" }] };
+        }
+        return { data: [] };
+      },
+      "rpc:impresa_righe": (ops) => {
+        const args = ops.find(([n]) => n === "rpc")![1][0] as { p_solo_aperte: boolean };
+        return args.p_solo_aperte
+          ? { data: [] }
+          : { data: [{ profilo: "OC", numero: "100", anno: 2026, cliente: "K1", nome_cliente: "K", data_doc: "2026-09-20", richiesta: null, confermata: "2026-10-15", articolo: "DOCUMENTAZIONE", descrizione: "INVIO DOCUMENTAZIONE C_01_26-CP_SICS", aperta: false }] };
+      },
+      "rpc:impresa_ddt": () => ({ data: [{ numero: "500", cliente: "K1", data_doc: "2026-10-01", articolo: "DOCUMENTAZIONE", descrizione: "INVIO DOCUMENTAZIONE C_01_26-CP_SICS" }] }),
+    });
+    const r = await eseguiControlloCompleto({ origine: "notturno", utenteId: null });
+    expect(r).toMatchObject({ storico_ritrovati: 1, storico_senza_ordine: 0 });
+
+    const patch = opsDi("invii", "update").map((a) => a[0] as Record<string, unknown>).find((p) => "ddt_numero" in p)!;
+    expect(patch).toMatchObject({ ordine_numero: "100", ordine_anno: 2026, ordine_profilo: "OC", ddt_numero: "500", ddt_metodo: "euristico" });
+    // Un ordine già stabilito (a mano o da un controllo precedente) non si riscrive mai.
+    expect(opsDi("invii", "is")).toContainEqual(["ordine_numero", null]);
+    // E lo stato dell'invio storico non cambia.
+    expect(patch).not.toHaveProperty("stato");
+  });
+
+  it("un invio storico per cui Impresa non ha una riga resta com'è e viene contato come lacuna", async () => {
+    scenarioControllo({
+      invii: (ops) => {
+        const colonne = String(ops.find(([n]) => n === "select")?.[1][0] ?? "");
+        return colonne.startsWith("id, campagna_id, codice_cliente, stato, data_consegna")
+          ? { data: [{ id: "s1", campagna_id: "c1", codice_cliente: "K1", stato: "consegnata_banco", data_consegna: "2026-01-28" }] }
+          : { data: [] };
+      },
+    });
+    const r = await eseguiControlloCompleto({ origine: "notturno", utenteId: null });
+    expect(r).toMatchObject({ storico_ritrovati: 0, storico_senza_ordine: 1 });
+    expect(opsDi("invii", "update").some((a) => "ddt_numero" in (a[0] as Record<string, unknown>))).toBe(false);
+  });
+
   it("un controllo parziale tocca solo le anomalie dei clienti indicati", async () => {
     scenarioControllo();
     await eseguiControlloCompleto({ origine: "manuale", utenteId: "u", clienti: ["K1"] });

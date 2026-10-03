@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { Pannello, StatoInvioChip, TitoloPagina } from "@/components/portali/campagne/ui";
+import { ListChecks, Users } from "lucide-react";
+import { FiltriInvii } from "@/components/portali/campagne/filtri-invii";
+import { TabellaClienti } from "@/components/portali/campagne/tabella-clienti";
+import { Pannello, StatoInvioChip, TitoloPagina, Vuoto, classeRiga, classeTh } from "@/components/portali/campagne/ui";
 import { formattaData, formattaDataOra } from "@/components/portali/campagne/api-client";
-import { elencoCampagne, elencoInvii } from "@/lib/portali/campagne/dati";
+import { clientiPerCampagne, elencoCampagne, elencoInvii } from "@/lib/portali/campagne/dati";
 import { richiediOperatore } from "@/lib/portali/campagne/pagine";
-import { FiltroInvii } from "@/lib/portali/campagne/schemi";
+import { FiltroClientiCampagne, FiltroInvii } from "@/lib/portali/campagne/schemi";
 import { STATO_INVIO_UI, etichettaOrdine } from "@/lib/portali/campagne/stati";
-import type { StatoInvio } from "@/lib/portali/campagne/tipi";
+import type { CampagnaRiepilogo, StatoInvio } from "@/lib/portali/campagne/tipi";
 
 export const metadata = { title: "Invii" };
 export const dynamic = "force-dynamic";
@@ -20,167 +23,224 @@ const SCHEDE: { valore: StatoInvio | ""; etichetta: string }[] = [
 ];
 
 type Ricerca = Record<string, string | string[] | undefined>;
+type Parametri = Record<string, string | string[] | number | undefined>;
 
-/** Elenco invii filtrabile: è dove portano i contatori della home. */
+const uno = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/** Costruisce un indirizzo ripetendo i parametri multipli (`campagna_id=a&campagna_id=b`). */
+function indirizzo(p: Parametri): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(p)) {
+    if (v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) continue;
+    if (Array.isArray(v)) v.forEach((x) => q.append(k, x));
+    else q.set(k, String(v));
+  }
+  const s = q.toString();
+  return `/campagne/invii${s ? `?${s}` : ""}`;
+}
+
+/** Elenco invii: due viste, «per invio» (ogni busta) e «per cliente» (chi ha ricevuto quali campagne). */
 export default async function InviiPage({ searchParams }: { searchParams: Promise<Ricerca> }) {
   await richiediOperatore();
   const grezzo = await searchParams;
-  const piatto = Object.fromEntries(
-    Object.entries(grezzo).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
-  ) as Record<string, string | undefined>;
+  const vista = uno(grezzo.vista) === "clienti" ? "clienti" : "invii";
+
   // Un parametro non valido nell'indirizzo non deve dare un errore: si ignora.
-  const parsed = FiltroInvii.safeParse(piatto);
-  const filtro = parsed.success ? parsed.data : FiltroInvii.parse({});
+  const comuni = { ...grezzo, vista: undefined };
+  const fInvii = FiltroInvii.safeParse(comuni);
+  const filtroInvii = fInvii.success ? fInvii.data : FiltroInvii.parse({});
+  const fClienti = FiltroClientiCampagne.safeParse({ ...comuni, stato: undefined });
+  const filtroClienti = fClienti.success ? fClienti.data : FiltroClientiCampagne.parse({});
 
-  // L'elenco delle campagne serve solo al filtro: se non è leggibile (non admin
-  // o errore) la pagina funziona lo stesso, senza quel menu.
-  const [elenco, campagne] = await Promise.all([elencoInvii(filtro), elencoCampagne().catch(() => [])]);
-  const { invii, totale } = elenco;
+  // L'elenco delle campagne serve ai chip: se non e' leggibile la pagina funziona lo stesso.
+  const campagne = await elencoCampagne().catch(() => [] as CampagnaRiepilogo[]);
+  const selezionate = (vista === "clienti" ? filtroClienti.campagna_id : filtroInvii.campagna_id) ?? [];
+  const q = (vista === "clienti" ? filtroClienti.q : filtroInvii.q) ?? "";
 
-  const href = (extra: Record<string, string | number | undefined>) => {
-    const p = new URLSearchParams();
-    const base: Record<string, string | number | undefined> = {
-      stato: filtro.stato,
-      campagna_id: filtro.campagna_id,
-      q: filtro.q,
-      ...extra,
-    };
-    for (const [k, v] of Object.entries(base)) if (v !== undefined && v !== "") p.set(k, String(v));
-    const s = p.toString();
-    return `/campagne/invii${s ? `?${s}` : ""}`;
-  };
+  const base: Parametri = { vista: vista === "clienti" ? "clienti" : undefined, campagna_id: selezionate, q };
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <TitoloPagina
+        icona={ListChecks}
+        titolo="Invii"
+        sottotitolo={
+          vista === "clienti"
+            ? "Chi ha ricevuto quali campagne: scegli una o più campagne e trova i clienti che ne hanno ricevute un certo numero, tutte, o nessuna."
+            : "Tutte le buste, dalla più recente. Scegli una o più campagne per restringere l'elenco."
+        }
+      />
+
+      {/* Le due viste */}
+      <div className="mb-4 inline-flex rounded-xl border border-border bg-white p-1 shadow-sm" role="tablist" aria-label="Vista">
+        <Link
+          href={indirizzo({ campagna_id: selezionate, q })}
+          role="tab"
+          aria-selected={vista === "invii"}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${vista === "invii" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:bg-bg-page hover:text-text"}`}
+        >
+          <ListChecks className="h-4 w-4" aria-hidden /> Per invio
+        </Link>
+        <Link
+          href={indirizzo({ vista: "clienti", campagna_id: selezionate, q })}
+          role="tab"
+          aria-selected={vista === "clienti"}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${vista === "clienti" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:bg-bg-page hover:text-text"}`}
+        >
+          <Users className="h-4 w-4" aria-hidden /> Per cliente
+        </Link>
+      </div>
+
+      {vista === "invii" ? (
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {SCHEDE.map((s) => {
+            const attiva = (filtroInvii.stato ?? "") === s.valore;
+            return (
+              <Link
+                key={s.valore || "tutti"}
+                href={indirizzo({ ...base, stato: s.valore || undefined })}
+                className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                  attiva ? "border-primary bg-primary text-white" : "border-border bg-white text-text hover:bg-bg-page"
+                }`}
+              >
+                {s.valore ? (
+                  <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ background: STATO_INVIO_UI[s.valore].pallino }} aria-hidden />
+                ) : null}
+                {s.etichetta}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <FiltriInvii
+        vista={vista}
+        campagne={campagne}
+        selezionate={selezionate}
+        q={q}
+        stato={filtroInvii.stato}
+        modo={filtroClienti.modo}
+        min={filtroClienti.min}
+      />
+
+      {vista === "clienti" ? (
+        <VistaClienti filtro={filtroClienti} campagne={campagne} base={base} />
+      ) : (
+        <VistaInvii filtro={filtroInvii} base={base} />
+      )}
+    </div>
+  );
+}
+
+// ─── Per cliente ───────────────────────────────────────────────────────────
+async function VistaClienti({
+  filtro,
+  campagne,
+  base,
+}: {
+  filtro: ReturnType<typeof FiltroClientiCampagne.parse>;
+  campagne: CampagnaRiepilogo[];
+  base: Parametri;
+}) {
+  const { clienti, totale } = await clientiPerCampagne(filtro);
+  const scelte = (filtro.campagna_id ?? []).map((id) => campagne.find((c) => c.id === id)?.codice).filter(Boolean) as string[];
+  const elencoScelte = scelte.length > 0 ? scelte.join(", ") : "tutte le campagne";
+
+  const frase =
+    filtro.modo === "tutte"
+      ? `hanno ricevuto tutte: ${elencoScelte}`
+      : filtro.modo === "nessuna"
+        ? `sono destinatari di ${elencoScelte} e non ne hanno ricevuta nessuna`
+        : `hanno ricevuto almeno ${filtro.min} fra: ${elencoScelte}`;
 
   const da = totale === 0 ? 0 : filtro.offset + 1;
   const a = Math.min(filtro.offset + filtro.limit, totale);
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <TitoloPagina titolo="Invii" sottotitolo="Tutte le buste, dalla più recente." />
+    <Pannello
+      senzaPadding
+      titolo={`${totale.toLocaleString("it-IT")} clienti`}
+      descrizione={frase}
+    >
+      {clienti.length === 0 ? (
+        <Vuoto icona={Users} titolo="Nessun cliente con questi criteri" testo="Prova a cambiare le campagne scelte o a ridurre il numero minimo." />
+      ) : (
+        <TabellaClienti clienti={clienti} />
+      )}
+      <Paginazione offset={filtro.offset} limite={filtro.limit} totale={totale} da={da} a={a} base={{ ...base, modo: filtro.modo, min: filtro.min }} />
+    </Pannello>
+  );
+}
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {SCHEDE.map((s) => {
-          const attiva = (filtro.stato ?? "") === s.valore;
-          return (
-            <Link
-              key={s.valore || "tutti"}
-              href={href({ stato: s.valore || undefined, offset: undefined })}
-              className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                attiva ? "border-primary bg-primary text-white" : "border-border bg-white text-text hover:bg-bg-page"
-              }`}
-            >
-              {s.valore ? (
-                <span
-                  className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
-                  style={{ background: STATO_INVIO_UI[s.valore].pallino }}
-                  aria-hidden
-                />
-              ) : null}
-              {s.etichetta}
-            </Link>
-          );
-        })}
-      </div>
+// ─── Per invio ─────────────────────────────────────────────────────────────
+async function VistaInvii({ filtro, base }: { filtro: ReturnType<typeof FiltroInvii.parse>; base: Parametri }) {
+  const { invii, totale } = await elencoInvii(filtro);
+  const da = totale === 0 ? 0 : filtro.offset + 1;
+  const a = Math.min(filtro.offset + filtro.limit, totale);
 
-      {/* Filtri come form GET: l'indirizzo resta condivisibile e il server fa il resto. */}
-      <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
-        {filtro.stato ? <input type="hidden" name="stato" value={filtro.stato} /> : null}
-        <label className="text-sm">
-          <span className="mb-1 block text-xs text-text-muted">Cliente</span>
-          <input
-            name="q"
-            defaultValue={filtro.q ?? ""}
-            placeholder="Nome o codice"
-            className="h-9 w-56 rounded-lg border border-border bg-white px-3 text-sm"
-          />
-        </label>
-        {campagne.length > 0 ? (
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-text-muted">Campagna</span>
-            <select
-              name="campagna_id"
-              defaultValue={filtro.campagna_id ?? ""}
-              className="h-9 rounded-lg border border-border bg-white px-2 text-sm"
-            >
-              <option value="">Tutte</option>
-              {campagne.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.codice} · {c.nome}
-                </option>
+  return (
+    <Pannello senzaPadding titolo={`${totale.toLocaleString("it-IT")} invii`}>
+      {invii.length === 0 ? (
+        <Vuoto icona={ListChecks} titolo="Nessun invio con questi filtri" testo="Togli qualche filtro per allargare l'elenco." />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border bg-bg-page/60">
+                <th className={`${classeTh} pl-5`}>Cliente</th>
+                <th className={classeTh}>Campagna</th>
+                <th className={classeTh}>Stato</th>
+                <th className={classeTh}>Ordine</th>
+                <th className={classeTh}>Referente</th>
+                <th className={`${classeTh} pr-5`}>Consegna</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {invii.map((i) => (
+                <tr key={i.id} className={`align-top ${classeRiga}`}>
+                  <td className="py-3 pl-5 pr-3">
+                    <Link href={`/campagne/clienti/${encodeURIComponent(i.codice_cliente)}`} className="font-semibold text-text hover:text-primary">
+                      {i.ragione_sociale}
+                    </Link>
+                    <span className="block text-xs text-text-muted">{i.codice_cliente}</span>
+                  </td>
+                  <td className="py-3 pr-3 whitespace-nowrap font-medium">{i.campagna?.codice ?? "—"}</td>
+                  <td className="py-3 pr-3">
+                    <StatoInvioChip stato={i.stato} />
+                  </td>
+                  <td className="py-3 pr-3 whitespace-nowrap">{etichettaOrdine(i) ?? <span className="text-text-muted">—</span>}</td>
+                  <td className="py-3 pr-3">{i.referente ?? <span className="text-text-muted">—</span>}</td>
+                  <td className="py-3 pr-5 whitespace-nowrap">
+                    {i.data_consegna ? formattaData(i.data_consegna) : <span className="text-text-muted">assegnata {formattaDataOra(i.assegnata_il)}</span>}
+                    {i.ddt_numero ? <span className="block text-xs text-text-muted">DDT {i.ddt_numero}</span> : null}
+                  </td>
+                </tr>
               ))}
-            </select>
-          </label>
-        ) : null}
-        <button type="submit" className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-white hover:bg-primary-dark">
-          Filtra
-        </button>
-        {filtro.q || filtro.campagna_id ? (
-          <Link href={href({ q: undefined, campagna_id: undefined, offset: undefined })} className="text-sm text-text-muted hover:underline">
-            Azzera
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Paginazione offset={filtro.offset} limite={filtro.limit} totale={totale} da={da} a={a} base={{ ...base, stato: filtro.stato }} />
+    </Pannello>
+  );
+}
+
+function Paginazione({ offset, limite, totale, da, a, base }: { offset: number; limite: number; totale: number; da: number; a: number; base: Parametri }) {
+  return (
+    <div className="flex items-center justify-between border-t border-border bg-bg-page/40 px-5 py-3 text-sm text-text-muted">
+      <span>{totale === 0 ? "0 risultati" : `${da}–${a} di ${totale.toLocaleString("it-IT")}`}</span>
+      <span className="flex gap-4">
+        {offset > 0 ? (
+          <Link href={indirizzo({ ...base, offset: Math.max(0, offset - limite) || undefined })} className="font-medium text-primary hover:underline">
+            ← Precedenti
           </Link>
         ) : null}
-      </form>
-
-      <Pannello>
-        {invii.length === 0 ? (
-          <p className="text-sm text-text-muted">Nessun invio con questi filtri.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-wide text-text-muted">
-                  <th className="py-2 pr-3 font-medium">Cliente</th>
-                  <th className="py-2 pr-3 font-medium">Campagna</th>
-                  <th className="py-2 pr-3 font-medium">Stato</th>
-                  <th className="py-2 pr-3 font-medium">Ordine</th>
-                  <th className="py-2 pr-3 font-medium">Referente</th>
-                  <th className="py-2 font-medium">Consegna</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {invii.map((i) => (
-                  <tr key={i.id} className="align-top">
-                    <td className="py-2.5 pr-3">
-                      <Link href={`/campagne/clienti/${encodeURIComponent(i.codice_cliente)}`} className="font-semibold text-text hover:text-primary">
-                        {i.ragione_sociale}
-                      </Link>
-                      <span className="block text-xs text-text-muted">{i.codice_cliente}</span>
-                    </td>
-                    <td className="py-2.5 pr-3 whitespace-nowrap">{i.campagna?.codice ?? "—"}</td>
-                    <td className="py-2.5 pr-3">
-                      <StatoInvioChip stato={i.stato} />
-                    </td>
-                    <td className="py-2.5 pr-3 whitespace-nowrap">{etichettaOrdine(i) ?? "—"}</td>
-                    <td className="py-2.5 pr-3">{i.referente ?? "—"}</td>
-                    <td className="py-2.5 whitespace-nowrap">
-                      {i.data_consegna ? (
-                        formattaData(i.data_consegna)
-                      ) : (
-                        <span className="text-text-muted">assegnata {formattaDataOra(i.assegnata_il)}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="mt-4 flex items-center justify-between text-sm text-text-muted">
-          <span>{totale === 0 ? "0 risultati" : `${da}–${a} di ${totale.toLocaleString("it-IT")}`}</span>
-          <span className="flex gap-3">
-            {filtro.offset > 0 ? (
-              <Link href={href({ offset: Math.max(0, filtro.offset - filtro.limit) || undefined })} className="text-primary hover:underline">
-                ← Precedenti
-              </Link>
-            ) : null}
-            {filtro.offset + filtro.limit < totale ? (
-              <Link href={href({ offset: filtro.offset + filtro.limit })} className="text-primary hover:underline">
-                Successivi →
-              </Link>
-            ) : null}
-          </span>
-        </div>
-      </Pannello>
+        {offset + limite < totale ? (
+          <Link href={indirizzo({ ...base, offset: offset + limite })} className="font-medium text-primary hover:underline">
+            Successivi →
+          </Link>
+        ) : null}
+      </span>
     </div>
   );
 }

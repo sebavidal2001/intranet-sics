@@ -440,3 +440,100 @@ describe("idempotenza", () => {
     expect(eseguiControllo(i).anomalie.map((a) => a.chiave)).toEqual(eseguiControllo(i).anomalie.map((a) => a.chiave));
   });
 });
+
+
+describe("storico importato dall'Excel: ricostruzione del numero d'ordine", () => {
+  const storico = (over: Record<string, unknown> = {}) => ({
+    id: "s1",
+    campagna_id: "c1",
+    codice_cliente: "K1",
+    stato: "consegnata" as const,
+    data_consegna: "2026-10-01",
+    ...over,
+  });
+  const evasa = (over: Partial<RigaImpresa> = {}) => riga({ aperta: false, ...over });
+  const base = (over: Partial<InputControllo> = {}) => input({ invii: [], righe: [evasa()], ddt: [ddt()], ...over });
+
+  it("trova l'ordine dalla riga evasa il cui DDT porta la data del foglio", () => {
+    const r = eseguiControllo(base({ storici: [storico()] }));
+    expect(r.storico).toHaveLength(1);
+    expect(r.storico[0].patch).toMatchObject({
+      ordine_numero: "100",
+      ordine_anno: 2026,
+      ordine_profilo: "OC",
+      ordine_data: "2026-09-20",
+      ordine_data_consegna: "2026-10-15",
+      ddt_numero: "500",
+      ddt_metodo: "euristico",
+    });
+    expect(r.storicoSenzaOrdine).toEqual([]);
+  });
+
+  it("non cambia mai lo stato né la data di consegna dell'invio storico", () => {
+    const p = eseguiControllo(base({ storici: [storico()] })).storico[0].patch as unknown as Record<string, unknown>;
+    expect(p).not.toHaveProperty("stato");
+    expect(p).not.toHaveProperty("data_consegna");
+  });
+
+  it("funziona anche per la consegna al banco", () => {
+    const r = eseguiControllo(base({ storici: [storico({ stato: "consegnata_banco" })], righe: [evasa({ profilo: "OCB" })] }));
+    expect(r.storico[0].patch.ordine_profilo).toBe("OCB");
+  });
+
+  it("se la data del DDT non è quella del foglio non si inventa un ordine", () => {
+    const r = eseguiControllo(base({ storici: [storico({ data_consegna: "2026-09-30" })] }));
+    expect(r.storico).toEqual([]);
+    expect(r.storicoSenzaOrdine).toEqual([{ id: "s1", motivo: "nessuna_riga" }]);
+  });
+
+  it("un cliente senza nessuna riga in Impresa resta senza ordine", () => {
+    const r = eseguiControllo(base({ righe: [], ddt: [], storici: [storico()] }));
+    expect(r.storicoSenzaOrdine).toEqual([{ id: "s1", motivo: "nessuna_riga" }]);
+  });
+
+  it("con due righe candidate non sceglie", () => {
+    const r = eseguiControllo(
+      base({
+        righe: [evasa({ numero: "100" }), evasa({ numero: "101", descrizione: "INVIO DOCUMENTAZIONE C_01_26-CP_SICS bis" })],
+        ddt: [ddt({ numero: "500" }), ddt({ numero: "501" })],
+        storici: [storico()],
+      })
+    );
+    expect(r.storico).toEqual([]);
+    expect(r.storicoSenzaOrdine[0].motivo).toBe("ambiguo");
+  });
+
+  it("la riga deve essere della campagna dell'invio: un'altra campagna non vale", () => {
+    const r = eseguiControllo(
+      base({ righe: [evasa({ descrizione: "INVIO DOCUMENTAZIONE C_02_ ZECA ZETEK" })], ddt: [ddt({ descrizione: "INVIO DOCUMENTAZIONE C_02_ ZECA ZETEK" })], storici: [storico()] })
+    );
+    expect(r.storico).toEqual([]);
+  });
+
+  it("un ordine già legato a un altro invio non si riassegna", () => {
+    const r = eseguiControllo(
+      base({ storici: [storico()], ordiniCollegati: [{ codice_cliente: "K1", ordine_anno: 2026, ordine_numero: "100" }] })
+    );
+    expect(r.storico).toEqual([]);
+  });
+
+  it("due invii storici dello stesso cliente prendono due ordini diversi, non lo stesso", () => {
+    const r = eseguiControllo(
+      base({
+        righe: [
+          evasa({ numero: "100", confermata: "2026-02-01", data_doc: "2026-01-10" }),
+          evasa({ numero: "200", confermata: "2026-06-01", data_doc: "2026-05-10" }),
+        ],
+        ddt: [ddt({ numero: "A", data_doc: "2026-02-03" }), ddt({ numero: "B", data_doc: "2026-06-04" })],
+        storici: [storico({ id: "s1", data_consegna: "2026-02-03" }), storico({ id: "s2", data_consegna: "2026-06-04" })],
+      })
+    );
+    expect(Object.fromEntries(r.storico.map((x) => [x.id, x.patch.ordine_numero]))).toEqual({ s1: "100", s2: "200" });
+  });
+
+  it("senza invii storici in ingresso non produce niente", () => {
+    const r = eseguiControllo(base());
+    expect(r.storico).toEqual([]);
+    expect(r.storicoSenzaOrdine).toEqual([]);
+  });
+});

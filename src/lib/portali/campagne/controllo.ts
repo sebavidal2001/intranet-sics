@@ -74,6 +74,19 @@ export interface DdtImpresa {
   descrizione: string | null;
 }
 
+/**
+ * Un invio dello STORICO: importato dall'Excel con la sola data di consegna (che e'
+ * la data del DDT), senza il numero d'ordine. Si ricostruisce da Impresa.
+ */
+export interface InvioStorico {
+  id: string;
+  campagna_id: string;
+  codice_cliente: string;
+  stato: "consegnata" | "consegnata_banco";
+  /** Data del DDT, come nel foglio Excel. */
+  data_consegna: string;
+}
+
 /** (cliente, anno, numero) di tutti gli invii non annullati, anche quelli chiusi. */
 export interface OrdineCollegato {
   codice_cliente: string;
@@ -98,6 +111,8 @@ export interface InputControllo {
   /** DDT con articolo di campagna dei clienti degli invii. */
   ddt: DdtImpresa[];
   ordiniCollegati: OrdineCollegato[];
+  /** Invii importati dall'Excel ancora senza numero d'ordine. Opzionale. */
+  storici?: InvioStorico[];
 }
 
 export type EsitoControllo =
@@ -164,9 +179,25 @@ export interface RiferimentoOrdine {
   ordine_data_consegna: string | null;
 }
 
+/** Cosa scrivere su un invio storico quando se ne e' trovato l'ordine. Lo stato non cambia mai. */
+export interface PatchStorico {
+  ordine_numero: string;
+  ordine_anno: number;
+  ordine_profilo: string;
+  ordine_data: string;
+  ordine_data_consegna: string | null;
+  ddt_numero: string;
+  ddt_metodo: "euristico";
+  ultimo_controllo_il: string;
+}
+
 export interface RisultatoControllo {
   aggiornamenti: { id: string; patch: PatchInvio; cambiaStato: boolean; adottato: boolean }[];
   anomalie: AnomaliaCalcolata[];
+  /** Ordini ritrovati per gli invii dello storico. */
+  storico: { id: string; patch: PatchStorico }[];
+  /** Invii dello storico per cui non si e' trovato un ordine, con il motivo. Non sono anomalie: sono lacune dei dati. */
+  storicoSenzaOrdine: { id: string; motivo: "nessuna_riga" | "ambiguo" }[];
 }
 
 // ─── Normalizzazioni ───────────────────────────────────────────────────────
@@ -571,5 +602,51 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
     }
   }
 
-  return { aggiornamenti, anomalie };
+  // 5) STORICO — ricostruisce il numero d'ordine degli invii importati dall'Excel.
+  //    Il foglio ha la data del DDT; Impresa ha, per ogni riga evasa, il DDT che
+  //    l'ha chiusa (abbinamento gia' calcolato sopra). L'ordine di un invio e' l'unica
+  //    riga della sua campagna, per quel cliente, il cui DDT porta proprio quella data.
+  //    Con due candidate non si sceglie. Un ordine gia' legato a un altro invio non si
+  //    riassegna: l'indice unico lo rifiuterebbe, e comunque ogni ordine ne porta una sola.
+  const storico: RisultatoControllo["storico"] = [];
+  const storicoSenzaOrdine: RisultatoControllo["storicoSenzaOrdine"] = [];
+  const righeEvase = input.righe.filter((r) => !r.aperta);
+  const daTrattare = [...(input.storici ?? [])].sort((a, b) => a.data_consegna.localeCompare(b.data_consegna) || a.id.localeCompare(b.id));
+  for (const i of daTrattare) {
+    const campagna = perId.get(i.campagna_id);
+    if (!campagna) continue;
+    const candidate = righeEvase.filter(
+      (r) =>
+        r.cliente === i.codice_cliente &&
+        attribuzioneRiga(r, campagna, campagne) === "si" &&
+        abbinamenti.get(chiaveRiga(r))?.data_doc === i.data_consegna &&
+        !occupati.has(chiaveOrdine(r.cliente, r.anno, r.numero))
+    );
+    if (candidate.length === 0) {
+      storicoSenzaOrdine.push({ id: i.id, motivo: "nessuna_riga" });
+      continue;
+    }
+    if (candidate.length > 1) {
+      storicoSenzaOrdine.push({ id: i.id, motivo: "ambiguo" });
+      continue;
+    }
+    const r = candidate[0];
+    const ddt = abbinamenti.get(chiaveRiga(r))!;
+    occupati.add(chiaveOrdine(r.cliente, r.anno, r.numero));
+    storico.push({
+      id: i.id,
+      patch: {
+        ordine_numero: normNumero(r.numero),
+        ordine_anno: r.anno,
+        ordine_profilo: r.profilo,
+        ordine_data: r.data_doc,
+        ordine_data_consegna: dataConsegnaRiga(r),
+        ddt_numero: ddt.numero,
+        ddt_metodo: "euristico",
+        ultimo_controllo_il: adesso,
+      },
+    });
+  }
+
+  return { aggiornamenti, anomalie, storico, storicoSenzaOrdine };
 }

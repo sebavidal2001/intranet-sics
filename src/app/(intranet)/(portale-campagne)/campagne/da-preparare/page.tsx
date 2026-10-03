@@ -1,5 +1,6 @@
+import { PackagePlus } from "lucide-react";
 import Link from "next/link";
-import { Pannello, TitoloPagina } from "@/components/portali/campagne/ui";
+import { Pannello, TitoloPagina, Vuoto, classeRiga, classeTh } from "@/components/portali/campagne/ui";
 import { formattaData } from "@/components/portali/campagne/api-client";
 import { elencoDaPreparare } from "@/lib/portali/campagne/impresa";
 import { richiediOperatore } from "@/lib/portali/campagne/pagine";
@@ -20,27 +21,28 @@ export default async function DaPreparareListaPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <TitoloPagina
+        icona={PackagePlus}
         titolo="Da preparare"
         sottotitolo="Ordini aperti degli ultimi 14 giorni che aspettano la loro busta. Apri il cliente: la campagna suggerita è già indicata."
       />
       <Pannello>
         {lista.length === 0 ? (
-          <p className="text-sm text-text-muted">Nessun ordine in attesa di una busta.</p>
+          <Vuoto icona={PackagePlus} titolo="Nessun ordine in attesa di una busta" testo="Quando arriva un ordine nuovo di un cliente a cui spetta una campagna, compare qui." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-wide text-text-muted">
-                  <th className="py-2 pr-3 font-medium">Cliente</th>
-                  <th className="py-2 pr-3 font-medium">Ordine</th>
-                  <th className="py-2 pr-3 font-medium">Data ordine</th>
-                  <th className="py-2 pr-3 font-medium">Consegna prevista</th>
-                  <th className="py-2 font-medium">Campagna suggerita</th>
+                <tr className="border-b border-border">
+                  <th className={classeTh}>Cliente</th>
+                  <th className={classeTh}>Ordine</th>
+                  <th className={classeTh}>Data ordine</th>
+                  <th className={classeTh}>Consegna prevista</th>
+                  <th className={classeTh}>Campagna suggerita</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {lista.map((r) => (
-                  <tr key={`${r.codice_cliente}|${r.ordine_anno}|${r.ordine_numero}`}>
+                  <tr key={`${r.codice_cliente}|${r.ordine_anno}|${r.ordine_numero}`} className={classeRiga}>
                     <td className="py-2.5 pr-3">
                       <Link href={`/campagne/clienti/${encodeURIComponent(r.codice_cliente)}`} className="font-semibold text-text hover:text-primary">
                         {r.ragione_sociale}

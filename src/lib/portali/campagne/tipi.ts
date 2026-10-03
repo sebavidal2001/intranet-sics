@@ -178,18 +178,56 @@ export interface DashboardCampagne {
 }
 
 export interface PubblicoStandard {
+  /** Agenti presi con tutti i loro clienti (che rientrano nei filtri). */
   agenti: string[];
   categorie_commerciali: string[];
+  /** Categorie di attività dei clienti (`COSTR. macch.automatiche`...). Vuoto = tutte. */
+  categorie_attivita: string[];
+  /** Clienti scelti a mano, fuori dai filtri. */
   clienti_extra: string[];
   aggiornato_il: string;
 }
 
+/** Un cliente non rivenditore, con quanto serve a scegliere il pubblico. */
+export interface ClientePubblicoRiga {
+  codice_cliente: string;
+  ragione_sociale: string;
+  agente_nome: string | null;
+  cat_commerciale: string | null;
+  cat_attivita: string | null;
+}
+
 export interface PubblicoStandardResponse {
   config: PubblicoStandard;
-  /** Quanti clienti raggiunge oggi la regola. */
+  /** Quanti clienti raggiunge la regola salvata, secondo il database. */
   raggiunti: number;
-  /** Clienti di altri agenti che l'admin può aggiungere a mano. */
-  candidati: Cliente[];
+  /** Tutti i clienti non rivenditori: la pagina ci calcola in tempo reale quanti ne raggiunge la regola in modifica. */
+  clienti: ClientePubblicoRiga[];
+}
+
+/** Una campagna ricevuta (o in lavorazione) da un cliente, per i chip dell'elenco. */
+export interface CampagnaDelCliente {
+  codice: string;
+  nome: string;
+  stato: StatoInvio;
+  data: string | null;
+  /** Fa parte delle campagne scelte nel filtro. */
+  selezionata: boolean;
+}
+
+export interface ClienteConCampagne {
+  codice_cliente: string;
+  ragione_sociale: string;
+  agente_nome: string | null;
+  cat_attivita: string | null;
+  /** Campagne effettivamente RICEVUTE (consegnate o al banco). */
+  n_ricevute: number;
+  campagne: CampagnaDelCliente[];
+}
+
+export interface ElencoClientiCampagne {
+  clienti: ClienteConCampagne[];
+  totale: number;
 }
 
 export interface CategoriaClienti {

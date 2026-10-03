@@ -6,6 +6,7 @@ import {
   type CampagnaCtrl,
   type DdtImpresa,
   type InvioCtrl,
+  type InvioStorico,
   type MossaScambio,
   type OrdineImpresa,
   type RigaImpresa,
@@ -37,6 +38,10 @@ export interface RiassuntoControllo {
   invii_aggiornati: number;
   anomalie_aperte: number;
   anomalie_risolte: number;
+  /** Invii dello storico a cui si e' ritrovato il numero d'ordine. */
+  storico_ritrovati?: number;
+  /** Invii dello storico per cui Impresa non ha una riga con quella data (lacuna dei dati). */
+  storico_senza_ordine?: number;
 }
 
 export async function eseguiControlloCompleto(o: OpzioniControllo): Promise<RiassuntoControllo> {
@@ -101,7 +106,18 @@ async function lavora(controlloId: string, o: OpzioniControllo): Promise<Riassun
   if (soloClienti) qInvii = qInvii.in("codice_cliente", soloClienti);
   const invii = (ok("invii in lavorazione", await qInvii) ?? []) as InvioCtrl[];
 
-  const clientiInvii = [...new Set(invii.map((i) => i.codice_cliente))];
+  // Gli invii importati dall'Excel senza numero d'ordine: si ricostruiscono da Impresa.
+  let qStorici = db()
+    .from("invii")
+    .select("id, campagna_id, codice_cliente, stato, data_consegna")
+    .eq("origine", "import_excel")
+    .in("stato", ["consegnata", "consegnata_banco"])
+    .is("ordine_numero", null)
+    .not("data_consegna", "is", null);
+  if (soloClienti) qStorici = qStorici.in("codice_cliente", soloClienti);
+  const storici = (ok("storico senza ordine", await qStorici) ?? []) as InvioStorico[];
+
+  const clientiInvii = [...new Set([...invii.map((i) => i.codice_cliente), ...storici.map((i) => i.codice_cliente)])];
   const datiDel = ok("data dei dati", await db().rpc("impresa_aggiornato_il")) as string | null;
 
   const [ordini, righe, ddt, righeAperte, collegati] = await Promise.all([
@@ -128,6 +144,7 @@ async function lavora(controlloId: string, o: OpzioniControllo): Promise<Riassun
     righeAperte,
     ddt,
     ordiniCollegati: collegati,
+    storici,
   });
 
   // 4) SCRITTURA DEGLI INVII — condizionata allo stato: se un collega ha agito
@@ -139,6 +156,15 @@ async function lavora(controlloId: string, o: OpzioniControllo): Promise<Riassun
     if (a.cambiaStato || a.adottato) aggiornati++;
   }
 
+  // 4b) STORICO — solo dove il numero e' ancora vuoto: un controllo non riscrive mai
+  //      un ordine gia' stabilito (a mano o da un controllo precedente).
+  let ritrovati = 0;
+  for (const a of risultato.storico) {
+    const r = await db().from("invii").update(a.patch).eq("id", a.id).is("ordine_numero", null).select("id");
+    ok("ordine dello storico", r);
+    if ((r.data ?? []).length > 0) ritrovati++;
+  }
+
   // 5) ANOMALIE
   const { risolte } = await sincronizzaAnomalie(risultato.anomalie, soloClienti, adesso);
 
@@ -146,9 +172,11 @@ async function lavora(controlloId: string, o: OpzioniControllo): Promise<Riassun
     controllo_id: controlloId,
     dati_del: datiDel,
     invii_controllati: invii.length,
-    invii_aggiornati: aggiornati,
+    invii_aggiornati: aggiornati + ritrovati,
     anomalie_aperte: risultato.anomalie.length,
     anomalie_risolte: risolte,
+    storico_ritrovati: ritrovati,
+    storico_senza_ordine: risultato.storicoSenzaOrdine.length,
   };
 }
 

@@ -1,3 +1,4 @@
+import { TriangleAlert } from "lucide-react";
 import { AnomalieView, CartaAnomalia } from "@/components/portali/campagne/anomalie-view";
 import { Pannello, TitoloPagina } from "@/components/portali/campagne/ui";
 import { Ricontrolla } from "@/components/portali/campagne/ricontrolla";
@@ -23,6 +24,7 @@ export default async function AnomaliePage() {
   return (
     <div className="mx-auto max-w-4xl">
       <TitoloPagina
+        icona={TriangleAlert}
         titolo="Anomalie"
         sottotitolo="Quello che non torna fra le buste e gli ordini in Impresa. Si chiudono da sole quando le correggi, dopo il controllo notturno."
       />

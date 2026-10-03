@@ -7,6 +7,7 @@ import type {
   AssegnaInvioInput,
   CreaCampagnaInput,
   DestinatariInput,
+  FiltroClientiCampagneInput,
   PubblicoStandardInput,
 } from "./schemi";
 import type {
@@ -14,8 +15,11 @@ import type {
   CampagnaRiepilogo,
   CategoriaClienti,
   Cliente,
+  ClienteConCampagne,
+  ClientePubblicoRiga,
   ClienteSelezione,
   DashboardCampagne,
+  ElencoClientiCampagne,
   ElencoInvii,
   Invio,
   PubblicoStandard,
@@ -261,7 +265,7 @@ export async function aggiornaInvio(id: string, input: AggiornaInvioInput, userI
 
 export interface FiltroElencoInvii {
   stato?: Invio["stato"];
-  campagna_id?: string;
+  campagna_id?: string[];
   q?: string;
   limit: number;
   offset: number;
@@ -270,7 +274,7 @@ export interface FiltroElencoInvii {
 export async function elencoInvii(f: FiltroElencoInvii): Promise<ElencoInvii> {
   let query = db().from("invii").select(COLONNE_INVIO, { count: "exact" });
   query = f.stato ? query.eq("stato", f.stato) : query.neq("stato", "annullata");
-  if (f.campagna_id) query = query.eq("campagna_id", f.campagna_id);
+  if (f.campagna_id && f.campagna_id.length > 0) query = query.in("campagna_id", f.campagna_id);
   const t = f.q ? pulisciRicerca(f.q) : "";
   if (t.length >= 2) query = query.or(`codice_cliente.ilike.%${t}%,ragione_sociale.ilike.%${t}%`);
   const r = await query.order("assegnata_il", { ascending: false }).range(f.offset, f.offset + f.limit - 1);
@@ -528,40 +532,63 @@ export async function modificaDestinatari(
 }
 
 // ─── Pubblico standard ─────────────────────────────────────────────────────
+const COLONNE_PUBBLICO = "agenti, categorie_commerciali, categorie_attivita, clienti_extra, aggiornato_il";
+
 export async function leggiPubblicoStandard(): Promise<PubblicoStandardResponse> {
-  const [cfg, conteggio] = await Promise.all([
-    db().from("pubblico_standard").select("agenti, categorie_commerciali, clienti_extra, aggiornato_il").eq("id", true).single(),
+  const [cfg, conteggio, clienti] = await Promise.all([
+    db().from("pubblico_standard").select(COLONNE_PUBBLICO).eq("id", true).single(),
     db().rpc("pubblico_standard_conteggio"),
+    // Tutti i clienti non rivenditori (circa 3.800): la pagina ci calcola il conteggio
+    // in tempo reale mentre si sceglie, senza un'andata e ritorno a ogni clic.
+    tuttePagine<ClientePubblicoRiga>("clienti del pubblico", (da, a) =>
+      db()
+        .from("v_clienti")
+        .select("codice_cliente, ragione_sociale, agente_nome, cat_commerciale, cat_attivita")
+        .eq("rivenditore", false)
+        .order("codice_cliente")
+        .range(da, a)
+    ),
   ]);
   const config = ok("pubblico standard", cfg) as PubblicoStandard;
-
-  // Candidati: i clienti degli ALTRI agenti, fra cui l'admin sceglie gli extra
-  // (oggi circa 150, quelli di VALERIA BATTELANI e DANIELE BONI).
-  const agenti = config.agenti.map((a) => a.replace(/["\\]/g, "").trim()).filter(Boolean);
-  const candidati = await tuttePagine<Cliente>("candidati extra", (da, a) => {
-    let q = db().from("v_clienti").select(COLONNE_CLIENTE).eq("rivenditore", false);
-    if (agenti.length) q = q.not("agente_nome", "in", `(${agenti.map((x) => `"${x}"`).join(",")})`);
-    return q.order("ragione_sociale").range(da, a);
-  });
-
-  return { config, raggiunti: Number(ok("conteggio pubblico", conteggio) ?? 0), candidati };
+  return { config, raggiunti: Number(ok("conteggio pubblico", conteggio) ?? 0), clienti };
 }
 
 export async function salvaPubblicoStandard(input: PubblicoStandardInput, userId: string): Promise<PubblicoStandardResponse> {
-  ok(
-    "salvataggio pubblico standard",
-    await db()
-      .from("pubblico_standard")
-      .update({
-        agenti: input.agenti,
-        categorie_commerciali: input.categorie_commerciali,
-        clienti_extra: [...new Set(input.clienti_extra)],
-        aggiornato_il: new Date().toISOString(),
-        aggiornato_da: userId,
-      })
-      .eq("id", true)
-      .select("id")
-      .single()
-  );
+  const patch: Record<string, unknown> = {
+    agenti: input.agenti,
+    categorie_commerciali: input.categorie_commerciali,
+    clienti_extra: [...new Set(input.clienti_extra)],
+    aggiornato_il: new Date().toISOString(),
+    aggiornato_da: userId,
+  };
+  // Assente = non si tocca; `[]` = tutte le categorie.
+  if (input.categorie_attivita !== undefined) patch.categorie_attivita = [...new Set(input.categorie_attivita)];
+  ok("salvataggio pubblico standard", await db().from("pubblico_standard").update(patch).eq("id", true).select("id").single());
   return leggiPubblicoStandard();
+}
+
+// ─── Clienti per campagne ricevute ─────────────────────────────────────────
+/**
+ * «Chi ha ricevuto quali campagne»: l'elenco per cliente della pagina Invii.
+ * Il filtro vive nel database (`campagne.clienti_per_campagne`): sono pochi migliaia
+ * di righe da incrociare e li' si fa con un indice, non scaricandole tutte.
+ */
+export async function clientiPerCampagne(f: FiltroClientiCampagneInput): Promise<ElencoClientiCampagne> {
+  const t = f.q ? pulisciRicerca(f.q) : "";
+  const r = await db().rpc("clienti_per_campagne", {
+    p_campagne: f.campagna_id && f.campagna_id.length > 0 ? f.campagna_id : null,
+    p_modo: f.modo,
+    p_min: f.min,
+    p_q: t.length >= 2 ? t : null,
+    p_limit: f.limit,
+    p_offset: f.offset,
+  });
+  const righe = (ok("clienti per campagne", r) ?? []) as (Omit<ClienteConCampagne, "campagne"> & {
+    campagne: ClienteConCampagne["campagne"] | null;
+    totale: number | string;
+  })[];
+  return {
+    totale: righe.length > 0 ? Number(righe[0].totale) : 0,
+    clienti: righe.map(({ totale: _totale, campagne, ...resto }) => ({ ...resto, campagne: campagne ?? [] })),
+  };
 }
