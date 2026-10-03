@@ -74,6 +74,10 @@ const REPORT = arg("report");
 if (!FILE || FILE === true) { console.error("Manca --file=<path.xlsx>"); process.exit(1); }
 if (!fs.existsSync(FILE)) { console.error(`File non trovato: ${FILE}`); process.exit(1); }
 
+// La xlsx 0.20 in versione ESM non legge i file finche' non le si da' il modulo fs;
+// la 0.18 non ha set_fs. Dove gira lo script (PC o VM) puo' esserci l'una o l'altra.
+if (typeof XLSX.set_fs === "function") XLSX.set_fs(fs);
+
 // ─── Lettura del foglio ────────────────────────────────────────────────────
 // Le date si riconoscono dal formato della cella e si convertono dal seriale a
 // mano: lasciare fare a SheetJS (cellDates) le sposta per il fuso orario.
