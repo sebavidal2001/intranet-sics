@@ -98,7 +98,6 @@ describe("campagne", () => {
       stato: "sospesa",
       applica_pubblico: true,
       testo_riconoscimento: [],
-      articoli_promossi: [],
     });
   });
 

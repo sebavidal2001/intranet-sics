@@ -6,8 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Stessa separazione di Preventivatore e Vettori: il **livello di portale**
  * stabilisce se vedi il portale, il **ruolo funzionale** cosa ci fai.
  *
- * - admin (livello `admin` o `superadmin`): campagne, pubblico, e in Fase 3
- *   l'Analisi. Può fare anche tutto ciò che fa il back office.
+ * - admin (livello `admin` o `superadmin`): campagne e pubblico. Può fare
+ *   anche tutto ciò che fa il back office.
  * - back office (ruolo funzionale `backoffice`): clienti e invii. Non vede la
  *   configurazione.
  */

@@ -8,32 +8,26 @@ import type {
   CreaCampagnaInput,
   CreaPubblicoInput,
   DestinatariInput,
-  FiltroAlberoInput,
   FiltroClientiCampagneInput,
   PubblicoInput,
 } from "./schemi";
 import type {
-  AlberoRisposta,
-  ArticoloTrovato,
   Campagna,
   CampagnaRiepilogo,
   CategoriaClienti,
   Cliente,
   ClienteConCampagne,
-  ConteggioPromossi,
   ClientePubblicoRiga,
   ClienteSelezione,
   DashboardCampagne,
   ElencoClientiCampagne,
   ElencoInvii,
   Invio,
-  NodoAlbero,
   Pubblico,
   PubblicoResponse,
   PubblicoRiepilogo,
   SchedaCliente,
 } from "./tipi";
-import { normalizza, type SelettoreArticolo } from "./albero";
 
 /**
  * Accesso ai dati del Portale Campagne (schema `campagne`, migration 131).
@@ -410,9 +404,7 @@ export async function creaCampagna(input: CreaCampagnaInput, userId: string): Pr
       note: input.note?.trim() || null,
       articolo_codice: input.articolo_codice,
       testo_riconoscimento: input.testo_riconoscimento,
-      marchio: input.marchio?.trim() || null,
-      articoli_promossi: input.articoli_promossi,
-      promossi_albero: normalizza(input.promossi_albero),
+      riferimento: input.riferimento?.trim() || null,
       stato: input.stato,
       // Assente = il database mette lo standard.
       ...(input.pubblico_id ? { pubblico_id: input.pubblico_id } : {}),
@@ -446,8 +438,7 @@ export async function aggiornaCampagna(id: string, input: AggiornaCampagnaInput,
 
   const patch: Record<string, unknown> = { ...input };
   if (input.note !== undefined) patch.note = input.note?.trim() || null;
-  if (input.marchio !== undefined) patch.marchio = input.marchio?.trim() || null;
-  if (input.promossi_albero !== undefined) patch.promossi_albero = normalizza(input.promossi_albero);
+  if (input.riferimento !== undefined) patch.riferimento = input.riferimento?.trim() || null;
   if (input.stato !== undefined && input.stato !== attuale.stato) patch.stato_cambiato_da = userId;
 
   ok("aggiornamento campagna", await db().from("campagne").update(patch).eq("id", id).select("id").single());
@@ -723,51 +714,4 @@ export async function clientiPerCampagne(f: FiltroClientiCampagneInput): Promise
     totale: righe.length > 0 ? Number(righe[0].totale) : 0,
     clienti: righe.map(({ totale: _totale, campagne, ...resto }) => ({ ...resto, campagne: campagne ?? [] })),
   };
-}
-
-// ─── Albero degli articoli promossi ────────────────────────────────────────
-interface RigaAlbero {
-  livello: NodoAlbero["livello"];
-  valore: string;
-  descrizione: string | null;
-  n: number | string;
-  totale: number | string;
-}
-
-/** Un livello dell'albero (fornitori, gruppi, categorie o articoli, secondo i parametri dati). */
-export async function alberoArticoli(f: FiltroAlberoInput): Promise<AlberoRisposta> {
-  const r = await db().rpc("albero_articoli", {
-    p_f: f.f ?? null,
-    p_g: f.g ?? null,
-    p_c: f.c ?? null,
-    p_q: f.q ? pulisciRicerca(f.q) || null : null,
-    p_limit: f.limit,
-    p_offset: f.offset,
-  });
-  const righe = (ok("albero articoli", r) ?? []) as RigaAlbero[];
-  return {
-    totale: righe.length > 0 ? Number(righe[0].totale) : 0,
-    nodi: righe.map((x) => ({ livello: x.livello, valore: x.valore, descrizione: x.descrizione, n: Number(x.n) })),
-  };
-}
-
-/** Ricerca libera di un articolo per codice o descrizione, col suo percorso. */
-export async function cercaArticoli(q: string, limit: number): Promise<{ articoli: ArticoloTrovato[]; totale: number }> {
-  const t = pulisciRicerca(q);
-  if (t.length < 2) return { articoli: [], totale: 0 };
-  const r = await db().rpc("cerca_articoli", { p_q: t, p_limit: limit });
-  const righe = (ok("ricerca articoli", r) ?? []) as (ArticoloTrovato & { totale: number | string })[];
-  return {
-    totale: righe.length > 0 ? Number(righe[0].totale) : 0,
-    articoli: righe.map(({ totale: _t, ...a }) => a),
-  };
-}
-
-/** Quanti articoli prende una selezione e quanti di questi sono nel fatturato. */
-export async function conteggioPromossi(selettori: SelettoreArticolo[]): Promise<ConteggioPromossi> {
-  const sel = normalizza(selettori);
-  if (sel.length === 0) return { articoli: 0, venduti: 0 };
-  const r = await db().rpc("promossi_conteggio", { p_sel: sel });
-  const riga = ((ok("conteggio promossi", r) ?? []) as { articoli: number | string; venduti: number | string }[])[0];
-  return { articoli: Number(riga?.articoli ?? 0), venduti: Number(riga?.venduti ?? 0) };
 }

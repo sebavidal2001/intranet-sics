@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BarChart3, ClipboardList, ListChecks, Megaphone, Search, TriangleAlert, Users } from "lucide-react"
+import { ClipboardList, ListChecks, Megaphone, Search, TriangleAlert, Users } from "lucide-react"
 import type { LivelloAccesso } from "@/lib/auth/portale"
 
 interface SidebarProfile {
@@ -32,7 +32,6 @@ const VOCI_OPERATIVE = [
 const VOCI_ADMIN = [
   { name: "Campagne", url: "/campagne/gestione", icon: Megaphone, esatta: false },
   { name: "Pubblici", url: "/campagne/pubblico", icon: Users, esatta: false },
-  { name: "Analisi", url: "/campagne/analisi", icon: BarChart3, esatta: false },
 ]
 
 export function CampagneSidebar({ livello, profile, puoOperare, eAdmin }: CampagneSidebarProps) {

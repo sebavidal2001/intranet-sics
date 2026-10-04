@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * PATCH — modifica una campagna (admin): titolo, note, articolo, parole di
- * riconoscimento, marchio e STATO. Una campagna terminata non cambia più stato.
+ * riconoscimento, a cosa si riferisce e STATO. Una campagna terminata non cambia più stato.
  * L'articolo non si cambia se la campagna ha già degli invii.
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

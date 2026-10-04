@@ -324,8 +324,8 @@ describe("chi ha seguito gli invii", () => {
 
 describe("il pubblico di una campagna", () => {
   const PUB = "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e";
-  const campagna = { id: C1.id, codice: "C_04_26", nome: "Quattro", stato: "attiva", articoli_promossi: [], pubblico_id: PUB, pubblico: { nome: "Standard", standard: true } };
-  const nuova = { codice: "C_04_26", nome: "Quattro", articolo_codice: "ART-04", testo_riconoscimento: [], articoli_promossi: [], promossi_albero: [], stato: "sospesa" as const, applica_pubblico: true };
+  const campagna = { id: C1.id, codice: "C_04_26", nome: "Quattro", stato: "attiva", pubblico_id: PUB, pubblico: { nome: "Standard", standard: true } };
+  const nuova = { codice: "C_04_26", nome: "Quattro", articolo_codice: "ART-04", testo_riconoscimento: [], stato: "sospesa" as const, applica_pubblico: true };
 
   function scenarioCampagna() {
     risolvi = ({ tabella }) => {

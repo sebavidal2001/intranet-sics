@@ -123,7 +123,7 @@ function NuovaCampagna({ pubblici, onCreata }: { pubblici: PubblicoScelta[]; onC
   const [nome, setNome] = useState("");
   const [articolo, setArticolo] = useState("");
   const [note, setNote] = useState("");
-  const [marchio, setMarchio] = useState("");
+  const [riferimento, setRiferimento] = useState("");
   const [parole, setParole] = useState("");
   const [stato, setStato] = useState<"attiva" | "sospesa">("sospesa");
   // Di default lo standard: e' quello che quasi ogni campagna riceve.
@@ -141,7 +141,7 @@ function NuovaCampagna({ pubblici, onCreata }: { pubblici: PubblicoScelta[]; onC
         nome,
         articolo_codice: articolo,
         note: note || null,
-        marchio: marchio || null,
+        riferimento: riferimento || null,
         testo_riconoscimento: daElenco(parole),
         stato,
         ...(pubblicoId ? { pubblico_id: pubblicoId } : {}),
@@ -165,8 +165,8 @@ function NuovaCampagna({ pubblici, onCreata }: { pubblici: PubblicoScelta[]; onC
         <Campo etichetta="Codice articolo *" aiuto="L'articolo che l'operatrice inserisce nell'ordine in Impresa. Ogni nuova campagna ha il suo.">
           <Input value={articolo} onChange={(e) => setArticolo(e.target.value)} maxLength={60} />
         </Campo>
-        <Campo etichetta="Marchio" aiuto="Serve all'analisi delle vendite (facoltativo ora).">
-          <Input value={marchio} onChange={(e) => setMarchio(e.target.value)} maxLength={80} />
+        <Campo etichetta="A cosa si riferisce" aiuto="Scrivilo a mano: il prodotto, la linea o il tema della campagna.">
+          <Input value={riferimento} onChange={(e) => setRiferimento(e.target.value)} maxLength={300} />
         </Campo>
         <div className="sm:col-span-2">
           <Campo etichetta="Note">
