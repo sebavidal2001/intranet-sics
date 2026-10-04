@@ -139,20 +139,38 @@ describe("scheda campagna: il suo pubblico", () => {
     expect(screen.getByText(/la lista non si aggiorna da sola/)).toBeInTheDocument()
   })
 
-  it("cambiare pubblico lo salva e dice che i destinatari che la campagna ha già non sono stati toccati", async () => {
+  it.each([
+    [true, /i clienti che vi rientrano sono stati aggiunti/],
+    [false, /I destinatari non sono stati toccati/],
+  ])("cambiare pubblico lo salva e dice cosa succede ai destinatari (automatici: %s)", async (automatici, messaggio) => {
     const fetchFinto = installaFetchFinta([
       {
         url: "/api/portali/campagne/campagne/11111111-1111-4111-8111-111111111111",
         metodo: "PATCH",
-        risposta: { campagna: campagna({ pubblico_id: MIR, pubblico: { nome: "Costruttori Nord", standard: false } }), mancanti: 120 },
+        risposta: {
+          campagna: campagna({ pubblico_id: MIR, pubblico: { nome: "Costruttori Nord", standard: false }, destinatari_automatici: automatici }),
+          mancanti: 120,
+        },
       },
     ])
-    render(<CampagnaDettaglioView iniziale={campagna()} pubblici={scelta} />)
+    render(<CampagnaDettaglioView iniziale={campagna({ destinatari_automatici: automatici })} pubblici={scelta} />)
     fireEvent.change(screen.getByLabelText("Pubblico della campagna"), { target: { value: MIR } })
-    await waitFor(() => expect(screen.getByText(/destinatari che la campagna ha già non sono stati toccati/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(messaggio)).toBeInTheDocument())
     expect(JSON.parse(String(fetchFinto.mock.calls[0][1]?.body))).toEqual({ pubblico_id: MIR })
-    expect(screen.getByText(/destinatari che la campagna ha già non sono stati toccati/)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Modifica questo pubblico/ })).toHaveAttribute("href", `/campagne/pubblico/${MIR}`)
+  })
+
+  it("i testi d'aiuto non parlano piu' di pulsanti né di «fotografia»", () => {
+    render(<CampagnaDettaglioView iniziale={campagna({ destinatari_automatici: true })} pubblici={scelta} />)
+    expect(screen.queryByText(/pulsante qui sotto|fotografia/)).not.toBeInTheDocument()
+    expect(screen.getByText(/si aggiungono subito; nessun destinatario viene tolto/)).toBeInTheDocument()
+    expect(screen.getByText(/La lista cresce da sola/)).toBeInTheDocument()
+  })
+
+  it("con destinatari scelti uno per uno l'aiuto dice che cambiare pubblico non li modifica", () => {
+    render(<CampagnaDettaglioView iniziale={campagna({ destinatari_automatici: false })} pubblici={scelta} />)
+    expect(screen.getByText(/cambiare il pubblico non li modifica/)).toBeInTheDocument()
+    expect(screen.queryByText(/La lista cresce da sola/)).not.toBeInTheDocument()
   })
 
   it("una campagna terminata non permette di cambiare pubblico e non mostra la nota", () => {

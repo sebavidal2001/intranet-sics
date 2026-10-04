@@ -81,7 +81,10 @@ export function CampagnaDettaglioView({
     if (!r.ok) setEsitoPubblico({ tipo: "errore", testo: r.errore });
     else {
       setCampagna(r.dati.campagna);
-      setEsitoPubblico({ tipo: "ok", testo: "Pubblico cambiato. I destinatari che la campagna ha già non sono stati toccati." });
+      setEsitoPubblico({ tipo: "ok", testo: r.dati.campagna.destinatari_automatici
+          ? "Pubblico cambiato: i clienti che vi rientrano sono stati aggiunti. Nessun destinatario è stato tolto."
+          : "Pubblico cambiato. I destinatari non sono stati toccati.",
+      });
     }
   }
 
@@ -165,7 +168,11 @@ export function CampagnaDettaglioView({
         <div className="grid items-end gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
           <Campo
             etichetta="A chi si rivolge"
-            aiuto="Di default lo standard. Cambiarlo non toglie né aggiunge destinatari da solo: i clienti si aggiungono col pulsante qui sotto."
+            aiuto={
+              campagna.destinatari_automatici
+                ? "Di default lo standard. Cambiandolo, i clienti che rientrano nel nuovo pubblico si aggiungono subito; nessun destinatario viene tolto."
+                : "Di default lo standard. Questa campagna ha destinatari scelti uno per uno: cambiare il pubblico non li modifica."
+            }
           >
             <select
               className={classeSelect}
@@ -199,8 +206,9 @@ export function CampagnaDettaglioView({
       <Pannello titolo={`Destinatari · ${campagna.destinatari.toLocaleString("it-IT")}`}>
         <p className="mb-4 text-sm text-text-muted">
           {campagna.preparate + campagna.da_spedire} buste in corso · {campagna.consegnate + campagna.consegnate_banco} consegnate.
-          I destinatari sono una fotografia: cambiare il pubblico non modifica questa campagna finché non aggiungi i clienti. Qui sotto puoi anche
-          aggiungere o togliere singoli clienti.
+          {campagna.destinatari_automatici
+            ? " La lista cresce da sola con i clienti nuovi del pubblico. Qui sotto puoi aggiungere o togliere singoli clienti: chi togli non rientra."
+            : " Qui sotto puoi aggiungere o togliere singoli clienti."}
         </p>
         <SelezioneDestinatari campagnaId={campagna.id} bloccata={terminata} onAggiornata={setCampagna} />
       </Pannello>
