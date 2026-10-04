@@ -46,6 +46,7 @@ import {
   aggiornaInvio,
   creaCampagna,
   creaInvio,
+  dashboard,
   elencoInvii,
   ErroreCampagne,
   modificaDestinatari,
@@ -394,5 +395,40 @@ describe("il pubblico di una campagna", () => {
     risolvi = ({ tabella }) => (tabella === "rpc:pubblico_mancanti" ? { data: 42 } : { data: null });
     expect(await pubblicoMancanti(C1.id)).toBe(42);
     expect(opsDi("rpc:pubblico_mancanti", "rpc")[0][0]).toEqual({ p_campagna: C1.id });
+  });
+});
+
+describe("buste in anomalia: non sono preparate né da spedire", () => {
+  const A1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const A2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const conAnomalie = (ids: string[]) =>
+    scenario({ anomalie: () => ({ data: [...ids, ...ids].map((invio_id) => ({ invio_id })) }) });
+  const escluse = () => opsDi("invii", "not").filter(([c]) => c === "id");
+
+  it("i contatori della home escludono gli invii con un'anomalia aperta (errore), una volta sola ciascuno", async () => {
+    conAnomalie([A1, A2]);
+    await dashboard();
+    // Un'esclusione per «preparate» e una per «da spedire».
+    expect(escluse()).toEqual([
+      ["id", "in", `(${A1},${A2})`],
+      ["id", "in", `(${A1},${A2})`],
+    ]);
+    // Solo anomalie aperte e gravi.
+    expect(opsDi("anomalie", "eq")).toEqual(expect.arrayContaining([["stato", "aperta"], ["gravita", "errore"]]));
+  });
+
+  it("senza anomalie non si esclude niente", async () => {
+    conAnomalie([]);
+    await dashboard();
+    expect(escluse()).toEqual([]);
+  });
+
+  it("l'elenco Invii per «da spedire» o «preparata» esclude le stesse buste; per le consegnate no", async () => {
+    conAnomalie([A1]);
+    await elencoInvii({ stato: "da_spedire", limit: 50, offset: 0 });
+    expect(escluse()).toEqual([["id", "in", `(${A1})`]]);
+    chiamate.length = 0;
+    await elencoInvii({ stato: "consegnata", limit: 50, offset: 0 });
+    expect(escluse()).toEqual([]);
   });
 });

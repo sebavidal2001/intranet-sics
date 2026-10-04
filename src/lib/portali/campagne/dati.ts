@@ -314,9 +314,31 @@ export interface FiltroElencoInvii {
   offset: number;
 }
 
+/**
+ * Gli invii con un'anomalia (errore) ancora aperta. Stanno nella pagina Anomalie: non si
+ * contano fra le buste «preparate» né «da spedire», che sono solo quelle in ordine.
+ * Sono poche decine: un elenco di id basta per escluderle.
+ */
+export async function inviiInAnomalia(): Promise<string[]> {
+  const r = await db()
+    .from("anomalie")
+    .select("invio_id")
+    .eq("stato", "aperta")
+    .eq("gravita", "errore")
+    .not("invio_id", "is", null);
+  if (r.error) throw traduci("invii in anomalia", r.error);
+  return [...new Set(((r.data ?? []) as { invio_id: string }[]).map((x) => x.invio_id))];
+}
+
+const eInLavorazione = (stato: string | undefined) => stato === "preparata" || stato === "da_spedire";
+
 export async function elencoInvii(f: FiltroElencoInvii): Promise<ElencoInvii> {
   let query = db().from("invii").select(COLONNE_INVIO, { count: "exact" });
   query = f.stato ? query.eq("stato", f.stato) : query.neq("stato", "annullata");
+  if (eInLavorazione(f.stato)) {
+    const esclusi = await inviiInAnomalia();
+    if (esclusi.length > 0) query = query.not("id", "in", `(${esclusi.join(",")})`);
+  }
   if (f.campagna_id && f.campagna_id.length > 0) query = query.in("campagna_id", f.campagna_id);
   if (f.utente_id) query = query.eq("assegnata_da", f.utente_id);
   const t = f.q ? pulisciRicerca(f.q) : "";
@@ -327,8 +349,11 @@ export async function elencoInvii(f: FiltroElencoInvii): Promise<ElencoInvii> {
 }
 
 export async function dashboard(): Promise<Pick<DashboardCampagne, "preparate" | "da_spedire" | "consegnate_30_giorni">> {
+  const esclusi = await inviiInAnomalia();
   const conta = async (stato: string) => {
-    const r = await db().from("invii").select("id", { count: "exact", head: true }).eq("stato", stato);
+    let q = db().from("invii").select("id", { count: "exact", head: true }).eq("stato", stato);
+    if (esclusi.length > 0) q = q.not("id", "in", `(${esclusi.join(",")})`);
+    const r = await q;
     if (r.error) throw traduci("conteggio invii", r.error);
     return r.count ?? 0;
   };
@@ -348,12 +373,10 @@ export async function dashboard(): Promise<Pick<DashboardCampagne, "preparate" |
 
 /** Le buste ancora in lavorazione, dalle più recenti: la lista sotto i contatori. */
 export async function inviiAperti(limit = 10): Promise<ElencoInvii["invii"]> {
-  const r = await db()
-    .from("invii")
-    .select(COLONNE_INVIO)
-    .in("stato", ["preparata", "da_spedire"])
-    .order("assegnata_il", { ascending: false })
-    .limit(limit);
+  const esclusi = await inviiInAnomalia();
+  let q = db().from("invii").select(COLONNE_INVIO).in("stato", ["preparata", "da_spedire"]);
+  if (esclusi.length > 0) q = q.not("id", "in", `(${esclusi.join(",")})`);
+  const r = await q.order("assegnata_il", { ascending: false }).limit(limit);
   return conNomi((ok("buste aperte", r) ?? []) as unknown as InvioGrezzo[]);
 }
 

@@ -221,11 +221,13 @@ describe("anomalie: ordine non trovato e riga mancante", () => {
     });
   });
 
-  it("l'ordine c'è, manca la riga, ma l'invio è più recente dei dati: attesa", () => {
+  it("l'ordine c'è già nei dati, manca la riga, anche se l'invio è più recente dei dati: anomalia subito", () => {
+    // I dati sono di venerdì, la busta è del sabato: ma l'ordine era già in Impresa, quindi doveva esserci.
     const r = eseguiControllo(
       input({ invii: [invio({ assegnata_il: DOPO })], righe: [], ordini: [{ profilo: "OC", numero: "100", anno: 2026, cliente: "K1", data_doc: "2026-09-20", consegna_prevista: null, aperto: true }] })
     );
-    expect(r.anomalie).toEqual([]);
+    expect(tipi(r)).toEqual(["riga_mancante"]);
+    expect(esito(r).patch.controllo_esito).toBe("riga_mancante");
   });
 
   it("la riga nomina un'altra campagna: incoerente, e la busta non avanza", () => {
@@ -235,10 +237,10 @@ describe("anomalie: ordine non trovato e riga mancante", () => {
     expect(r.anomalie[0].dettaglio).toMatchObject({ campagne_nella_riga: ["C_02_26"] });
   });
 
-  it("la riga non nomina nessuna campagna: si procede e si avvisa", () => {
+  it("la riga non nomina nessuna campagna: si procede, ed è un'anomalia (non una busta «da spedire» pulita)", () => {
     const r = eseguiControllo(input({ righe: [riga({ descrizione: "INVIO DOCUMENTAZIONE" })] }));
     expect(esito(r).patch.stato).toBe("da_spedire");
-    expect(r.anomalie.map((a) => [a.tipo, a.gravita])).toEqual([["riga_senza_campagna", "avviso"]]);
+    expect(r.anomalie.map((a) => [a.tipo, a.gravita])).toEqual([["riga_senza_campagna", "errore"]]);
   });
 });
 

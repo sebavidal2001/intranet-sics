@@ -57,6 +57,10 @@ export function CartaAnomalia({ anomalia, mostraCliente = true }: { anomalia: An
           </p>
           <p className="mt-1 text-sm text-text">{d.cosa}</p>
           <p className="mt-1 text-sm text-text-muted">{d.azione}</p>
+          <p className="mt-2 rounded-lg bg-bg-page px-3 py-2 text-xs text-text-muted" data-testid="perche-anomalia">
+            <span className="font-semibold text-text">Perché è qui: </span>
+            {d.perche}
+          </p>
 
           {d.da_copiare.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-2">

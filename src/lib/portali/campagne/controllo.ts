@@ -398,7 +398,9 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
     const k = chiaveOrdine(cliente, invio.ordine_anno, invio.ordine_numero);
     const testata = testatePerOrdine.get(k);
     const righeOrdine = righePerOrdine.get(k) ?? [];
-    // Un invio piu' recente dei dati non e' in ritardo: il dato non c'e' ancora.
+    // Un invio piu' recente dei dati non e' in ritardo: se l'ORDINE non c'e' ancora nei
+    // dati, si aspetta. Se l'ordine c'e' (testata trovata) e manca la riga, non si aspetta:
+    // il dato dell'ordine doveva esserci gia'.
     const inAttesa = datiDel === null || new Date(invio.assegnata_il).getTime() > new Date(datiDel).getTime();
 
     const comune = {
@@ -448,7 +450,7 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
             },
           });
           if (nuovoStato === "da_spedire") nuovoStato = "preparata";
-        } else if (!inAttesa) {
+        } else {
           patch.controllo_esito = "riga_mancante";
           nuova({
             ...comune,
@@ -474,7 +476,7 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
             ...comune,
             chiave: `riga_senza_campagna|${invio.id}`,
             tipo: "riga_senza_campagna",
-            gravita: "avviso",
+            gravita: "errore",
             dettaglio: {
               campagna_codice: campagna.codice,
               testo_riga: testoRigaCampagna(campagna),

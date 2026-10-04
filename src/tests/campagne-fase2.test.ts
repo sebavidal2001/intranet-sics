@@ -134,6 +134,8 @@ describe("descriviAnomalia", () => {
       expect(d.titolo).toBe(TITOLO_TIPO[t]);
       expect(d.cosa.length).toBeGreaterThan(10);
       expect(d.azione.length).toBeGreaterThan(5);
+      // Ogni anomalia dice perché sta lì e non fra le buste preparate o da spedire.
+      expect(d.perche.length).toBeGreaterThan(40);
     }
   });
 

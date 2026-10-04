@@ -120,6 +120,15 @@ describe("elenco anomalie", () => {
     expect(titoli[2]).toContain("Riga evasa ma DDT non trovato")
   })
 
+  it("ogni anomalia spiega perché si trova fra le anomalie", () => {
+    render(<AnomalieView anomalie={[rigaMancante({ id: "x", tipo: "evasa_senza_ddt" }), rigaMancante()]} />)
+    const note = screen.getAllByTestId("perche-anomalia")
+    expect(note).toHaveLength(2)
+    expect(note[0].textContent).toContain("Perché è qui")
+    expect(note.map((n) => n.textContent).join(" ")).toContain("nessun DDT la contiene")
+    expect(note.map((n) => n.textContent).join(" ")).toContain("I dati dell'ordine dovevano esserci")
+  })
+
   it("lo scambio chiede conferma e poi chiama il server", async () => {
     const fetchFinto = installaFetchFinta([
       { url: "/api/portali/campagne/anomalie/a2", metodo: "PATCH", risposta: { anomalia: { ...inversione(), stato: "risolta" } } },

@@ -12,6 +12,8 @@ export interface DescrizioneAnomalia {
   cosa: string;
   /** Cosa fare. */
   azione: string;
+  /** Perché questo caso sta fra le anomalie e non fra le buste preparate o da spedire. */
+  perche: string;
   /** Valori da poter copiare (articolo, testo della riga, numero ordine). */
   da_copiare: { etichetta: string; valore: string }[];
 }
@@ -58,6 +60,8 @@ export function descriviAnomalia(a: Anomalia): DescrizioneAnomalia {
         titolo: TITOLO_TIPO.riga_mancante,
         cosa: `Nell'ordine ${ordine(a)}${d.data_ordine ? ` del ${formattaDataIt(testo(d.data_ordine))}` : ""} di ${nomeCliente(a)} non c'è la riga con la documentazione della campagna ${campagna}.`,
         azione: "Inserisci nell'ordine in Impresa la riga con questo articolo e questa descrizione.",
+        perche:
+          "La busta è nel registro e l'ordine esiste già nei dati di Impresa, ma senza la riga della campagna. I dati dell'ordine dovevano esserci: per questo non è una semplice busta «preparata» in attesa, è un'anomalia.",
         da_copiare: [
           { etichetta: "Articolo", valore: testo(d.articolo) },
           { etichetta: "Descrizione", valore: testo(d.testo_riga) },
@@ -70,6 +74,8 @@ export function descriviAnomalia(a: Anomalia): DescrizioneAnomalia {
         titolo: TITOLO_TIPO.ordine_non_trovato,
         cosa: `L'ordine ${ordine(a)} di ${nomeCliente(a)} non risulta in Impresa. Probabilmente il numero è sbagliato.`,
         azione: "Apri la scheda del cliente e correggi numero e anno dell'ordine.",
+        perche:
+          "Il registro ha un numero d'ordine, ma dopo l'ultimo aggiornamento dei dati di Impresa quell'ordine non c'è. Finché il numero non è giusto la busta non si può seguire, quindi non è né «preparata» né «da spedire».",
         da_copiare: [],
       };
 
@@ -79,6 +85,8 @@ export function descriviAnomalia(a: Anomalia): DescrizioneAnomalia {
         titolo: TITOLO_TIPO.campagna_incoerente,
         cosa: `Nell'ordine ${ordine(a)} di ${nomeCliente(a)} la riga parla di ${nominate || "un'altra campagna"}, ma la busta preparata è ${campagna}.`,
         azione: "Correggi la descrizione della riga in Impresa, oppure la busta nel programma.",
+        perche:
+          "La riga c'è nell'ordine, ma dice un'altra campagna rispetto alla busta registrata: non si sa quale delle due è giusta, quindi la busta non è considerata «da spedire».",
         da_copiare: [],
       };
     }
@@ -88,6 +96,8 @@ export function descriviAnomalia(a: Anomalia): DescrizioneAnomalia {
         titolo: TITOLO_TIPO.riga_senza_campagna,
         cosa: `La riga DOCUMENTAZIONE dell'ordine ${ordine(a)} di ${nomeCliente(a)} non dice quale campagna è.`,
         azione: "Aggiungi il nome della campagna nella descrizione.",
+        perche:
+          "La riga DOCUMENTAZIONE c'è e il programma l'ha abbinata alla busta, ma la descrizione non dice di quale campagna è. Non si può essere certi dell'abbinamento, quindi non è contata fra le buste «da spedire» finché non si corregge.",
         da_copiare: [{ etichetta: "Descrizione", valore: testo(d.testo_riga) }].filter((x) => x.valore),
       };
 
@@ -96,6 +106,8 @@ export function descriviAnomalia(a: Anomalia): DescrizioneAnomalia {
         titolo: TITOLO_TIPO.evasa_senza_ddt,
         cosa: `La riga DOCUMENTAZIONE dell'ordine ${ordine(a)} di ${nomeCliente(a)} risulta evasa, ma non trovo il DDT che la contiene.`,
         azione: "Verifica in Impresa che la busta sia davvero partita.",
+        perche:
+          "La riga è già evasa, quindi la busta dovrebbe essere partita (non è più «da spedire»), ma nessun DDT la contiene (non si può dire «consegnata»). Il percorso è incompleto.",
         da_copiare: [],
       };
 
@@ -104,6 +116,8 @@ export function descriviAnomalia(a: Anomalia): DescrizioneAnomalia {
         titolo: TITOLO_TIPO.documentazione_senza_busta,
         cosa: `Nell'ordine ${ordine(a)}${d.data_ordine ? ` del ${formattaDataIt(testo(d.data_ordine))}` : ""} di ${nomeCliente(a)} c'è la riga DOCUMENTAZIONE${campagna ? ` (${campagna})` : ""}, ma nel programma non risulta nessuna busta preparata.`,
         azione: "Apri la scheda del cliente e registra la busta con referente e ordine.",
+        perche:
+          "In Impresa la riga c'è, ma nel registro non esiste nessuna busta per quell'ordine: sta in Anomalie perché non si può contare fra le buste preparate o da spedire, che nascono dal registro.",
         da_copiare: [],
       };
 
@@ -117,6 +131,8 @@ export function descriviAnomalia(a: Anomalia): DescrizioneAnomalia {
         titolo: TITOLO_TIPO.ordine_invertito,
         cosa: `${nomeCliente(a)} ha più buste in lavorazione e le campagne partirebbero in ordine inverso: ${righe.join("; ")}.`,
         azione: "Scambia le buste fisiche, poi premi «Applica scambio» per allineare il programma.",
+        perche:
+          "Il cliente ha più buste in lavorazione e le campagne partirebbero in ordine inverso rispetto alla precedenza: va scambiata la busta fisica a mano, il programma non lo fa da solo.",
         da_copiare: [],
       };
     }
