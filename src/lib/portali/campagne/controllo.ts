@@ -347,6 +347,8 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
   // Gli invii sono lavorati su una copia: l'adozione e le mosse li cambiano.
   const lavoro = input.invii.map((i) => ({ ...i }));
   const adottati = new Set<string>();
+  // Buste senza numero d'ordine per cui in Impresa ci sono PIU' righe candidate: non si indovina.
+  const ambigue = new Set<string>();
 
   // 1) ADOZIONE — una busta importata dall'Excel (la "X") non ha numero d'ordine.
   //    Se in Impresa c'e' UNA SOLA riga aperta di quella campagna per quel cliente
@@ -368,6 +370,8 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
       invio.ordine_profilo = r.profilo;
       occupati.add(chiaveOrdine(r.cliente, r.anno, r.numero));
       adottati.add(invio.id);
+    } else if (candidate.length > 1) {
+      ambigue.add(invio.id);
     }
   }
 
@@ -387,8 +391,39 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
     }
     let nuovoStato: InvioCtrl["stato"] | "consegnata" = invio.stato;
 
+    // Un invio piu' recente dei dati non e' in ritardo: se l'ORDINE non c'e' ancora nei
+    // dati, si aspetta. Se l'ordine c'e' (testata trovata) e manca la riga, non si aspetta:
+    // il dato dell'ordine doveva esserci gia'.
+    const inAttesa = datiDel === null || new Date(invio.assegnata_il).getTime() > new Date(datiDel).getTime();
+
     if (!campagna || !invio.ordine_numero || invio.ordine_anno === null) {
-      // Nessun ordine da cercare (busta importata senza riga ancora in Impresa).
+      // Nessun ordine da cercare: busta importata dall'Excel senza numero d'ordine. L'adozione
+      // non ha trovato una riga aperta di quella campagna per il cliente. Se i dati di Impresa
+      // sono piu' recenti della busta, la riga doveva esserci: e' una riga mancante, solo che
+      // dell'ordine non si sa il numero.
+      if (campagna && invio.stato === "preparata" && !inAttesa && !ambigue.has(invio.id)) {
+        patch.controllo_esito = "riga_mancante";
+        nuova({
+          codice_cliente: invio.codice_cliente,
+          ragione_sociale: invio.ragione_sociale,
+          invio_id: invio.id,
+          campagna_id: campagna.id,
+          ordine_numero: null,
+          ordine_anno: null,
+          chiave: `riga_mancante|${invio.id}`,
+          tipo: "riga_mancante",
+          gravita: "errore",
+          dettaglio: {
+            articolo: campagna.articolo_codice,
+            testo_riga: testoRigaCampagna(campagna),
+            campagna_codice: campagna.codice,
+            campagna_nome: campagna.nome,
+            data_ordine: null,
+            profilo: null,
+            senza_ordine: true,
+          },
+        });
+      }
       stato.set(invio.id, nuovoStato);
       aggiornamenti.push({ id: invio.id, patch, cambiaStato: false, adottato: adottati.has(invio.id) });
       continue;
@@ -398,11 +433,6 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
     const k = chiaveOrdine(cliente, invio.ordine_anno, invio.ordine_numero);
     const testata = testatePerOrdine.get(k);
     const righeOrdine = righePerOrdine.get(k) ?? [];
-    // Un invio piu' recente dei dati non e' in ritardo: se l'ORDINE non c'e' ancora nei
-    // dati, si aspetta. Se l'ordine c'e' (testata trovata) e manca la riga, non si aspetta:
-    // il dato dell'ordine doveva esserci gia'.
-    const inAttesa = datiDel === null || new Date(invio.assegnata_il).getTime() > new Date(datiDel).getTime();
-
     const comune = {
       codice_cliente: cliente,
       ragione_sociale: invio.ragione_sociale,

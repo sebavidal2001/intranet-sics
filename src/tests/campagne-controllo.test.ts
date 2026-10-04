@@ -258,6 +258,21 @@ describe("busta importata dall'Excel senza numero d'ordine: adozione", () => {
     const r = eseguiControllo(input({ invii: [x()], righe: [riga({ numero: "777" }), riga({ numero: "778" })] }));
     expect(esito(r).adottato).toBe(false);
     expect(esito(r).patch.ordine_numero).toBeUndefined();
+    // Con più candidate non si può dire che la riga manchi.
+    expect(tipi(r)).not.toContain("riga_mancante");
+  });
+
+  it("nessuna riga aperta per quel cliente e dati più recenti della busta: riga mancante, senza numero d'ordine", () => {
+    const r = eseguiControllo(input({ invii: [x({ stato: "preparata" })], righe: [] }));
+    expect(tipi(r)).toEqual(["riga_mancante"]);
+    expect(r.anomalie[0]).toMatchObject({ invio_id: "i1", ordine_numero: null, ordine_anno: null, gravita: "errore" });
+    expect(r.anomalie[0].dettaglio).toMatchObject({ senza_ordine: true, campagna_codice: "C_01_26" });
+    expect(esito(r).patch.controllo_esito).toBe("riga_mancante");
+  });
+
+  it("la stessa busta, ma più recente dei dati: si aspetta", () => {
+    const r = eseguiControllo(input({ invii: [x({ stato: "preparata", assegnata_il: DOPO })], righe: [] }));
+    expect(r.anomalie).toEqual([]);
   });
 
   it("una riga di un'altra campagna non si adotta", () => {

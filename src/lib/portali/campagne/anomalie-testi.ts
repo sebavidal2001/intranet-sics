@@ -56,6 +56,19 @@ export function descriviAnomalia(a: Anomalia): DescrizioneAnomalia {
 
   switch (a.tipo) {
     case "riga_mancante":
+      if (!a.ordine_numero) {
+        return {
+          titolo: TITOLO_TIPO.riga_mancante,
+          cosa: `La busta della campagna ${campagna} di ${nomeCliente(a)} risulta preparata, ma in Impresa non c'è nessun ordine aperto di questo cliente con la riga della campagna (e nel registro non c'è il numero dell'ordine).`,
+          azione: "Inserisci la riga nell'ordine del cliente e indica il numero dell'ordine nella scheda; se la busta non parte più, annullala.",
+          perche:
+            "La busta è nel registro (importata dall'Excel, senza numero d'ordine) e i dati di Impresa sono più recenti: la riga doveva esserci. Senza una riga in un ordine non è «da spedire», e non è una semplice «preparata» in attesa: è un'anomalia.",
+          da_copiare: [
+            { etichetta: "Articolo", valore: testo(d.articolo) },
+            { etichetta: "Descrizione", valore: testo(d.testo_riga) },
+          ].filter((x) => x.valore),
+        };
+      }
       return {
         titolo: TITOLO_TIPO.riga_mancante,
         cosa: `Nell'ordine ${ordine(a)}${d.data_ordine ? ` del ${formattaDataIt(testo(d.data_ordine))}` : ""} di ${nomeCliente(a)} non c'è la riga con la documentazione della campagna ${campagna}.`,

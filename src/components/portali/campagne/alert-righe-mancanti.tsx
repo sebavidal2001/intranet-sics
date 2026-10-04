@@ -68,7 +68,7 @@ export function AlertRigheMancanti({ anomalie }: { anomalie: Anomalia[] }) {
               <li key={a.id} className="py-4">
                 <p className="text-sm font-semibold text-text">{a.ragione_sociale ?? a.codice_cliente}</p>
                 <p className="mt-0.5 text-sm text-text-muted">
-                  Ordine {a.ordine_numero}/{a.ordine_anno}
+                  {a.ordine_numero ? `Ordine ${a.ordine_numero}/${a.ordine_anno}` : "Ordine non indicato nel registro"}
                   {typeof a.dettaglio.data_ordine === "string" ? ` del ${formattaDataIt(a.dettaglio.data_ordine)}` : ""} · campagna{" "}
                   {String(a.dettaglio.campagna_codice ?? "")}
                 </p>
