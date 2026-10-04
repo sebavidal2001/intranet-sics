@@ -120,6 +120,23 @@ describe("elenco anomalie", () => {
     expect(titoli[2]).toContain("Riga evasa ma DDT non trovato")
   })
 
+  it("in alto un riepilogo con il numero di anomalie per tipo, che porta al gruppo", () => {
+    render(<AnomalieView anomalie={[rigaMancante({ id: "x", tipo: "evasa_senza_ddt" }), rigaMancante(), rigaMancante({ id: "a5" }), inversione()]} />)
+    const riepilogo = within(screen.getByRole("navigation", { name: "Riepilogo per tipo" }))
+    const manca = riepilogo.getByRole("link", { name: /Manca la riga DOCUMENTAZIONE/ })
+    expect(manca).toHaveTextContent("2")
+    expect(manca).toHaveAttribute("href", "#anomalie-riga_mancante")
+    expect(riepilogo.getAllByRole("link")).toHaveLength(3)
+  })
+
+  it("la scheda dice il cliente, l'ordine e la campagna, e «Cosa fare»", () => {
+    render(<AnomalieView anomalie={[rigaMancante()]} />)
+    expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("POLETTI srl")
+    expect(screen.getByText("Ordine 1117/2026")).toBeInTheDocument()
+    expect(screen.getByText("Campagna C_01_26")).toBeInTheDocument()
+    expect(screen.getByText(/Cosa fare:/)).toBeInTheDocument()
+  })
+
   it("ogni anomalia spiega perché si trova fra le anomalie", () => {
     render(<AnomalieView anomalie={[rigaMancante({ id: "x", tipo: "evasa_senza_ddt" }), rigaMancante()]} />)
     const note = screen.getAllByTestId("perche-anomalia")
