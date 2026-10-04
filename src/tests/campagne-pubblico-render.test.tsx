@@ -330,23 +330,23 @@ describe("filtri della pagina Invii", () => {
   ]
 
   it("le campagne sono caselle in un menu a tendina, si possono scegliere in più e quelle scelte risultano spuntate", () => {
-    render(<FiltriInvii vista="clienti" campagne={camp} selezionate={["a", "c"]} q="" modo="almeno_una" min={2} />)
+    render(<FiltriInvii vista="clienti" campagne={camp} selezionate={["a", "c"]} q="" />)
     fireEvent.click(screen.getByRole("button", { name: /C_01_26, C_03_26/ }))
     const caselle = screen.getAllByRole("checkbox") as HTMLInputElement[]
     expect(caselle.map((x) => [x.value, x.checked])).toEqual([["a", true], ["b", false], ["c", true]])
     expect(caselle.every((x) => x.name === "campagna_id")).toBe(true)
   })
 
-  it("nella vista per cliente offre le tre modalità e il numero minimo", () => {
-    render(<FiltriInvii vista="clienti" campagne={camp} selezionate={[]} q="" modo="tutte" min={3} />)
-    const radio = screen.getAllByRole("radio") as HTMLInputElement[]
-    expect(radio.map((x) => [x.value, x.checked])).toEqual([["almeno_una", false], ["tutte", true], ["nessuna", false]])
-    expect(screen.getByLabelText("Quante campagne almeno")).toHaveValue(3)
+  it("nella vista per cliente non ci sono modalità né numero minimo: si sceglie solo con le campagne", () => {
+    render(<FiltriInvii vista="clienti" campagne={camp} selezionate={[]} q="" />)
+    expect(screen.queryAllByRole("radio")).toHaveLength(0)
+    expect(screen.queryByLabelText("Quante campagne almeno")).not.toBeInTheDocument()
+    expect(screen.queryByText(/Hanno ricevuto almeno|Le hanno ricevute tutte|Non ne hanno ricevuta/)).not.toBeInTheDocument()
     expect(document.querySelector('input[name="vista"]')).toHaveValue("clienti")
   })
 
-  it("nella vista per invio niente modalità, e lo stato scelto resta nel modulo", () => {
-    render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="rossi" stato="preparata" modo="almeno_una" min={1} />)
+  it("nella vista per invio lo stato scelto resta nel modulo", () => {
+    render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="rossi" stato="preparata" />)
     expect(screen.queryAllByRole("radio")).toHaveLength(0)
     expect(document.querySelector('input[name="stato"]')).toHaveValue("preparata")
     expect(document.querySelector('input[name="vista"]')).toBeNull()
@@ -354,10 +354,10 @@ describe("filtri della pagina Invii", () => {
   })
 
   it("«Azzera» compare solo se c'è qualcosa da azzerare", () => {
-    const { unmount } = render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="" modo="almeno_una" min={1} />)
+    const { unmount } = render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="" />)
     expect(screen.queryByText("Azzera")).not.toBeInTheDocument()
     unmount()
-    render(<FiltriInvii vista="invii" campagne={camp} selezionate={["a"]} q="" modo="almeno_una" min={1} />)
+    render(<FiltriInvii vista="invii" campagne={camp} selezionate={["a"]} q="" />)
     expect(screen.getByText("Azzera")).toBeInTheDocument()
   })
 })
@@ -390,5 +390,41 @@ describe("elenco dei clienti per campagne ricevute", () => {
     render(<TabellaClienti clienti={righe} />)
     expect(screen.getByText("C_01_26").closest("span")!.className).toContain("ring-2")
     expect(screen.getByText("C_02_26").closest("span")!.className).not.toContain("ring-2")
+  })
+
+  describe("con molte campagne", () => {
+    const molte = Array.from({ length: 12 }, (_, i) => ({
+      codice: `C_${String(i + 1).padStart(2, "0")}_26`,
+      nome: `Campagna ${i + 1}`,
+      stato: "consegnata" as const,
+      data: `2026-${String(i + 1).padStart(2, "0")}-10`,
+      selezionata: false,
+    }))
+    const cliente = (campagne: ClienteConCampagne["campagne"]): ClienteConCampagne => ({
+      codice_cliente: "05000999", ragione_sociale: "TANTE srl", agente_nome: null, cat_attivita: null, n_ricevute: campagne.length, campagne,
+    })
+
+    it("mostra solo le tre più recenti e «+9»; un clic apre tutte, un altro le richiude", () => {
+      render(<TabellaClienti clienti={[cliente(molte)]} />)
+      expect(screen.getByText("C_12_26")).toBeInTheDocument()
+      expect(screen.getByText("C_10_26")).toBeInTheDocument()
+      expect(screen.queryByText("C_09_26")).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "+9" }))
+      expect(screen.getByText("C_01_26")).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "meno" }))
+      expect(screen.queryByText("C_01_26")).not.toBeInTheDocument()
+    })
+
+    it("le campagne scelte nel filtro restano in vista anche se sono vecchie", () => {
+      const scelta = molte.map((k) => (k.codice === "C_01_26" ? { ...k, selezionata: true } : k))
+      render(<TabellaClienti clienti={[cliente(scelta)]} />)
+      expect(screen.getByText("C_01_26")).toBeInTheDocument()
+      expect(screen.queryByText("C_09_26")).not.toBeInTheDocument()
+    })
+
+    it("fino a tre campagne non compare nessun «+N»", () => {
+      render(<TabellaClienti clienti={[cliente(molte.slice(0, 3))]} />)
+      expect(screen.queryByRole("button")).not.toBeInTheDocument()
+    })
   })
 })

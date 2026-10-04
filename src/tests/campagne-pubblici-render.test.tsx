@@ -229,7 +229,7 @@ describe("filtro «seguita da» degli invii", () => {
   ]
 
   it("nella vista per invio c'è il menu con i nomi intranet, e quello scelto è selezionato", () => {
-    render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="" modo="almeno_una" min={1} utenti={utenti} utente="u2" />)
+    render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="" utenti={utenti} utente="u2" />)
     const menu = screen.getByLabelText("Seguita da") as HTMLSelectElement
     expect(menu.name).toBe("utente_id")
     expect(menu.value).toBe("u2")
@@ -237,12 +237,12 @@ describe("filtro «seguita da» degli invii", () => {
   })
 
   it("nella vista per cliente non c'è: li' non esiste «chi l'ha seguita»", () => {
-    render(<FiltriInvii vista="clienti" campagne={camp} selezionate={[]} q="" modo="almeno_una" min={1} utenti={utenti} />)
+    render(<FiltriInvii vista="clienti" campagne={camp} selezionate={[]} q="" utenti={utenti} />)
     expect(screen.queryByLabelText("Seguita da")).not.toBeInTheDocument()
   })
 
   it("«Azzera» compare anche quando c'è solo l'utente", () => {
-    render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="" modo="almeno_una" min={1} utenti={utenti} utente="u1" />)
+    render(<FiltriInvii vista="invii" campagne={camp} selezionate={[]} q="" utenti={utenti} utente="u1" />)
     expect(screen.getByText("Azzera")).toBeInTheDocument()
   })
 })

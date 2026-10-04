@@ -83,15 +83,11 @@ export const FiltroInvii = z.object({
 });
 
 /**
- * La vista «per cliente» della pagina Invii: chi ha ricevuto quali campagne.
- *   almeno_una  ha ricevuto almeno `min` delle campagne scelte
- *   tutte       le ha ricevute tutte
- *   nessuna     non ne ha ricevuta nessuna (fra i destinatari di quelle scelte)
+ * La vista «per cliente» della pagina Invii: i clienti che hanno ricevuto almeno una
+ * delle campagne scelte (nessuna scelta = almeno una qualsiasi).
  */
 export const FiltroClientiCampagne = z.object({
   campagna_id: unoOPiu(uuid),
-  modo: z.enum(["almeno_una", "tutte", "nessuna"]).default("almeno_una"),
-  min: z.coerce.number().int().min(1).max(50).default(1),
   q: testo(60).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),

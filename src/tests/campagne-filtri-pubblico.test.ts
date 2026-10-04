@@ -63,17 +63,11 @@ describe("filtri a più campagne (schemi)", () => {
     expect(FiltroInvii.safeParse({ campagna_id: Array.from({ length: 51 }, () => A) }).success).toBe(false);
   });
 
-  it("per cliente: default «almeno una», almeno 1, e le tre modalità", () => {
-    expect(FiltroClientiCampagne.parse({})).toMatchObject({ modo: "almeno_una", min: 1, limit: 50, offset: 0 });
-    for (const modo of ["almeno_una", "tutte", "nessuna"]) expect(FiltroClientiCampagne.safeParse({ modo }).success).toBe(true);
-    expect(FiltroClientiCampagne.safeParse({ modo: "alcune" }).success).toBe(false);
-  });
-
-  it("il numero minimo è un intero fra 1 e 50, anche se arriva come testo dall'indirizzo", () => {
-    expect(FiltroClientiCampagne.parse({ min: "3" }).min).toBe(3);
-    expect(FiltroClientiCampagne.safeParse({ min: "0" }).success).toBe(false);
-    expect(FiltroClientiCampagne.safeParse({ min: "2.5" }).success).toBe(false);
-    expect(FiltroClientiCampagne.safeParse({ min: "51" }).success).toBe(false);
+  it("per cliente: nessun modo né numero minimo, solo campagne, ricerca e pagina", () => {
+    const r = FiltroClientiCampagne.parse({ modo: "tutte", min: "3" });
+    expect(r).toMatchObject({ limit: 50, offset: 0 });
+    expect(r).not.toHaveProperty("modo");
+    expect(r).not.toHaveProperty("min");
   });
 });
 
@@ -128,11 +122,11 @@ describe("clientiPerCampagne", () => {
     codice_cliente: n, ragione_sociale: `Cliente ${n}`, agente_nome: "AIRFLUID", cat_attivita: null, n_ricevute: 2, campagne: [{ codice: "C_01_26" }], totale: tot,
   });
 
-  it("passa al database le campagne, la modalità e il numero minimo", async () => {
+  it("passa al database le campagne scelte, sempre «almeno una»", async () => {
     risolvi = () => ({ data: [riga("1", 2), riga("2", 2)] });
-    const r = await clientiPerCampagne({ campagna_id: ["a", "b"], modo: "tutte", min: 2, limit: 20, offset: 40, q: "rossi" });
+    const r = await clientiPerCampagne({ campagna_id: ["a", "b"], limit: 20, offset: 40, q: "rossi" });
     expect(opsDi("rpc:clienti_per_campagne", "rpc")[0][0]).toEqual({
-      p_campagne: ["a", "b"], p_modo: "tutte", p_min: 2, p_q: "rossi", p_limit: 20, p_offset: 40,
+      p_campagne: ["a", "b"], p_modo: "almeno_una", p_min: 1, p_q: "rossi", p_limit: 20, p_offset: 40,
     });
     expect(r.totale).toBe(2);
     expect(r.clienti.map((c) => c.codice_cliente)).toEqual(["1", "2"]);
@@ -142,24 +136,24 @@ describe("clientiPerCampagne", () => {
 
   it("nessuna campagna scelta = tutte (NULL), e una ricerca troppo corta non filtra", async () => {
     risolvi = () => ({ data: [] });
-    await clientiPerCampagne({ modo: "almeno_una", min: 1, limit: 50, offset: 0, q: "a" });
+    await clientiPerCampagne({ limit: 50, offset: 0, q: "a" });
     expect(opsDi("rpc:clienti_per_campagne", "rpc")[0][0]).toMatchObject({ p_campagne: null, p_q: null });
   });
 
   it("senza risultati: totale zero e nessun cliente", async () => {
     risolvi = () => ({ data: [] });
-    expect(await clientiPerCampagne({ modo: "nessuna", min: 1, limit: 50, offset: 0 })).toEqual({ clienti: [], totale: 0 });
+    expect(await clientiPerCampagne({ limit: 50, offset: 0 })).toEqual({ clienti: [], totale: 0 });
   });
 
   it("un elenco di campagne nullo dal database diventa vuoto", async () => {
     risolvi = () => ({ data: [{ ...riga("1", 1), campagne: null }] });
-    const r = await clientiPerCampagne({ modo: "nessuna", min: 1, limit: 50, offset: 0 });
+    const r = await clientiPerCampagne({ limit: 50, offset: 0 });
     expect(r.clienti[0].campagne).toEqual([]);
   });
 
   it("converte il totale anche quando il database lo manda come testo (bigint)", async () => {
     risolvi = () => ({ data: [riga("1", "128")] });
-    expect((await clientiPerCampagne({ modo: "nessuna", min: 1, limit: 50, offset: 0 })).totale).toBe(128);
+    expect((await clientiPerCampagne({ limit: 50, offset: 0 })).totale).toBe(128);
   });
 });
 

@@ -70,7 +70,7 @@ export default async function InviiPage({ searchParams }: { searchParams: Promis
         titolo="Invii"
         sottotitolo={
           vista === "clienti"
-            ? "Chi ha ricevuto quali campagne: scegli una o più campagne e trova i clienti che ne hanno ricevute un certo numero, tutte, o nessuna."
+            ? "Chi ha ricevuto quali campagne: scegli una o più campagne per vedere i clienti che ne hanno ricevuta almeno una."
             : "Tutte le buste, dalla più recente. Scegli una o più campagne per restringere l'elenco."
         }
       />
@@ -123,8 +123,6 @@ export default async function InviiPage({ searchParams }: { searchParams: Promis
         selezionate={selezionate}
         q={q}
         stato={filtroInvii.stato}
-        modo={filtroClienti.modo}
-        min={filtroClienti.min}
         utenti={utenti}
         utente={utente}
       />
@@ -152,12 +150,7 @@ async function VistaClienti({
   const scelte = (filtro.campagna_id ?? []).map((id) => campagne.find((c) => c.id === id)?.codice).filter(Boolean) as string[];
   const elencoScelte = scelte.length > 0 ? scelte.join(", ") : "tutte le campagne";
 
-  const frase =
-    filtro.modo === "tutte"
-      ? `hanno ricevuto tutte: ${elencoScelte}`
-      : filtro.modo === "nessuna"
-        ? `sono destinatari di ${elencoScelte} e non ne hanno ricevuta nessuna`
-        : `hanno ricevuto almeno ${filtro.min} fra: ${elencoScelte}`;
+  const frase = `hanno ricevuto almeno una fra: ${elencoScelte}`;
 
   const da = totale === 0 ? 0 : filtro.offset + 1;
   const a = Math.min(filtro.offset + filtro.limit, totale);
@@ -169,11 +162,11 @@ async function VistaClienti({
       descrizione={frase}
     >
       {clienti.length === 0 ? (
-        <Vuoto icona={Users} titolo="Nessun cliente con questi criteri" testo="Prova a cambiare le campagne scelte o a ridurre il numero minimo." />
+        <Vuoto icona={Users} titolo="Nessun cliente con questi criteri" testo="Prova a cambiare le campagne scelte." />
       ) : (
         <TabellaClienti clienti={clienti} />
       )}
-      <Paginazione offset={filtro.offset} limite={filtro.limit} totale={totale} da={da} a={a} base={{ ...base, modo: filtro.modo, min: filtro.min }} />
+      <Paginazione offset={filtro.offset} limite={filtro.limit} totale={totale} da={da} a={a} base={base} />
     </Pannello>
   );
 }

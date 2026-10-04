@@ -1,14 +1,13 @@
 import Link from "next/link";
-import { STATO_INVIO_UI } from "@/lib/portali/campagne/stati";
 import type { ClienteConCampagne } from "@/lib/portali/campagne/tipi";
-import { formattaData } from "./api-client";
+import { CampagneCliente } from "./campagne-cliente";
 import { classeRiga, classeTh } from "./ui";
 
 /**
- * «Chi ha ricevuto quali campagne»: una riga per cliente, con una targhetta per ogni
- * campagna. Verde = ricevuta (con la data), arancio = busta ancora in lavorazione; le
- * campagne scelte nel filtro hanno un contorno azzurro, cosi' si vede subito a colpo
- * d'occhio perche' il cliente e' nell'elenco.
+ * «Chi ha ricevuto quali campagne»: una riga per cliente, con le targhette delle sue
+ * campagne (vedi `CampagneCliente`: poche in vista, il resto dietro «+N»). Verde =
+ * ricevuta (con la data), arancio = busta ancora in lavorazione; le campagne scelte nel
+ * filtro hanno un contorno azzurro.
  */
 export function TabellaClienti({ clienti }: { clienti: ClienteConCampagne[] }) {
   return (
@@ -41,25 +40,7 @@ export function TabellaClienti({ clienti }: { clienti: ClienteConCampagne[] }) {
                 </span>
               </td>
               <td className="py-3 pr-5">
-                <div className="flex flex-wrap gap-1.5">
-                  {c.campagne.map((k) => {
-                    const ricevuta = k.stato === "consegnata" || k.stato === "consegnata_banco";
-                    return (
-                      <span
-                        key={k.codice}
-                        title={`${k.nome} · ${STATO_INVIO_UI[k.stato].etichetta}${k.data ? ` · ${formattaData(k.data)}` : ""}`}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-medium ${
-                          ricevuta ? "border-success/30 bg-success/10 text-success" : "border-warning/40 bg-warning/10 text-warning"
-                        } ${k.selezionata ? "ring-2 ring-primary ring-offset-1" : ""}`}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATO_INVIO_UI[k.stato].pallino }} aria-hidden />
-                        {k.codice}
-                        <span className="font-normal opacity-80">{k.data ? formattaData(k.data).slice(0, 5) : "in corso"}</span>
-                      </span>
-                    );
-                  })}
-                  {c.campagne.length === 0 ? <span className="text-xs text-text-muted">nessuna ancora</span> : null}
-                </div>
+                <CampagneCliente campagne={c.campagne} />
               </td>
             </tr>
           ))}

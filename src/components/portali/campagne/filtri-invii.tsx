@@ -2,12 +2,6 @@ import Link from "next/link";
 import type { CampagnaRiepilogo, StatoInvio } from "@/lib/portali/campagne/tipi";
 import { SelezioneCampagne } from "./selezione-campagne";
 
-export const MODI_CLIENTI = [
-  { valore: "almeno_una", etichetta: "Hanno ricevuto almeno" },
-  { valore: "tutte", etichetta: "Le hanno ricevute tutte" },
-  { valore: "nessuna", etichetta: "Non ne hanno ricevuta nessuna" },
-] as const;
-
 /**
  * Il modulo dei filtri della pagina Invii. E' un form GET: l'indirizzo resta
  * condivisibile e il server fa il resto. Le campagne sono chip che si accendono con
@@ -19,8 +13,6 @@ export function FiltriInvii({
   selezionate,
   q,
   stato,
-  modo,
-  min,
   utenti = [],
   utente,
 }: {
@@ -29,13 +21,10 @@ export function FiltriInvii({
   selezionate: string[];
   q: string;
   stato?: StatoInvio;
-  modo: "almeno_una" | "tutte" | "nessuna";
-  min: number;
   /** Chi ha seguito degli invii (nome e cognome intranet), per il filtro «seguita da». */
   utenti?: { id: string; nome: string }[];
   utente?: string;
 }) {
-  const MODI = MODI_CLIENTI;
   return (
       <form method="get" className="mb-5 rounded-2xl border border-border bg-white p-4 shadow-sm">
         {vista === "clienti" ? <input type="hidden" name="vista" value="clienti" /> : null}
@@ -52,34 +41,6 @@ export function FiltriInvii({
             <SelezioneCampagne key={selezionate.join(",")} campagne={campagne} selezionate={selezionate} />
           )}
         </div>
-
-        {vista === "clienti" ? (
-          <fieldset className="mt-4">
-            <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Quali clienti</legend>
-            <div className="flex flex-wrap items-center gap-2">
-              {MODI.map((m) => (
-                <label key={m.valore} className="cursor-pointer">
-                  <input type="radio" name="modo" value={m.valore} defaultChecked={modo === m.valore} className="peer sr-only" />
-                  <span className="inline-flex rounded-lg border border-border bg-white px-3.5 py-2 text-sm font-medium text-text transition-colors hover:border-primary/50 peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-primary-dark peer-focus-visible:ring-2 peer-focus-visible:ring-primary">
-                    {m.etichetta}
-                  </span>
-                </label>
-              ))}
-              <label className="inline-flex items-center gap-2 text-sm text-text">
-                <input
-                  type="number"
-                  name="min"
-                  min={1}
-                  max={50}
-                  defaultValue={min}
-                  aria-label="Quante campagne almeno"
-                  className="h-9 w-16 rounded-lg border border-border bg-white px-2 text-center text-sm"
-                />
-                <span className="text-text-muted">delle campagne scelte (solo per «almeno»)</span>
-              </label>
-            </div>
-          </fieldset>
-        ) : null}
 
         <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-4">
           <label className="text-sm">

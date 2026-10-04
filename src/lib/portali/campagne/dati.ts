@@ -723,8 +723,9 @@ export async function clientiPerCampagne(f: FiltroClientiCampagneInput): Promise
   const t = f.q ? pulisciRicerca(f.q) : "";
   const r = await db().rpc("clienti_per_campagne", {
     p_campagne: f.campagna_id && f.campagna_id.length > 0 ? f.campagna_id : null,
-    p_modo: f.modo,
-    p_min: f.min,
+    // La funzione SQL sa anche «tutte» e «nessuna»: la pagina chiede solo «almeno una».
+    p_modo: "almeno_una",
+    p_min: 1,
     p_q: t.length >= 2 ? t : null,
     p_limit: f.limit,
     p_offset: f.offset,
