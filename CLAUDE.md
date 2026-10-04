@@ -21,6 +21,20 @@ Sezioni e file tipici da toccare:
 
 Non considerare "completa" una modifica se il Vault non riflette già lo stato finale.
 
+## Branch e worktree (REGOLA OBBLIGATORIA)
+
+Il deploy fa `git reset --hard origin/main` sulla VM: **in produzione va solo ciò che è in `main`**. I branch sono contenitori brevi di un singolo lavoro, non "il branch di un programma".
+
+1. **La cartella principale (`C:\Users\sebav\Desktop\intranet-sics`) sta sempre su `main`, pulita.** Non ci si lavora e non ci si committa: serve solo da base per i worktree.
+2. **Un lavoro = un branch = un worktree**, creati da `origin/main` aggiornato:
+   `git fetch origin && git worktree add ../wt-<nome> -b <tipo>/<portale>-<cosa> origin/main`
+   (nell'app Claude: avviare la sessione in modalità worktree).
+3. **Nome branch**: `feat/`, `fix/`, `docs/` + portale (`vettori`, `campagne`, `bi`, `preventivatore`, `valutazioni`) + cosa. Niente branch "per programma" a lunga vita.
+4. **Fine lavoro**: merge su `main` → push → `git worktree remove` + cancellare branch locale e remoto. Un branch non mergiato dopo qualche giorno è debito: o si chiude o si parcheggia con prefisso `parcheggio/`.
+5. **Prima di cominciare**: `git status` nella cartella in cui si lavora; se contiene modifiche non tue (altre sessioni attive), non stasharle né resettarle, chiedere.
+6. **Pulizia periodica**: `npm run pulizia-branch` elenca (senza cancellare) branch e worktree già in `main`.
+7. Commit sempre con percorsi espliciti (`git add -- <file>`), mai `-A`; file temporanei fuori dal repo (scratchpad), mai nella radice.
+
 ## Commands
 
 ```bash

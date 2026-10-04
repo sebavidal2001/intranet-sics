@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "pulizia-branch": "node scripts/pulizia-branch.mjs",
     "ensure:fonts": "node scripts/ensure-tenorite-fonts.mjs",
     "check:root": "node scripts/check-root-junk.mjs",
     "test": "vitest run",
