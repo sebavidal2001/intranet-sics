@@ -14,6 +14,7 @@ const ALLOW = new Set([
   "postcss.config.mjs", "tailwind.config.mjs", "tsconfig.json", "vitest.config.ts", "vitest.dalvivo.config.ts",
   // ambiente/locali ignorati da git ma legittimi
   ".env", ".env.local", "tsconfig.tsbuildinfo", "next-env.d.ts",
+  ".git", // nei worktree è un file, non una cartella
 ]);
 
 // Cartelle ignorate
