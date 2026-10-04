@@ -69,6 +69,18 @@ interface DefinizioneMetrica {
   filtroImplicito?: (r: RigaFatto) => boolean;
 }
 
+/**
+ * Quantità col segno della transazione.
+ *
+ * Nelle viste `bi_*` l'importo porta il segno del documento, la quantità no:
+ * una nota di credito ha importo negativo e quantità positiva. Per il costo
+ * del venduto quel segno serve, altrimenti una resa aggiunge costo invece di
+ * toglierlo. Vedere la nota estesa sulle metriche di margine.
+ */
+export function quantitaOrientata(r: RigaFatto): number {
+  return r.importo < 0 ? -Math.abs(r.quantita) : r.quantita;
+}
+
 export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   ordinato: {
     chiave: "ordinato",
@@ -267,32 +279,47 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   },
 
   // ── Margine ────────────────────────────────────────────────────────────
-  // Ricavo meno costo di acquisto, riga per riga. Il costo e' l'ULTIMO noto
-  // (`preventivatore.prodotti.ult_costo`), quindi si tratta di un margine A
-  // COSTO CORRENTE: vedere la nota in `sorgente.ts`.
+  // Ricavo meno costo di acquisto, riga per riga, col costo VALIDO ALLA DATA
+  // DELLA VENDITA (storico del listino Ultimo Costo). Vedere la nota in
+  // `sorgente.ts` per che cosa questo margine e' e che cosa non e'.
   //
-  // La regola che tiene in piedi tutte e tre: una riga senza costo vale `null`,
-  // non zero. `esegui()` salta i null nella somma, e nel rapporto il
-  // denominatore resta a zero: la riga esce dal calcolo invece di gonfiarlo.
+  // Due regole tengono in piedi tutte e tre.
+  //
+  // 1. Una riga senza costo vale `null`, non zero. `esegui()` salta i null
+  //    nella somma, e nel rapporto il denominatore resta a zero: la riga esce
+  //    dal calcolo invece di gonfiarlo.
+  //
+  // 2. La quantita' va orientata col segno dell'importo. Nelle viste `bi_*`
+  //    l'importo porta il segno del documento (`tot_riga_val_az * segno_iva`)
+  //    ma la quantita' NO: una nota di credito ha importo negativo e quantita'
+  //    positiva, e senza correzione il suo costo verrebbe SOMMATO invece che
+  //    sottratto. Misurato sul 2025-2026: 7.365,76 EUR di costo col segno
+  //    sbagliato, che diventano 14.731 EUR di errore sul costo del venduto e
+  //    0,20 punti di margine sul 2025.
+  //
+  //    Verificato che il segno dell'importo basti: nei casi in cui diverge dal
+  //    segno del documento — 29 righe di nota di credito con importo >= 0 e 19
+  //    righe di fattura con importo < 0 — il costo in gioco e' rispettivamente
+  //    zero e assente. Dove pesa, i due segni coincidono sempre.
   costo_venduto: {
     chiave: "costo_venduto",
     etichetta: "Costo del venduto",
     descrizione:
-      "Costo di acquisto della merce fatturata, a ultimo costo noto. Esclude le righe senza costo in anagrafica.",
+      "Costo di acquisto della merce fatturata, al costo valido il giorno della vendita. Esclude le righe di cui non si conosce il costo.",
     dataset: "fatturato",
     aggregazione: "somma",
     unita: "euro",
-    valore: (r) => (r.costoUnitario == null ? null : r.quantita * r.costoUnitario),
+    valore: (r) => (r.costoUnitario == null ? null : quantitaOrientata(r) * r.costoUnitario),
   },
   margine: {
     chiave: "margine",
     etichetta: "Margine",
     descrizione:
-      "Fatturato meno costo di acquisto, a ultimo costo noto. Margine di primo livello: non contiene costi di struttura, trasporto o manodopera. Le righe senza costo in anagrafica sono escluse, non contate a margine pieno.",
+      "Fatturato meno costo di acquisto, al costo valido il giorno della vendita. Margine di primo livello: non contiene costi di struttura, trasporto o manodopera. Le righe senza costo sono escluse, non contate a margine pieno.",
     dataset: "fatturato",
     aggregazione: "somma",
     unita: "euro",
-    valore: (r) => (r.costoUnitario == null ? null : r.importo - r.quantita * r.costoUnitario),
+    valore: (r) => (r.costoUnitario == null ? null : r.importo - quantitaOrientata(r) * r.costoUnitario),
   },
   margine_pct: {
     chiave: "margine_pct",
@@ -302,7 +329,7 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     dataset: "fatturato",
     aggregazione: "rapporto",
     unita: "percentuale",
-    numeratore: (r) => (r.costoUnitario == null ? 0 : r.importo - r.quantita * r.costoUnitario),
+    numeratore: (r) => (r.costoUnitario == null ? 0 : r.importo - quantitaOrientata(r) * r.costoUnitario),
     denominatore: (r) => (r.costoUnitario == null ? 0 : r.importo),
   },
   copertura_costi_pct: {
@@ -376,6 +403,64 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
 };
 
 /** Descrizione del vocabolario, da passare all'AI come contesto. */
+export interface ValoreDimensione {
+  valore: string;
+  righe: number;
+  importo: number;
+}
+
+/**
+ * I valori che una dimensione contiene davvero, ordinati per peso.
+ *
+ * Serve a chiudere il buco fra "so quali dimensioni esistono" e "so cosa
+ * scrivere in un filtro". Il vocabolario dice che esiste `cliente`; non dice
+ * che quel cliente nel gestionale si chiama "TECNA spa" e non "Tecna S.p.A.".
+ * Un filtro che sbaglia la grafia torna vuoto senza errore, e un risultato
+ * vuoto somiglia moltissimo a «quel cliente non ha comprato».
+ *
+ * Si guarda tutto lo snapshot e non un dataset solo: un cliente puo' comparire
+ * nel fatturato e non nell'ordinato, e chi fa la domanda non sa in quale dei
+ * due vive.
+ */
+export function elencaValoriDimensione(
+  snapshot: Snapshot,
+  dimensione: Dimensione,
+  opzioni: { contiene?: string; massimo?: number } = {}
+): { distinti: number; valori: ValoreDimensione[] } {
+  const estrattore = DIMENSIONI[dimensione];
+  if (!estrattore) throw new SpecNonValida(
+    `Dimensione "${dimensione}" non esiste.`,
+    `Disponibili: ${Object.keys(DIMENSIONI).join(", ")}.`
+  );
+
+  const cerca = (opzioni.contiene ?? "").trim().toLowerCase();
+  const massimo = Math.max(1, Math.min(200, Math.floor(Number(opzioni.massimo) || 40)));
+
+  const peso = new Map<string, { righe: number; importo: number }>();
+  for (const righe of Object.values(snapshot.dataset)) {
+    for (const r of righe) {
+      const v = estrattore.estrai(r);
+      if (!v) continue;
+      if (cerca && !v.toLowerCase().includes(cerca)) continue;
+      const voce = peso.get(v) ?? { righe: 0, importo: 0 };
+      voce.righe += 1;
+      voce.importo += r.importo;
+      peso.set(v, voce);
+    }
+  }
+
+  const ordinati = [...peso.entries()].sort((x, y) => y[1].importo - x[1].importo);
+  return {
+    distinti: ordinati.length,
+    // La grafia e' il punto: va riportata esattamente come sta nel dato.
+    valori: ordinati.slice(0, massimo).map(([valore, v]) => ({
+      valore,
+      righe: v.righe,
+      importo: Math.round(v.importo),
+    })),
+  };
+}
+
 export function vocabolario() {
   const dimensioniAmmesse = Object.fromEntries(
     Object.keys(CATALOGO).map((chiave) => [
@@ -411,7 +496,21 @@ export function vocabolario() {
 // Validazione: perimetro chiuso
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class SpecNonValida extends Error {}
+/**
+ * Spec rifiutata, con l'indicazione di cosa usare al posto di cosa.
+ *
+ * Il suggerimento non e' cortesia: e' l'analista che legge questi messaggi, e
+ * «Dimensione "fornitore" non esiste» lo lascia a indovinare quali esistano.
+ * Con l'elenco davanti corregge al passo dopo invece di bruciarne tre.
+ */
+export class SpecNonValida extends Error {
+  readonly suggerimento: string | null;
+  constructor(messaggio: string, suggerimento: string | null = null) {
+    super(messaggio);
+    this.name = "SpecNonValida";
+    this.suggerimento = suggerimento;
+  }
+}
 
 export function validaSpec(spec: unknown): SpecQuery {
   if (!spec || typeof spec !== "object") throw new SpecNonValida("Spec assente.");
@@ -420,7 +519,9 @@ export function validaSpec(spec: unknown): SpecQuery {
   const metrica = String(s.metrica ?? "") as ChiaveMetrica;
   if (!CATALOGO[metrica]) {
     throw new SpecNonValida(
-      `Metrica "${String(s.metrica)}" non esiste. Disponibili: ${Object.keys(CATALOGO).join(", ")}.`
+      `Metrica "${String(s.metrica)}" non esiste.`,
+      `Disponibili: ${Object.keys(CATALOGO).join(", ")}. ` +
+        "Se nessuna esprime la domanda, dillo apertamente invece di ripiegare su una vicina."
     );
   }
 
@@ -439,10 +540,23 @@ export function validaSpec(spec: unknown): SpecQuery {
     throw new SpecNonValida(`Granularità "${granularita}" non valida.`);
   }
 
+  // Le dimensioni sensate per questa metrica, per poterle nominare nei rifiuti.
+  // Non si RESTRINGE a queste: le analisi gia' salvate nelle dashboard usano
+  // combinazioni che oggi passano, e trasformarle in errori le romperebbe in
+  // blocco. Dove il raggruppamento produce davvero un numero sbagliato — budget
+  // e BEP oltre business unit e agente — l'avviso lo mette `risolviBudget`.
+  const suggerite = dimensioniPerMetrica(metrica).join(", ");
+  const tutte = Object.keys(DIMENSIONI).join(", ");
+
   const raggruppa = Array.isArray(s.raggruppa)
     ? s.raggruppa.map((d) => {
         const dim = String(d) as Dimensione;
-        if (!DIMENSIONI[dim]) throw new SpecNonValida(`Dimensione "${d}" non esiste.`);
+        if (!DIMENSIONI[dim]) {
+          throw new SpecNonValida(
+            `Dimensione "${d}" non esiste.`,
+            `Per la metrica "${metrica}" hanno senso: ${suggerite}. Esistenti in tutto: ${tutte}.`
+          );
+        }
         return dim;
       })
     : [];
@@ -451,10 +565,19 @@ export function validaSpec(spec: unknown): SpecQuery {
     ? s.filtri.map((f) => {
         const ff = f as Record<string, unknown>;
         const campo = String(ff.campo ?? "") as Dimensione;
-        if (!DIMENSIONI[campo]) throw new SpecNonValida(`Filtro su dimensione "${ff.campo}" non esiste.`);
+        if (!DIMENSIONI[campo]) {
+          throw new SpecNonValida(
+            `Filtro su dimensione "${ff.campo}" non esiste.`,
+            `Per la metrica "${metrica}" hanno senso: ${suggerite}. Esistenti in tutto: ${tutte}. ` +
+              "Per sapere quali valori contiene una dimensione usa elenca_valori."
+          );
+        }
         const op = String(ff.op ?? "eq") as Filtro["op"];
         if (!["eq", "neq", "in", "contiene"].includes(op)) {
-          throw new SpecNonValida(`Operatore filtro "${op}" non valido.`);
+          throw new SpecNonValida(
+            `Operatore filtro "${op}" non valido.`,
+            'Operatori ammessi: eq, neq, in, contiene. Per un confronto parziale usa "contiene".'
+          );
         }
         return { campo, op, valore: (ff.valore ?? "") as string | string[] };
       })
@@ -637,11 +760,24 @@ export function esegui(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
     }
     const pct = totaleRicavo > 0 ? (coperto / totaleRicavo) * 100 : 0;
 
-    avvisi.push(
-      "Margine a ULTIMO costo di acquisto, non al costo del momento della " +
-        "vendita: e' un margine a costo corrente e cambia se i costi si " +
-        "aggiornano. Non contiene costi di struttura, trasporto o manodopera."
-    );
+    if (snapshot.costiApprossimati) {
+      // Il ripiego ha cambiato il significato del numero: dirlo per primo, e
+      // dirlo sempre. Un margine che cambia senso in silenzio e' peggio di un
+      // margine assente.
+      avvisi.push(
+        "ATTENZIONE: lo storico costi non era disponibile e si e' ripiegato " +
+          "sull'ULTIMO costo noto, lo stesso per ogni data. Il margine e' " +
+          "quindi a costo corrente, non al costo del momento della vendita, e " +
+          "cambia se i costi si aggiornano."
+      );
+    } else {
+      avvisi.push(
+        "Margine al costo di acquisto valido il giorno della vendita. E' il " +
+          "costo a cui quel giorno si sarebbe ricomprata la merce, non il " +
+          "costo dei pezzi effettivamente venduti: il magazzino non e' " +
+          "valorizzato. Non contiene costi di struttura, trasporto o manodopera."
+      );
+    }
     if (pct < 99.5) {
       avvisi.push(
         `Costo noto per il ${pct.toFixed(1)}% del valore nel periodo: il margine ` +

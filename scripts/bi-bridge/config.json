@@ -56,6 +56,14 @@
                         "ExpectedColumns":  40,
                         "Profilo":  "cruscotto",
                         "HeaderPattern":  "^codice$"
+                    },
+                    {
+                        "SqlFile":  "STORICO_COSTI.sql",
+                        "OutputFile":  "storico_costi.csv",
+                        "Dataset":  "costi_listino_storico",
+                        "ExpectedColumns":  3,
+                        "Profilo":  "costi",
+                        "HeaderPattern":  "^codice_articolo$"
                     }
                 ]
 }

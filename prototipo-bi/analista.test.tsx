@@ -67,16 +67,43 @@ describe("Instradamento del modello", () => {
 
 describe("Costi", () => {
   it("calcola il costo dai token e dal listino", () => {
-    // Sonnet 4.5: 3 $/Mtok in ingresso, 15 in uscita.
+    // Sonnet 5: 2 $/Mtok in ingresso, 10 in uscita (listino del 17/09/2026).
+    // Era Sonnet 4.5 a 3/15: il passaggio ha tolto un terzo del costo.
     const c = calcolaCosto(MODELLI.standard, 10_000, 2_000);
-    expect(c.costoUsd).toBeCloseTo(10_000 / 1e6 * 3 + 2_000 / 1e6 * 15, 6);
-    expect(c.costoUsd).toBeCloseTo(0.06, 4);
+    expect(c.costoUsd).toBeCloseTo(10_000 / 1e6 * 2 + 2_000 / 1e6 * 10, 6);
+    expect(c.costoUsd).toBeCloseTo(0.04, 4);
   });
 
-  it("il modello economico costa molto meno a parità di token", () => {
+  it("il modello leggero costa al più la metà a parità di token", () => {
+    // Con Sonnet 4.5 il rapporto era 3x; con Sonnet 5 è esattamente 2x, perché
+    // il livello standard è sceso e il leggero no. Detto altrimenti: sul livello
+    // leggero Haiku 4.5 non è più un affare, ed è lì che un modello a
+    // 0,20/1,20 (misurato il 17/09/2026) varrebbe cinque volte tanto.
     const grande = calcolaCosto(MODELLI.standard, 10_000, 2_000).costoUsd;
     const piccolo = calcolaCosto(MODELLI.leggero, 10_000, 2_000).costoUsd;
-    expect(piccolo).toBeLessThan(grande / 2);
+    expect(piccolo).toBeLessThanOrEqual(grande / 2);
+  });
+
+  it("quando OpenRouter dichiara il costo, vince su quello calcolato da noi", () => {
+    // Da quando la cache del prompt è accesa, `prompt_tokens` comprende anche i
+    // token riletti dalla cache, che costano un decimo: la moltiplicazione
+    // nostra è una stima PER ECCESSO. L'importo addebitato è l'unico vero.
+    const stimato = calcolaCosto(MODELLI.standard, 10_000, 2_000);
+    const reale = calcolaCosto(MODELLI.standard, 10_000, 2_000, 0.0123, 8_000);
+
+    expect(stimato.costoDichiarato).toBe(false);
+    expect(reale.costoDichiarato).toBe(true);
+    expect(reale.costoUsd).toBeCloseTo(0.0123, 6);
+    expect(reale.costoUsd).toBeLessThan(stimato.costoUsd);
+    expect(reale.tokenCache).toBe(8_000);
+  });
+
+  it("senza costo dichiarato ripiega sul listino invece di dire zero", () => {
+    // Un fornitore che non dichiara il costo non deve far sembrare la domanda
+    // gratuita: è la stessa classe di bugia del BEP che valeva l'ordinato.
+    const c = calcolaCosto(MODELLI.standard, 10_000, 2_000, null);
+    expect(c.costoUsd).toBeGreaterThan(0);
+    expect(c.costoDichiarato).toBe(false);
   });
 
   it("i prezzi si possono rileggere dal listino pubblico", async () => {

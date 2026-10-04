@@ -19,12 +19,20 @@
  *    con sole SELECT/WITH, timeout, limite righe e viste in allowlist.
  */
 
-import { esegui, validaSpec, vocabolario, formattaEuro } from "./semantico";
+import {
+  esegui,
+  validaSpec,
+  vocabolario,
+  formattaEuro,
+  DIMENSIONI,
+  SpecNonValida,
+  elencaValoriDimensione,
+} from "./semantico";
 import { calcolaPrevisione, type Previsione } from "./previsione";
 import { instrada, calcolaCosto, MODELLI, type Complessita, type Consumo } from "./modelli";
 import { leggiConfigurazione } from "./archivio";
 import { chiusureEffettive } from "./chiusure-dedotte";
-import { eseguiSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
+import { eseguiSqlBi, ErroreSqlBi, SCHEMA_SQL_BI, validaSqlSolaLettura } from "./sql";
 import { graficiPossibili, scegliGrafico, type TipoGrafico } from "./scelta-grafico";
 import { validaSerieAnalisi } from "./analisi-composita";
 import { calcolaPunteggi, costruisciContesto, rilevaTutto } from "./rilevatori";
@@ -73,6 +81,10 @@ interface EsitoModello {
   toolCalls: ToolCall[];
   ingresso: number;
   uscita: number;
+  /** Costo addebitato da OpenRouter per questa chiamata, quando lo dichiara. */
+  costo: number | null;
+  /** Token d'ingresso serviti dalla cache invece che riletti per intero. */
+  cache: number;
 }
 
 async function chiamaModello(
@@ -89,6 +101,21 @@ async function chiamaModello(
     },
     body: JSON.stringify({
       model: modelloId,
+      // Cache del prompt.
+      //
+      // Il prefisso fisso di ogni chiamata pesa ~7.600 token — istruzioni
+      // ~1.100, vocabolario ~3.500, schemi degli strumenti ~3.000 — e il ciclo
+      // lo rispedisce a ogni passo, fino a dodici volte. Una domanda "profonda"
+      // arriva cosi' a ~241.000 token di solo ingresso: l'input domina il costo
+      // di un ordine di grandezza rispetto all'uscita.
+      //
+      // Su OpenRouter la cache e' automatica per OpenAI ma NON per Anthropic:
+      // li' serve almeno questo campo, che mette il punto di taglio sull'ultimo
+      // blocco memorizzabile. Senza, si paga il prezzo pieno tutte le volte.
+      // Misurato sul listino del 17/09/2026, su un mix di 100 domande:
+      // 19,05 $ senza cache, 5,18 $ con. La prima scrittura costa 1,25x, le
+      // riletture un decimo.
+      cache_control: { type: "ephemeral" },
       messages: messaggi,
       tools: opzioni.strumenti,
       temperature: opzioni.temperatura ?? 0.2,
@@ -102,7 +129,13 @@ async function chiamaModello(
 
   const json = (await res.json()) as {
     choices?: Array<{ message?: { content?: string; tool_calls?: ToolCall[] } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      /** Importo addebitato: vale piu' di qualunque moltiplicazione fatta da noi. */
+      cost?: number;
+      prompt_tokens_details?: { cached_tokens?: number };
+    };
   };
   const msg = json.choices?.[0]?.message;
   return {
@@ -110,6 +143,8 @@ async function chiamaModello(
     toolCalls: msg?.tool_calls ?? [],
     ingresso: json.usage?.prompt_tokens ?? 0,
     uscita: json.usage?.completion_tokens ?? 0,
+    costo: json.usage?.cost ?? null,
+    cache: json.usage?.prompt_tokens_details?.cached_tokens ?? 0,
   };
 }
 
@@ -408,6 +443,32 @@ const STRUMENTI_TUTTI = [
   {
     type: "function",
     function: {
+      name: "elenca_valori",
+      description:
+        "Elenca i valori realmente presenti in una dimensione (clienti, agenti, business unit, " +
+        "categorie, articoli, addetti), con quanto pesano. Usalo PRIMA di filtrare su un nome: " +
+        "la grafia del gestionale non e' quella del parlato, e un filtro che sbaglia una lettera " +
+        "torna vuoto senza dire perche'.",
+      parameters: {
+        type: "object",
+        properties: {
+          dimensione: {
+            type: "string",
+            enum: ["bu", "agente", "cliente", "categoria", "causale", "articolo", "creatore", "esito", "fascia_eta"],
+          },
+          contiene: {
+            type: "string",
+            description: "Filtra i valori che contengono questo testo (senza distinzione di maiuscole)",
+          },
+          massimo: { type: "number", description: "Quanti valori restituire, predefinito 40" },
+        },
+        required: ["dimensione"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "proponi_analisi",
       description:
         "Crea un'analisi visuale certificata, già eseguita, con il grafico più adatto. " +
@@ -596,6 +657,12 @@ STRUMENTI
   obiettivo" proponi UNA sola analisi con più serie e ruoli, mai analisi separate
   che costringano chi legge a confrontare grafici diversi a mente.
 - interroga_metrica: usalo quando serve solo un numero dentro una frase.
+- elenca_valori: PRIMA di filtrare su un nome proprio (cliente, agente, articolo,
+  addetto). La grafia del gestionale non è quella del parlato — ragioni sociali
+  abbreviate, maiuscole incoerenti, doppi spazi — e un filtro che sbaglia una
+  lettera torna vuoto senza dire perché, il che somiglia moltissimo a "quel
+  cliente non ha comprato". Cerca il nome con il parametro "contiene", poi
+  filtra con la grafia esatta che ti è stata restituita.
 ${strumentiSql}- prevedi_chiusura_anno: per ogni stima di fine anno. NON calcolare proiezioni
   a mente: sbaglieresti e nessuno potrebbe rifare il conto.
 - prepara_documento: quando serve un file Excel o Word.
@@ -621,6 +688,12 @@ TRAPPOLE DI QUESTI DATI — sono errori già commessi, non ipotesi
 - La business unit "(non assegnata)" è dato mancante, non una divisione.
 - Il tasso di conversione è un rapporto fra totali, non la media dei tassi.
 - L'anzianità dei preventivi riguarda solo le righe con inevaso residuo.
+
+QUANDO UNO STRUMENTO TI RIFIUTA
+La risposta di errore può contenere un campo "suggerimento": leggilo e correggi
+di conseguenza al passo successivo, invece di riprovare la stessa cosa o di
+ripiegare su una metrica diversa da quella che serviva. Se il suggerimento non
+basta, dichiara cosa non sei riuscito a ottenere.
 
 LIMITI
 - NON IPOTIZZARE LE CAUSE. Puoi dire dove si concentra uno scostamento, perché
@@ -1077,6 +1150,9 @@ export async function chiediAnalista(opzioni: {
   const documenti: DocumentoProposto[] = [];
   let ingresso = 0;
   let uscita = 0;
+  // Sommati su tutte le chiamate del ciclo: e' il costo della domanda intera.
+  let costoDichiarato = 0;
+  let tokenCache = 0;
 
   const vuota = (testo: string): RispostaAnalista => ({
     testo,
@@ -1104,7 +1180,10 @@ export async function chiediAnalista(opzioni: {
 
   const messaggi: MessaggioChat[] = [
     { role: "system", content: istruzioni(snapshot, sqlLibero) },
-    { role: "system", content: `Vocabolario disponibile:\n${JSON.stringify(vocabolario(), null, 2)}` },
+    // Compatto, non indentato: l'indentazione era ~1.200 token di spazi
+    // rispediti a ogni passo del ciclo. Il modello legge JSON su una riga
+    // esattamente come lo legge su trenta.
+    { role: "system", content: `Vocabolario disponibile:\n${JSON.stringify(vocabolario())}` },
   ];
 
   for (const m of opzioni.storico ?? []) {
@@ -1143,6 +1222,44 @@ export async function chiediAnalista(opzioni: {
         valoriNoti,
         interrogazioni,
         passi,
+      });
+    }
+
+    if (nome === "elenca_valori") {
+      const a = arg as { dimensione?: string; contiene?: string; massimo?: number };
+      const chiave = String(a.dimensione ?? "") as Dimensione;
+      const estrattore = DIMENSIONI[chiave];
+      if (!estrattore) {
+        return JSON.stringify({
+          errore: `Dimensione "${a.dimensione}" non esiste.`,
+          suggerimento: `Disponibili: ${Object.keys(DIMENSIONI).join(", ")}.`,
+        });
+      }
+
+      const esito = elencaValoriDimensione(snapshot, chiave, {
+        contiene: a.contiene,
+        massimo: a.massimo,
+      });
+
+      passi.push({
+        tipo: "interrogazione",
+        descrizione:
+          `valori di ${estrattore.etichetta}` +
+          `${a.contiene ? ` che contengono "${a.contiene}"` : ""}: ${esito.distinti}`,
+        righe: esito.distinti,
+      });
+
+      return JSON.stringify({
+        dimensione: chiave,
+        etichetta: estrattore.etichetta,
+        distinti: esito.distinti,
+        mostrati: esito.valori.length,
+        valori: esito.valori,
+        nota:
+          esito.valori.length < esito.distinti
+            ? `Mostrati i ${esito.valori.length} di maggior peso su ${esito.distinti}. ` +
+              'Restringi con "contiene" se cerchi un nome preciso.'
+            : "Elenco completo.",
       });
     }
 
@@ -1379,6 +1496,8 @@ export async function chiediAnalista(opzioni: {
       });
       ingresso += correzione.ingresso;
       uscita += correzione.uscita;
+      costoDichiarato += correzione.costo ?? 0;
+      tokenCache += correzione.cache;
       if (!correzione.testo.trim()) {
         return { ...risposta, verifica, correzioneApplicata: false };
       }
@@ -1412,6 +1531,8 @@ export async function chiediAnalista(opzioni: {
     });
     ingresso += esito.ingresso;
     uscita += esito.uscita;
+    costoDichiarato += esito.costo ?? 0;
+    tokenCache += esito.cache;
 
     if (esito.toolCalls.length === 0 || ultimoPasso) {
       passi.push({ tipo: "risposta", descrizione: "Risposta finale" });
@@ -1433,7 +1554,7 @@ export async function chiediAnalista(opzioni: {
         modello: rotta.modello.nome,
         complessita: rotta.complessita,
         motivoModello: rotta.motivo,
-        consumo: calcolaCosto(rotta.modello, ingresso, uscita),
+        consumo: calcolaCosto(rotta.modello, ingresso, uscita, costoDichiarato, tokenCache),
       };
     }
 
@@ -1445,8 +1566,19 @@ export async function chiediAnalista(opzioni: {
         risultato = await eseguiStrumento(tc.function.name, tc.function.arguments);
       } catch (e) {
         const messaggio = e instanceof Error ? e.message : String(e);
-        passi.push({ tipo: "errore", descrizione: messaggio });
-        risultato = JSON.stringify({ errore: messaggio });
+        // Il suggerimento e' la differenza fra un rifiuto e un'indicazione.
+        // «Funzione SQL non autorizzata: where» non dice al modello cosa fare,
+        // e il ciclo bruciava passi a riprovare a caso finche' non ripiegava su
+        // una metrica piu' debole. Gli errori che ne portano uno lo espongono.
+        const suggerimento =
+          e instanceof ErroreSqlBi || e instanceof SpecNonValida ? e.suggerimento : null;
+        passi.push({
+          tipo: "errore",
+          descrizione: suggerimento ? `${messaggio} ${suggerimento}` : messaggio,
+        });
+        risultato = JSON.stringify(
+          suggerimento ? { errore: messaggio, suggerimento } : { errore: messaggio }
+        );
       }
       messaggi.push({
         role: "tool",
@@ -1475,7 +1607,7 @@ export async function chiediAnalista(opzioni: {
     modello: rotta.modello.nome,
     complessita: rotta.complessita,
     motivoModello: rotta.motivo,
-    consumo: calcolaCosto(rotta.modello, ingresso, uscita),
+    consumo: calcolaCosto(rotta.modello, ingresso, uscita, costoDichiarato, tokenCache),
   };
 }
 

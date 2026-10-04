@@ -19,6 +19,7 @@
 
 import { CruscottoView } from "@/components/prototipo-bi/cruscotto-view";
 import { ottieniSnapshot } from "@/lib/prototipo-bi/sorgente";
+import { verificaAccessoSicuro } from "@/lib/prototipo-bi/accesso";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +29,6 @@ export const metadata = {
 
 export default async function PaginaCruscotto() {
   let anni: number[] = [new Date().getFullYear()];
-  let bu: string[] = [];
-  let agenti: string[] = [];
   let dataMassima: string | null = null;
   let runRicevutoIl: string | null = null;
   let tassonomiaBu: { coerente: boolean; estranei: string[] } | null = null;
@@ -44,20 +43,24 @@ export default async function PaginaCruscotto() {
     anni = [...new Set(righe.map((r) => Number(r.data.slice(0, 4))).filter(Boolean))].sort(
       (a, b) => b - a
     );
-    bu = [...new Set(righe.map((r) => r.bu))].filter(Boolean).sort();
-    agenti = [...new Set(righe.map((r) => r.agente))].filter(Boolean).sort();
   } catch {
     // Snapshot non disponibile: il cruscotto mostrerà lo stato di errore.
   }
 
+  // La rilettura forzata svuota la cache condivisa da tutti e riscarica 66.000
+  // righe: e' un'azione sullo stato globale del server, non una lettura, e la
+  // route la riserva a chi ha `sqlLibero`. Il pulsante segue la stessa regola,
+  // altrimenti offrirebbe a tutti un'azione che poi viene rifiutata.
+  const esito = await verificaAccessoSicuro();
+  const puoForzare = esito.ok && esito.accesso.sqlLibero;
+
   return (
     <CruscottoView
       anniDisponibili={anni.length > 0 ? anni : [new Date().getFullYear()]}
-      buDisponibili={bu}
-      agentiDisponibili={agenti}
       dataMassima={dataMassima}
       runRicevutoIl={runRicevutoIl}
       tassonomiaBu={tassonomiaBu}
+      puoForzareAggiornamento={puoForzare}
     />
   );
 }

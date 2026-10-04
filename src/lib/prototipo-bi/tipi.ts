@@ -34,17 +34,24 @@ export interface RigaFatto {
   rigaEvasa?: string;
 
   /**
-   * Ultimo costo unitario di acquisto dell'articolo, da
-   * `preventivatore.prodotti.ult_costo`. Agganciato alla riga quando lo
-   * snapshot viene costruito.
+   * Costo unitario di acquisto VALIDO ALLA DATA DI QUESTA RIGA, dallo storico
+   * del listino Ultimo Costo (`bi.costi_listino_storico`). Agganciato quando
+   * lo snapshot viene costruito.
    *
    * `null` significa **costo sconosciuto**, e le metriche di margine devono
    * escludere la riga invece di trattare il costo come zero: un costo zero
    * darebbe margine 100% e sarebbe la stessa classe di bugia del BEP che
    * valeva l'ordinato.
+   *
+   * Quando `Snapshot.costiApprossimati` e' vero questo campo porta invece
+   * l'ultimo costo noto, uguale per tutte le date.
    */
   costoUnitario?: number | null;
-  /** Data del costo nel gestionale: serve a dire quanto e' vecchio. */
+  /**
+   * Data di inizio validita' della versione di costo APPLICATA a questa riga
+   * (non l'ultima nota): dice a quando risale il costo usato. `null` quando si
+   * e' ripiegato sull'ultimo costo noto.
+   */
   dataCosto?: string | null;
 
   // ── Campi disponibili solo sui preventivi (dal run corrente) ─────────────
@@ -124,6 +131,16 @@ export interface Snapshot {
    * con campi mancanti.
    */
   versioneForma?: number;
+  /**
+   * Vero se i costi NON sono quelli validi alla data di vendita ma l'ultimo
+   * costo noto: lo storico non era disponibile e si e' ripiegato su
+   * `preventivatore.prodotti`.
+   *
+   * Cambia il significato del margine — da "al costo di allora" a "al costo di
+   * oggi" — quindi deve finire negli avvisi di ogni risultato che lo usa. Un
+   * margine che cambia senso in silenzio e' peggio di un margine assente.
+   */
+  costiApprossimati?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
