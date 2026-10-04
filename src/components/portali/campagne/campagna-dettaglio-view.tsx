@@ -19,15 +19,11 @@ interface Esito {
 export function CampagnaDettaglioView({
   iniziale,
   pubblici,
-  mancanti: mancantiIniziali,
 }: {
   iniziale: CampagnaRiepilogo;
   pubblici: PubblicoScelta[];
-  /** Clienti che rientrano nel pubblico della campagna e non ne sono ancora destinatari. */
-  mancanti: number;
 }) {
   const [campagna, setCampagna] = useState(iniziale);
-  const [mancanti, setMancanti] = useState(mancantiIniziali);
   const [nome, setNome] = useState(iniziale.nome);
   const [note, setNote] = useState(iniziale.note ?? "");
   const [articolo, setArticolo] = useState(iniziale.articolo_codice);
@@ -85,27 +81,7 @@ export function CampagnaDettaglioView({
     if (!r.ok) setEsitoPubblico({ tipo: "errore", testo: r.errore });
     else {
       setCampagna(r.dati.campagna);
-      setMancanti(r.dati.mancanti);
       setEsitoPubblico({ tipo: "ok", testo: "Pubblico cambiato. I destinatari che la campagna ha già non sono stati toccati." });
-    }
-  }
-
-  async function cambiaAutomatici(attivi: boolean) {
-    setOccupato("pubblico");
-    setEsitoPubblico(null);
-    const r = await chiamaApi<{ campagna: CampagnaRiepilogo; mancanti: number }>(`/api/portali/campagne/campagne/${campagna.id}`, {
-      metodo: "PATCH",
-      corpo: { destinatari_automatici: attivi },
-    });
-    setOccupato(null);
-    if (!r.ok) setEsitoPubblico({ tipo: "errore", testo: r.errore });
-    else {
-      setCampagna(r.dati.campagna);
-      setMancanti(r.dati.mancanti);
-      setEsitoPubblico({
-        tipo: "ok",
-        testo: attivi ? "Aggiornamento automatico acceso: i clienti che rientrano nel pubblico sono stati aggiunti." : "Aggiornamento automatico spento.",
-      });
     }
   }
 
@@ -211,26 +187,11 @@ export function CampagnaDettaglioView({
           </Link>
         </div>
         {!terminata ? (
-          <div className="mt-4 space-y-1">
-            <label className="flex items-center gap-2 text-sm font-medium text-text">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={campagna.destinatari_automatici}
-                disabled={occupato !== null}
-                onChange={(e) => cambiaAutomatici(e.target.checked)}
-              />
-              Aggiungi da sola i clienti che rientrano nel pubblico
-              {occupato === "pubblico" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            </label>
-            <p className="text-sm text-text-muted">
-              {campagna.destinatari_automatici
-                ? "Ogni notte, dopo il caricamento di Impresa, i clienti nuovi che rientrano nel pubblico diventano destinatari. Nessuno viene tolto; chi togli a mano qui sotto non rientra."
-                : mancanti === 0
-                  ? "Spenta: i destinatari restano quelli scelti a mano (campagna mirata)."
-                  : `Spenta: ${mancanti.toLocaleString("it-IT")} ${mancanti === 1 ? "cliente rientra" : "clienti rientrano"} nel pubblico e non ${mancanti === 1 ? "è destinatario" : "sono destinatari"}. Accendendola vengono aggiunti tutti.`}
-            </p>
-          </div>
+          <p className="mt-3 text-xs text-text-muted">
+            {campagna.destinatari_automatici
+              ? "I clienti nuovi che rientrano nel pubblico diventano destinatari da soli, ogni notte. Nessuno viene tolto."
+              : "Destinatari scelti uno per uno: la lista non si aggiorna da sola."}
+          </p>
         ) : null}
         {esitoPubblico ? <div className="mt-3"><Messaggio tipo={esitoPubblico.tipo}>{esitoPubblico.testo}</Messaggio></div> : null}
       </Pannello>

@@ -467,8 +467,8 @@ export async function aggiornaCampagna(id: string, input: AggiornaCampagnaInput,
   if (input.stato !== undefined && input.stato !== attuale.stato) patch.stato_cambiato_da = userId;
 
   ok("aggiornamento campagna", await db().from("campagne").update(patch).eq("id", id).select("id").single());
-  // Pubblico cambiato, o aggiornamento automatico appena acceso: i clienti nuovi entrano subito.
-  if (input.pubblico_id !== undefined || input.destinatari_automatici === true) await sincronizzaPubblici(id);
+  // Pubblico cambiato: i clienti che la nuova regola include entrano subito (se la campagna si aggiorna da sola).
+  if (input.pubblico_id !== undefined) await sincronizzaPubblici(id);
   return leggiCampagna(id);
 }
 

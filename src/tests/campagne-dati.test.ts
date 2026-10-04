@@ -453,16 +453,15 @@ describe("destinatari automatici del pubblico", () => {
     expect(opsDi("rpc:sincronizza_pubblici", "rpc")[0][0]).toEqual({ p_campagna: null });
   });
 
-  it("accendere l'aggiornamento automatico sincronizza subito quella campagna", async () => {
+  it("cambiare il pubblico sincronizza subito quella campagna", async () => {
     scenario({ "rpc:sincronizza_pubblici": 3 });
-    await aggiornaCampagna(C1.id, { destinatari_automatici: true }, "u1");
-    expect(opsDi("campagne", "update")[0][0]).toEqual({ destinatari_automatici: true });
+    await aggiornaCampagna(C1.id, { pubblico_id: PUB }, "u1");
     expect(opsDi("rpc:sincronizza_pubblici", "rpc")[0][0]).toEqual({ p_campagna: C1.id });
   });
 
-  it("spegnerlo non sincronizza niente", async () => {
+  it("modificare solo il nome non sincronizza niente", async () => {
     scenario();
-    await aggiornaCampagna(C1.id, { destinatari_automatici: false }, "u1");
+    await aggiornaCampagna(C1.id, { nome: "Nuovo" }, "u1");
     expect(opsDi("rpc:sincronizza_pubblici", "rpc")).toHaveLength(0);
   });
 

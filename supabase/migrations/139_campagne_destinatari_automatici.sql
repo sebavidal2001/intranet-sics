@@ -5,15 +5,17 @@
 -- che rientrano». Per una campagna aperta tutto l'anno vuol dire avere solo i clienti
 -- iniziali.
 --
--- ORA: ogni campagna ha `destinatari_automatici`. Se e' vero, `sincronizza_pubblici()`
+-- ORA: ogni campagna ha `destinatari_automatici` (nessun pulsante: lo decide il modo in
+-- cui e' stata costruita, vedi sotto). Se e' vero, `sincronizza_pubblici()`
 -- (lanciata dal controllo notturno, dopo il caricamento di Impresa, e a ogni modifica
 -- di un pubblico) aggiunge fra i destinatari i clienti che rientrano nel pubblico e non
 -- ci sono. Solo aggiunte: non toglie mai nessuno.
 --
 -- Una campagna mirata (poche decine di clienti scelti a mano) NON deve riempirsi con
--- tutto il suo pubblico: per questo e' un interruttore per campagna, non una regola
--- globale. Alle campagne esistenti si accende solo dove il pubblico e' gia' tutto
--- applicato (pubblico_mancanti = 0); le altre le accende l'admin dalla scheda campagna.
+-- tutto il suo pubblico, e un pubblico fatto di soli clienti scelti a mano non si
+-- aggiorna mai: la sincronizzazione agisce solo se il pubblico ha degli agenti
+-- (cioe' «tutti i clienti di quel commerciale»). Alla creazione l'interruttore e' acceso
+-- se si parte da «aggiungi i clienti del pubblico»; per le esistenti vedi l'UPDATE sotto.
 --
 -- `destinatari_esclusi`: chi un admin toglie a mano da una campagna non viene
 -- riaggiunto dalla sincronizzazione. Un'aggiunta manuale lo rimette in gioco.
@@ -47,12 +49,17 @@ GRANT ALL ON campagne.destinatari_esclusi TO service_role;
 COMMENT ON TABLE campagne.destinatari_esclusi IS
   'Clienti tolti a mano da una campagna: la sincronizzazione del pubblico non li riaggiunge.';
 
--- Campagne gia' a pubblico pieno: da ora si tengono aggiornate da sole.
+-- Campagne esistenti: si aggiornano da sole quelle costruite su un'intera fascia di
+-- clienti (pubblico con agenti e almeno meta' del pubblico gia' destinataria). Le mirate
+-- (poche decine di clienti sul pubblico standard) restano ferme.
 UPDATE campagne.campagne c
    SET destinatari_automatici = true
- WHERE c.stato <> 'terminata'
-   AND campagne.pubblico_mancanti(c.id) = 0
-   AND EXISTS (SELECT 1 FROM campagne.destinatari d WHERE d.campagna_id = c.id);
+  FROM campagne.pubblici p
+ WHERE p.id = c.pubblico_id
+   AND c.stato <> 'terminata'
+   AND cardinality(p.agenti) > 0
+   AND (SELECT count(*) FROM campagne.destinatari d WHERE d.campagna_id = c.id) * 2
+       >= campagne.pubblico_conteggio(p.id);
 
 -- Quanti clienti rientrerebbero nel pubblico e non sono destinatari ne' esclusi a mano.
 CREATE OR REPLACE FUNCTION campagne.pubblico_mancanti(p_campagna uuid)
@@ -110,8 +117,10 @@ BEGIN
   INSERT INTO campagne.destinatari (campagna_id, codice_cliente, aggiunto_da, automatico)
   SELECT c.id, cod, NULL, true
     FROM campagne.campagne c
+    JOIN campagne.pubblici p ON p.id = c.pubblico_id
     CROSS JOIN LATERAL campagne.pubblico_codici(c.pubblico_id) AS cod
    WHERE c.destinatari_automatici
+     AND cardinality(p.agenti) > 0   -- pubblico fatto di soli clienti scelti a mano: non si aggiorna
      AND c.stato <> 'terminata'
      AND (p_campagna IS NULL OR c.id = p_campagna)
      AND NOT EXISTS (SELECT 1 FROM campagne.destinatari_esclusi e
