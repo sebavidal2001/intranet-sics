@@ -1,0 +1,5188 @@
+[
+  {
+    "file": "2026 GLS.xlsx",
+    "sheet": "superato ARRIVI 2026",
+    "formule": [
+      {
+        "formula": "SUM(B3:G3)",
+        "cella": "H3",
+        "valore": 8.929999999999998,
+        "conteggio": 8
+      },
+      {
+        "formula": "E15",
+        "cella": "I15",
+        "valore": 1,
+        "conteggio": 85
+      },
+      {
+        "formula": "IF(E15<=3,$H$3,IF(E15<=5,$H$4,IF(E15<=10,$H$5,IF(E15<=20,$H$6,IF(E15<=30,$H$7,IF(E15<=50,$H$8,IF(E15<=100,$H$9)))))))",
+        "cella": "J15",
+        "valore": 8.929999999999998,
+        "conteggio": 259
+      },
+      {
+        "formula": "IF(E15>=10.01,0.5,IF(E15<=10,0))",
+        "cella": "K15",
+        "valore": 0,
+        "conteggio": 261
+      },
+      {
+        "formula": "J15+K15+L15+(J15*0.105)",
+        "cella": "M15",
+        "valore": 9.867649999999998,
+        "conteggio": 1
+      },
+      {
+        "formula": "(IF(I15<=3,$H$3,IF(I15<=5,$H$4,IF(I15<=10,$H$5,IF(I15<=20,$H$6,IF(I15<=30,$H$7,IF(I15<=50,$H$8,IF(I15<=100,$H$9)))))))+K15+L15)*1.1",
+        "cella": "N15",
+        "valore": 9.822999999999999,
+        "conteggio": 215
+      },
+      {
+        "formula": "IF(M15>N15, M15,IF(M15<N15,N15,IF(M15=N15,M15)))",
+        "cella": "O15",
+        "valore": 9.867649999999998,
+        "conteggio": 217
+      },
+      {
+        "formula": "(Q15+S15)*0.1",
+        "cella": "T15",
+        "valore": 0,
+        "conteggio": 217
+      },
+      {
+        "formula": "Q15+R15+T15",
+        "cella": "U15",
+        "valore": 0,
+        "conteggio": 217
+      },
+      {
+        "formula": "(U15-M15)/M15",
+        "cella": "V15",
+        "valore": -1,
+        "conteggio": 217
+      },
+      {
+        "formula": "J16+K16+L16+(J16*0.1)",
+        "cella": "M16",
+        "valore": 9.822999999999997,
+        "conteggio": 260
+      },
+      {
+        "formula": "Q16*7.14%",
+        "cella": "S16",
+        "valore": 0.8325239999999999,
+        "conteggio": 193
+      },
+      {
+        "formula": "40.71+19.8",
+        "cella": "J26",
+        "valore": 60.510000000000005,
+        "conteggio": 1
+      },
+      {
+        "formula": "(40.71+19.8)*1.1",
+        "cella": "N26",
+        "valore": 66.561,
+        "conteggio": 1
+      },
+      {
+        "formula": "56.84",
+        "cella": "Q26",
+        "valore": 56.84,
+        "conteggio": 1
+      },
+      {
+        "formula": "10+8",
+        "cella": "E54",
+        "valore": 18,
+        "conteggio": 1
+      },
+      {
+        "formula": "36.91+(18.1*4)*1.1",
+        "cella": "N56",
+        "valore": 116.55000000000001,
+        "conteggio": 1
+      },
+      {
+        "formula": "Q99*7.23%",
+        "cella": "S99",
+        "valore": 0.7114320000000001,
+        "conteggio": 1
+      },
+      {
+        "formula": "3+22",
+        "cella": "E150",
+        "valore": 25,
+        "conteggio": 1
+      },
+      {
+        "formula": "4.1+14.8",
+        "cella": "I150",
+        "valore": 18.9,
+        "conteggio": 1
+      },
+      {
+        "formula": "10.67+18.34",
+        "cella": "Q150",
+        "valore": 29.009999999999998,
+        "conteggio": 1
+      }
+    ],
+    "intestazioni": [
+      [
+        "A2",
+        "GLS"
+      ],
+      [
+        "B2",
+        "Nuove tariffe ITAIA dal 01/10/2024 ISTAT incluso"
+      ],
+      [
+        "C2",
+        "Handling 0,03al kg"
+      ],
+      [
+        "D2",
+        "Autostrade"
+      ],
+      [
+        "E2",
+        "Fuori prov. (aumento €0,30)"
+      ],
+      [
+        "H2",
+        "TOTALE"
+      ],
+      [
+        "J2",
+        "Fuel Variab."
+      ],
+      [
+        "K2",
+        "TUTTI GLI ARRIVI ENTRO 30 KG E 3 MT; TRIANGOLAZIONE = trasporto + € 8"
+      ],
+      [
+        "A3",
+        "0,1 - 3"
+      ],
+      [
+        "B3",
+        8.04
+      ],
+      [
+        "C3",
+        0.09
+      ],
+      [
+        "D3",
+        0.2
+      ],
+      [
+        "E3",
+        0.6
+      ],
+      [
+        "H3",
+        8.929999999999998
+      ],
+      [
+        "J3",
+        45717
+      ],
+      [
+        "K3",
+        0.105
+      ],
+      [
+        "M3",
+        46023
+      ],
+      [
+        "N3",
+        0.1
+      ],
+      [
+        "O3",
+        46235
+      ],
+      [
+        "R3",
+        "IN FATTURA ADDEBITANO ADEGUAMENTO ISTAT 2025+2024 sul nolo (ogni mese % 2024 varia !!??)"
+      ],
+      [
+        "A4",
+        "3,1-5 *new"
+      ],
+      [
+        "B4",
+        8.68
+      ],
+      [
+        "C4",
+        0.15
+      ],
+      [
+        "D4",
+        0.2
+      ],
+      [
+        "E4",
+        0.6
+      ],
+      [
+        "H4",
+        9.629999999999999
+      ],
+      [
+        "J4",
+        45748
+      ],
+      [
+        "K4",
+        0.1
+      ],
+      [
+        "M4",
+        46054
+      ],
+      [
+        "O4",
+        46266
+      ],
+      [
+        "R4",
+        "adeguamento istat 2026: 1,5%"
+      ],
+      [
+        "A5",
+        "5,1 - 10"
+      ],
+      [
+        "B5",
+        9.63
+      ],
+      [
+        "C5",
+        0.3
+      ],
+      [
+        "D5",
+        0.2
+      ],
+      [
+        "E5",
+        0.6
+      ],
+      [
+        "H5",
+        10.73
+      ],
+      [
+        "J5",
+        45778
+      ],
+      [
+        "K5",
+        0.095
+      ],
+      [
+        "M5",
+        46082
+      ],
+      [
+        "O5",
+        46296
+      ],
+      [
+        "R5",
+        "adeguamento istat 2025: 1%"
+      ],
+      [
+        "A6",
+        "10,1 - 20"
+      ],
+      [
+        "B6",
+        12
+      ],
+      [
+        "C6",
+        0.6
+      ],
+      [
+        "D6",
+        0.2
+      ],
+      [
+        "E6",
+        0.6
+      ],
+      [
+        "H6",
+        13.399999999999999
+      ],
+      [
+        "J6",
+        45809
+      ],
+      [
+        "K6",
+        0.09
+      ],
+      [
+        "M6",
+        46113
+      ],
+      [
+        "O6",
+        46327
+      ],
+      [
+        "R6",
+        "adeguamento istat 2024 5,7%"
+      ],
+      [
+        "A7",
+        "20,1 - 30 "
+      ],
+      [
+        "B7",
+        15.24
+      ],
+      [
+        "C7",
+        0.9
+      ],
+      [
+        "D7",
+        0.2
+      ],
+      [
+        "E7",
+        0.6
+      ],
+      [
+        "H7",
+        16.94
+      ],
+      [
+        "J7",
+        45839
+      ],
+      [
+        "K7",
+        0.095
+      ],
+      [
+        "M7",
+        46143
+      ],
+      [
+        "O7",
+        46357
+      ],
+      [
+        "R7",
+        "GEN26: 7,14"
+      ],
+      [
+        "A8",
+        "30,1 - 50 "
+      ],
+      [
+        "B8",
+        23.91
+      ],
+      [
+        "C8",
+        1.5
+      ],
+      [
+        "D8",
+        0.2
+      ],
+      [
+        "E8",
+        0.6
+      ],
+      [
+        "H8",
+        26.21
+      ],
+      [
+        "J8",
+        45870
+      ],
+      [
+        "K8",
+        0.1
+      ],
+      [
+        "M8",
+        46174
+      ],
+      [
+        "R8",
+        "FEB26:7,23"
+      ],
+      [
+        "V8",
+        "DA SEGNALARE A CLAUDIO"
+      ],
+      [
+        "A9",
+        "50,1 - 100 "
+      ],
+      [
+        "B9",
+        36.91
+      ],
+      [
+        "C9",
+        3
+      ],
+      [
+        "D9",
+        0.2
+      ],
+      [
+        "E9",
+        0.6
+      ],
+      [
+        "H9",
+        40.71
+      ],
+      [
+        "J9",
+        45901
+      ],
+      [
+        "K9",
+        0.095
+      ],
+      [
+        "M9",
+        46204
+      ],
+      [
+        "A10",
+        "OLTRE ogni 50 kg successivi "
+      ],
+      [
+        "B10",
+        18.1
+      ],
+      [
+        "C10",
+        1.5
+      ],
+      [
+        "D10",
+        0.2
+      ],
+      [
+        "H10",
+        19.8
+      ],
+      [
+        "R10",
+        "**OGNI MESE VARIARE LE FORMULE"
+      ],
+      [
+        "A11",
+        "Fuel Charge + 10,0% ca."
+      ],
+      [
+        "K11",
+        "Dati/correzioni inserite per controllo"
+      ],
+      [
+        "O11",
+        "FORMULA PESO VOLUMETRICO = cmL1 x cmL2 x cmH x3/10000"
+      ],
+      [
+        "A12",
+        "TRIANGOLAZIONE +7,25 €"
+      ],
+      [
+        "K12",
+        "Clienti"
+      ],
+      [
+        "M13",
+        "*variare nella formula % fuel ogni mese"
+      ],
+      [
+        "S13",
+        "**"
+      ],
+      [
+        "T13",
+        "* DA CAMBIARE NELLA FORMULA OGNI MESE"
+      ],
+      [
+        "A14",
+        "Data"
+      ],
+      [
+        "B14",
+        "Mittente"
+      ],
+      [
+        "C14",
+        "N° ddt"
+      ],
+      [
+        "D14",
+        "N° colli"
+      ],
+      [
+        "E14",
+        "Peso DDT (kg)"
+      ],
+      [
+        "F14",
+        "L cm"
+      ],
+      [
+        "G14",
+        "L cm"
+      ],
+      [
+        "H14",
+        "H cm"
+      ],
+      [
+        "I14",
+        "Peso volumetrico "
+      ],
+      [
+        "J14",
+        "Costo kg incluso maggioraz. x sped non capoluogo     "
+      ],
+      [
+        "K14",
+        "spese assicuraz."
+      ],
+      [
+        "L14",
+        "spese triang"
+      ],
+      [
+        "M14",
+        "Costo tot kg * (Compreso % fuel)"
+      ],
+      [
+        "N14",
+        "Costo tot peso volumetrico (compreso di fuel)"
+      ],
+      [
+        "O14",
+        "PRESUNTO ADD.TO CORRIERE"
+      ],
+      [
+        "P14",
+        "kg Peso FT\r\nse diverso"
+      ],
+      [
+        "Q14",
+        "FT TRASPORTO EURO"
+      ],
+      [
+        "R14",
+        "FT ASSICURAZIONE EURO"
+      ],
+      [
+        "S14",
+        "Adeguamento istat"
+      ],
+      [
+        "T14",
+        "* FT % CAMIONISTICO (Da cambiare ogni mese)"
+      ],
+      [
+        "U14",
+        "costo totale ft"
+      ],
+      [
+        "V14",
+        "Differenza FT/previsione da kg DDT"
+      ],
+      [
+        "W14",
+        "ADDEBITO\r\nCLIENTE"
+      ],
+      [
+        "X14",
+        "NOTE"
+      ],
+      [
+        "A15",
+        46030
+      ],
+      [
+        "B15",
+        "inizio"
+      ],
+      [
+        "C15",
+        1
+      ],
+      [
+        "D15",
+        1
+      ],
+      [
+        "E15",
+        1
+      ],
+      [
+        "I15",
+        1
+      ],
+      [
+        "J15",
+        8.929999999999998
+      ],
+      [
+        "K15",
+        0
+      ],
+      [
+        "M15",
+        9.867649999999998
+      ],
+      [
+        "N15",
+        9.822999999999999
+      ],
+      [
+        "O15",
+        9.867649999999998
+      ],
+      [
+        "T15",
+        0
+      ],
+      [
+        "U15",
+        0
+      ],
+      [
+        "V15",
+        -1
+      ],
+      [
+        "A16",
+        46030
+      ],
+      [
+        "B16",
+        "TSA"
+      ],
+      [
+        "C16",
+        8
+      ],
+      [
+        "D16",
+        1
+      ],
+      [
+        "E16",
+        1
+      ],
+      [
+        "I16",
+        7
+      ],
+      [
+        "J16",
+        8.929999999999998
+      ],
+      [
+        "K16",
+        0
+      ],
+      [
+        "M16",
+        9.822999999999997
+      ],
+      [
+        "N16",
+        11.803
+      ],
+      [
+        "O16",
+        11.803
+      ],
+      [
+        "P16",
+        8.5
+      ],
+      [
+        "Q16",
+        11.66
+      ],
+      [
+        "S16",
+        0.8325239999999999
+      ],
+      [
+        "T16",
+        1.2492524
+      ],
+      [
+        "U16",
+        12.9092524
+      ],
+      [
+        "V16",
+        0.31418633818589065
+      ],
+      [
+        "A17",
+        46030
+      ],
+      [
+        "B17",
+        "TELLURE ROTA"
+      ],
+      [
+        "C17",
+        49
+      ],
+      [
+        "D17",
+        2
+      ],
+      [
+        "E17",
+        19.3
+      ],
+      [
+        "I17",
+        19.3
+      ],
+      [
+        "J17",
+        13.399999999999999
+      ],
+      [
+        "K17",
+        0.5
+      ],
+      [
+        "M17",
+        15.239999999999998
+      ],
+      [
+        "N17",
+        15.29
+      ],
+      [
+        "O17",
+        15.29
+      ],
+      [
+        "S17",
+        0
+      ],
+      [
+        "T17",
+        0
+      ],
+      [
+        "U17",
+        0
+      ],
+      [
+        "V17",
+        -1
+      ],
+      [
+        "A18",
+        46031
+      ],
+      [
+        "B18",
+        "CEJN"
+      ],
+      [
+        "C18",
+        29
+      ],
+      [
+        "D18",
+        1
+      ],
+      [
+        "E18",
+        8
+      ],
+      [
+        "I18",
+        8
+      ],
+      [
+        "J18",
+        10.73
+      ],
+      [
+        "K18",
+        0
+      ],
+      [
+        "M18",
+        11.803
+      ],
+      [
+        "N18",
+        11.803
+      ],
+      [
+        "O18",
+        11.803
+      ],
+      [
+        "S18",
+        0
+      ],
+      [
+        "T18",
+        0
+      ],
+      [
+        "U18",
+        0
+      ],
+      [
+        "V18",
+        -1
+      ]
+    ]
+  },
+  {
+    "file": "2026 GLS.xlsx",
+    "sheet": "PARTENZE e TRIANGOLAZIONI 2026",
+    "formule": [
+      {
+        "formula": "SUM(B3:G3)",
+        "cella": "H3",
+        "valore": 8.929999999999998,
+        "conteggio": 8
+      },
+      {
+        "formula": "F16*G16*H16*3/10000",
+        "cella": "I16",
+        "valore": 13.5,
+        "conteggio": 18
+      },
+      {
+        "formula": "IF(E16<=3,$H$3,IF(E16<=5,$H$4,IF(E16<=10,$H$5,IF(E16<=20,$H$6,IF(E16<=30,$H$7,IF(E16<=50,$H$8,IF(E16<=100,$H$9)))))))",
+        "cella": "J16",
+        "valore": 16.94,
+        "conteggio": 19
+      },
+      {
+        "formula": "IF(E16>=10.01,0.5,IF(E16<=10,0))",
+        "cella": "K16",
+        "valore": 0.5,
+        "conteggio": 19
+      },
+      {
+        "formula": "J16+K16+L16+(J16*0.115)",
+        "cella": "M16",
+        "valore": 19.3881,
+        "conteggio": 19
+      },
+      {
+        "formula": "IF(I16<=3,$G$3,IF(I16<=5,$G$4,IF(I16<=10,$G$5,IF(I16<=20,$G$6,IF(I16<=30,$G$7,IF(I16<=50,$G$8,IF(I16<=100,$G$9)))))))+K16+L16",
+        "cella": "N16",
+        "valore": 0.5,
+        "conteggio": 20
+      },
+      {
+        "formula": "IF(M16>N16, M16,IF(M16<N16,N16,IF(M16=N16,M16)))",
+        "cella": "O16",
+        "valore": 19.3881,
+        "conteggio": 20
+      },
+      {
+        "formula": "I16+I17",
+        "cella": "I18",
+        "valore": 17.906399999999998,
+        "conteggio": 1
+      },
+      {
+        "formula": "Q18*7.14%",
+        "cella": "S18",
+        "valore": 3.5035979999999998,
+        "conteggio": 1
+      },
+      {
+        "formula": "Q18*0.1",
+        "cella": "T18",
+        "valore": 4.907,
+        "conteggio": 14
+      },
+      {
+        "formula": "Q18+R18+T18+S18",
+        "cella": "U18",
+        "valore": 57.480598,
+        "conteggio": 21
+      },
+      {
+        "formula": "(U18-M18)/M18",
+        "cella": "V18",
+        "valore": 2.7225955572825593,
+        "conteggio": 21
+      },
+      {
+        "formula": "23.02+5.3+6",
+        "cella": "Q19",
+        "valore": 34.32,
+        "conteggio": 1
+      },
+      {
+        "formula": "11.66+7.25",
+        "cella": "Q24",
+        "valore": 18.91,
+        "conteggio": 1
+      },
+      {
+        "formula": "Q24*0.105",
+        "cella": "T24",
+        "valore": 1.98555,
+        "conteggio": 3
+      },
+      {
+        "formula": "Q27*7.2%",
+        "cella": "S27",
+        "valore": 1.0130400000000002,
+        "conteggio": 3
+      },
+      {
+        "formula": "(Q27+S27)*0.14",
+        "cella": "T27",
+        "valore": 2.1116256000000004,
+        "conteggio": 2
+      },
+      {
+        "formula": "(Q29+S29)*0.135",
+        "cella": "T29",
+        "valore": 2.6729784000000003,
+        "conteggio": 1
+      },
+      {
+        "formula": "Q30*6.7%",
+        "cella": "S30",
+        "valore": 0.9024900000000001,
+        "conteggio": 1
+      },
+      {
+        "formula": "(Q30+S30)*0.13",
+        "cella": "T30",
+        "valore": 1.8684237000000001,
+        "conteggio": 1
+      },
+      {
+        "formula": "14.07+0.5",
+        "cella": "Q31",
+        "valore": 14.57,
+        "conteggio": 1
+      }
+    ],
+    "intestazioni": [
+      [
+        "A2",
+        "GLS"
+      ],
+      [
+        "B2",
+        "Nuove tariffe ITAIA dal 01/10/2024 ISTAT incluso"
+      ],
+      [
+        "C2",
+        "Handling 0,03al kg"
+      ],
+      [
+        "D2",
+        "Autostrade"
+      ],
+      [
+        "E2",
+        "Fuori prov. (aumento €0,30)"
+      ],
+      [
+        "H2",
+        "TOTALE"
+      ],
+      [
+        "J2",
+        "FUEL +11,5% VARIAB."
+      ],
+      [
+        "K2",
+        "TUTTI GLI ARRIVI ENTRO 30 KG E 3 MT;"
+      ],
+      [
+        "R2",
+        "SUPPLEMENTI per PARTENZE"
+      ],
+      [
+        "A3",
+        "0,1 - 3"
+      ],
+      [
+        "B3",
+        8.04
+      ],
+      [
+        "C3",
+        0.09
+      ],
+      [
+        "D3",
+        0.2
+      ],
+      [
+        "E3",
+        0.6
+      ],
+      [
+        "H3",
+        8.929999999999998
+      ],
+      [
+        "R3",
+        "SE NON SI STAMPANO LE ETICHETTE = trasporto + € 5,00"
+      ],
+      [
+        "A4",
+        "3,1-5 *new"
+      ],
+      [
+        "B4",
+        8.68
+      ],
+      [
+        "C4",
+        0.15
+      ],
+      [
+        "D4",
+        0.2
+      ],
+      [
+        "E4",
+        0.6
+      ],
+      [
+        "H4",
+        9.629999999999999
+      ],
+      [
+        "M4",
+        "ULTIMO AGGIORNAMENTO giugno 26"
+      ],
+      [
+        "R4",
+        "TRIANGOLAZIONE = trasporto + € 8"
+      ],
+      [
+        "A5",
+        "5,1 - 10"
+      ],
+      [
+        "B5",
+        9.63
+      ],
+      [
+        "C5",
+        0.3
+      ],
+      [
+        "D5",
+        0.2
+      ],
+      [
+        "E5",
+        0.6
+      ],
+      [
+        "H5",
+        10.73
+      ],
+      [
+        "M5",
+        "PESO/VOL."
+      ],
+      [
+        "N5",
+        "ADDEBITO A CLIENTE"
+      ],
+      [
+        "A6",
+        "10,1 - 20"
+      ],
+      [
+        "B6",
+        12
+      ],
+      [
+        "C6",
+        0.6
+      ],
+      [
+        "D6",
+        0.2
+      ],
+      [
+        "E6",
+        0.6
+      ],
+      [
+        "H6",
+        13.399999999999999
+      ],
+      [
+        "M6",
+        "da 0 a 10"
+      ],
+      [
+        "N6",
+        16.5
+      ],
+      [
+        "R6",
+        "PEAK SEASON DAL 01/11/2024 AL 15/01/2025 +0,20€"
+      ],
+      [
+        "A7",
+        "20,1 - 30 "
+      ],
+      [
+        "B7",
+        15.24
+      ],
+      [
+        "C7",
+        0.9
+      ],
+      [
+        "D7",
+        0.2
+      ],
+      [
+        "E7",
+        0.6
+      ],
+      [
+        "H7",
+        16.94
+      ],
+      [
+        "M7",
+        "da 11 a 30"
+      ],
+      [
+        "N7",
+        22.5
+      ],
+      [
+        "A8",
+        "30,1 - 50 "
+      ],
+      [
+        "B8",
+        23.91
+      ],
+      [
+        "C8",
+        1.5
+      ],
+      [
+        "D8",
+        0.2
+      ],
+      [
+        "E8",
+        0.6
+      ],
+      [
+        "H8",
+        26.21
+      ],
+      [
+        "M8",
+        "da 31 a 50"
+      ],
+      [
+        "N8",
+        31
+      ],
+      [
+        "R8",
+        "IN FATTURA ADDEBITANO ADEGUAMENTO ISTAT 2025+2024 sul nolo (ogni mese % 2024 varia !!??)"
+      ],
+      [
+        "A9",
+        "50,1 - 100 "
+      ],
+      [
+        "B9",
+        36.91
+      ],
+      [
+        "C9",
+        3
+      ],
+      [
+        "D9",
+        0.2
+      ],
+      [
+        "E9",
+        0.6
+      ],
+      [
+        "H9",
+        40.71
+      ],
+      [
+        "M9",
+        "da 51 a 100"
+      ],
+      [
+        "N9",
+        49
+      ],
+      [
+        "R9",
+        "adeguamento istat 2026: 1,5%"
+      ],
+      [
+        "A10",
+        "OLTRE ogni 50 kg successivi "
+      ],
+      [
+        "B10",
+        18.1
+      ],
+      [
+        "C10",
+        1.5
+      ],
+      [
+        "D10",
+        0.2
+      ],
+      [
+        "H10",
+        19.8
+      ],
+      [
+        "R10",
+        "adeguamento istat 2025: 1%"
+      ],
+      [
+        "A11",
+        "Fuel Charge + 10,0% ca."
+      ],
+      [
+        "N11",
+        "Dati inseriti per controllo"
+      ],
+      [
+        "R11",
+        "adeguamento istat 2024 5,7%"
+      ],
+      [
+        "A12",
+        "TRIANGOLAZIONE +7,25 €"
+      ],
+      [
+        "N12",
+        "Fornitore"
+      ],
+      [
+        "R12",
+        "GEN26: 7,14"
+      ],
+      [
+        "N13",
+        "Dati inseriti da amm.ne"
+      ],
+      [
+        "R13",
+        "FEB26:7,23"
+      ],
+      [
+        "A14",
+        "Data"
+      ],
+      [
+        "B14",
+        "Destinatario"
+      ],
+      [
+        "C14",
+        "N° ddt"
+      ],
+      [
+        "D14",
+        "N° colli"
+      ],
+      [
+        "E14",
+        "Peso DDT (kg)"
+      ],
+      [
+        "F14",
+        "L cm"
+      ],
+      [
+        "G14",
+        "L cm"
+      ],
+      [
+        "H14",
+        "H cm"
+      ],
+      [
+        "I14",
+        "Peso volumetrico "
+      ],
+      [
+        "J14",
+        "Costo kg incluso maggiorazione x sped non capoluogo     "
+      ],
+      [
+        "K14",
+        "spese assicuraz."
+      ],
+      [
+        "L14",
+        "spese triang"
+      ],
+      [
+        "M14",
+        "Costo tot kg"
+      ],
+      [
+        "N14",
+        "Costo tot peso volumetrico"
+      ],
+      [
+        "O14",
+        "PRESUNTO ADD.TO CORRIERE"
+      ],
+      [
+        "P14",
+        "Peso FT\r\nse diverso"
+      ],
+      [
+        "Q14",
+        "FT TRASPORTO EURO"
+      ],
+      [
+        "R14",
+        "FT ASSICURAZIONE EURO"
+      ],
+      [
+        "S14",
+        "ADEGUAMENTO ISTAT"
+      ],
+      [
+        "T14",
+        "FT % CAMIONISTICO (Da cambiare ogni mese)"
+      ],
+      [
+        "U14",
+        "costo totale ft"
+      ],
+      [
+        "V14",
+        "Differenza FT/previsione"
+      ],
+      [
+        "W14",
+        "ADDEBITO\r\nCLIENTE"
+      ],
+      [
+        "X14",
+        "NOTE"
+      ],
+      [
+        "A16",
+        46051
+      ],
+      [
+        "B16",
+        "PROMAS"
+      ],
+      [
+        "C16",
+        223
+      ],
+      [
+        "D16",
+        1
+      ],
+      [
+        "E16",
+        25
+      ],
+      [
+        "F16",
+        225
+      ],
+      [
+        "G16",
+        20
+      ],
+      [
+        "H16",
+        10
+      ],
+      [
+        "I16",
+        13.5
+      ],
+      [
+        "J16",
+        16.94
+      ],
+      [
+        "K16",
+        0.5
+      ],
+      [
+        "M16",
+        19.3881
+      ],
+      [
+        "N16",
+        0.5
+      ],
+      [
+        "O16",
+        19.3881
+      ],
+      [
+        "A17",
+        46051
+      ],
+      [
+        "B17",
+        "PROMAS"
+      ],
+      [
+        "C17",
+        223
+      ],
+      [
+        "D17",
+        1
+      ],
+      [
+        "E17",
+        4
+      ],
+      [
+        "F17",
+        34
+      ],
+      [
+        "G17",
+        24
+      ],
+      [
+        "H17",
+        18
+      ],
+      [
+        "I17",
+        4.4064
+      ],
+      [
+        "J17",
+        9.629999999999999
+      ],
+      [
+        "K17",
+        0
+      ],
+      [
+        "M17",
+        10.737449999999999
+      ],
+      [
+        "N17",
+        0
+      ],
+      [
+        "O17",
+        10.737449999999999
+      ],
+      [
+        "A18",
+        45569
+      ],
+      [
+        "C18",
+        "XXX"
+      ],
+      [
+        "D18",
+        1
+      ],
+      [
+        "E18",
+        20
+      ],
+      [
+        "F18",
+        120
+      ],
+      [
+        "G18",
+        25
+      ],
+      [
+        "H18",
+        25
+      ],
+      [
+        "I18",
+        17.906399999999998
+      ],
+      [
+        "J18",
+        13.399999999999999
+      ],
+      [
+        "K18",
+        0.5
+      ],
+      [
+        "M18",
+        15.440999999999999
+      ],
+      [
+        "N18",
+        0.5
+      ],
+      [
+        "O18",
+        15.440999999999999
+      ],
+      [
+        "P18",
+        38.6
+      ],
+      [
+        "Q18",
+        49.07
+      ],
+      [
+        "S18",
+        3.5035979999999998
+      ],
+      [
+        "T18",
+        4.907
+      ],
+      [
+        "U18",
+        57.480598
+      ],
+      [
+        "V18",
+        2.7225955572825593
+      ],
+      [
+        "W18",
+        36
+      ]
+    ]
+  },
+  {
+    "file": "2026 GLS.xlsx",
+    "sheet": "ARRIVI 2026 controllo DA FT",
+    "formule": [
+      {
+        "formula": "SUM(B2:E2)",
+        "cella": "F2",
+        "valore": 8.929999999999998,
+        "conteggio": 7
+      },
+      {
+        "formula": "Q4/P4",
+        "cella": "R4",
+        "valore": 0.07468928205878052,
+        "conteggio": 1
+      },
+      {
+        "formula": "40.71+19.8",
+        "cella": "K7",
+        "valore": 60.510000000000005,
+        "conteggio": 1
+      },
+      {
+        "formula": "SUM(B9:F9)",
+        "cella": "F9",
+        "valore": 19.8,
+        "conteggio": 1
+      },
+      {
+        "formula": "IF(E19<=3,$F$2,IF(E19<=5,$F$3,IF(E19<=10,$F$4,IF(E19<=20,$F$5,IF(E19<=30,$F$6,IF(E19<=50,$F$7,IF(E19<=100,$F$8)))))))",
+        "cella": "H19",
+        "valore": 9.629999999999999,
+        "conteggio": 259
+      },
+      {
+        "formula": "IF(E19>=10.01,0.5,IF(E19<=10,0))",
+        "cella": "I19",
+        "valore": 0,
+        "conteggio": 259
+      },
+      {
+        "formula": "H19+I19+J19",
+        "cella": "K19",
+        "valore": 9.629999999999999,
+        "conteggio": 259
+      },
+      {
+        "formula": "IF(G19<=3,$F$2,IF(G19<=5,$F$3,IF(G19<=10,$F$4,IF(G19<=20,$F$5,IF(G19<=30,$F$6,IF(G19<=50,$F$7,IF(G19<=100,$F$8)))))))",
+        "cella": "L19",
+        "valore": 10.73,
+        "conteggio": 250
+      },
+      {
+        "formula": "IF(G19>=10.01,0.5,IF(G19<=10,0))",
+        "cella": "M19",
+        "valore": 0,
+        "conteggio": 258
+      },
+      {
+        "formula": "L19+M19",
+        "cella": "N19",
+        "valore": 10.73,
+        "conteggio": 259
+      },
+      {
+        "formula": "IF(H19>L19, H19,IF(H19<L19,L19,IF(H19=L19,H19)))",
+        "cella": "O19",
+        "valore": 10.73,
+        "conteggio": 259
+      },
+      {
+        "formula": "P19*R19",
+        "cella": "S19",
+        "valore": 0.83376,
+        "conteggio": 259
+      },
+      {
+        "formula": "P19+Q19+S19",
+        "cella": "T19",
+        "valore": 12.41376,
+        "conteggio": 259
+      },
+      {
+        "formula": "(P19+S19)*U19",
+        "cella": "V19",
+        "valore": 1.7379264,
+        "conteggio": 259
+      },
+      {
+        "formula": "P19+Q19+S19+V19",
+        "cella": "W19",
+        "valore": 14.151686399999999,
+        "conteggio": 259
+      },
+      {
+        "formula": "(P19-O19)/O19",
+        "cella": "X19",
+        "valore": 0.07921714818266538,
+        "conteggio": 1
+      },
+      {
+        "formula": "(T20-O20)/O20",
+        "cella": "X20",
+        "valore": 0.166913432835821,
+        "conteggio": 258
+      },
+      {
+        "formula": "40.71+19.8+19.8",
+        "cella": "L24",
+        "valore": 80.31,
+        "conteggio": 1
+      },
+      {
+        "formula": "E83",
+        "cella": "G39",
+        "valore": 6.1,
+        "conteggio": 3
+      },
+      {
+        "formula": "E104",
+        "cella": "G59",
+        "valore": 6.6,
+        "conteggio": 71
+      },
+      {
+        "formula": "#REF!",
+        "cella": "G130",
+        "valore": 23,
+        "conteggio": 1
+      },
+      {
+        "formula": "E211",
+        "cella": "G165",
+        "valore": 1,
+        "conteggio": 2
+      }
+    ],
+    "intestazioni": [
+      [
+        "A1",
+        "GLS"
+      ],
+      [
+        "B1",
+        "Nuove tariffe ITAIA dal 01/10/2024 ISTAT  NON incluso"
+      ],
+      [
+        "C1",
+        "Handling 0,03al kg"
+      ],
+      [
+        "D1",
+        "Autostrade"
+      ],
+      [
+        "E1",
+        "Fuori prov. (aumento €0,30)"
+      ],
+      [
+        "F1",
+        "TOTALE"
+      ],
+      [
+        "P1",
+        "CALCOLARE OGNI MESE ADEGUAMENTO ISTAT EFFETTIVO APPLICATO:"
+      ],
+      [
+        "A2",
+        "0,1 - 3"
+      ],
+      [
+        "B2",
+        8.04
+      ],
+      [
+        "C2",
+        0.09
+      ],
+      [
+        "D2",
+        0.2
+      ],
+      [
+        "E2",
+        0.6
+      ],
+      [
+        "F2",
+        8.929999999999998
+      ],
+      [
+        "P2",
+        " € Nolo"
+      ],
+      [
+        "Q2",
+        "€ Tot. adeg. ISTAT"
+      ],
+      [
+        "R2",
+        "% adeg. ISTAT inserire in R"
+      ],
+      [
+        "A3",
+        "3,1-5 *new"
+      ],
+      [
+        "B3",
+        8.68
+      ],
+      [
+        "C3",
+        0.15
+      ],
+      [
+        "D3",
+        0.2
+      ],
+      [
+        "E3",
+        0.6
+      ],
+      [
+        "F3",
+        9.629999999999999
+      ],
+      [
+        "Q3",
+        "tot. Adeguamento"
+      ],
+      [
+        "A4",
+        "5,1 - 10"
+      ],
+      [
+        "B4",
+        9.63
+      ],
+      [
+        "C4",
+        0.3
+      ],
+      [
+        "D4",
+        0.2
+      ],
+      [
+        "E4",
+        0.6
+      ],
+      [
+        "F4",
+        10.73
+      ],
+      [
+        "P4",
+        341.95
+      ],
+      [
+        "Q4",
+        25.54
+      ],
+      [
+        "R4",
+        0.07468928205878052
+      ],
+      [
+        "A5",
+        "10,1 - 20"
+      ],
+      [
+        "B5",
+        12
+      ],
+      [
+        "C5",
+        0.6
+      ],
+      [
+        "D5",
+        0.2
+      ],
+      [
+        "E5",
+        0.6
+      ],
+      [
+        "F5",
+        13.399999999999999
+      ],
+      [
+        "A6",
+        "20,1 - 30 "
+      ],
+      [
+        "B6",
+        15.24
+      ],
+      [
+        "C6",
+        0.9
+      ],
+      [
+        "D6",
+        0.2
+      ],
+      [
+        "E6",
+        0.6
+      ],
+      [
+        "F6",
+        16.94
+      ],
+      [
+        "Q6",
+        "Inserire da ft"
+      ],
+      [
+        "A7",
+        "30,1 - 50 "
+      ],
+      [
+        "B7",
+        23.91
+      ],
+      [
+        "C7",
+        1.5
+      ],
+      [
+        "D7",
+        0.2
+      ],
+      [
+        "E7",
+        0.6
+      ],
+      [
+        "F7",
+        26.21
+      ],
+      [
+        "K7",
+        60.510000000000005
+      ],
+      [
+        "A8",
+        "50,1 - 100 "
+      ],
+      [
+        "B8",
+        36.91
+      ],
+      [
+        "C8",
+        3
+      ],
+      [
+        "D8",
+        0.2
+      ],
+      [
+        "E8",
+        0.6
+      ],
+      [
+        "F8",
+        40.71
+      ],
+      [
+        "A9",
+        "OLTRE ogni 50 kg "
+      ],
+      [
+        "B9",
+        18.1
+      ],
+      [
+        "C9",
+        1.5
+      ],
+      [
+        "D9",
+        0.2
+      ],
+      [
+        "F9",
+        19.8
+      ],
+      [
+        "P9",
+        "* nolo ft NON comprende istat -  nolo borderò comprende istat "
+      ],
+      [
+        "A10",
+        "Fuel Charge + 10,0% ca. - TRIANGOLAZIONE +7,25 €"
+      ],
+      [
+        "G12",
+        "FORMULA PESO VOLUMETRICO = cmL1 x cmL2 x cmH x3/10000"
+      ],
+      [
+        "A14",
+        "DATI DA DDT FORNITORE"
+      ],
+      [
+        "F14",
+        "KG DA FT"
+      ],
+      [
+        "G14",
+        "in automatico = kg DDT (E). CAMBIARE se  diverso in ft"
+      ],
+      [
+        "H14",
+        "COSTO SPEDIZIONE PREVISTO  IN BASE AI DATI DEL DDT su LISTINO 2026 (TABELLA)"
+      ],
+      [
+        "P14",
+        "COSTO EFFETTIVO DA FATTURA (no da borderò) *"
+      ],
+      [
+        "A15",
+        "COMPILARE ALL'ARRIVO DELLA MERCE"
+      ],
+      [
+        "F15",
+        "inserire se diverso in ft"
+      ],
+      [
+        "H15",
+        "FORMULE (da NON comipilare)"
+      ],
+      [
+        "P15",
+        "inserire da ft"
+      ],
+      [
+        "Q15",
+        "inserire da ft"
+      ],
+      [
+        "R15",
+        " aggiornare ogni mese da ft"
+      ],
+      [
+        "S15",
+        "formula"
+      ],
+      [
+        "T15",
+        "formula"
+      ],
+      [
+        "U15",
+        " aggiornare ogni mese da ft"
+      ],
+      [
+        "V15",
+        "formula"
+      ],
+      [
+        "W15",
+        "formula"
+      ],
+      [
+        "E16",
+        "E"
+      ],
+      [
+        "F16",
+        "F"
+      ],
+      [
+        "H16",
+        "H = su E"
+      ],
+      [
+        "I16",
+        "I = su E"
+      ],
+      [
+        "J16",
+        "J"
+      ],
+      [
+        "K16",
+        "K = H+I+J"
+      ],
+      [
+        "L16",
+        "L = su G"
+      ],
+      [
+        "M16",
+        "M =su G"
+      ],
+      [
+        "N16",
+        "N = L+M"
+      ],
+      [
+        "O16",
+        "O > Fra K e N"
+      ],
+      [
+        "P16",
+        "P"
+      ],
+      [
+        "Q16",
+        "Q"
+      ],
+      [
+        "R16",
+        "R"
+      ],
+      [
+        "S16",
+        "S = R*P"
+      ],
+      [
+        "T16",
+        "T = P+Q+S"
+      ],
+      [
+        "U16",
+        "U"
+      ],
+      [
+        "V16",
+        "V = (P+S)*U"
+      ],
+      [
+        "W16",
+        "W = P+Q+S+V"
+      ],
+      [
+        "A17",
+        "Data"
+      ],
+      [
+        "B17",
+        "Mittente"
+      ],
+      [
+        "C17",
+        "N° ddt"
+      ],
+      [
+        "D17",
+        "N° colli"
+      ],
+      [
+        "E17",
+        "KG Peso da DDT"
+      ],
+      [
+        "F17",
+        "Peso KG IN FT SOLO SE diverso da quello in DDT"
+      ],
+      [
+        "G17",
+        "KG Peso volumetrico "
+      ],
+      [
+        "H17",
+        "€ add.to previsto su kg  DDT + magg. - non ISTAT   (NO fuel)"
+      ],
+      [
+        "I17",
+        "€ add.to spese assic. (+10kG)"
+      ],
+      [
+        "J17",
+        "spese triang"
+      ],
+      [
+        "K17",
+        "€ COSTO TOT PREVISTO su kg  DDT (NO FUEL)"
+      ],
+      [
+        "L17",
+        "€ add.to  previsto su kg volumet. + eventuali mag.- NO istat e NO fuel"
+      ],
+      [
+        "M17",
+        "spese assic. (+10kG)"
+      ],
+      [
+        "N17",
+        "€ COSTO TOT PREVISTO su kg  volumet. in DDT NO  ISTAT e FUEL"
+      ],
+      [
+        "O17",
+        "€ PRESUNTO ADD.TO  CORRIERE  NO ISTAT e NO FUEL "
+      ],
+      [
+        "P17",
+        "€ ADD.TO  in  FT  (NOLO + maggioraz.varie) (NO istat e fuel)"
+      ],
+      [
+        "Q17",
+        "€ ADD.TO  in FT ASSIC. (+10kg)"
+      ],
+      [
+        "R17",
+        "% Adeguamento istat"
+      ],
+      [
+        "S17",
+        "€  ADEGUAMENTO ISTAT (su nolo)"
+      ],
+      [
+        "T17",
+        "€ TOT ADD.TO  COMPRESO ISTAT  - NO FUEL"
+      ],
+      [
+        "U17",
+        "% CAMIONISTICO (FUEL)"
+      ],
+      [
+        "V17",
+        "€ CAMIONISTICO (FUEL)  (su nolo + adeguamento istat)"
+      ],
+      [
+        "W17",
+        "costo finale spedizione"
+      ],
+      [
+        "X17",
+        "Differenza % K (€ prev da DDT) / P (€ add.to da ft)"
+      ]
+    ]
+  },
+  {
+    "file": "2026 GLS.xlsx",
+    "sheet": "TEST2 DA BORDERò",
+    "formule": [
+      {
+        "formula": "SUM(B2:E2)",
+        "cella": "F2",
+        "valore": 8.929999999999998,
+        "conteggio": 7
+      },
+      {
+        "formula": "R4/Q4",
+        "cella": "S4",
+        "valore": 0.07380679428283944,
+        "conteggio": 1
+      },
+      {
+        "formula": "SUM(B9:F9)",
+        "cella": "F9",
+        "valore": 19.8,
+        "conteggio": 1
+      },
+      {
+        "formula": "IF(E18<=3,$F$2,IF(E18<=5,$F$3,IF(E18<=10,$F$4,IF(E18<=20,$F$5,IF(E18<=30,$F$6,IF(E18<=50,$F$7,IF(E18<=100,$F$8)))))))",
+        "cella": "H18",
+        "valore": 26.21,
+        "conteggio": 320
+      },
+      {
+        "formula": "IF(E18>=10.01,0.5,IF(E18<=10,0))",
+        "cella": "I18",
+        "valore": 0.5,
+        "conteggio": 320
+      },
+      {
+        "formula": "H18+I18+J18",
+        "cella": "K18",
+        "valore": 26.71,
+        "conteggio": 320
+      },
+      {
+        "formula": "IF(G18<=3,$F$2,IF(G18<=5,$F$3,IF(G18<=10,$F$4,IF(G18<=20,$F$5,IF(G18<=30,$F$6,IF(G18<=50,$F$7,IF(G18<=100,$F$8)))))))",
+        "cella": "L18",
+        "valore": 26.21,
+        "conteggio": 320
+      },
+      {
+        "formula": "IF(G18>=10.01,0.5,IF(G18<=10,0))",
+        "cella": "M18",
+        "valore": 0.5,
+        "conteggio": 320
+      },
+      {
+        "formula": "L18+M18",
+        "cella": "N18",
+        "valore": 26.71,
+        "conteggio": 320
+      },
+      {
+        "formula": "IF(K18>N18, K18,IF(K18<N18,N18,IF(K18=N18,K18)))",
+        "cella": "O18",
+        "valore": 26.71,
+        "conteggio": 1
+      },
+      {
+        "formula": "P18+Q18",
+        "cella": "R18",
+        "valore": 50.5,
+        "conteggio": 320
+      },
+      {
+        "formula": "P18*S18",
+        "cella": "T18",
+        "valore": 6.5,
+        "conteggio": 320
+      },
+      {
+        "formula": "P18+Q18+T18",
+        "cella": "U18",
+        "valore": 57,
+        "conteggio": 320
+      },
+      {
+        "formula": "(P18-K18)/K18",
+        "cella": "V18",
+        "valore": 0.8719580681392736,
+        "conteggio": 320
+      },
+      {
+        "formula": "IF(H19>L19, H19,IF(H19<L19,L19,IF(H19=L19,H19)))",
+        "cella": "O19",
+        "valore": 13.399999999999999,
+        "conteggio": 319
+      },
+      {
+        "formula": "E20",
+        "cella": "G20",
+        "valore": 0,
+        "conteggio": 318
+      }
+    ],
+    "intestazioni": [
+      [
+        "A1",
+        "GLS"
+      ],
+      [
+        "B1",
+        "Nuove tariffe ITAIA dal 01/10/2024 NO ISTAT"
+      ],
+      [
+        "C1",
+        "Handling 0,03al kg"
+      ],
+      [
+        "D1",
+        "Autostrade"
+      ],
+      [
+        "E1",
+        "Fuori prov. (aumento €0,30)"
+      ],
+      [
+        "F1",
+        "TOTALE"
+      ],
+      [
+        "Q1",
+        "CALCOLARE OGNI MESE ADEGUAMENTO ISTAT EFFETTIVO APPLICATO:"
+      ],
+      [
+        "A2",
+        "0,1 - 3"
+      ],
+      [
+        "B2",
+        8.04
+      ],
+      [
+        "C2",
+        0.09
+      ],
+      [
+        "D2",
+        0.2
+      ],
+      [
+        "E2",
+        0.6
+      ],
+      [
+        "F2",
+        8.929999999999998
+      ],
+      [
+        "Q2",
+        " € Nolo"
+      ],
+      [
+        "R2",
+        "€ Tot. adeg. ISTAT"
+      ],
+      [
+        "S2",
+        "% adeg. ISTAT inserire in R"
+      ],
+      [
+        "A3",
+        "3,1-5 *new"
+      ],
+      [
+        "B3",
+        8.68
+      ],
+      [
+        "C3",
+        0.15
+      ],
+      [
+        "D3",
+        0.2
+      ],
+      [
+        "E3",
+        0.6
+      ],
+      [
+        "F3",
+        9.629999999999999
+      ],
+      [
+        "R3",
+        "tot. Adeguamento"
+      ],
+      [
+        "A4",
+        "5,1 - 10"
+      ],
+      [
+        "B4",
+        9.63
+      ],
+      [
+        "C4",
+        0.3
+      ],
+      [
+        "D4",
+        0.2
+      ],
+      [
+        "E4",
+        0.6
+      ],
+      [
+        "F4",
+        10.73
+      ],
+      [
+        "Q4",
+        1212.49
+      ],
+      [
+        "R4",
+        89.49
+      ],
+      [
+        "S4",
+        0.07380679428283944
+      ],
+      [
+        "A5",
+        "10,1 - 20"
+      ],
+      [
+        "B5",
+        12
+      ],
+      [
+        "C5",
+        0.6
+      ],
+      [
+        "D5",
+        0.2
+      ],
+      [
+        "E5",
+        0.6
+      ],
+      [
+        "F5",
+        13.399999999999999
+      ],
+      [
+        "A6",
+        "20,1 - 30 "
+      ],
+      [
+        "B6",
+        15.24
+      ],
+      [
+        "C6",
+        0.9
+      ],
+      [
+        "D6",
+        0.2
+      ],
+      [
+        "E6",
+        0.6
+      ],
+      [
+        "F6",
+        16.94
+      ],
+      [
+        "R6",
+        "Inserire da ft"
+      ],
+      [
+        "A7",
+        "30,1 - 50 "
+      ],
+      [
+        "B7",
+        23.91
+      ],
+      [
+        "C7",
+        1.5
+      ],
+      [
+        "D7",
+        0.2
+      ],
+      [
+        "E7",
+        0.6
+      ],
+      [
+        "F7",
+        26.21
+      ],
+      [
+        "A8",
+        "50,1 - 100 "
+      ],
+      [
+        "B8",
+        36.91
+      ],
+      [
+        "C8",
+        3
+      ],
+      [
+        "D8",
+        0.2
+      ],
+      [
+        "E8",
+        0.6
+      ],
+      [
+        "F8",
+        40.71
+      ],
+      [
+        "A9",
+        "OLTRE ogni 50 kg "
+      ],
+      [
+        "B9",
+        18.1
+      ],
+      [
+        "C9",
+        1.5
+      ],
+      [
+        "D9",
+        0.2
+      ],
+      [
+        "F9",
+        19.8
+      ],
+      [
+        "A10",
+        "Fuel Charge + 10,0% ca. - TRIANGOLAZIONE +7,25 €"
+      ],
+      [
+        "Q11",
+        "* nolo ft NON comprende istat -  nolo borderò comprende istat "
+      ],
+      [
+        "G12",
+        "FORMULA PESO VOLUMETRICO = cmL1 x cmL2 x cmH x3/10000"
+      ],
+      [
+        "A14",
+        "DATI DA DDT FORNITORE"
+      ],
+      [
+        "F14",
+        "KG DA FT"
+      ],
+      [
+        "G14",
+        "in automatico = kg DDT (E). CAMBIARE se  diverso in ft"
+      ],
+      [
+        "H14",
+        "COSTO SPEDIZIONE PREVISTO  IN BASE AI DATI DEL DDT su LISTINO 2026 (TABELLA)"
+      ],
+      [
+        "P14",
+        "COSTO EFFETTIVO DA BORDERO' *"
+      ],
+      [
+        "A15",
+        "COMPILARE ALL'ARRIVO DELLA MERCE"
+      ],
+      [
+        "F15",
+        "inserire se diverso in ft"
+      ],
+      [
+        "H15",
+        "FORMULE (da NON comipilare)"
+      ],
+      [
+        "P15",
+        "inserire da BORDERò"
+      ],
+      [
+        "Q15",
+        "inserire da ft"
+      ],
+      [
+        "R15",
+        "formula"
+      ],
+      [
+        "S15",
+        " aggiornare ogni mese da borderò"
+      ],
+      [
+        "T15",
+        "formula"
+      ],
+      [
+        "U15",
+        "formula"
+      ],
+      [
+        "E16",
+        "E"
+      ],
+      [
+        "F16",
+        "F"
+      ],
+      [
+        "H16",
+        "H = su E"
+      ],
+      [
+        "I16",
+        "I = su E"
+      ],
+      [
+        "J16",
+        "J"
+      ],
+      [
+        "K16",
+        "K = H+I+J"
+      ],
+      [
+        "L16",
+        "L = su G"
+      ],
+      [
+        "M16",
+        "M =su G"
+      ],
+      [
+        "N16",
+        "N = L+M"
+      ],
+      [
+        "O16",
+        "O > Fra K e N"
+      ],
+      [
+        "P16",
+        "P"
+      ],
+      [
+        "Q16",
+        "Q"
+      ],
+      [
+        "R16",
+        "R = P+Q"
+      ],
+      [
+        "S16",
+        "S"
+      ],
+      [
+        "T16",
+        "T = P*U"
+      ],
+      [
+        "U16",
+        "U = P+Q+T"
+      ],
+      [
+        "A17",
+        "Data"
+      ],
+      [
+        "B17",
+        "Mittente"
+      ],
+      [
+        "C17",
+        "N° ddt"
+      ],
+      [
+        "D17",
+        "N° colli"
+      ],
+      [
+        "E17",
+        "KG Peso da DDT"
+      ],
+      [
+        "F17",
+        "Peso KG IN FT SE diverso da quello in DDT"
+      ],
+      [
+        "G17",
+        "KG Peso volumetrico "
+      ],
+      [
+        "H17",
+        "€ add.to previsto su kg  DDT - e  tutte eventuali  maggioraz.  NON ISTAT e NO fue)"
+      ],
+      [
+        "I17",
+        "€ add.to spese assic. (+10kG)"
+      ],
+      [
+        "J17",
+        "spese triang"
+      ],
+      [
+        "K17",
+        "€ COSTO TOT PREVISTO su kg  DDT (NO FUEL)"
+      ],
+      [
+        "L17",
+        "€ add.to  previsto su kg volumet.+ eventuali mag.  NO ISTAT e NO fuel"
+      ],
+      [
+        "M17",
+        "spese assic. (+10kG)"
+      ],
+      [
+        "N17",
+        "€ COSTO TOT PREVISTO su kg  volumet. in DDT NO ISTAT e NO FUEL)"
+      ],
+      [
+        "O17",
+        "€ PRESUNTO ADD.TO  CORRIERE + Magg. (NO ISTAT e NO FUEL) "
+      ],
+      [
+        "P17",
+        "€ ADD.TO  in  BORDERO' (Nolo compreso Istat e maggioraz.varie - NO  fuel)"
+      ],
+      [
+        "Q17",
+        "€ ADD.TO  in FT ASSIC. (+10kg)"
+      ],
+      [
+        "R17",
+        "€ TOT ADD.TO  COMPRESO ISTAT  (NO FUEL)"
+      ],
+      [
+        "S17",
+        "% CAMIONISTICO (FUEL)"
+      ],
+      [
+        "T17",
+        "€ CAMIONISTICO (FUEL)  (su nolo + adeguamento istat)"
+      ],
+      [
+        "U17",
+        "costo finale spedizione"
+      ],
+      [
+        "V17",
+        "Differenza % R (€ ft no fuel) / O (€ presunto no fuel)"
+      ],
+      [
+        "A18",
+        46023
+      ],
+      [
+        "B18",
+        "PROVA"
+      ],
+      [
+        "C18",
+        "PROVA"
+      ],
+      [
+        "D18",
+        1
+      ],
+      [
+        "E18",
+        40
+      ],
+      [
+        "G18",
+        40
+      ],
+      [
+        "H18",
+        26.21
+      ],
+      [
+        "I18",
+        0.5
+      ],
+      [
+        "K18",
+        26.71
+      ],
+      [
+        "L18",
+        26.21
+      ],
+      [
+        "M18",
+        0.5
+      ],
+      [
+        "N18",
+        26.71
+      ],
+      [
+        "O18",
+        26.71
+      ],
+      [
+        "P18",
+        50
+      ],
+      [
+        "Q18",
+        0.5
+      ],
+      [
+        "R18",
+        50.5
+      ],
+      [
+        "S18",
+        0.13
+      ],
+      [
+        "T18",
+        6.5
+      ],
+      [
+        "U18",
+        57
+      ],
+      [
+        "V18",
+        0.8719580681392736
+      ]
+    ]
+  },
+  {
+    "file": "TNT-FEDEX 2026.xlsx",
+    "sheet": "ARRIVI TNT-FEDEX 2026",
+    "formule": [
+      {
+        "formula": "B3*0.243",
+        "cella": "C3",
+        "valore": 1.5017399999999999,
+        "conteggio": 13
+      },
+      {
+        "formula": "B3+C3",
+        "cella": "D3",
+        "valore": 7.68174,
+        "conteggio": 13
+      },
+      {
+        "formula": "E18",
+        "cella": "I18",
+        "valore": 90,
+        "conteggio": 39
+      },
+      {
+        "formula": "(N18-J18)/J18",
+        "cella": "O18",
+        "valore": -1,
+        "conteggio": 241
+      },
+      {
+        "formula": "20.09+3.49+30",
+        "cella": "N19",
+        "valore": 53.58,
+        "conteggio": 1
+      },
+      {
+        "formula": "20.09+3.49",
+        "cella": "N20",
+        "valore": 23.58,
+        "conteggio": 1
+      },
+      {
+        "formula": "8.5+10.2",
+        "cella": "E27",
+        "valore": 18.7,
+        "conteggio": 1
+      },
+      {
+        "formula": "10.12+1.76",
+        "cella": "N47",
+        "valore": 11.879999999999999,
+        "conteggio": 1
+      },
+      {
+        "formula": "28.31+4.86",
+        "cella": "N50",
+        "valore": 33.17,
+        "conteggio": 1
+      },
+      {
+        "formula": "7.22+60.43+4.18+7.22+11.33+8.92+7.22+11.33+7.22+11.33+7.22+10.12+20.09+15.37+8.92+15.37+8+8.92+7.22+7.22+8.92+13.38+10.12+8.92+8.92+8+11.53+10.12+10.12+6.18+10.12+7.22",
+        "cella": "Q105",
+        "valore": 358.40000000000003,
+        "conteggio": 1
+      },
+      {
+        "formula": "1.851+4",
+        "cella": "E128",
+        "valore": 5.851,
+        "conteggio": 1
+      },
+      {
+        "formula": "IF(E191<=1,$D$3,IF(E191<=3,$D$4,IF(E191<=5,$D$5,IF(E191<=10,$D$6,IF(E191<=20,$D$7,IF(E191<=30,$D$8,IF(E191<=40,$D$9,IF(E191<=50,$D$10,IF(E191<=70,$D$11,IF(E191<=100,$D$12,IF(E191<=150,$D$13,IF(E191<=200,$D$14, IF(E191<=250,$D$15)))))))))))))",
+        "cella": "J191",
+        "valore": 12.579159999999998,
+        "conteggio": 53
+      },
+      {
+        "formula": "IF(I191<=1,$D$3,IF(I191<=3,$D$4,IF(I191<=5,$D$5,IF(I191<=10,$D$6,IF(I191<=20,$D$7,IF(I191<=30,$D$8,IF(I191<=40,$D$9,IF(I191<=50,$D$10,IF(I191<=70,$D$11,IF(I191<=100,$D$12,IF(I191<=150,$D$13,IF(I191<=200,$D$14, IF(I191<=250,$D$15)))))))))))))",
+        "cella": "K191",
+        "valore": 12.579159999999998,
+        "conteggio": 27
+      },
+      {
+        "formula": "IF(J191>K191, J191,IF(J191<K191,K191,IF(J191=K191,J191)))",
+        "cella": "L191",
+        "valore": 12.579159999999998,
+        "conteggio": 27
+      }
+    ],
+    "intestazioni": [
+      [
+        "C1",
+        "**"
+      ],
+      [
+        "D1",
+        "** DATO FUEL SURCHARGE AL 30/09/25: "
+      ],
+      [
+        "L1",
+        "DA SCARICARE OGNI MESE DAL SITO TNT - VEDI LINK SOTTO"
+      ],
+      [
+        "A2",
+        "FEDEX-TNT"
+      ],
+      [
+        "B2",
+        "ITALIA"
+      ],
+      [
+        "C2",
+        "FUEL +24,30 LUGLIO 26"
+      ],
+      [
+        "D2",
+        "TOTALE"
+      ],
+      [
+        "F2",
+        "Oltre: ogni 50kg (fino a kg1000) + € 16,06"
+      ],
+      [
+        "Q2",
+        "PRIMA DEL CONTROLLO DI FINE MESE, AVVISARE CLAUDIO PER \r\nAGGIORNARE IL COSTO FUEL, (CONGELARE DATI DEI MESI PRECEDENTI DA COLONNA J A COLONNA L)"
+      ],
+      [
+        "A3",
+        "0 - 1"
+      ],
+      [
+        "B3",
+        6.18
+      ],
+      [
+        "C3",
+        1.5017399999999999
+      ],
+      [
+        "D3",
+        7.68174
+      ],
+      [
+        "F3",
+        "L'addebito FUEL SURCHARGE varia ogni mese"
+      ],
+      [
+        "A4",
+        "1,1 - 3 "
+      ],
+      [
+        "B4",
+        7.22
+      ],
+      [
+        "C4",
+        1.75446
+      ],
+      [
+        "D4",
+        8.97446
+      ],
+      [
+        "F4",
+        "PALLET cm80x60 +10€, PALLET cm120x80 NO!!"
+      ],
+      [
+        "A5",
+        "3,1 - 5"
+      ],
+      [
+        "B5",
+        8
+      ],
+      [
+        "C5",
+        1.944
+      ],
+      [
+        "D5",
+        9.943999999999999
+      ],
+      [
+        "F5",
+        "NON sovrapponibile +30€"
+      ],
+      [
+        "A6",
+        "5,1 - 10"
+      ],
+      [
+        "B6",
+        8.92
+      ],
+      [
+        "C6",
+        2.16756
+      ],
+      [
+        "D6",
+        11.08756
+      ],
+      [
+        "A7",
+        "10,1 - 20"
+      ],
+      [
+        "B7",
+        10.12
+      ],
+      [
+        "C7",
+        2.45916
+      ],
+      [
+        "D7",
+        12.579159999999998
+      ],
+      [
+        "A8",
+        "20,1 - 30"
+      ],
+      [
+        "B8",
+        11.33
+      ],
+      [
+        "C8",
+        2.75319
+      ],
+      [
+        "D8",
+        14.08319
+      ],
+      [
+        "A9",
+        "30,1 - 40"
+      ],
+      [
+        "B9",
+        13.38
+      ],
+      [
+        "C9",
+        3.25134
+      ],
+      [
+        "D9",
+        16.63134
+      ],
+      [
+        "G9",
+        "Dati/correzioni inserite da controllo operatore"
+      ],
+      [
+        "A10",
+        "40,1 - 50"
+      ],
+      [
+        "B10",
+        15.37
+      ],
+      [
+        "C10",
+        3.7349099999999997
+      ],
+      [
+        "D10",
+        19.10491
+      ],
+      [
+        "G10",
+        "Errori di addebito a clienti (Fatturato)"
+      ],
+      [
+        "A11",
+        "50,1 -70"
+      ],
+      [
+        "B11",
+        20.09
+      ],
+      [
+        "C11",
+        4.88187
+      ],
+      [
+        "D11",
+        24.97187
+      ],
+      [
+        "G11",
+        "Cliente"
+      ],
+      [
+        "A12",
+        "70,1 - 100"
+      ],
+      [
+        "B12",
+        28.31
+      ],
+      [
+        "C12",
+        6.8793299999999995
+      ],
+      [
+        "D12",
+        35.18933
+      ],
+      [
+        "G12",
+        "dati /appunti Amm.ne"
+      ],
+      [
+        "A13",
+        "100,1 - 150"
+      ],
+      [
+        "B13",
+        44.37
+      ],
+      [
+        "C13",
+        10.78191
+      ],
+      [
+        "D13",
+        55.15191
+      ],
+      [
+        "A14",
+        "150,1-200"
+      ],
+      [
+        "B14",
+        60.42999999999999
+      ],
+      [
+        "C14",
+        14.684489999999998
+      ],
+      [
+        "D14",
+        75.11448999999999
+      ],
+      [
+        "L14",
+        "https://www.tnt.com/express/it_it/site/shipping-services/domestic-fuel-surcharges.html"
+      ],
+      [
+        "A15",
+        "200,1-250"
+      ],
+      [
+        "B15",
+        76.49
+      ],
+      [
+        "C15",
+        18.587069999999997
+      ],
+      [
+        "D15",
+        95.07706999999999
+      ],
+      [
+        "A17",
+        "Data"
+      ],
+      [
+        "B17",
+        "Mittente"
+      ],
+      [
+        "C17",
+        "N° ddt"
+      ],
+      [
+        "D17",
+        "N° colli"
+      ],
+      [
+        "E17",
+        "Peso DDT (kg)"
+      ],
+      [
+        "F17",
+        "L cm"
+      ],
+      [
+        "G17",
+        "L cm"
+      ],
+      [
+        "H17",
+        "H cm"
+      ],
+      [
+        "I17",
+        "Peso volumetrico"
+      ],
+      [
+        "J17",
+        "Costo tot kg"
+      ],
+      [
+        "K17",
+        "Costo tot peso volumetrico"
+      ],
+      [
+        "L17",
+        "PRESUNTO ADD.TO CORRIERE"
+      ],
+      [
+        "M17",
+        "Peso FT\r\nse diverso"
+      ],
+      [
+        "N17",
+        "FT EURO"
+      ],
+      [
+        "O17",
+        "Differenza FT/previsione da kg DDT"
+      ],
+      [
+        "P17",
+        "ADD. CLIENTE"
+      ],
+      [
+        "Q17",
+        "NOTE"
+      ],
+      [
+        "A18",
+        46031
+      ],
+      [
+        "B18",
+        "NORGREN"
+      ],
+      [
+        "C18",
+        31549280
+      ],
+      [
+        "D18",
+        1
+      ],
+      [
+        "E18",
+        90
+      ],
+      [
+        "I18",
+        90
+      ],
+      [
+        "J18",
+        33.233109
+      ],
+      [
+        "K18",
+        33.233109
+      ],
+      [
+        "L18",
+        33.233109
+      ],
+      [
+        "O18",
+        -1
+      ],
+      [
+        "Q18",
+        "bancale"
+      ]
+    ]
+  },
+  {
+    "file": "TNT-FEDEX 2026.xlsx",
+    "sheet": "PARTENZE TNT-FEDEX 2026",
+    "formule": [
+      {
+        "formula": "B3*0.243",
+        "cella": "C3",
+        "valore": 1.5017399999999999,
+        "conteggio": 13
+      },
+      {
+        "formula": "B3+C3",
+        "cella": "D3",
+        "valore": 7.68174,
+        "conteggio": 13
+      },
+      {
+        "formula": "F18*G18*H18*3/10000",
+        "cella": "I18",
+        "valore": 1.0584,
+        "conteggio": 10
+      },
+      {
+        "formula": "6.18+1.07",
+        "cella": "N18",
+        "valore": 7.25,
+        "conteggio": 1
+      },
+      {
+        "formula": "(N18-L18)/L18",
+        "cella": "O18",
+        "valore": -0.16570771001150744,
+        "conteggio": 10
+      },
+      {
+        "formula": "8.92+1.55",
+        "cella": "N19",
+        "valore": 10.47,
+        "conteggio": 1
+      },
+      {
+        "formula": "7.22+1.24",
+        "cella": "N20",
+        "valore": 8.459999999999999,
+        "conteggio": 1
+      },
+      {
+        "formula": "2.53+14.72",
+        "cella": "N21",
+        "valore": 17.25,
+        "conteggio": 1
+      },
+      {
+        "formula": "1.24+7.22",
+        "cella": "N22",
+        "valore": 8.459999999999999,
+        "conteggio": 1
+      },
+      {
+        "formula": "9.39+1.61",
+        "cella": "N23",
+        "valore": 11,
+        "conteggio": 1
+      },
+      {
+        "formula": "10.12+1.78",
+        "cella": "N24",
+        "valore": 11.899999999999999,
+        "conteggio": 1
+      },
+      {
+        "formula": "7.22+1.47",
+        "cella": "N25",
+        "valore": 8.69,
+        "conteggio": 1
+      },
+      {
+        "formula": "2.06+10.12+9",
+        "cella": "N26",
+        "valore": 21.18,
+        "conteggio": 1
+      },
+      {
+        "formula": "IF(E28<=1,$D$3,IF(E28<=3,$D$4,IF(E28<=5,$D$5,IF(E28<=10,$D$6,IF(E28<=20,$D$7,IF(E28<=30,$D$8,IF(E28<=40,$D$9,IF(E28<=50,$D$10,IF(E28<=70,$D$11,IF(E28<=100,$D$12,IF(E28<=150,$D$13,IF(E28<=200,$D$14, IF(E28<=250,$D$15)))))))))))))",
+        "cella": "J28",
+        "valore": 7.68174,
+        "conteggio": 7
+      },
+      {
+        "formula": "IF(I28<=1,$D$3,IF(I28<=3,$D$4,IF(I28<=5,$D$5,IF(I28<=10,$D$6,IF(I28<=20,$D$7,IF(I28<=30,$D$8,IF(I28<=40,$D$9,IF(I28<=50,$D$10,IF(I28<=70,$D$11,IF(I28<=100,$D$12,IF(I28<=150,$D$13,IF(I28<=200,$D$14, IF(I28<=250,$D$15)))))))))))))",
+        "cella": "K28",
+        "valore": 7.68174,
+        "conteggio": 7
+      },
+      {
+        "formula": "IF(J28>K28, J28,IF(J28<K28,K28,IF(J28=K28,J28)))",
+        "cella": "L28",
+        "valore": 7.68174,
+        "conteggio": 7
+      }
+    ],
+    "intestazioni": [
+      [
+        "A2",
+        "FEDEX-TNT"
+      ],
+      [
+        "B2",
+        "ITALIA"
+      ],
+      [
+        "C2",
+        "FUEL +24,30 LUGLIO 26"
+      ],
+      [
+        "D2",
+        "TOTALE"
+      ],
+      [
+        "F2",
+        "ULTIMO AGGIORNAMENTO giugno 2026"
+      ],
+      [
+        "J2",
+        "Oltre: ogni 50kg (fino a kg1000) + € 16,06"
+      ],
+      [
+        "A3",
+        "0 - 1"
+      ],
+      [
+        "B3",
+        6.18
+      ],
+      [
+        "C3",
+        1.5017399999999999
+      ],
+      [
+        "D3",
+        7.68174
+      ],
+      [
+        "F3",
+        "PESO/VOL."
+      ],
+      [
+        "G3",
+        "ADDEBITO A CLIENTE"
+      ],
+      [
+        "J3",
+        "L'addebito FUEL SURCHARGE varia ogni mese"
+      ],
+      [
+        "A4",
+        "1,1 - 3 "
+      ],
+      [
+        "B4",
+        7.22
+      ],
+      [
+        "C4",
+        1.75446
+      ],
+      [
+        "D4",
+        8.97446
+      ],
+      [
+        "F4",
+        "da 0 a 10"
+      ],
+      [
+        "G4",
+        16.5
+      ],
+      [
+        "J4",
+        "PALLET cm80x60 +10€, PALLET cm120x80 NO!!"
+      ],
+      [
+        "A5",
+        "3,1 - 5"
+      ],
+      [
+        "B5",
+        8
+      ],
+      [
+        "C5",
+        1.944
+      ],
+      [
+        "D5",
+        9.943999999999999
+      ],
+      [
+        "F5",
+        "da 11 a 30"
+      ],
+      [
+        "G5",
+        22.5
+      ],
+      [
+        "J5",
+        "NON sovrapponibile +30€"
+      ],
+      [
+        "A6",
+        "5,1 - 10"
+      ],
+      [
+        "B6",
+        8.92
+      ],
+      [
+        "C6",
+        2.16756
+      ],
+      [
+        "D6",
+        11.08756
+      ],
+      [
+        "F6",
+        "da 31 a 50"
+      ],
+      [
+        "G6",
+        31
+      ],
+      [
+        "A7",
+        "10,1 - 20"
+      ],
+      [
+        "B7",
+        10.12
+      ],
+      [
+        "C7",
+        2.45916
+      ],
+      [
+        "D7",
+        12.579159999999998
+      ],
+      [
+        "F7",
+        "da 51 a 100"
+      ],
+      [
+        "G7",
+        49
+      ],
+      [
+        "J7",
+        "PRIMA DEL CONTROLLO DI FINE MESE, AVVISARE CLAUDIO PER \r\nAGGIORNARE IL COSTO FUEL, (CONGELARE DATI DEI MESI PRECEDENTI DA COLONNA J A COLONNA L)"
+      ],
+      [
+        "A8",
+        "20,1 - 30"
+      ],
+      [
+        "B8",
+        11.33
+      ],
+      [
+        "C8",
+        2.75319
+      ],
+      [
+        "D8",
+        14.08319
+      ],
+      [
+        "F8",
+        "da 101 a 200"
+      ],
+      [
+        "G8",
+        "Chiedere offerta"
+      ],
+      [
+        "A9",
+        "30,1 - 40"
+      ],
+      [
+        "B9",
+        13.38
+      ],
+      [
+        "C9",
+        3.25134
+      ],
+      [
+        "D9",
+        16.63134
+      ],
+      [
+        "A10",
+        "40,1 - 50"
+      ],
+      [
+        "B10",
+        15.37
+      ],
+      [
+        "C10",
+        3.7349099999999997
+      ],
+      [
+        "D10",
+        19.10491
+      ],
+      [
+        "G10",
+        "Dati/correzioni inserite da Amm.ne"
+      ],
+      [
+        "A11",
+        "50,1 -70"
+      ],
+      [
+        "B11",
+        20.09
+      ],
+      [
+        "C11",
+        4.88187
+      ],
+      [
+        "D11",
+        24.97187
+      ],
+      [
+        "G11",
+        "Errori di addebito a clienti (Fatturato)"
+      ],
+      [
+        "A12",
+        "70,1 - 100"
+      ],
+      [
+        "B12",
+        28.31
+      ],
+      [
+        "C12",
+        6.8793299999999995
+      ],
+      [
+        "D12",
+        35.18933
+      ],
+      [
+        "G12",
+        "fornitore"
+      ],
+      [
+        "A13",
+        "100,1 - 150"
+      ],
+      [
+        "B13",
+        44.37
+      ],
+      [
+        "C13",
+        10.78191
+      ],
+      [
+        "D13",
+        55.15191
+      ],
+      [
+        "A14",
+        "150,1-200"
+      ],
+      [
+        "B14",
+        60.42999999999999
+      ],
+      [
+        "C14",
+        14.684489999999998
+      ],
+      [
+        "D14",
+        75.11448999999999
+      ],
+      [
+        "A15",
+        "200,1-250"
+      ],
+      [
+        "B15",
+        76.49
+      ],
+      [
+        "C15",
+        18.587069999999997
+      ],
+      [
+        "D15",
+        95.07706999999999
+      ],
+      [
+        "A17",
+        "Data"
+      ],
+      [
+        "B17",
+        "Destinatario"
+      ],
+      [
+        "C17",
+        "N° ddt"
+      ],
+      [
+        "D17",
+        "N° colli"
+      ],
+      [
+        "E17",
+        "Peso DDT (kg)"
+      ],
+      [
+        "F17",
+        "L cm"
+      ],
+      [
+        "G17",
+        "L cm"
+      ],
+      [
+        "H17",
+        "H cm"
+      ],
+      [
+        "I17",
+        "Peso volumetrico"
+      ],
+      [
+        "J17",
+        "Costo tot kg"
+      ],
+      [
+        "K17",
+        "Costo tot peso volumetrico"
+      ],
+      [
+        "L17",
+        "PRESUNTO ADD.TO CORRIERE"
+      ],
+      [
+        "M17",
+        "Peso FT\r\nse diverso"
+      ],
+      [
+        "N17",
+        "FT EURO"
+      ],
+      [
+        "O17",
+        "Differenza FT/previsione da kg DDT"
+      ],
+      [
+        "P17",
+        "ADD. CLIENTE"
+      ],
+      [
+        "Q17",
+        "NOTE"
+      ],
+      [
+        "A18",
+        46030
+      ],
+      [
+        "B18",
+        "CHEMICAL FLACER"
+      ],
+      [
+        "C18",
+        5
+      ],
+      [
+        "D18",
+        1
+      ],
+      [
+        "E18",
+        0.5
+      ],
+      [
+        "F18",
+        18
+      ],
+      [
+        "G18",
+        14
+      ],
+      [
+        "H18",
+        14
+      ],
+      [
+        "I18",
+        1.0584
+      ],
+      [
+        "J18",
+        7.254702
+      ],
+      [
+        "K18",
+        8.69
+      ],
+      [
+        "L18",
+        8.69
+      ],
+      [
+        "M18",
+        0.75
+      ],
+      [
+        "N18",
+        7.25
+      ],
+      [
+        "O18",
+        -0.16570771001150744
+      ],
+      [
+        "P18",
+        15
+      ]
+    ]
+  },
+  {
+    "file": "TRADING POST2026.xls",
+    "sheet": "FORNITORI TP 2026",
+    "formule": [
+      {
+        "formula": "B3*0.06",
+        "cella": "C3",
+        "valore": 0.534,
+        "conteggio": 12
+      },
+      {
+        "formula": "B3+C3",
+        "cella": "D3",
+        "valore": 9.434000000000001,
+        "conteggio": 12
+      },
+      {
+        "formula": "F18*G18*H18*3/10000",
+        "cella": "I18",
+        "valore": 60,
+        "conteggio": 1
+      },
+      {
+        "formula": "IF(E18<=3,$D$3,IF(E18<=5,$D$4,IF(E18<=10,$D$5,IF(E18<=20,$D$6,IF(E18<=30,$D$7,IF(E18<=40,$D$8,IF(E18<=50,$D$9,IF(E18<=100,$D$10))))))))",
+        "cella": "J18",
+        "valore": 12.19,
+        "conteggio": 60
+      },
+      {
+        "formula": "IF(I18<=3,$D$3,IF(I18<=5,$D$4,IF(I18<=10,$D$5,IF(I18<=20,$D$6,IF(I18<=30,$D$7,IF(I18<=40,$D$8,IF(I18<=50,$D$9,IF(I18<=100,$D$10))))))))",
+        "cella": "K18",
+        "valore": 23.85,
+        "conteggio": 64
+      },
+      {
+        "formula": "IF(J18>K18,J18,IF(J18<K18,K18,IF(J18=K18,J18)))",
+        "cella": "L18",
+        "valore": 23.85,
+        "conteggio": 66
+      },
+      {
+        "formula": "(N18-L18)/L18",
+        "cella": "O18",
+        "valore": -1,
+        "conteggio": 68
+      },
+      {
+        "formula": "E19",
+        "cella": "I19",
+        "valore": 65,
+        "conteggio": 11
+      },
+      {
+        "formula": "67.5+7.43",
+        "cella": "N25",
+        "valore": 74.93,
+        "conteggio": 1
+      },
+      {
+        "formula": "9.9+1.09",
+        "cella": "N27",
+        "valore": 10.99,
+        "conteggio": 3
+      },
+      {
+        "formula": "11.5+1.27",
+        "cella": "N28",
+        "valore": 12.77,
+        "conteggio": 3
+      },
+      {
+        "formula": "22.5+2.48",
+        "cella": "N29",
+        "valore": 24.98,
+        "conteggio": 9
+      },
+      {
+        "formula": "9.5+1.05",
+        "cella": "N32",
+        "valore": 10.55,
+        "conteggio": 2
+      },
+      {
+        "formula": "45+4.95",
+        "cella": "N34",
+        "valore": 49.95,
+        "conteggio": 4
+      },
+      {
+        "formula": "90+9.9",
+        "cella": "N35",
+        "valore": 99.9,
+        "conteggio": 1
+      },
+      {
+        "formula": "12.9+1.42",
+        "cella": "N39",
+        "valore": 14.32,
+        "conteggio": 1
+      },
+      {
+        "formula": "8.9+0.98",
+        "cella": "N41",
+        "valore": 9.88,
+        "conteggio": 4
+      },
+      {
+        "formula": "8.9+0.98+5",
+        "cella": "N43",
+        "valore": 14.88,
+        "conteggio": 1
+      },
+      {
+        "formula": "9.2+1.01",
+        "cella": "N45",
+        "valore": 10.209999999999999,
+        "conteggio": 1
+      },
+      {
+        "formula": "202.5+22.28",
+        "cella": "N53",
+        "valore": 224.78,
+        "conteggio": 1
+      },
+      {
+        "formula": "8.9+2.75",
+        "cella": "N55",
+        "valore": 11.65,
+        "conteggio": 1
+      }
+    ],
+    "intestazioni": [
+      [
+        "A2",
+        "TRADING POST"
+      ],
+      [
+        "B2",
+        "E.R. + LOMB."
+      ],
+      [
+        "C2",
+        "+6,0% FISSO"
+      ],
+      [
+        "D2",
+        "totale"
+      ],
+      [
+        "M2",
+        "FUEL LUGLIO "
+      ],
+      [
+        "O2",
+        0.0651
+      ],
+      [
+        "A3",
+        "da 0 a 3"
+      ],
+      [
+        "B3",
+        8.9
+      ],
+      [
+        "C3",
+        0.534
+      ],
+      [
+        "D3",
+        9.434000000000001
+      ],
+      [
+        "A4",
+        "da 3,1 a 5"
+      ],
+      [
+        "B4",
+        9.2
+      ],
+      [
+        "C4",
+        0.5519999999999999
+      ],
+      [
+        "D4",
+        9.751999999999999
+      ],
+      [
+        "A5",
+        "da 5,1 a 10"
+      ],
+      [
+        "B5",
+        9.5
+      ],
+      [
+        "C5",
+        0.57
+      ],
+      [
+        "D5",
+        10.07
+      ],
+      [
+        "A6",
+        "da 11 a 20"
+      ],
+      [
+        "B6",
+        9.9
+      ],
+      [
+        "C6",
+        0.594
+      ],
+      [
+        "D6",
+        10.494
+      ],
+      [
+        "A7",
+        "da 21 a 30"
+      ],
+      [
+        "B7",
+        11.5
+      ],
+      [
+        "C7",
+        0.69
+      ],
+      [
+        "D7",
+        12.19
+      ],
+      [
+        "A8",
+        "da 31 a 40"
+      ],
+      [
+        "B8",
+        12.9
+      ],
+      [
+        "C8",
+        0.774
+      ],
+      [
+        "D8",
+        13.674
+      ],
+      [
+        "A9",
+        "da 41 a 50"
+      ],
+      [
+        "B9",
+        16.3
+      ],
+      [
+        "C9",
+        0.978
+      ],
+      [
+        "D9",
+        17.278000000000002
+      ],
+      [
+        "G9",
+        "Dati/correzioni inserite da Amm.ne"
+      ],
+      [
+        "A10",
+        "da 51 a 100"
+      ],
+      [
+        "B10",
+        22.5
+      ],
+      [
+        "C10",
+        1.3499999999999999
+      ],
+      [
+        "D10",
+        23.85
+      ],
+      [
+        "G10",
+        "Add.to in fattura controllato da Amm.ne"
+      ],
+      [
+        "A11",
+        "da 101 a 200"
+      ],
+      [
+        "B11",
+        45
+      ],
+      [
+        "C11",
+        2.6999999999999997
+      ],
+      [
+        "D11",
+        47.7
+      ],
+      [
+        "G11",
+        "Errori di addebito a clienti (Fatturato)"
+      ],
+      [
+        "A12",
+        "da 201 a 300"
+      ],
+      [
+        "B12",
+        67.5
+      ],
+      [
+        "C12",
+        4.05
+      ],
+      [
+        "D12",
+        71.55
+      ],
+      [
+        "G12",
+        "CLIENTI"
+      ],
+      [
+        "A13",
+        "da 301 a 400"
+      ],
+      [
+        "B13",
+        90
+      ],
+      [
+        "C13",
+        5.3999999999999995
+      ],
+      [
+        "D13",
+        95.4
+      ],
+      [
+        "A14",
+        "da 401 a 500"
+      ],
+      [
+        "B14",
+        112.5
+      ],
+      [
+        "C14",
+        6.75
+      ],
+      [
+        "D14",
+        119.25
+      ],
+      [
+        "A15",
+        "Per merce non sovrapponibile considerato volume con altezza 180cm "
+      ],
+      [
+        "A17",
+        "DATA"
+      ],
+      [
+        "B17",
+        "Mittente"
+      ],
+      [
+        "C17",
+        "ddt"
+      ],
+      [
+        "D17",
+        "n° colli"
+      ],
+      [
+        "E17",
+        "Peso Kg."
+      ],
+      [
+        "F17",
+        "L cm"
+      ],
+      [
+        "G17",
+        "L cm"
+      ],
+      [
+        "H17",
+        "H cm"
+      ],
+      [
+        "I17",
+        "Peso  volumetrico"
+      ],
+      [
+        "J17",
+        "Costo tot kg"
+      ],
+      [
+        "K17",
+        "Costo tot peso  volumetrico"
+      ],
+      [
+        "L17",
+        "PRESUNTO ADD.TO CORRIERE"
+      ],
+      [
+        "M17",
+        "Peso FT\nse diverso"
+      ],
+      [
+        "N17",
+        "FT EURO"
+      ],
+      [
+        "O17",
+        "Differenza FT/previsione"
+      ],
+      [
+        "P17",
+        "ADD. CLIENTE"
+      ],
+      [
+        "Q17",
+        "NOTE"
+      ],
+      [
+        "A18",
+        45299
+      ],
+      [
+        "B18",
+        "INIZIO"
+      ],
+      [
+        "C18",
+        "XX"
+      ],
+      [
+        "D18",
+        1
+      ],
+      [
+        "E18",
+        29
+      ],
+      [
+        "F18",
+        5
+      ],
+      [
+        "G18",
+        200
+      ],
+      [
+        "H18",
+        200
+      ],
+      [
+        "I18",
+        60
+      ],
+      [
+        "J18",
+        12.19
+      ],
+      [
+        "K18",
+        23.85
+      ],
+      [
+        "L18",
+        23.85
+      ],
+      [
+        "N18",
+        0
+      ],
+      [
+        "O18",
+        -1
+      ]
+    ]
+  },
+  {
+    "file": "TRADING POST2026.xls",
+    "sheet": "CLIENTI TP 2026",
+    "formule": [
+      {
+        "formula": "B3+C3",
+        "cella": "D3",
+        "valore": 9.88,
+        "conteggio": 12
+      },
+      {
+        "formula": "(N3-B3)/B3",
+        "cella": "O3",
+        "valore": -0.056179775280898875,
+        "conteggio": 12
+      },
+      {
+        "formula": "J3*K3*L3*3/10000",
+        "cella": "L5",
+        "valore": 0,
+        "conteggio": 1
+      },
+      {
+        "formula": "IF(L5<50,E8,IF(L5<=100,D10,IF(L5<=200,D11,IF(L5<=300,D12,IF(L5<=400,D13,IF(L5<=500,D14,IF(L5>500,E8)*999999))))))",
+        "cella": "L7",
+        "valore": 0,
+        "conteggio": 1
+      },
+      {
+        "formula": "B11*6/100",
+        "cella": "C11",
+        "valore": 2.7,
+        "conteggio": 4
+      },
+      {
+        "formula": "F18*G18*H18*3/10000",
+        "cella": "I18",
+        "valore": 24.75,
+        "conteggio": 253
+      },
+      {
+        "formula": "IF(E18<=3,$D$3,IF(E18<=5,$D$4,IF(E18<=10,$D$5,IF(E18<=20,$D$6,IF(E18<=30,$D$7,IF(E18<=40,$D$8,IF(E18<=50,$D$9,IF(E18<=100,$D$10))))))))",
+        "cella": "J18",
+        "valore": 10.99,
+        "conteggio": 269
+      },
+      {
+        "formula": "IF(I18<=3,$D$3,IF(I18<=5,$D$4,IF(I18<=10,$D$5,IF(I18<=20,$D$6,IF(I18<=30,$D$7,IF(I18<=40,$D$8,IF(I18<=50,$D$9,IF(I18<=100,$D$10))))))))",
+        "cella": "K18",
+        "valore": 12.77,
+        "conteggio": 273
+      },
+      {
+        "formula": "IF(J18>K18,J18,IF(J18<K18,K18,IF(J18=K18,J18)))",
+        "cella": "L18",
+        "valore": 12.77,
+        "conteggio": 268
+      },
+      {
+        "formula": "9.9+0.59",
+        "cella": "N18",
+        "valore": 10.49,
+        "conteggio": 9
+      },
+      {
+        "formula": "(N18-L18)/L18",
+        "cella": "O18",
+        "valore": -0.17854346123727483,
+        "conteggio": 269
+      },
+      {
+        "formula": "8.9+0.53",
+        "cella": "N19",
+        "valore": 9.43,
+        "conteggio": 30
+      },
+      {
+        "formula": "9.2+0.55",
+        "cella": "N22",
+        "valore": 9.75,
+        "conteggio": 11
+      },
+      {
+        "formula": "I23+I24",
+        "cella": "I25",
+        "valore": 44.55,
+        "conteggio": 15
+      },
+      {
+        "formula": "8.9+0.5",
+        "cella": "N26",
+        "valore": 9.4,
+        "conteggio": 1
+      },
+      {
+        "formula": "9.5+0.57",
+        "cella": "N29",
+        "valore": 10.07,
+        "conteggio": 5
+      },
+      {
+        "formula": "E43+E44",
+        "cella": "E45",
+        "valore": 17,
+        "conteggio": 15
+      },
+      {
+        "formula": "9.3+0.59",
+        "cella": "N45",
+        "valore": 9.89,
+        "conteggio": 1
+      },
+      {
+        "formula": "E53+E54+E56+E55",
+        "cella": "E57",
+        "valore": 24.7,
+        "conteggio": 1
+      },
+      {
+        "formula": "I53+I54+I55+I56",
+        "cella": "I57",
+        "valore": 7.5375,
+        "conteggio": 2
+      },
+      {
+        "formula": "11.5+0.69",
+        "cella": "N57",
+        "valore": 12.19,
+        "conteggio": 4
+      },
+      {
+        "formula": "E83+E84+E85+E86",
+        "cella": "E87",
+        "valore": 31.12,
+        "conteggio": 1
+      },
+      {
+        "formula": "12.9+0.77",
+        "cella": "N87",
+        "valore": 13.67,
+        "conteggio": 1
+      },
+      {
+        "formula": "8.9+0.98",
+        "cella": "N109",
+        "valore": 9.88,
+        "conteggio": 66
+      },
+      {
+        "formula": "9.9+1.09",
+        "cella": "N114",
+        "valore": 10.99,
+        "conteggio": 16
+      },
+      {
+        "formula": "9.5+1.05",
+        "cella": "N119",
+        "valore": 10.55,
+        "conteggio": 19
+      },
+      {
+        "formula": "11.5+1.27",
+        "cella": "N124",
+        "valore": 12.77,
+        "conteggio": 9
+      },
+      {
+        "formula": "9.2+1.01",
+        "cella": "N128",
+        "valore": 10.209999999999999,
+        "conteggio": 20
+      },
+      {
+        "formula": "12.9+1.42",
+        "cella": "N168",
+        "valore": 14.32,
+        "conteggio": 2
+      },
+      {
+        "formula": "8.9+0.98+8.9+0.98+5",
+        "cella": "N175",
+        "valore": 24.76,
+        "conteggio": 1
+      },
+      {
+        "formula": "16.3+1.79",
+        "cella": "N185",
+        "valore": 18.09,
+        "conteggio": 1
+      },
+      {
+        "formula": "E212+E214",
+        "cella": "E215",
+        "valore": 7,
+        "conteggio": 1
+      },
+      {
+        "formula": "I212+I214",
+        "cella": "I215",
+        "valore": 19.424999999999997,
+        "conteggio": 1
+      },
+      {
+        "formula": "E222+E223+E224",
+        "cella": "E225",
+        "valore": 21.1,
+        "conteggio": 1
+      },
+      {
+        "formula": "I222+I223+I224",
+        "cella": "I225",
+        "valore": 8.2584,
+        "conteggio": 1
+      },
+      {
+        "formula": "22.5+2.48",
+        "cella": "N231",
+        "valore": 24.98,
+        "conteggio": 1
+      }
+    ],
+    "intestazioni": [
+      [
+        "A2",
+        "TRADING POST"
+      ],
+      [
+        "B2",
+        "E.R. + LOMB."
+      ],
+      [
+        "C2",
+        "+6,0% FISSO"
+      ],
+      [
+        "D2",
+        "totale"
+      ],
+      [
+        "F2",
+        "ULTIMO AGGIORNAMENTO GIUGNO  2026 "
+      ],
+      [
+        "J2",
+        "L1 cm"
+      ],
+      [
+        "K2",
+        "L2 cm"
+      ],
+      [
+        "L2",
+        "H cm"
+      ],
+      [
+        "Q2",
+        "Tariffe valide solo per E.R. e LOMBARDIA"
+      ],
+      [
+        "A3",
+        "da 0 a 3"
+      ],
+      [
+        "B3",
+        8.9
+      ],
+      [
+        "C3",
+        0.98
+      ],
+      [
+        "D3",
+        9.88
+      ],
+      [
+        "F3",
+        "PESO/VOL."
+      ],
+      [
+        "G3",
+        "ADDEBITO A CLIENTE"
+      ],
+      [
+        "N3",
+        8.4
+      ],
+      [
+        "O3",
+        -0.056179775280898875
+      ],
+      [
+        "A4",
+        "da 3,1 a 5"
+      ],
+      [
+        "B4",
+        9.2
+      ],
+      [
+        "C4",
+        1.01
+      ],
+      [
+        "D4",
+        10.209999999999999
+      ],
+      [
+        "F4",
+        "da 0 a 10"
+      ],
+      [
+        "G4",
+        16.5
+      ],
+      [
+        "N4",
+        8.6
+      ],
+      [
+        "O4",
+        -0.0652173913043478
+      ],
+      [
+        "A5",
+        "da 5,1 a 10"
+      ],
+      [
+        "B5",
+        9.5
+      ],
+      [
+        "C5",
+        1.05
+      ],
+      [
+        "D5",
+        10.55
+      ],
+      [
+        "F5",
+        "da 11 a 30"
+      ],
+      [
+        "G5",
+        22.5
+      ],
+      [
+        "J5",
+        "peso volumetrico"
+      ],
+      [
+        "L5",
+        0
+      ],
+      [
+        "N5",
+        8.9
+      ],
+      [
+        "O5",
+        -0.06315789473684207
+      ],
+      [
+        "A6",
+        "da 11 a 20"
+      ],
+      [
+        "B6",
+        9.9
+      ],
+      [
+        "C6",
+        1.09
+      ],
+      [
+        "D6",
+        10.99
+      ],
+      [
+        "F6",
+        "da 31 a 50"
+      ],
+      [
+        "G6",
+        31
+      ],
+      [
+        "N6",
+        9.3
+      ],
+      [
+        "O6",
+        -0.060606060606060566
+      ],
+      [
+        "A7",
+        "da 21 a 30"
+      ],
+      [
+        "B7",
+        11.5
+      ],
+      [
+        "C7",
+        1.27
+      ],
+      [
+        "D7",
+        12.77
+      ],
+      [
+        "F7",
+        "da 51 a 100"
+      ],
+      [
+        "G7",
+        49
+      ],
+      [
+        "J7",
+        "Previsione costo"
+      ],
+      [
+        "L7",
+        0
+      ],
+      [
+        "N7",
+        10.8
+      ],
+      [
+        "O7",
+        -0.060869565217391244
+      ],
+      [
+        "A8",
+        "da 31 a 40"
+      ],
+      [
+        "B8",
+        12.9
+      ],
+      [
+        "C8",
+        1.42
+      ],
+      [
+        "D8",
+        14.32
+      ],
+      [
+        "F8",
+        "da 101 a 200"
+      ],
+      [
+        "G8",
+        "chiedere offerta "
+      ],
+      [
+        "N8",
+        12.1
+      ],
+      [
+        "O8",
+        -0.06201550387596905
+      ],
+      [
+        "A9",
+        "da 41 a 50"
+      ],
+      [
+        "B9",
+        16.3
+      ],
+      [
+        "C9",
+        1.79
+      ],
+      [
+        "D9",
+        18.09
+      ],
+      [
+        "G9",
+        "Dati/correzioni inserite da Amm.ne"
+      ],
+      [
+        "N9",
+        15.3
+      ],
+      [
+        "O9",
+        -0.06134969325153374
+      ],
+      [
+        "A10",
+        "da 51 a 100"
+      ],
+      [
+        "B10",
+        22.5
+      ],
+      [
+        "C10",
+        2.48
+      ],
+      [
+        "D10",
+        24.98
+      ],
+      [
+        "G10",
+        "Add.to in fattura controllato da Amm.ne"
+      ],
+      [
+        "N10",
+        21.2
+      ],
+      [
+        "O10",
+        -0.05777777777777781
+      ],
+      [
+        "A11",
+        "da 101 a 200"
+      ],
+      [
+        "B11",
+        45
+      ],
+      [
+        "C11",
+        2.7
+      ],
+      [
+        "D11",
+        47.7
+      ],
+      [
+        "G11",
+        "Errori di addebito a clienti (Fatturato)"
+      ],
+      [
+        "J11",
+        "FUEL LUGLIO "
+      ],
+      [
+        "L11",
+        0.0651
+      ],
+      [
+        "N11",
+        42.4
+      ],
+      [
+        "O11",
+        -0.05777777777777781
+      ],
+      [
+        "A12",
+        "da 201 a 300"
+      ],
+      [
+        "B12",
+        67.5
+      ],
+      [
+        "C12",
+        4.05
+      ],
+      [
+        "D12",
+        71.55
+      ],
+      [
+        "G12",
+        "Fatturato FC"
+      ],
+      [
+        "N12",
+        63.599999999999994
+      ],
+      [
+        "O12",
+        -0.057777777777777865
+      ],
+      [
+        "A13",
+        "da 301 a 400"
+      ],
+      [
+        "B13",
+        90
+      ],
+      [
+        "C13",
+        5.4
+      ],
+      [
+        "D13",
+        95.4
+      ],
+      [
+        "N13",
+        84.8
+      ],
+      [
+        "O13",
+        -0.05777777777777781
+      ],
+      [
+        "A14",
+        "da 401 a 500"
+      ],
+      [
+        "B14",
+        112.5
+      ],
+      [
+        "C14",
+        6.75
+      ],
+      [
+        "D14",
+        119.25
+      ],
+      [
+        "N14",
+        106
+      ],
+      [
+        "O14",
+        -0.057777777777777775
+      ],
+      [
+        "A15",
+        "Per merce non sovrapponibile considerato volume con altezza 180cm "
+      ],
+      [
+        "A17",
+        "DATA"
+      ],
+      [
+        "B17",
+        "Destinatario"
+      ],
+      [
+        "C17",
+        "ddt"
+      ],
+      [
+        "D17",
+        "n° colli"
+      ],
+      [
+        "E17",
+        "Peso Kg."
+      ],
+      [
+        "F17",
+        "L cm"
+      ],
+      [
+        "G17",
+        "L cm"
+      ],
+      [
+        "H17",
+        "H cm"
+      ],
+      [
+        "I17",
+        "Peso  volumetrico"
+      ],
+      [
+        "J17",
+        "Costo tot kg"
+      ],
+      [
+        "K17",
+        "Costo tot peso  volumetrico"
+      ],
+      [
+        "L17",
+        "PRESUNTO ADD.TO CORRIERE"
+      ],
+      [
+        "M17",
+        "Peso FT\nse diverso"
+      ],
+      [
+        "N17",
+        "FT EURO"
+      ],
+      [
+        "O17",
+        "Differenza FT/previsione"
+      ],
+      [
+        "P17",
+        "ADD. CLIENTE"
+      ],
+      [
+        "Q17",
+        "NOTE"
+      ],
+      [
+        "A18",
+        45664
+      ],
+      [
+        "B18",
+        "raytec"
+      ],
+      [
+        "C18",
+        11
+      ],
+      [
+        "D18",
+        1
+      ],
+      [
+        "E18",
+        15
+      ],
+      [
+        "F18",
+        100
+      ],
+      [
+        "G18",
+        33
+      ],
+      [
+        "H18",
+        25
+      ],
+      [
+        "I18",
+        24.75
+      ],
+      [
+        "J18",
+        10.99
+      ],
+      [
+        "K18",
+        12.77
+      ],
+      [
+        "L18",
+        12.77
+      ],
+      [
+        "N18",
+        10.49
+      ],
+      [
+        "O18",
+        -0.17854346123727483
+      ],
+      [
+        "P18",
+        20
+      ]
+    ]
+  }
+]
