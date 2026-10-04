@@ -90,21 +90,22 @@ export function CampagnaDettaglioView({
     }
   }
 
-  async function applicaPubblico() {
-    const nomePubblico = campagna.pubblico?.nome ?? "della campagna";
-    if (!window.confirm(`Aggiungere ai destinatari i ${mancanti.toLocaleString("it-IT")} clienti del pubblico «${nomePubblico}» che ancora non ci sono? Nessuno viene tolto.`)) return;
+  async function cambiaAutomatici(attivi: boolean) {
     setOccupato("pubblico");
     setEsitoPubblico(null);
-    const r = await chiamaApi<{ esito: { aggiunti: number }; campagna: CampagnaRiepilogo }>(
-      `/api/portali/campagne/campagne/${campagna.id}/destinatari`,
-      { corpo: { azione: "applica_pubblico" } }
-    );
+    const r = await chiamaApi<{ campagna: CampagnaRiepilogo; mancanti: number }>(`/api/portali/campagne/campagne/${campagna.id}`, {
+      metodo: "PATCH",
+      corpo: { destinatari_automatici: attivi },
+    });
     setOccupato(null);
     if (!r.ok) setEsitoPubblico({ tipo: "errore", testo: r.errore });
     else {
       setCampagna(r.dati.campagna);
-      setMancanti(0);
-      setEsitoPubblico({ tipo: "ok", testo: `${r.dati.esito.aggiunti} clienti aggiunti ai destinatari.` });
+      setMancanti(r.dati.mancanti);
+      setEsitoPubblico({
+        tipo: "ok",
+        testo: attivi ? "Aggiornamento automatico acceso: i clienti che rientrano nel pubblico sono stati aggiunti." : "Aggiornamento automatico spento.",
+      });
     }
   }
 
@@ -210,16 +211,25 @@ export function CampagnaDettaglioView({
           </Link>
         </div>
         {!terminata ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Button variant="outline" onClick={applicaPubblico} disabled={occupato !== null || mancanti === 0}>
+          <div className="mt-4 space-y-1">
+            <label className="flex items-center gap-2 text-sm font-medium text-text">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={campagna.destinatari_automatici}
+                disabled={occupato !== null}
+                onChange={(e) => cambiaAutomatici(e.target.checked)}
+              />
+              Aggiungi da sola i clienti che rientrano nel pubblico
               {occupato === "pubblico" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Aggiungi i clienti che rientrano
-            </Button>
-            <span className="text-sm text-text-muted">
-              {mancanti === 0
-                ? "Tutti i clienti del pubblico sono già destinatari."
-                : `${mancanti.toLocaleString("it-IT")} ${mancanti === 1 ? "cliente rientra" : "clienti rientrano"} nel pubblico e non ${mancanti === 1 ? "è ancora destinatario" : "sono ancora destinatari"}.`}
-            </span>
+            </label>
+            <p className="text-sm text-text-muted">
+              {campagna.destinatari_automatici
+                ? "Ogni notte, dopo il caricamento di Impresa, i clienti nuovi che rientrano nel pubblico diventano destinatari. Nessuno viene tolto; chi togli a mano qui sotto non rientra."
+                : mancanti === 0
+                  ? "Spenta: i destinatari restano quelli scelti a mano (campagna mirata)."
+                  : `Spenta: ${mancanti.toLocaleString("it-IT")} ${mancanti === 1 ? "cliente rientra" : "clienti rientrano"} nel pubblico e non ${mancanti === 1 ? "è destinatario" : "sono destinatari"}. Accendendola vengono aggiunti tutti.`}
+            </p>
           </div>
         ) : null}
         {esitoPubblico ? <div className="mt-3"><Messaggio tipo={esitoPubblico.tipo}>{esitoPubblico.testo}</Messaggio></div> : null}

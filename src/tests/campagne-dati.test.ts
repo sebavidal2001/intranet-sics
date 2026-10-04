@@ -52,6 +52,7 @@ import {
   modificaDestinatari,
   pubblicoMancanti,
   pulisciRicerca,
+  sincronizzaPubblici,
   utentiInvii,
 } from "@/lib/portali/campagne/dati";
 import { oggiRoma } from "@/lib/portali/campagne/stati";
@@ -430,5 +431,51 @@ describe("buste in anomalia: non sono preparate né da spedire", () => {
     chiamate.length = 0;
     await elencoInvii({ stato: "consegnata", limit: 50, offset: 0 });
     expect(escluse()).toEqual([]);
+  });
+});
+
+describe("destinatari automatici del pubblico", () => {
+  const PUB = "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e";
+  const campagna = { id: C1.id, codice: "C_01_26", nome: "Uno", stato: "attiva", pubblico_id: PUB, pubblico: { nome: "Standard", standard: true } };
+
+  function scenario(extra: Record<string, unknown> = {}) {
+    risolvi = ({ tabella }) => {
+      if (tabella === "campagne") return { data: campagna };
+      if (tabella === "v_campagne_riepilogo") return { data: { id: C1.id, destinatari: 0, preparate: 0, da_spedire: 0, consegnate: 0, consegnate_banco: 0 } };
+      if (tabella in extra) return { data: extra[tabella] };
+      return { data: null };
+    };
+  }
+
+  it("sincronizzaPubblici chiama la funzione del database e restituisce quanti ne ha aggiunti", async () => {
+    scenario({ "rpc:sincronizza_pubblici": 7 });
+    expect(await sincronizzaPubblici()).toBe(7);
+    expect(opsDi("rpc:sincronizza_pubblici", "rpc")[0][0]).toEqual({ p_campagna: null });
+  });
+
+  it("accendere l'aggiornamento automatico sincronizza subito quella campagna", async () => {
+    scenario({ "rpc:sincronizza_pubblici": 3 });
+    await aggiornaCampagna(C1.id, { destinatari_automatici: true }, "u1");
+    expect(opsDi("campagne", "update")[0][0]).toEqual({ destinatari_automatici: true });
+    expect(opsDi("rpc:sincronizza_pubblici", "rpc")[0][0]).toEqual({ p_campagna: C1.id });
+  });
+
+  it("spegnerlo non sincronizza niente", async () => {
+    scenario();
+    await aggiornaCampagna(C1.id, { destinatari_automatici: false }, "u1");
+    expect(opsDi("rpc:sincronizza_pubblici", "rpc")).toHaveLength(0);
+  });
+
+  it("chi si toglie a mano viene ricordato fra gli esclusi, cosi' la sincronizzazione non lo riaggiunge", async () => {
+    scenario({ destinatari: [{ codice_cliente: "00001" }] });
+    await modificaDestinatari(C1.id, { azione: "rimuovi", codici: ["00001"] }, "u1");
+    const righe = opsDi("destinatari_esclusi", "upsert")[0][0] as { campagna_id: string; codice_cliente: string; escluso_da: string }[];
+    expect(righe).toEqual([{ campagna_id: C1.id, codice_cliente: "00001", escluso_da: "u1" }]);
+  });
+
+  it("un'aggiunta manuale toglie l'esclusione", async () => {
+    scenario({ v_clienti: [{ codice_cliente: "00001" }] });
+    await modificaDestinatari(C1.id, { azione: "aggiungi", codici: ["00001"] }, "u1");
+    expect(opsDi("destinatari_esclusi", "delete")).toHaveLength(1);
   });
 });

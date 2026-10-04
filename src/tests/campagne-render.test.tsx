@@ -29,6 +29,7 @@ const campagna = (n: number, over: Partial<Campagna> = {}): Campagna => ({
   created_at: "2026-10-01T08:00:00Z",
   pubblico_id: "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e",
   pubblico: { nome: "Standard", standard: true },
+  destinatari_automatici: false,
   ...over,
 })
 

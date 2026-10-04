@@ -431,6 +431,8 @@ export async function creaCampagna(input: CreaCampagnaInput, userId: string): Pr
       stato: input.stato,
       // Assente = il database mette lo standard.
       ...(input.pubblico_id ? { pubblico_id: input.pubblico_id } : {}),
+      // Una campagna che parte da tutto il suo pubblico lo segue anche dopo; una mirata no.
+      destinatari_automatici: input.applica_pubblico,
       created_by: userId,
       stato_cambiato_da: userId,
     })
@@ -465,6 +467,8 @@ export async function aggiornaCampagna(id: string, input: AggiornaCampagnaInput,
   if (input.stato !== undefined && input.stato !== attuale.stato) patch.stato_cambiato_da = userId;
 
   ok("aggiornamento campagna", await db().from("campagne").update(patch).eq("id", id).select("id").single());
+  // Pubblico cambiato, o aggiornamento automatico appena acceso: i clienti nuovi entrano subito.
+  if (input.pubblico_id !== undefined || input.destinatari_automatici === true) await sincronizzaPubblici(id);
   return leggiCampagna(id);
 }
 
@@ -483,6 +487,8 @@ const esitoVuoto = (): EsitoDestinatari => ({ aggiunti: 0, rimossi: 0, non_valid
 async function inserisciDestinatari(campagnaId: string, codici: string[], userId: string): Promise<number> {
   let aggiunti = 0;
   for (const blocco of aBlocchi(codici, 500)) {
+    // Un'aggiunta fatta a mano rimette in gioco chi era stato tolto.
+    ok("ripristino esclusioni", await db().from("destinatari_esclusi").delete().eq("campagna_id", campagnaId).in("codice_cliente", blocco));
     const r = await db()
       .from("destinatari")
       .upsert(
@@ -509,13 +515,26 @@ async function codiciConInvio(campagnaId: string, codici: string[]): Promise<Set
   return con;
 }
 
-async function togliDestinatari(campagnaId: string, codici: string[]): Promise<{ rimossi: number; conInvio: number }> {
+async function togliDestinatari(campagnaId: string, codici: string[], userId: string): Promise<{ rimossi: number; conInvio: number }> {
   const con = await codiciConInvio(campagnaId, codici);
   const daTogliere = codici.filter((c) => !con.has(c));
   let rimossi = 0;
   for (const blocco of aBlocchi(daTogliere, 100)) {
     const r = await db().from("destinatari").delete().eq("campagna_id", campagnaId).in("codice_cliente", blocco).select("codice_cliente");
-    rimossi += (ok("rimozione destinatari", r) ?? []).length;
+    const tolti = (ok("rimozione destinatari", r) ?? []) as { codice_cliente: string }[];
+    rimossi += tolti.length;
+    // Chi si toglie a mano non deve rientrare dalla sincronizzazione del pubblico.
+    if (tolti.length > 0) {
+      ok(
+        "esclusione destinatari",
+        await db()
+          .from("destinatari_esclusi")
+          .upsert(
+            tolti.map((t) => ({ campagna_id: campagnaId, codice_cliente: t.codice_cliente, escluso_da: userId })),
+            { onConflict: "campagna_id,codice_cliente", ignoreDuplicates: true }
+          )
+      );
+    }
   }
   return { rimossi, conInvio: con.size };
 }
@@ -567,7 +586,7 @@ export async function modificaDestinatari(
       break;
     }
     case "rimuovi": {
-      const t = await togliDestinatari(campagnaId, [...new Set(input.codici)]);
+      const t = await togliDestinatari(campagnaId, [...new Set(input.codici)], userId);
       esito.rimossi = t.rimossi;
       esito.con_invio = t.conInvio;
       break;
@@ -588,7 +607,8 @@ export async function modificaDestinatari(
         const clienti = await clientiCategoria(campagnaId, categoria);
         const t = await togliDestinatari(
           campagnaId,
-          clienti.filter((c) => c.selezionato).map((c) => c.codice_cliente)
+          clienti.filter((c) => c.selezionato).map((c) => c.codice_cliente),
+          userId
         );
         esito.rimossi += t.rimossi;
         esito.con_invio += t.conInvio;
@@ -625,6 +645,15 @@ export async function pubbliciPerScelta(): Promise<{ id: string; nome: string; s
 /** Quanti clienti rientrano nel pubblico della campagna e non ne sono ancora destinatari. */
 export async function pubblicoMancanti(campagnaId: string): Promise<number> {
   return Number(ok("clienti mancanti", await db().rpc("pubblico_mancanti", { p_campagna: campagnaId })) ?? 0);
+}
+
+/**
+ * Aggiunge ai destinatari i clienti che rientrano nel pubblico di ogni campagna con
+ * `destinatari_automatici` (una sola, se `campagnaId`). Solo aggiunte, e chi e' stato
+ * tolto a mano non rientra. Restituisce quanti destinatari ha aggiunto.
+ */
+export async function sincronizzaPubblici(campagnaId: string | null = null): Promise<number> {
+  return Number(ok("sincronizzazione pubblici", await db().rpc("sincronizza_pubblici", { p_campagna: campagnaId })) ?? 0);
 }
 
 async function leggiConfigPubblico(id: string): Promise<Pubblico> {
@@ -692,6 +721,8 @@ export async function salvaPubblico(id: string, input: PubblicoInput, userId: st
     aggiornato_da: userId,
   };
   ok("salvataggio pubblico", await db().from("pubblici").update(patch).eq("id", id).select("id").single());
+  // Le campagne con aggiornamento automatico prendono subito chi la nuova regola include.
+  await sincronizzaPubblici();
   return leggiPubblico(id);
 }
 

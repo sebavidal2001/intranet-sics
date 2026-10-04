@@ -207,6 +207,7 @@ describe("scheda cliente con i dati di Impresa", () => {
     created_at: "2026-10-01T08:00:00Z",
     pubblico_id: "5b4d0e3a-7f6c-4a8d-9c9e-3f4a5b6c7d8e",
     pubblico: { nome: "Standard", standard: true },
+    destinatari_automatici: false,
   }
   const scheda = (over: Partial<SchedaCliente> = {}): SchedaCliente => ({
     cliente: { codice_cliente: "05000002", ragione_sociale: "POLETTI srl", agente_nome: "AIRFLUID", cat_commerciale: "Attivo", cat_attivita: null, rivenditore: false },

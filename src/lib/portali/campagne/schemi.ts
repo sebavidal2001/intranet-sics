@@ -127,6 +127,8 @@ export const AggiornaCampagnaBody = z
     stato: z.enum(["attiva", "sospesa", "terminata"]),
     // Cambiare pubblico non toglie i destinatari che la campagna ha già.
     pubblico_id: uuid,
+    // Se vero i clienti che rientrano nel pubblico entrano da soli fra i destinatari.
+    destinatari_automatici: z.boolean(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nessuna modifica");

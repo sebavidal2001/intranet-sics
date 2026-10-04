@@ -1,4 +1,4 @@
-import { aBlocchi, db, ErroreCampagne, ok } from "./dati";
+import { aBlocchi, db, ErroreCampagne, ok, sincronizzaPubblici } from "./dati";
 import {
   eseguiControllo,
   normNumero,
@@ -42,6 +42,8 @@ export interface RiassuntoControllo {
   storico_ritrovati?: number;
   /** Invii dello storico per cui Impresa non ha una riga con quella data (lacuna dei dati). */
   storico_senza_ordine?: number;
+  /** Clienti entrati da soli fra i destinatari delle campagne a pubblico; null se non eseguito o fallito. */
+  destinatari_aggiunti?: number | null;
 }
 
 export async function eseguiControlloCompleto(o: OpzioniControllo): Promise<RiassuntoControllo> {
@@ -61,7 +63,19 @@ export async function eseguiControlloCompleto(o: OpzioniControllo): Promise<Rias
   ) as { id: string };
 
   try {
+    // 2) I clienti nuovi entrano nelle campagne a pubblico prima del controllo (i dati di
+    //    Impresa sono quelli appena caricati). Un guasto qui non deve fermare il controllo.
+    //    Il ricontrollo mirato dopo uno scambio (`clienti`) non c'entra e non lo rifa.
+    let destinatariAggiunti: number | null = null;
+    if (!o.clienti || o.clienti.length === 0) {
+      try {
+        destinatariAggiunti = await sincronizzaPubblici();
+      } catch (e) {
+        console.error("[campagne] sincronizzazione pubblici fallita", e);
+      }
+    }
     const riassunto = await lavora(avvio.id, o);
+    riassunto.destinatari_aggiunti = destinatariAggiunti;
     ok(
       "chiusura controllo",
       await db()

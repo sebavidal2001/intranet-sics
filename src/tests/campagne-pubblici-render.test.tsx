@@ -107,6 +107,7 @@ const campagna = (over: Partial<CampagnaRiepilogo> = {}): CampagnaRiepilogo => (
   created_at: "2026-10-01T08:00:00Z",
   pubblico_id: STD,
   pubblico: { nome: "Standard", standard: true },
+  destinatari_automatici: false,
   destinatari: 100,
   preparate: 0,
   da_spedire: 0,
@@ -120,17 +121,24 @@ const scelta = [
 ]
 
 describe("scheda campagna: il suo pubblico", () => {
-  it("mostra il pubblico della campagna e quanti clienti rientrano e non sono ancora destinatari", () => {
+  it("mostra il pubblico della campagna e, se l'aggiornamento automatico è spento, quanti clienti rientrano e non sono destinatari", () => {
     render(<CampagnaDettaglioView iniziale={campagna()} pubblici={scelta} mancanti={34} />)
     expect(screen.getByLabelText("Pubblico della campagna")).toHaveValue(STD)
-    expect(screen.getByText(/34 clienti rientrano nel pubblico e non sono ancora destinatari/)).toBeInTheDocument()
+    expect(screen.getByText(/Spenta: 34 clienti rientrano nel pubblico e non sono destinatari/)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Modifica questo pubblico/ })).toHaveAttribute("href", `/campagne/pubblico/${STD}`)
   })
 
-  it("se non manca nessuno il pulsante è spento e lo dice", () => {
+  it("non c'è più il pulsante manuale: c'è l'interruttore dell'aggiornamento automatico", () => {
     render(<CampagnaDettaglioView iniziale={campagna()} pubblici={scelta} mancanti={0} />)
-    expect(screen.getByRole("button", { name: /Aggiungi i clienti che rientrano/ })).toBeDisabled()
-    expect(screen.getByText(/Tutti i clienti del pubblico sono già destinatari/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Aggiungi i clienti che rientrano/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: /Aggiungi da sola i clienti che rientrano/ })).not.toBeChecked()
+    expect(screen.getByText(/campagna mirata/)).toBeInTheDocument()
+  })
+
+  it("con l'aggiornamento automatico acceso lo dice e non parla di mancanti", () => {
+    render(<CampagnaDettaglioView iniziale={campagna({ destinatari_automatici: true })} pubblici={scelta} mancanti={0} />)
+    expect(screen.getByRole("checkbox", { name: /Aggiungi da sola i clienti che rientrano/ })).toBeChecked()
+    expect(screen.getByText(/Ogni notte, dopo il caricamento di Impresa/)).toBeInTheDocument()
   })
 
   it("cambiare pubblico lo salva, aggiorna il conto dei mancanti e dice che i destinatari non sono stati toccati", async () => {
@@ -149,34 +157,25 @@ describe("scheda campagna: il suo pubblico", () => {
     expect(screen.getByRole("link", { name: /Modifica questo pubblico/ })).toHaveAttribute("href", `/campagne/pubblico/${MIR}`)
   })
 
-  it("«aggiungi i clienti che rientrano» chiede conferma, chiama l'azione e azzera i mancanti", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true))
+  it("accendere l'interruttore lo salva sulla campagna e aggiorna i mancanti", async () => {
     const fetchFinto = installaFetchFinta([
       {
-        url: "/api/portali/campagne/campagne/11111111-1111-4111-8111-111111111111/destinatari",
-        metodo: "POST",
-        risposta: { esito: { aggiunti: 34 }, campagna: campagna({ destinatari: 134 }) },
+        url: "/api/portali/campagne/campagne/11111111-1111-4111-8111-111111111111",
+        metodo: "PATCH",
+        risposta: { campagna: campagna({ destinatari_automatici: true, destinatari: 134 }), mancanti: 0 },
       },
     ])
     render(<CampagnaDettaglioView iniziale={campagna()} pubblici={scelta} mancanti={34} />)
-    fireEvent.click(screen.getByRole("button", { name: /Aggiungi i clienti che rientrano/ }))
-    await waitFor(() => expect(screen.getByText("34 clienti aggiunti ai destinatari.")).toBeInTheDocument())
-    expect(JSON.parse(String(fetchFinto.mock.calls[0][1]?.body))).toEqual({ azione: "applica_pubblico" })
-    expect(screen.getByText(/Tutti i clienti del pubblico sono già destinatari/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("checkbox", { name: /Aggiungi da sola i clienti che rientrano/ }))
+    await waitFor(() => expect(screen.getByText(/Aggiornamento automatico acceso/)).toBeInTheDocument())
+    expect(JSON.parse(String(fetchFinto.mock.calls[0][1]?.body))).toEqual({ destinatari_automatici: true })
+    expect(screen.getByRole("checkbox", { name: /Aggiungi da sola i clienti che rientrano/ })).toBeChecked()
   })
 
-  it("se non si conferma non succede niente", () => {
-    vi.stubGlobal("confirm", vi.fn(() => false))
-    const fetchFinto = installaFetchFinta([])
-    render(<CampagnaDettaglioView iniziale={campagna()} pubblici={scelta} mancanti={5} />)
-    fireEvent.click(screen.getByRole("button", { name: /Aggiungi i clienti che rientrano/ }))
-    expect(fetchFinto).not.toHaveBeenCalled()
-  })
-
-  it("una campagna terminata non permette di cambiare pubblico né di aggiungere clienti", () => {
+  it("una campagna terminata non permette di cambiare pubblico né l'aggiornamento automatico", () => {
     render(<CampagnaDettaglioView iniziale={campagna({ stato: "terminata" })} pubblici={scelta} mancanti={5} />)
     expect(screen.getByLabelText("Pubblico della campagna")).toBeDisabled()
-    expect(screen.queryByRole("button", { name: /Aggiungi i clienti che rientrano/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: /Aggiungi da sola i clienti che rientrano/ })).not.toBeInTheDocument()
   })
 })
 

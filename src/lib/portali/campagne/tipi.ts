@@ -42,6 +42,8 @@ export interface Campagna {
   /** Il pubblico (target) della campagna: di default lo standard. */
   pubblico_id: string;
   pubblico: { nome: string; standard: boolean } | null;
+  /** I clienti che rientrano nel pubblico entrano da soli fra i destinatari (solo aggiunte). */
+  destinatari_automatici: boolean;
 }
 
 export interface CampagnaRiepilogo extends Campagna {
