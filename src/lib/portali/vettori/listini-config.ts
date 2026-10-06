@@ -27,3 +27,28 @@ export const NuovoListino = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["supplementi"], message: "Supplementi duplicati." });
 });
 export type FasciaModificabile = z.infer<typeof FasciaConfig>;
+
+/**
+ * Un supplemento nuovo, con il periodo in cui vale. La data di inizio è
+ * obbligatoria: una voce senza inizio varrebbe anche per le spedizioni già
+ * controllate, e i mesi chiusi si muoverebbero.
+ */
+export const NuovoSupplemento = z.object({
+  listino_id: z.string().uuid(),
+  nome: z.string().trim().min(1, "Indicare il nome del supplemento").max(150),
+  tipo_calcolo: z.enum(["fisso_spedizione", "per_kg", "per_collo", "percentuale_nolo"]),
+  valore: z.number().finite().min(0, "Il valore non può essere negativo"),
+  base_nolo: z.boolean().default(false),
+  condizione: z.string().trim().min(1).max(50).default("sempre"),
+  valido_dal: z.string().date("Indicare da quando vale"),
+  valido_al: z.string().date().nullable().optional(),
+}).refine((s) => !s.valido_al || s.valido_al >= s.valido_dal, {
+  path: ["valido_al"], message: "La data finale precede quella iniziale",
+});
+export type NuovoSupplementoInput = z.infer<typeof NuovoSupplemento>;
+
+/** Codice stabile ricavato dal nome: «Diritto fisso» → `diritto_fisso`. */
+export function codiceSupplemento(nome: string): string {
+  return nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+}

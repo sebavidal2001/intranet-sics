@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireVettori } from "@/lib/portali/vettori/api-guard";
 import { determinaProvincia, risolviCap } from "@/lib/portali/vettori/cap";
 import { calcolaCostoAtteso } from "@/lib/portali/vettori/calcolo";
+import { carburanteDatato } from "@/lib/portali/vettori/carburante";
 import {
   descriviListino,
   elencoVettori,
@@ -202,6 +203,9 @@ export async function POST(request: NextRequest) {
           margine: riaddebito === undefined
             ? null
             : calcolaMargineRiaddebito(riaddebito, calcolo.totale),
+          carburanteNonAggiornato: carburanteDatato(
+            listino.carburanteRiferimento, data.getUTCFullYear(), data.getUTCMonth() + 1
+          ) ? listino.carburanteRiferimento ?? undefined : undefined,
         };
       })
     );

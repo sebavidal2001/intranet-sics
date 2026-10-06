@@ -14,6 +14,7 @@ import {
   risolviEstremiFattura,
   salvaAcquisizione,
 } from "@/lib/portali/vettori/acquisizione";
+import { carburanteDaFattura, registraCarburanteLetto, type EsitoRegistrazioneCarburante } from "@/lib/portali/vettori/carburante-da-fattura";
 import { logError, logInfo } from "@/lib/logger";
 import { proponiPerFattura } from "@/lib/portali/vettori/aggancio-ai";
 import { chiaveConfigurata } from "@/lib/ai/openrouter";
@@ -268,7 +269,16 @@ export async function POST(request: NextRequest) {
         .then((r) => logInfo("vettori.agganci", "proposte dopo acquisizione", { fattura: esito.fattura_id, ...r }))
         .catch((e) => logError("vettori.agganci", "proposte dopo acquisizione fallite", e));
     }
-    return NextResponse.json({ salvata: true, esito, riepilogo, quadratura });
+    // La percentuale di carburante dichiarata dalla fattura entra nella tabella
+    // dei mesi, così le simulazioni successive la usano senza che qualcuno la
+    // ricopi a mano. Un errore qui non deve far perdere la fattura già salvata.
+    let carburante: EsitoRegistrazioneCarburante | null = null;
+    try {
+      carburante = await registraCarburanteLetto(carburanteDaFattura(fattura), guard.user.id);
+    } catch (e) {
+      logError("vettori.fatture.acquisisci", "registrazione carburante fallita", e);
+    }
+    return NextResponse.json({ salvata: true, esito, riepilogo, quadratura, carburante });
   } catch (e) {
     if (e instanceof FatturaNonLeggibile) {
       return NextResponse.json({ error: e.message, motivo: e.motivo }, { status: 422 });

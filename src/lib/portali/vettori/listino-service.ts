@@ -205,6 +205,11 @@ export async function risolviListino(params: {
           "codice, nome, tipo_calcolo, valore, base_nolo, condizione, importo_minimo, importo_massimo, soglia_kg_da, soglia_kg_a"
         )
         .eq("listino_id", listinoRow.id)
+        // Un supplemento temporaneo vale solo nel suo periodo, misurato sulla
+        // data della spedizione: una partenza del 31/10 non paga quello che
+        // parte dal 1/11, e il ricalcolo di un mese chiuso non cambia.
+        .or(`valido_dal.is.null,valido_dal.lte.${iso}`)
+        .or(`valido_al.is.null,valido_al.gte.${iso}`)
         .order("ordine"),
       admin
         .schema(SCHEMA)
@@ -218,7 +223,7 @@ export async function risolviListino(params: {
       admin
         .schema(SCHEMA)
         .from("carburante")
-        .select("percentuale")
+        .select("percentuale, anno, mese")
         .eq("vettore_id", params.vettoreId)
         .or(`anno.lt.${params.data.getUTCFullYear()},and(anno.eq.${params.data.getUTCFullYear()},mese.lte.${params.data.getUTCMonth() + 1})`)
         .order("anno", { ascending: false })
@@ -256,7 +261,7 @@ export async function risolviListino(params: {
   );
 
   const adeg = (aRows ?? [])[0] as { percentuale: number } | undefined;
-  const carb = (cRows ?? [])[0] as { percentuale: number } | undefined;
+  const carb = (cRows ?? [])[0] as { percentuale: number; anno: number; mese: number } | undefined;
 
   return {
     listino: {
@@ -266,6 +271,7 @@ export async function risolviListino(params: {
       supplementi,
       adeguamento: adeg ? Number(adeg.percentuale) : null,
       carburante: carb ? Number(carb.percentuale) : vettore.codice === "trading_post" ? 0 : null,
+      carburanteRiferimento: carb ? { anno: Number(carb.anno), mese: Number(carb.mese) } : null,
     },
   };
 }

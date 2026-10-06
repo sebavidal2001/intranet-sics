@@ -88,6 +88,12 @@ export interface ListinoRisolto {
   adeguamento: number | null;
   /** Percentuale del mese, es. 0.243. Null se non ancora comunicata. */
   carburante: number | null;
+  /**
+   * Il mese a cui appartiene la percentuale usata. Se è diverso da quello della
+   * spedizione, la percentuale è quella dell'ultima comunicazione disponibile e
+   * il costo atteso va letto come stima: la simulazione lo dice.
+   */
+  carburanteRiferimento?: { anno: number; mese: number } | null;
 }
 
 /** I dati fisici di una spedizione, da cui si ricava il costo. */
@@ -518,6 +524,11 @@ export interface EsitoSimulazione {
   riaddebito?: EsitoRiaddebito;
   /** Riaddebito meno costo. null quando uno dei due non e' calcolabile. */
   margine?: number | null;
+  /**
+   * Presente quando il carburante usato non e' quello del mese della
+   * spedizione: porta il mese della percentuale effettivamente applicata.
+   */
+  carburanteNonAggiornato?: { anno: number; mese: number };
 }
 
 export interface RispostaSimulazione {
