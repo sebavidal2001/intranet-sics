@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot "config.json"),
-    [ValidateSet("commerciale", "cruscotto", "costi", "acquisti", "tutti")]
+    [ValidateSet("commerciale", "cruscotto", "costi", "acquisti", "clienti", "tutti")]
     [string]$Profilo = "commerciale",
     # Dove finisce lo stato dell'ultimo run. E' un parametro e non una
     # costante perche' il file e' UNO SOLO e viene riletto dai launcher per

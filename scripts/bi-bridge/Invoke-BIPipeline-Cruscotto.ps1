@@ -66,7 +66,7 @@ try {
         throw "Pipeline terminata con stato $($status.status)"
     }
 
-    # ── Profili accessori: storico costi e ordini di acquisto ─────────────
+    # ── Profili accessori: storico costi, ordini di acquisto, anagrafica clienti ──────────────
     # Run SEPARATI, dopo il Cruscotto e non insieme a lui: manifest distinti,
     # quindi un guasto qui non impedisce il completamento del run Cruscotto
     # (receiver.py rifiuta il manifest se manca un dataset del profilo, e con
@@ -78,7 +78,7 @@ try {
     # dichiararlo fallito sarebbe falso. Resta scritto nel log e nello stato,
     # e il profilo si ferma all'ultimo caricamento riuscito — dati vecchi di
     # un giorno, non dati sbagliati. Ogni profilo ha il suo file di stato.
-    foreach ($profiloAccessorio in @("costi", "acquisti")) {
+    foreach ($profiloAccessorio in @("costi", "acquisti", "clienti")) {
         $fileStato = "last-run-$profiloAccessorio.json"
         try {
             Write-LauncherLog "Avvio profilo $profiloAccessorio"

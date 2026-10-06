@@ -289,6 +289,58 @@ describe("busta importata dall'Excel senza numero d'ordine: adozione", () => {
     );
     expect(esito(r, "i1").adottato).toBe(false);
   });
+
+  it("riga già evasa con il suo DDT (busta partita prima che il programma la conoscesse): adottata e consegnata", () => {
+    const r = eseguiControllo(
+      input({ invii: [x()], righe: [riga({ numero: "2698", aperta: false })], ddt: [ddt({ numero: "2728" })] })
+    );
+    expect(esito(r)).toMatchObject({ adottato: true });
+    expect(esito(r).patch).toMatchObject({ ordine_numero: "2698", stato: "consegnata", ddt_numero: "2728", controllo_esito: "consegnata" });
+    expect(r.anomalie).toEqual([]);
+  });
+
+  it("riga evasa ma senza DDT trovato: non si adotta, resta la riga mancante", () => {
+    const r = eseguiControllo(input({ invii: [x()], righe: [riga({ numero: "2698", aperta: false })], ddt: [] }));
+    expect(esito(r).adottato).toBe(false);
+    expect(tipi(r)).toEqual(["riga_mancante"]);
+  });
+
+  it("due righe evase della stessa campagna con DDT: non si indovina", () => {
+    const r = eseguiControllo(
+      input({
+        invii: [x()],
+        righe: [riga({ numero: "10", aperta: false, data_doc: "2026-02-01" }), riga({ numero: "20", aperta: false })],
+        ddt: [ddt({ numero: "1", data_doc: "2026-02-05" }), ddt({ numero: "2" })],
+      })
+    );
+    expect(esito(r).adottato).toBe(false);
+    expect(tipi(r)).not.toContain("riga_mancante");
+  });
+
+  it("una riga evasa già legata a un altro invio (storico) non si adotta", () => {
+    const r = eseguiControllo(
+      input({
+        invii: [x(), invio({ id: "i2", stato: "consegnata" as never, ordine_numero: "2698" })],
+        righe: [riga({ numero: "2698", aperta: false })],
+        ddt: [ddt()],
+      })
+    );
+    expect(esito(r, "i1").adottato).toBe(false);
+  });
+});
+
+describe("riga evasa senza DDT: tolleranza per i dati notturni", () => {
+  it("ordine di ieri (non ancora in portafoglio né nei DDT): da spedire, niente anomalia", () => {
+    const r = eseguiControllo(input({ righe: [riga({ aperta: false, data_doc: "2026-10-02" })], ddt: [] }));
+    expect(esito(r).patch.stato).toBe("da_spedire");
+    expect(esito(r).patch.controllo_esito).toBe("riga_trovata");
+    expect(r.anomalie).toEqual([]);
+  });
+
+  it("oltre la tolleranza torna anomalia", () => {
+    const r = eseguiControllo(input({ righe: [riga({ aperta: false, data_doc: "2026-09-28" })], ddt: [] }));
+    expect(tipi(r)).toEqual(["evasa_senza_ddt"]);
+  });
 });
 
 describe("documentazione senza busta", () => {

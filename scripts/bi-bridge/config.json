@@ -72,6 +72,14 @@
                         "ExpectedColumns":  24,
                         "Profilo":  "acquisti",
                         "HeaderPattern":  "^id_riga$"
+                    },
+                    {
+                        "SqlFile":  "CLIENTI_ANAGRAFICA.sql",
+                        "OutputFile":  "clienti_anagrafica.csv",
+                        "Dataset":  "clienti_anagrafica",
+                        "ExpectedColumns":  14,
+                        "Profilo":  "clienti",
+                        "HeaderPattern":  "^codice_cliente$"
                     }
                 ]
 }

@@ -264,7 +264,16 @@ export function campagneNominate(
   return tutte.filter((c) => attribuzioneRiga(riga, c, tutte) === "si");
 }
 
-const dataConsegnaRiga = (r: RigaImpresa) => r.confermata ?? r.richiesta ?? null;
+/** Giorni di tolleranza prima di segnalare una riga evasa senza DDT: i dati di Impresa arrivano di notte. */
+export const GIORNI_ATTESA_DDT = 3;
+
+/** L'ordine e' piu' recente della tolleranza rispetto al momento dei dati? */
+export function ordineRecente(dataDoc: string, riferimento: string): boolean {
+  const giorni = (new Date(riferimento).getTime() - new Date(dataDoc).getTime()) / 86_400_000;
+  return giorni <= GIORNI_ATTESA_DDT;
+}
+
+const dataConsegnaRiga =(r: RigaImpresa) => r.confermata ?? r.richiesta ?? null;
 const numeroOrd = (n: string) => Number.parseInt(normNumero(n), 10) || 0;
 
 // ─── Abbinamento riga evasa → DDT ──────────────────────────────────────────
@@ -338,11 +347,8 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
       .map((o) => chiaveOrdine(o.codice_cliente, o.ordine_anno, o.ordine_numero))
   );
 
-  const abbinamenti = abbinaDdt(
-    input.righe.filter((r) => !r.aperta),
-    input.ddt,
-    campagne
-  );
+  const righeEvase = input.righe.filter((r) => !r.aperta);
+  const abbinamenti = abbinaDdt(righeEvase, input.ddt, campagne);
 
   // Gli invii sono lavorati su una copia: l'adozione e le mosse li cambiano.
   const lavoro = input.invii.map((i) => ({ ...i }));
@@ -372,6 +378,27 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
       adottati.add(invio.id);
     } else if (candidate.length > 1) {
       ambigue.add(invio.id);
+    } else {
+      // Nessuna riga aperta: la busta puo' essere gia' partita (ordine evaso, DDT emesso)
+      // prima che il programma la conoscesse. Si adotta l'unica riga EVASA della campagna,
+      // non legata ad altro, di cui si e' trovato il DDT. Il passo 2 la chiude come consegnata.
+      const evase = righeEvase.filter(
+        (r) =>
+          r.cliente === invio.codice_cliente &&
+          attribuzioneRiga(r, campagna, campagne) === "si" &&
+          abbinamenti.has(chiaveRiga(r)) &&
+          !occupati.has(chiaveOrdine(r.cliente, r.anno, r.numero))
+      );
+      if (evase.length === 1) {
+        const r = evase[0];
+        invio.ordine_numero = normNumero(r.numero);
+        invio.ordine_anno = r.anno;
+        invio.ordine_profilo = r.profilo;
+        occupati.add(chiaveOrdine(r.cliente, r.anno, r.numero));
+        adottati.add(invio.id);
+      } else if (evase.length > 1) {
+        ambigue.add(invio.id);
+      }
     }
   }
 
@@ -540,6 +567,11 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
             patch.ddt_metodo = "euristico";
             patch.consegna_registrata_il = adesso;
             nuovoStato = "consegnata";
+          } else if (ordineRecente(scelta.data_doc, datiDel ?? adesso)) {
+            // Riga non in portafoglio e DDT non ancora nei dati: con un ordine di ieri o
+            // dell'altro ieri e' solo in attesa, non un errore.
+            patch.controllo_esito = "riga_trovata";
+            nuovoStato = "da_spedire";
           } else {
             patch.controllo_esito = "evasa_senza_ddt";
             nuovoStato = "da_spedire";
@@ -642,7 +674,6 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
   //    riassegna: l'indice unico lo rifiuterebbe, e comunque ogni ordine ne porta una sola.
   const storico: RisultatoControllo["storico"] = [];
   const storicoSenzaOrdine: RisultatoControllo["storicoSenzaOrdine"] = [];
-  const righeEvase = input.righe.filter((r) => !r.aperta);
   const daTrattare = [...(input.storici ?? [])].sort((a, b) => a.data_consegna.localeCompare(b.data_consegna) || a.id.localeCompare(b.id));
   for (const i of daTrattare) {
     const campagna = perId.get(i.campagna_id);
