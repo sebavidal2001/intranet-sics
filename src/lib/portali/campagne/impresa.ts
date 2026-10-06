@@ -112,3 +112,26 @@ export async function dashboardCompleta(): Promise<DashboardCampagne> {
   ]);
   return { ...base, da_preparare: daPreparare.length, anomalie, ultimo_controllo: ultimo };
 }
+
+// ─── Freschezza dell'anagrafica clienti ────────────────────────────────────
+export interface StatoAnagraficaClienti {
+  stato: "ok" | "attenzione" | "critico";
+  motivi: string[];
+  ultimo_aggiornamento: string | null;
+  ore_dall_aggiornamento: number | null;
+  clienti: number;
+  falliti_48h: number;
+  ultimo_errore: string | null;
+}
+
+/**
+ * Lo stato del caricamento notturno dei clienti da Impresa (migration 141). Se la
+ * funzione non c'e' (database di sviluppo) o la lettura non riesce torna `null`: la
+ * barra non compare, il portale lavora lo stesso.
+ */
+export async function statoAnagraficaClienti(): Promise<StatoAnagraficaClienti | null> {
+  return tollera<StatoAnagraficaClienti | null>("anagrafica-clienti", null, async () => {
+    const r = await db().rpc("anagrafica_clienti_stato");
+    return (ok("stato anagrafica clienti", r) ?? null) as StatoAnagraficaClienti | null;
+  });
+}

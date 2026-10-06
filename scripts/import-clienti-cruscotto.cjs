@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 /**
+ * SUPERATO dal 6/10/2026 per i clienti nuovi: l anagrafica arriva ogni notte da Impresa
+ * (profilo pipeline "clienti", scripts/bi-ingest-clienti.mjs) e
+ * preventivatore.sincronizza_clienti_da_impresa() aggiunge a clienti_master quelli mancanti.
+ * NON rilanciare questo script senza pensarci: disattiva (attivo=false) ogni riga che non
+ * e nel file, comprese le righe create dalla sincronizzazione.
+ *
  * Import periodico dell'anagrafica clienti dal file "Cruscotto Dinamico.xlsx"
  * (esportazione gestionale SICS) → tabella preventivatore.clienti_master.
  *

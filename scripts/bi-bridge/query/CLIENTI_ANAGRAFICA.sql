@@ -20,7 +20,7 @@
    query ORDINATO/FATTURATO chiamano "Agenti".
 
    Query di sola lettura. CSV UTF-8 separato da ';', senza intestazione (FORMAT
-   ASCII non la scrive): 14 colonne, verificate a valle in
+   ASCII non la scrive): 17 colonne, verificate a valle in
    scripts/bi-ingest-clienti.mjs. ~7.300 righe: si ricarica tutto ogni volta.
 */
 
@@ -40,7 +40,10 @@ SELECT
     sc.tipo                                              AS tipo,
     sc.attivo                                            AS attivo,
     DATEFORMAT(sc.data_creazione, 'YYYY-MM-DD HH:NN:SS') AS creato_il,
-    DATEFORMAT(sc.data_modifica, 'YYYY-MM-DD HH:NN:SS')  AS modificato_il
+    DATEFORMAT(sc.data_modifica, 'YYYY-MM-DD HH:NN:SS')  AS modificato_il,
+    ISNULL(an.cap, '')                                   AS cap,
+    ISNULL(an.localita, '')                              AS localita,
+    ISNULL(an.provincia, '')                             AS provincia
 
 FROM dba.sog_commerciale sc
   LEFT OUTER JOIN dba.anagrafica an     ON an.id_anagrafica = sc.id_anagrafica

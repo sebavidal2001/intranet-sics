@@ -1,7 +1,8 @@
 /**
  * bi-cruscotto-stato.mjs — Stato e manutenzione della pipeline BI.
  *
- * Copre ENTRAMBI i flussi: i sette dataset commerciali e il Cruscotto articoli.
+ * Copre i flussi: i sette dataset commerciali, il Cruscotto articoli e (dal 6/10/2026)
+ * l anagrafica clienti. Gli altri profili accessori (costi, acquisti) restano fuori.
  * Il nome resta quello originale perché è il percorso richiamato dal runner
  * systemd sul server.
  *
@@ -59,6 +60,14 @@ const SIMBOLO = { ok: "OK", attenzione: "ATTENZIONE", critico: "CRITICO" };
     p_max_ore_cruscotto: MAX_ORE,
   });
   if (error) throw new Error(`health: ${error.message}`);
+
+  // L anagrafica clienti ha il suo semaforo (migration 141); il verdetto complessivo e il peggiore.
+  const { data: clienti, error: eCl } = await db.rpc("bi_clienti_health", { p_max_ore: MAX_ORE });
+  if (eCl) throw new Error(`health clienti: ${eCl.message}`);
+  const ordine = { ok: 0, attenzione: 1, critico: 2 };
+  if ((ordine[clienti.stato] ?? 2) > (ordine[tutto.stato] ?? 2)) tutto.stato = clienti.stato;
+  for (const m of clienti.motivi ?? []) tutto.motivi = [...(tutto.motivi ?? []), `clienti: ${m}`];
+  tutto.clienti = clienti;
 
   const comm = tutto.commerciale;
   const health = tutto.cruscotto;

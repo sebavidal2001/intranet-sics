@@ -9,7 +9,7 @@
  * Uso:
  *   node scripts/bi-ingest-clienti.mjs --file=<path.csv> [--run-id=<id>] [--dry-run] [--batch=<n>]
  *
- * Tracciato: 14 colonne senza intestazione, nell'ordine di
+ * Tracciato: 17 colonne senza intestazione, nell'ordine di
  * scripts/bi-bridge/query/CLIENTI_ANAGRAFICA.sql (vedi COLONNE qui sotto).
  *
  * Exit code: 0 riuscito, 1 fallito. Il tentativo resta in bi.clienti_ingest.
@@ -56,6 +56,7 @@ const COLONNE = [
   "codice_cliente", "ragione_sociale", "cat_attivita_codice", "cat_attivita",
   "cat_commerciale_codice", "cat_commerciale", "cat_zona_codice", "cat_zona",
   "agente_codice", "agente", "tipo", "attivo", "creato_il", "modificato_il",
+  "cap", "localita", "provincia",
 ];
 const TIPI = new Set(["C", "P"]);
 const RE_DATA_ORA = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -100,6 +101,9 @@ function convertiRiga(riga, numRiga) {
     attivo: attivo === "S",
     creato_il: dataOra(c.creato_il, "creato_il"),
     modificato_il: dataOra(c.modificato_il, "modificato_il"),
+    cap: pulisciTesto(c.cap),
+    localita: pulisciTesto(c.localita),
+    provincia: pulisciTesto(c.provincia),
   };
 }
 
@@ -152,6 +156,16 @@ async function main() {
     console.log(`  inserite:     ${r?.inserite ?? 0}`);
     console.log(`  clienti nuovi: ${r?.nuovi ?? 0}`);
     console.log(`  sostituite:   ${r?.eliminati ?? 0}`);
+
+    // Il Preventivatore: i clienti che Impresa conosce e clienti_master no. Un guasto qui
+    // NON invalida il caricamento (l'anagrafica e' gia' aggiornata): resta un avviso nel log.
+    const { data: sync, error: eSync } = await rpc.rpc("bi_clienti_sincronizza_preventivatore");
+    if (eSync) {
+      console.log(`  AVVISO preventivatore: sincronizzazione non riuscita (${eSync.message})`);
+    } else {
+      const s = Array.isArray(sync) ? sync[0] : sync;
+      console.log(`  preventivatore: ${s?.inseriti ?? 0} clienti aggiunti a clienti_master, ${s?.agente_diverso ?? 0} con agente diverso da Impresa (non toccati)`);
+    }
     console.log("  fatto.");
   } catch (e) {
     await segnaFallito(e?.message ?? e);

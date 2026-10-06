@@ -77,7 +77,7 @@
                         "SqlFile":  "CLIENTI_ANAGRAFICA.sql",
                         "OutputFile":  "clienti_anagrafica.csv",
                         "Dataset":  "clienti_anagrafica",
-                        "ExpectedColumns":  14,
+                        "ExpectedColumns":  17,
                         "Profilo":  "clienti",
                         "HeaderPattern":  "^codice_cliente$"
                     }
