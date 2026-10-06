@@ -299,10 +299,26 @@ describe("busta importata dall'Excel senza numero d'ordine: adozione", () => {
     expect(r.anomalie).toEqual([]);
   });
 
-  it("riga evasa ma senza DDT trovato: non si adotta, resta la riga mancante", () => {
-    const r = eseguiControllo(input({ invii: [x()], righe: [riga({ numero: "2698", aperta: false })], ddt: [] }));
-    expect(esito(r).adottato).toBe(false);
-    expect(tipi(r)).toEqual(["riga_mancante"]);
+  it("unica riga evasa ma senza DDT: si adotta e si segnala «evasa senza DDT», non «riga mancante»", () => {
+    const r = eseguiControllo(
+      input({ invii: [x()], righe: [riga({ numero: "2698", aperta: false, data_doc: "2026-07-31" })], ddt: [] })
+    );
+    expect(esito(r)).toMatchObject({ adottato: true });
+    expect(esito(r).patch.ordine_numero).toBe("2698");
+    expect(tipi(r)).toEqual(["evasa_senza_ddt"]);
+  });
+
+  it("fra una riga evasa con DDT e una senza, si adotta quella con il DDT", () => {
+    const r = eseguiControllo(
+      input({
+        invii: [x()],
+        righe: [riga({ numero: "10", aperta: false, data_doc: "2026-02-01" }), riga({ numero: "20", aperta: false })],
+        ddt: [ddt({ numero: "2" })],
+      })
+    );
+    // La riga 20 ha il DDT (data 2026-10-01 >= 2026-09-20); la 10 avrebbe preso lo stesso DDT: si guarda l'abbinamento.
+    expect(esito(r).adottato).toBe(true);
+    expect(r.anomalie.map((a) => a.tipo)).not.toContain("riga_mancante");
   });
 
   it("due righe evase della stessa campagna con DDT: non si indovina", () => {

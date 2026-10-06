@@ -381,14 +381,18 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
     } else {
       // Nessuna riga aperta: la busta puo' essere gia' partita (ordine evaso, DDT emesso)
       // prima che il programma la conoscesse. Si adotta l'unica riga EVASA della campagna,
-      // non legata ad altro, di cui si e' trovato il DDT. Il passo 2 la chiude come consegnata.
-      const evase = righeEvase.filter(
+      // non legata ad altro: si preferisce quella di cui si e' trovato il DDT (il passo 2 la
+      // chiude come consegnata); se nessuna ha il DDT ma e' una sola, si adotta lo stesso e
+      // il passo 2 segnala «evasa senza DDT», che dice all'ufficio cosa controllare meglio di
+      // una «riga mancante» che in Impresa invece c'e'.
+      const libere = righeEvase.filter(
         (r) =>
           r.cliente === invio.codice_cliente &&
           attribuzioneRiga(r, campagna, campagne) === "si" &&
-          abbinamenti.has(chiaveRiga(r)) &&
           !occupati.has(chiaveOrdine(r.cliente, r.anno, r.numero))
       );
+      const conDdt = libere.filter((r) => abbinamenti.has(chiaveRiga(r)));
+      const evase = conDdt.length > 0 ? conDdt : libere;
       if (evase.length === 1) {
         const r = evase[0];
         invio.ordine_numero = normNumero(r.numero);
