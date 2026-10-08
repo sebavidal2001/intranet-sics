@@ -70,7 +70,7 @@ describe("controllo fattura senza bolla certa", () => {
     const senzaBolla = await calcolaControlloRiga({ ...riga, dettaglio: {} }, null, undefined, [], contesto);
     expect(senzaBolla.controllo?.atteso_totale).toBe(10);
     expect(senzaBolla.controllo?.esito).toBe("non_valutabile");
-    expect(senzaBolla.controllo?.scostamento).toBeNull();
+    expect(senzaBolla.controllo?.scostamento).toBe(0);
     expect(senzaBolla.controllo?.avvertenze).toContain(
       "Bolla non agganciata: il costo calcolato e' solo una simulazione sui dati del vettore, non un controllo."
     );
@@ -78,5 +78,12 @@ describe("controllo fattura senza bolla certa", () => {
     const conBolla = await calcolaControlloRiga({ ...riga, dettaglio: {} }, spedizione, undefined, [], contesto);
     expect(conBolla.controllo?.esito).toBe("in_linea");
     expect(conBolla.controllo?.scostamento).toBe(0);
+  });
+
+  it("senza bolla una deviazione resta visibile: non si nasconde un possibile sovrapprezzo", async () => {
+    const contesto = nuovoContestoControllo("v1", "tnt", []);
+    const cara = await calcolaControlloRiga({ ...riga, totale: 40, dettaglio: {} }, null, undefined, [], contesto);
+    expect(cara.controllo?.esito).toBe("anomalia");
+    expect(cara.controllo?.avvertenze.join(" ")).toContain("Bolla non agganciata");
   });
 });
