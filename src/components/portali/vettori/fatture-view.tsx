@@ -550,10 +550,10 @@ export function FattureView() {
           <details className="mt-4 rounded-xl border border-border bg-bg px-4 py-3">
             <summary className="cursor-pointer font-tenorite text-sm font-bold text-text">Come leggere questi esiti</summary>
             <div className="mt-3 space-y-2 text-sm leading-relaxed text-text-muted">
-              <p><strong className="text-text">In linea</strong> significa che l'importo è entro il 5% dall'atteso.</p>
+              <p><strong className="text-text">In linea</strong> significa che l&apos;importo è entro il 5% dall&apos;atteso.</p>
               <p><strong className="text-text">Da verificare</strong> significa che lo scostamento è tra il 5% e il 10%: controlla peso, misure, zona, carburante e voci, poi correggi i dati dal dettaglio della riga.</p>
               <p><strong className="text-text">Anomalia</strong> significa che lo scostamento supera il 10%.</p>
-              <p><strong className="text-text">Dati da completare</strong> significa che manca la bolla o un dato necessario. Senza bolla l'esito non è un controllo.</p>
+              <p><strong className="text-text">Dati da completare</strong> significa che manca la bolla o un dato necessario. Senza bolla l&apos;esito non è un controllo.</p>
               <p>“Agganciate” conta le righe della direzione selezionata.</p>
             </div>
           </details>
@@ -575,7 +575,7 @@ export function FattureView() {
             <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_8rem_8rem_8rem] gap-4 px-5 py-2 bg-bg-page text-sm text-text-muted" aria-hidden="true">
               <span>Spedizione</span><span className="text-right">Fatturato</span><span className="text-right">Atteso</span><span className="text-right">Differenza</span>
             </div>
-            {visibili.length === 0 && <p className="p-5 text-sm text-text-muted">Nessuna spedizione con la direzione e l'esito selezionati.</p>}
+            {visibili.length === 0 && <p className="p-5 text-sm text-text-muted">Nessuna spedizione con la direzione e l&apos;esito selezionati.</p>}
             {visibili.map((riga) => {
               const c = riga.controllo;
               const valutabile = c && c.esito !== "non_valutabile";
