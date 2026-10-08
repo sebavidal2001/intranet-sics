@@ -5,7 +5,7 @@ import { ottieniSnapshot } from "@/lib/prototipo-bi/sorgente";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Budget & BEP — BI Direzionale",
+  title: "Budget & BEP — Statistiche BI",
 };
 
 export default async function PaginaConfigurazione() {

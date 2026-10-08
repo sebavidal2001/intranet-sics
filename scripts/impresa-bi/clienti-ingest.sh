@@ -14,6 +14,8 @@ READY_ROOT="${BI_CLIENTI_READY:-/var/lib/impresa-bi/ready-clienti}"
 PROCESSED_ROOT="${BI_CLIENTI_PROCESSED:-/var/lib/impresa-bi/processed-clienti}"
 FAILED_ROOT="${BI_CLIENTI_FAILED:-/var/lib/impresa-bi/failed-clienti}"
 INGEST_SCRIPT="${BI_CLIENTI_SCRIPT:-/opt/intranet-sics/scripts/bi-ingest-clienti.mjs}"
+# Le visite viaggiano nello stesso run (profilo "clienti", dataset "visite").
+VISITE_SCRIPT="${BI_VISITE_SCRIPT:-/opt/intranet-sics/scripts/bi-ingest-visite.mjs}"
 LOCK_FILE="${BI_CLIENTI_LOCK:-/var/lib/impresa-bi/clienti-ingest.lock}"
 
 log() { printf '%s %s\n' "$(date -Is)" "$*"; }
@@ -52,7 +54,19 @@ for run_dir in "$READY_ROOT"/*/; do
   log "[$run_id] ingest in corso"
 
   # La finestra di ricarico esce dal file (data d'ordine minima): nessun parametro.
-  if node "$INGEST_SCRIPT" --file="$csv" --run-id="$run_id"; then
+  esito_run=0
+  node "$INGEST_SCRIPT" --file="$csv" --run-id="$run_id" || esito_run=1
+
+  # Visite: dopo i clienti, e il loro esito pesa sul run come quello dei clienti.
+  # Un run senza visite.csv (pipeline non ancora aggiornata su SRVWOA) resta valido:
+  # niente da caricare, nessun errore.
+  visite_csv="$run_dir/visite.csv"
+  if [[ -f "$visite_csv" ]]; then
+    log "[$run_id] ingest visite"
+    node "$VISITE_SCRIPT" --file="$visite_csv" --run-id="$run_id" || esito_run=1
+  fi
+
+  if (( esito_run == 0 )); then
     rm -rf "${PROCESSED_ROOT:?}/$run_id"
     mv "$run_dir" "$PROCESSED_ROOT/$run_id"
     log "[$run_id] caricato, archiviato in processed-clienti/"

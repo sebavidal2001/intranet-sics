@@ -80,6 +80,14 @@
                         "ExpectedColumns":  17,
                         "Profilo":  "clienti",
                         "HeaderPattern":  "^codice_cliente$"
+                    },
+                    {
+                        "SqlFile":  "VISITE.sql",
+                        "OutputFile":  "visite.csv",
+                        "Dataset":  "visite",
+                        "ExpectedColumns":  15,
+                        "Profilo":  "clienti",
+                        "HeaderPattern":  "^id_visita$"
                     }
                 ]
 }

@@ -55,7 +55,7 @@ const nextConfig = {
       // come fallback finché non si adotta lo strict-dynamic con nonce.
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
-      `img-src 'self' data: blob: https://${supabaseHost}`,
+      `img-src 'self' data: blob: https://${supabaseHost} https://tile.openstreetmap.org`,
       "font-src 'self' data:",
       `connect-src 'self' https://${supabaseHost} wss://${supabaseHost}`,
       "frame-ancestors 'none'",

@@ -1,4 +1,5 @@
 import { NavigazionePrototipo } from "@/components/prototipo-bi/navigazione";
+import { GuardiaSoloDashboard } from "@/components/prototipo-bi/guardia-solo-dashboard";
 import { ImpostazioniProvider } from "@/components/prototipo-bi/impostazioni";
 import { verificaAccessoSicuro } from "@/lib/prototipo-bi/accesso";
 import { ShieldAlert } from "lucide-react";
@@ -15,9 +16,9 @@ export default async function LayoutPrototipoBi({
   return (
     <ImpostazioniProvider>
       <div className="min-h-screen flex flex-col">
-        <NavigazionePrototipo />
+        <NavigazionePrototipo soloDashboard={esito.ok && esito.accesso.soloAssegnate} />
         {esito.ok ? (
-          children
+          <GuardiaSoloDashboard attiva={esito.accesso.soloAssegnate}>{children}</GuardiaSoloDashboard>
         ) : (
           <div className="max-w-xl mx-auto py-24 px-4 text-center">
             <ShieldAlert className="w-10 h-10 text-warning mx-auto mb-4" aria-hidden />

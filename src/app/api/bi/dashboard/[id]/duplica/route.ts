@@ -43,6 +43,7 @@ interface AnalisiSorgente {
 export async function POST(_request: NextRequest, { params }: Contesto) {
   const pre = await preliminari();
   if (!pre.ok) return pre.risposta;
+  if (pre.accesso.soloAssegnate) return negato("Le dashboard le duplica la direzione.");
   const { id } = await params;
   if (!UUID_VALIDO.test(id)) return errore("Identificativo dashboard non valido");
 

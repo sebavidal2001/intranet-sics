@@ -42,7 +42,8 @@ export type TipoGrafico =
   | "flusso"
   | "istogramma"
   | "kpi"
-  | "tabella";
+  | "tabella"
+  | "mappa";
 
 /**
  * I nomi da mostrare all'utente.
@@ -75,7 +76,18 @@ export const NOMI_GRAFICI: Record<TipoGrafico, string> = {
   istogramma: "Istogramma",
   kpi: "KPI",
   tabella: "Tabella",
+  mappa: "Mappa",
 };
+
+/** Dimensioni che hanno una posizione sulla carta: la mappa si regge su queste. */
+export const DIMENSIONI_GEOGRAFICHE = ["cap", "provincia"] as const;
+
+/** Vero se il risultato è raggruppato per CAP o provincia: solo allora una mappa ha senso. */
+export function haDimensioneGeografica(risultato: RisultatoQuery): boolean {
+  return (risultato.spec.raggruppa ?? []).some((d) =>
+    (DIMENSIONI_GEOGRAFICHE as readonly string[]).includes(d)
+  );
+}
 
 /** Tutti i tipi, nell'ordine dei nomi: la fonte unica per menu e validazioni. */
 export const TIPI_GRAFICO = Object.keys(NOMI_GRAFICI) as TipoGrafico[];
@@ -136,6 +148,12 @@ function determinaScelta(risultato: RisultatoQuery): SceltaBase {
   }
   if (numeroRighe === 1 && raggruppamenti.length === 0) {
     return { tipo: "kpi", motivo: "Un solo valore complessivo: una KPI lo rende immediatamente leggibile." };
+  }
+  if (haDimensioneGeografica(risultato)) {
+    return {
+      tipo: "mappa",
+      motivo: "Il dato è diviso per CAP o provincia: la mappa mostra dove si concentra.",
+    };
   }
   if (temporale && raggruppamenti.length === 1 && periodiDistinti(risultato) === 2) {
     return {
@@ -216,6 +234,7 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
   const possibili: TipoGrafico[] = [];
 
   if (numeroRighe === 1 && raggruppamenti.length === 0) possibili.push("kpi");
+  if (haDimensioneGeografica(risultato)) possibili.push("mappa");
   if (temporale) {
     // Niente "combo": vuole due misure diverse (l'ordinato a barre, il budget
     // a linea). Con un solo RisultatoQuery le due serie sarebbero lo stesso
@@ -330,6 +349,7 @@ function graficiApplicabiliAnalisi(serie: SerieAnalisiEseguita[]): TipoGrafico[]
   const possibili: TipoGrafico[] = [];
 
   if (haObiettivo) possibili.push("bullet");
+  if (haDimensioneGeografica(risultato)) possibili.push("mappa");
   if (temporale) possibili.push("linee", "combo");
   if (haConfronto || (risultato.spec.raggruppa?.length ?? 0) > 0) {
     possibili.push("barre", "quadranti");

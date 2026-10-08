@@ -17,6 +17,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { etichettaBusinessUnit, controllaTassonomia } from "./business-unit";
 import type { ChiaveDataset, ChiaveDatasetVendite, RigaFatto, Snapshot } from "./tipi";
 import { comeFatti, daVista, type RigaAcquisto } from "./acquisti";
+import { comeFatti as visiteComeFatti, daVista as visitaDaVista } from "./visite";
 
 /** Viste di origine. `importoCampo` cambia solo per i preventivi. */
 const VISTE: Record<ChiaveDatasetVendite, { vista: string; importoCampo: string }> = {
@@ -226,6 +227,21 @@ async function caricaAcquisti(): Promise<{ righe: RigaAcquisto[]; al: string | n
   }
 }
 
+/**
+ * Visite dei commerciali (migration 145). Come gli acquisti: un guasto qui non
+ * ferma il BI delle vendite, e le metriche delle visite dichiareranno di non
+ * avere dati invece di mostrare zeri.
+ */
+async function caricaVisite(): Promise<RigaFatto[] | undefined> {
+  try {
+    const grezze = await scaricaPaginato<RigaGrezza>("bi_visite");
+    return visiteComeFatti(grezze.map(visitaDaVista));
+  } catch (e) {
+    console.warn("[BI] visite non caricate:", e instanceof Error ? e.message : e);
+    return undefined;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Costi di acquisto — il costo VALIDO ALLA DATA DI VENDITA
 //
@@ -418,6 +434,7 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
 
   const dataset = Object.fromEntries(risultati) as Snapshot["dataset"];
   const acquisti = await caricaAcquisti();
+  const visite = await caricaVisite();
 
   // Il costo si aggancia a ogni riga che ha un articolo, prendendo la
   // variazione valida ALLA DATA DEL DOCUMENTO. Le righe senza corrispondenza
@@ -452,6 +469,13 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
   if (acquisti) {
     dataset.acquisti = comeFatti(acquisti.righe, acquisti.al ?? new Date().toISOString().slice(0, 10));
     conteggi.acquisti = dataset.acquisti.length;
+  }
+
+  // Le visite, come gli acquisti, non hanno business unit e non dicono fin dove
+  // arrivano le vendite: entrano fuori dalla tassonomia e dalla data di riferimento.
+  if (visite) {
+    dataset.visite = visite;
+    conteggi.visite = visite.length;
   }
 
   // La data di riferimento ("oggi") deve venire SOLO dai dataset che guardano
@@ -538,8 +562,11 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  *
  * 5 (25/09/2026): `dataset.acquisti`, gli ordini a fornitore come fatti del
  * motore semantico (metriche acquisti_*, puntualita_fornitori, ...).
+ *
+ * 6 (08/10/2026): `dataset.visite`, le visite dei commerciali (metrica
+ * visite_numero; dimensioni cap, provincia, grado, tipo_visita).
  */
-const VERSIONE_FORMA = 5;
+const VERSIONE_FORMA = 6;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.

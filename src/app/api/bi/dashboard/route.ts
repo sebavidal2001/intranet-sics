@@ -7,10 +7,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { preliminari, errore } from "../_comune";
+import { preliminari, errore, negato } from "../_comune";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assicuraCruscottoDiSistema } from "./_predefinito";
 import { registraOperazione } from "./_utili";
+import { dashboardAssegnateA } from "@/lib/prototipo-bi/dashboard-accesso";
 
 export const dynamic = "force-dynamic";
 
@@ -44,12 +45,22 @@ export async function GET() {
     console.error("[bi] semina del Cruscotto non riuscita:", e instanceof Error ? e.message : e);
   }
 
-  const { data, error: erroreDb } = await createAdminClient()
-    .schema("bi_direzionale")
-    .from("dashboard")
-    .select("id,titolo,descrizione,autore_id,visibilita,creato_il,aggiornato_il,chiave,di_sistema,dashboard_pagine(count)")
-    .or(`autore_id.eq.${pre.accesso.userId},visibilita.eq.condivisa`)
-    .order("aggiornato_il", { ascending: false });
+  // Chi ha il livello operativo vede SOLO ciò che gli è stato assegnato; gli
+  // altri vedono le proprie, le condivise e anche le assegnate.
+  const assegnate = await dashboardAssegnateA(pre.accesso.userId);
+  const condizioni = pre.accesso.soloAssegnate
+    ? []
+    : [`autore_id.eq.${pre.accesso.userId}`, "visibilita.eq.condivisa"];
+  if (assegnate.size > 0) condizioni.push(`id.in.(${[...assegnate].join(",")})`);
+
+  const { data, error: erroreDb } = condizioni.length === 0
+    ? { data: [] as DashboardElencoDb[], error: null }
+    : await createAdminClient()
+        .schema("bi_direzionale")
+        .from("dashboard")
+        .select("id,titolo,descrizione,autore_id,visibilita,creato_il,aggiornato_il,chiave,di_sistema,dashboard_pagine(count)")
+        .or(condizioni.join(","))
+        .order("aggiornato_il", { ascending: false });
 
   if (erroreDb) {
     await registraOperazione(pre.accesso, "errore", { errore: erroreDb.message });
@@ -60,14 +71,23 @@ export async function GET() {
     ...voce,
     conteggio_pagine: dashboard_pagine?.[0]?.count ?? 0,
     modificabile: voce.autore_id === pre.accesso.userId && voce.di_sistema !== true,
+    assegnata: assegnate.has(voce.id),
   }));
   await registraOperazione(pre.accesso, "ok", { righe: dashboard.length });
-  return NextResponse.json({ dashboard });
+  return NextResponse.json({
+    dashboard,
+    puoCreare: !pre.accesso.soloAssegnate,
+    puoAssegnare: pre.accesso.gestisceDashboard,
+  });
 }
 
 export async function POST(request: NextRequest) {
   const pre = await preliminari();
   if (!pre.ok) return pre.risposta;
+  if (pre.accesso.soloAssegnate) {
+    await registraOperazione(pre.accesso, "negato", { errore: "Creazione non consentita al livello operativo." });
+    return negato("Le dashboard le crea la direzione: tu puoi aprire quelle che ti sono state assegnate.");
+  }
 
   let body: { titolo?: unknown; descrizione?: unknown; visibilita?: unknown };
   try {

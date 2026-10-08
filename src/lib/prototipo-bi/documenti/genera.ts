@@ -29,7 +29,7 @@ import type {
 } from "../tipi";
 
 const INTESTAZIONE_DOCUMENTO =
-  "Documento generato dal BI Direzionale SICS";
+  "Documento generato dal Statistiche BI SICS";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Excel

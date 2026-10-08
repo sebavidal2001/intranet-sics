@@ -149,6 +149,13 @@ export function AnteprimaGrafico({ tipo, className = "" }: { tipo: TipoGrafico; 
             42
           </text>
         );
+      case "mappa":
+        return (
+          <>
+            <path d="M14 3 L22 5 L26 11 L24 17 L28 23 L20 24 L15 18 L12 10 Z" fill={T} opacity="0.5" />
+            {[[17, 9, 3], [23, 14, 2], [20, 20, 2.5]].map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} fill={P} opacity="0.85" />)}
+          </>
+        );
       case "tabella":
         return [0, 1, 2, 3].map((r) => (
           <g key={r}>

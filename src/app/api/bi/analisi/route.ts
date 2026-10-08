@@ -108,6 +108,9 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const pre = await preliminari();
   if (!pre.ok) return pre.risposta;
+  if (pre.accesso.soloAssegnate) {
+    return NextResponse.json({ error: "Le analisi le crea la direzione." }, { status: 403 });
+  }
 
   let body: {
     titolo?: unknown;

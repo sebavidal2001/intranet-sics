@@ -9,7 +9,7 @@ import type { AspettoGrafico, SerieAnalisi, SpecQuery } from "@/lib/prototipo-bi
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Esplora — BI Direzionale",
+  title: "Esplora — Statistiche BI",
 };
 
 interface AnalisiSalvata {

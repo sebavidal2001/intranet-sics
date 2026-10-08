@@ -4,7 +4,7 @@ import { ArticoliAcquistiView } from "@/components/prototipo-bi/articoli-acquist
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Articoli & Acquisti — BI Direzionale",
+  title: "Articoli & Acquisti — Statistiche BI",
 };
 
 export default function PaginaArticoliAcquisti() {

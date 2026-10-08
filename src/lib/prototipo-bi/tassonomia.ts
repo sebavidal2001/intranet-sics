@@ -16,7 +16,8 @@ export type ChiaveTipologia =
   | "banco"
   | "budget"
   | "margine"
-  | "acquisti";
+  | "acquisti"
+  | "visite";
 
 export interface Tipologia {
   chiave: ChiaveTipologia;
@@ -104,6 +105,12 @@ export const TIPOLOGIE: Tipologia[] = [
       "acquisti_valore_da_sollecitare",
     ],
   },
+  {
+    chiave: "visite",
+    etichetta: "Visite commerciali",
+    descrizione: "Visite dei commerciali ai clienti: quante, dove, con quale esito. Con la mappa si vede anche il giro di ogni giornata.",
+    metriche: ["visite_numero"],
+  },
 ];
 
 const DIMENSIONI_COMUNI: Dimensione[] = [
@@ -124,6 +131,11 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
   // loro dimensioni sono altre. La categoria e' il gruppo articoli.
   if (dataset === "acquisti") {
     return (["fornitore", "buyer", "categoria", "articolo", "documento"] as Dimensione[]).filter(
+      (dimensione) => dimensione in DIMENSIONI
+    );
+  }
+  if (dataset === "visite") {
+    return (["agente", "cliente", "cap", "provincia", "grado", "tipo_visita", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
   }
