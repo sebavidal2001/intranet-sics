@@ -1,4 +1,4 @@
--- 144_vettori_documento_una_sola_spedizione.sql
+-- 146_vettori_documento_una_sola_spedizione.sql
 --
 -- Perche': un documento del gestionale deve appartenere a UNA spedizione. Lo
 -- schema (089) aveva come chiave (spedizione_id, id_documento), quindi due

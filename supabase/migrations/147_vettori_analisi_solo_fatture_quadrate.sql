@@ -1,4 +1,4 @@
--- 145_vettori_analisi_solo_fatture_quadrate.sql
+-- 147_vettori_analisi_solo_fatture_quadrate.sql
 --
 -- Perche': una fattura acquisita «senza quadratura» (con il motivo scritto
 -- dall'operatore) entrava nelle analisi come confermata. Una FedEx letta in

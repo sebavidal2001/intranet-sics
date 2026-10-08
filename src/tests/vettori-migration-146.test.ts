@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync("supabase/migrations/144_vettori_documento_una_sola_spedizione.sql", "utf8");
+const sql = readFileSync("supabase/migrations/146_vettori_documento_una_sola_spedizione.sql", "utf8");
 
-describe("migration 144: un documento, una sola spedizione", () => {
+describe("migration 146: un documento, una sola spedizione", () => {
   it("si ferma se esistono gia' doppi collegamenti, invece di scegliere a caso", () => {
     expect(sql).toMatch(/HAVING count\(\*\) > 1/i);
     expect(sql).toMatch(/RAISE EXCEPTION '% documenti sono legati/i);

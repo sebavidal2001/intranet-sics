@@ -884,7 +884,7 @@ async function fondiBlocco(
         .upsert(legamiDaScrivere, { onConflict: "spedizione_id,id_documento" });
       if (linkError) {
         // Un documento appartiene a una sola spedizione (indice unico
-        // sull'id del documento, migration 144). Se un'altra fusione, o
+        // sull'id del documento, migration 146). Se un'altra fusione, o
         // l'acquisizione di una fattura, lo ha legato un attimo prima, quella
         // ha vinto: la riga appena creata resterebbe vuota, quindi si toglie, e
         // il documento si ritrova gia' legato al passaggio successivo.
