@@ -440,10 +440,16 @@ export async function calcolaControlloRiga(
   riga.dettaglio.condizioniApplicate = JSON.stringify(fisici.dati.condizioni ?? []);
   riga.dettaglio.formulaVolumetrico = `Volume totale dei colli (m³) × ${listino.vettore.divisoreVolumetrico} kg/m³; per ogni collo: L × P × H in cm ÷ 1.000.000.`;
   const calcolo = calcolaCostoAtteso(fisici.dati, listino);
-  const valutabile = Boolean(sped) && riga.totale != null && listino.carburante != null &&
+  const valutabile = riga.totale != null && listino.carburante != null &&
     calcolo.pesoTassabile > 0 && calcolo.fasciaDescrizione !== "nessuna fascia";
-  const cls = valutabile ? classifica(riga.totale!, calcolo.totale, SOGLIE_DEFAULT)
+  const clsCalcolata = valutabile ? classifica(riga.totale!, calcolo.totale, SOGLIE_DEFAULT)
     : { esito: "non_valutabile", scostamento: null };
+  // Senza bolla il peso viene dalla sola fattura: un importo che coincide non
+  // dimostra niente, quindi "in linea" non si dichiara. Una deviazione invece
+  // resta visibile (da verificare / anomalia): il segnale vale comunque.
+  const cls = !sped && clsCalcolata.esito === "in_linea"
+    ? { esito: "non_valutabile", scostamento: clsCalcolata.scostamento }
+    : clsCalcolata;
   return {
     anomalie,
     controllo: {
