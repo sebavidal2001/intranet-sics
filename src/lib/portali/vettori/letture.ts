@@ -103,6 +103,8 @@ export interface AnalisiMese {
 export interface Analisi {
   da: string;
   a: string;
+  /** Fatture acquisite senza quadratura nel periodo: escluse dai totali. */
+  fatture_non_quadrate: number;
   totali: {
     righe: number;
     colli: number;

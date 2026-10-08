@@ -337,12 +337,18 @@ const SCHEMA = {
   },
 };
 
-function istruzioni(riga: RigaDaAgganciare, candidate: Candidata[]): string {
+/**
+ * Cio' che parte verso il servizio esterno di AI: nome di fornitore/cliente,
+ * localita', date, numeri di bolla, colli e pesi. Questo e' quanto dichiarato
+ * all'amministrazione (01/10/2026): niente numero di fattura, importi,
+ * protocolli interni o profili del gestionale.
+ */
+export function istruzioni(riga: RigaDaAgganciare, candidate: Candidata[]): string {
   const fmt = (v: unknown) => (v == null || v === "" ? "-" : String(v));
   const elenco = candidate.map((c) =>
-    `${c.etichetta}: numero ${fmt(c.numero)}${c.protocollo ? ` (nostro protocollo ${c.protocollo})` : ""}, data ${c.data}, ` +
+    `${c.etichetta}: numero ${fmt(c.numero)}, data ${c.data}, ` +
     `cliente/fornitore «${fmt(c.controparte)}», sede ${fmt(c.localita)} (${fmt(c.provincia)}), colli ${c.colli ?? "non registrati"}, peso ${c.peso != null ? `${c.peso} kg` : "non registrato"}, ` +
-    `vettore in gestionale ${fmt(c.vettore)}, profilo ${fmt(c.profilo)}, origine ${c.origine}` +
+    `vettore in gestionale ${fmt(c.vettore)}` +
     `${c.giaAgganciataA ? `, GIA' agganciata a ${c.giaAgganciataA} altra/e riga/e di fattura` : ""}; indizi: ${c.indizi.join(", ")}.`
   ).join("\n");
 
@@ -366,8 +372,8 @@ Regole:
 - sicurezza «media» se la scelta e' la piu' plausibile ma un elemento non torna; «bassa» se e' un'ipotesi.
 - nel motivo cita gli elementi concreti (numero, data, peso, nome); niente frasi generiche.
 
-RIGA DI FATTURA (${riga.vettore}, fattura ${riga.fattura}, riga ${riga.rigaNumero}):
-verso ${fmt(riga.direzione)}, data ${fmt(riga.data)}, numero citato ${fmt(riga.riferimento)}, nome in fattura «${fmt(riga.controparte)}», provincia ${fmt(riga.provincia)}, colli ${fmt(riga.colli)}, peso ${fmt(riga.peso)} kg${riga.pesoTassato ? ` (tassato ${riga.pesoTassato} kg)` : ""}, importo ${fmt(riga.totale)} euro.
+RIGA DI FATTURA (${riga.vettore}):
+verso ${fmt(riga.direzione)}, data ${fmt(riga.data)}, numero citato ${fmt(riga.riferimento)}, nome in fattura «${fmt(riga.controparte)}», provincia ${fmt(riga.provincia)}, colli ${fmt(riga.colli)}, peso ${fmt(riga.peso)} kg${riga.pesoTassato ? ` (tassato ${riga.pesoTassato} kg)` : ""}.
 
 BOLLE CANDIDATE:
 ${elenco}`;

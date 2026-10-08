@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BollaGestionale, SpedizioneLogica } from "./abbinamento";
-import { raggruppaInSpedizioni } from "./abbinamento";
+import { nomiCompatibili, raggruppaInSpedizioni } from "./abbinamento";
 import { normalizzaRiferimento } from "./fatture/testo";
 import { volumeGruppoM3 } from "./misure";
 import type {
@@ -694,6 +694,45 @@ export async function sincronizzaSpedizioniGestionali(
  * e' cambiato. Il blocco e' piccolo apposta: le righe lette in anticipo non
  * devono invecchiare troppo rispetto a chi modifica una bolla nel frattempo.
  */
+/**
+ * La bolla creata al banco (Simulazione o a mano) che corrisponde al documento
+ * appena arrivato dal gestionale, se e' una sola e non e' ancora legata a nessun
+ * documento. Nome compatibile obbligatorio: due clienti possono avere lo stesso
+ * numero di bolla nello stesso giorno.
+ */
+async function trovaBollaManualeAdottabile(
+  admin: ClienteAdmin,
+  spedizione: SpedizioneLogica
+): Promise<SpedizioneRow | null> {
+  const { data, error } = await admin
+    .schema("vettori")
+    .from("spedizioni")
+    .select(COLONNE_SPEDIZIONE)
+    .eq("direzione", spedizione.direzione)
+    .eq("numero_riferimento_norm", spedizione.riferimentoNorm as string)
+    .eq("data_documento", spedizione.dataDocumento as string)
+    .in("origine", ["simulazione", "manuale"])
+    .order("creata_il", { ascending: true })
+    .limit(10);
+  if (error) throw new Error(error.message);
+  const compatibili = ((data ?? []) as unknown as SpedizioneRow[]).filter((riga) =>
+    nomiCompatibili(spedizione.controparte, riga.controparte_nome)
+  );
+  if (compatibili.length === 0) return null;
+  const { data: legati, error: legatiError } = await admin
+    .schema("vettori")
+    .from("spedizioni_documenti")
+    .select("spedizione_id")
+    .in("spedizione_id", compatibili.map((riga) => riga.id));
+  if (legatiError) throw new Error(legatiError.message);
+  const conDocumenti = new Set(((legati ?? []) as Array<{ spedizione_id: string }>).map((l) => l.spedizione_id));
+  const libere = compatibili.filter((riga) => !conDocumenti.has(riga.id));
+  return libere.length === 1 ? libere[0] : null;
+}
+
+/** Codice PostgreSQL della violazione di un vincolo di unicita'. */
+const UNIQUE_VIOLATION = "23505";
+
 async function fondiBlocco(
   admin: ClienteAdmin,
   blocco: SpedizioneLogica[],
@@ -763,12 +802,27 @@ async function fondiBlocco(
       }
     }
 
+    // Una bolla creata al banco da Simulazione o a mano porta il codice cliente
+    // scritto dall'operatore («SIT»), che non e' mai quello del gestionale
+    // («05000607»): la ricerca qui sopra non la riconosce e, quando il documento
+    // arriva da Impresa, nascerebbe un doppione senza le misure e il riaddebito
+    // decisi al banco. Si adotta se e' l'unica con stesso numero e data, senza
+    // documenti collegati, e il nome torna.
+    if (!spedizioneId && spedizione.riferimentoNorm) {
+      const manuale = await trovaBollaManualeAdottabile(admin, spedizione);
+      if (manuale) {
+        riga = manuale;
+        spedizioneId = manuale.id;
+      }
+    }
+
     const risoluzioneVettore = risolviVettoreGestionale(
       spedizione.vettoreCodice,
       codiciGestionali
     );
     const valori = valoriGestionali(spedizione, risoluzioneVettore.vettoreId);
 
+    let creataQui = false;
     if (!spedizioneId) {
       const { data: nuova, error: insertError } = await admin
         .schema("vettori")
@@ -786,6 +840,7 @@ async function fondiBlocco(
       if (insertError) throw new Error(insertError.message);
       riga = nuova as unknown as SpedizioneRow;
       spedizioneId = riga.id;
+      creataQui = true;
     }
 
     if (!riga) {
@@ -827,7 +882,25 @@ async function fondiBlocco(
         .schema("vettori")
         .from("spedizioni_documenti")
         .upsert(legamiDaScrivere, { onConflict: "spedizione_id,id_documento" });
-      if (linkError) throw new Error(linkError.message);
+      if (linkError) {
+        // Un documento appartiene a una sola spedizione (indice unico
+        // sull'id del documento, migration 144). Se un'altra fusione, o
+        // l'acquisizione di una fattura, lo ha legato un attimo prima, quella
+        // ha vinto: la riga appena creata resterebbe vuota, quindi si toglie, e
+        // il documento si ritrova gia' legato al passaggio successivo.
+        if (linkError.code === UNIQUE_VIOLATION) {
+          if (creataQui) {
+            const { error: pulisciError } = await admin
+              .schema("vettori")
+              .from("spedizioni")
+              .delete()
+              .eq("id", spedizioneId);
+            if (pulisciError) throw new Error(pulisciError.message);
+          }
+          continue;
+        }
+        throw new Error(linkError.message);
+      }
       for (const scritto of legamiDaScrivere) {
         legami.set(`${scritto.spedizione_id}|${scritto.id_documento}`, scritto);
       }

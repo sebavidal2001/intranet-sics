@@ -298,8 +298,9 @@ export function FattureView() {
                 Trascina qui il PDF della fattura
               </p>
               <p className="text-xs text-text-muted mt-1">
-                GLS, TNT e Trading Post si leggono da soli. FedEx no: le sue fatture
-                non contengono testo.
+                GLS, TNT e Trading Post si leggono da soli. Le fatture FedEx sono
+                immagini: le legge un modello di intelligenza artificiale, quindi
+                controlla il confronto riga per riga prima di acquisire.
               </p>
             </div>
             <input

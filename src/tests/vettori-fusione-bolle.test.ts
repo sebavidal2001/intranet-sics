@@ -24,8 +24,8 @@ vi.mock("@/lib/supabase/admin", () => {
     return stato.tabelle.get(nome) as Riga[];
   };
 
-  class Query implements PromiseLike<{ data: unknown; error: { message: string } | null }> {
-    private modo: "select" | "insert" | "upsert" | "update" = "select";
+  class Query implements PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }> {
+    private modo: "select" | "insert" | "upsert" | "update" | "delete" = "select";
     private filtri: Array<(riga: Riga) => boolean> = [];
     private payload: unknown;
     private conflitto: string[] = [];
@@ -58,9 +58,10 @@ vi.mock("@/lib/supabase/admin", () => {
       return this;
     }
     update(dati: unknown) { this.modo = "update"; this.payload = dati; return this; }
+    delete() { this.modo = "delete"; return this; }
 
     then<T, U>(
-      ok?: ((v: { data: unknown; error: { message: string } | null }) => T | PromiseLike<T>) | null,
+      ok?: ((v: { data: unknown; error: { message: string; code?: string } | null }) => T | PromiseLike<T>) | null,
       ko?: ((e: unknown) => U | PromiseLike<U>) | null
     ) {
       return Promise.resolve(this.esegui()).then(ok, ko);
@@ -89,6 +90,14 @@ vi.mock("@/lib/supabase/admin", () => {
         return this.risposta([nuova]);
       }
       if (this.modo === "upsert") {
+        // L'indice unico sull'id del documento (migration 144): un documento
+        // gia' legato a un'altra spedizione fa fallire la scrittura.
+        if (this.nome === "spedizioni_documenti") {
+          const conflitto = ([this.payload].flat() as Riga[]).some((dato) =>
+            righe.some((r) => r.id_documento === dato.id_documento && r.spedizione_id !== dato.spedizione_id)
+          );
+          if (conflitto) return { data: null, error: { message: "duplicate key value", code: "23505" } };
+        }
         for (const dato of [this.payload].flat() as Riga[]) {
           const i = righe.findIndex((r) => this.conflitto.every((k) => r[k] === dato[k]));
           if (i >= 0) righe[i] = { ...righe[i], ...dato };
@@ -96,7 +105,13 @@ vi.mock("@/lib/supabase/admin", () => {
         }
         return { data: null, error: null };
       }
-      const trovate = righe.filter((r) => this.filtri.every((f) => f(r)));
+      // Le righe `invisibile` esistono ma chi legge non le vede ancora: servono
+      // a simulare chi scrive nell'intervallo fra la lettura e la scrittura.
+      const trovate = righe.filter((r) => !r.invisibile && this.filtri.every((f) => f(r)));
+      if (this.modo === "delete") {
+        for (const riga of trovate) righe.splice(righe.indexOf(riga), 1);
+        return { data: null, error: null };
+      }
       if (this.modo === "update") {
         for (const riga of trovate) Object.assign(riga, this.payload);
         return { data: null, error: null };
@@ -263,6 +278,54 @@ describe("fusione delle bolle: si scrive solo dove e' cambiato qualcosa", () => 
     expect(tabella("spedizioni")).toHaveLength(1);
     expect(tabella("spedizioni")[0]).toMatchObject({ origine: "gestionale", stato: "attesa", numero_protocollo: "2149" });
     expect(tabella("spedizioni_documenti")[0]).toMatchObject({ id_documento: 101, numero_progressivo: "2149" });
+  });
+
+  it("due fusioni insieme: chi perde la corsa toglie la riga vuota che aveva creato e non fallisce", async () => {
+    // Un'altra fusione ha legato il documento 101 a «sp-vincitrice» dopo la
+    // nostra lettura (la riga e' invisibile alla select ma l'indice unico c'e').
+    tabella("spedizioni").push(rigaDb({ id: "sp-vincitrice" }));
+    tabella("spedizioni_documenti").push(legameDb({ spedizione_id: "sp-vincitrice", invisibile: true }));
+
+    await sincronizzaSpedizioniGestionali([logica({ riferimentoNorm: null, riferimento: null })], dettagli);
+
+    expect(tabella("spedizioni").map((r) => r.id)).toEqual(["sp-vincitrice"]);
+    expect(tabella("spedizioni_documenti")).toHaveLength(1);
+  });
+
+  it("una bolla creata al banco con un codice cliente scritto a mano viene adottata, non duplicata", async () => {
+    tabella("spedizioni").push(rigaDb({ id: "sp-banco", origine: "simulazione", controparte_codice: "SIT", controparte_nome: "Fornitore SIT" }));
+
+    await sincronizzaSpedizioniGestionali([logica()], dettagli);
+
+    expect(tabella("spedizioni")).toHaveLength(1);
+    expect(tabella("spedizioni_documenti")[0]).toMatchObject({ spedizione_id: "sp-banco", id_documento: 101 });
+  });
+
+  it("la bolla del banco con un nome diverso non si adotta: stesso numero, altro cliente", async () => {
+    tabella("spedizioni").push(rigaDb({ id: "sp-banco", origine: "simulazione", controparte_codice: "XYZ", controparte_nome: "Rossi Mario" }));
+
+    await sincronizzaSpedizioniGestionali([logica()], dettagli);
+
+    expect(tabella("spedizioni")).toHaveLength(2);
+    expect(tabella("spedizioni_documenti")[0]).not.toMatchObject({ spedizione_id: "sp-banco" });
+  });
+
+  it("la bolla del banco gia' legata a un altro documento non si adotta", async () => {
+    tabella("spedizioni").push(rigaDb({ id: "sp-banco", origine: "simulazione", controparte_codice: "SIT", controparte_nome: "Fornitore SIT" }));
+    tabella("spedizioni_documenti").push(legameDb({ spedizione_id: "sp-banco", id_documento: 999 }));
+
+    await sincronizzaSpedizioniGestionali([logica()], dettagli);
+
+    expect(tabella("spedizioni")).toHaveLength(2);
+  });
+
+  it("due bolle del banco compatibili con lo stesso numero: nessuna scelta a caso", async () => {
+    tabella("spedizioni").push(rigaDb({ id: "sp-banco-1", origine: "simulazione", controparte_codice: "SIT", controparte_nome: "Fornitore SIT" }));
+    tabella("spedizioni").push(rigaDb({ id: "sp-banco-2", origine: "manuale", controparte_codice: "SIT2", controparte_nome: "Fornitore SIT due" }));
+
+    await sincronizzaSpedizioniGestionali([logica()], dettagli);
+
+    expect(tabella("spedizioni")).toHaveLength(3);
   });
 
   it("una spedizione senza legame ma con la stessa chiave viene riusata, non duplicata", async () => {

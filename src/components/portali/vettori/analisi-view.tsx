@@ -52,6 +52,18 @@ export function AnalisiView({ dati, anno }: Props) {
 
   return (
     <div className="max-w-6xl mx-auto">
+      {dati.fatture_non_quadrate > 0 && (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border p-3 text-sm text-text"
+          style={{ borderColor: "var(--color-warning)", background: "rgba(245,158,11,0.08)" }}
+        >
+          {dati.fatture_non_quadrate === 1
+            ? "Una fattura acquisita senza quadratura non è inclusa in questi totali."
+            : `${dati.fatture_non_quadrate} fatture acquisite senza quadratura non sono incluse in questi totali.`}{" "}
+          Si vedono in Spedizioni, segnalate come «non quadrate»: rientrano quando vengono corrette.
+        </div>
+      )}
       <header className="mb-5 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-tenorite text-2xl font-bold text-text">Analisi vettori</h1>
@@ -186,8 +198,8 @@ export function AnalisiView({ dati, anno }: Props) {
             <div className="px-5 py-2.5 border-t border-border flex items-start gap-2">
               <Info className="w-3.5 h-3.5 text-text-muted shrink-0 mt-0.5" />
               <p className="text-[11px] text-text-muted leading-snug">
-                Le righe non valutabili — listino mancante per quella data o zona —
-                non entrano nel conteggio «fuori linea»:{" "}
+                Le righe non valutabili — senza bolla agganciata, oppure con listino o dati
+                mancanti — non entrano nel conteggio «fuori linea»:{" "}
                 {dati.vettori
                   .filter((v) => v.non_valutabili > 0)
                   .map((v) => `${v.nome} ${v.non_valutabili}`)
