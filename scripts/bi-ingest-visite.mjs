@@ -54,7 +54,7 @@ const COLONNE = [
   "agente", "grado_codice", "grado", "tipo_codice", "tipo", "esito",
   "data_prox_visita", "cap", "localita", "provincia",
 ];
-const RE_DATA = /^d{4}-d{2}-d{2}$/;
+const RE_DATA = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Senza intestazione la struttura si dimostra dai valori: codice a cifre/lettere
@@ -79,7 +79,7 @@ function convertiRiga(riga, numRiga) {
     return t;
   };
   const codice = pulisciTesto(c.codice_cliente);
-  if (!codice || /s/.test(codice)) throw new Error(`riga ${numRiga}: codice_cliente non valido ("${c.codice_cliente}")`);
+  if (!codice || /\s/.test(codice)) throw new Error(`riga ${numRiga}: codice_cliente non valido ("${c.codice_cliente}")`);
 
   return {
     run_id: RUN_ID,
