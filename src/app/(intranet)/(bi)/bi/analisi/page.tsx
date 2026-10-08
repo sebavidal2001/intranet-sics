@@ -8,7 +8,7 @@ import { AnalisiList } from "@/components/prototipo-bi/analisi-list";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Analisi — BI Direzionale",
+  title: "Analisi — Statistiche BI",
 };
 
 export default function PaginaAnalisi() {

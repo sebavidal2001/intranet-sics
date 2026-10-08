@@ -99,7 +99,7 @@ async function chiamaModello(
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "X-Title": "SICS BI Direzionale (prototipo)",
+      "X-Title": "SICS Statistiche BI",
     },
     body: JSON.stringify({
       model: modelloId,

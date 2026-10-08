@@ -5,7 +5,7 @@ import { ottieniSnapshot } from "@/lib/prototipo-bi/sorgente";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Analista — BI Direzionale",
+  title: "Analista — Statistiche BI",
 };
 
 export default async function PaginaAnalista() {

@@ -37,6 +37,16 @@ export interface AccessoBi {
    */
   sqlLibero: boolean;
   /**
+   * Vero per la direzione: costruisce le dashboard e le assegna ai dipendenti.
+   * Chi ha solo il livello "operativo" non crea niente: riceve.
+   */
+  gestisceDashboard: boolean;
+  /**
+   * Vero per il livello "operativo": vede soltanto le dashboard che gli sono
+   * state assegnate, non le condivise né le altre pagine del portale.
+   */
+  soloAssegnate: boolean;
+  /**
    * Compatibilità con `costruisciContesto`, che accetta ancora un singolo
    * codice agente. Vale null quando il perimetro non è per agente.
    */
@@ -216,6 +226,8 @@ export async function verificaAccesso(): Promise<AccessoBi> {
     ruolo: livello === "direzione" ? "direzione" : "responsabile",
     perimetro,
     sqlLibero: livello === "direzione",
+    gestisceDashboard: livello === "direzione",
+    soloAssegnate: livello === "operativo",
     agenteScope: perimetro.tipo === "agente" ? perimetro.codici[0] : null,
   };
 }

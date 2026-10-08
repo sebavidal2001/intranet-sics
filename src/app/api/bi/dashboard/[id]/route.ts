@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { preliminari, errore, negato } from "../../_comune";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { oggettoJson, registraOperazione, UUID_VALIDO } from "../_utili";
+import { dashboardAssegnateA, dashboardVisibile } from "@/lib/prototipo-bi/dashboard-accesso";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,12 @@ export async function GET(_request: NextRequest, { params }: Contesto) {
   if (!data) return errore("Dashboard non trovata", 404);
   if (!oggettoJson(data)) return errore("Formato dashboard non valido.", 500);
 
-  const visibile = data.autore_id === pre.accesso.userId || data.visibilita === "condivisa";
+  const assegnate = await dashboardAssegnateA(pre.accesso.userId);
+  const visibile = dashboardVisibile(
+    pre.accesso,
+    { autore_id: String(data.autore_id), visibilita: String(data.visibilita) },
+    assegnate.has(id)
+  );
   if (!visibile) {
     await registraOperazione(pre.accesso, "negato", { errore: "Dashboard non visibile." });
     return negato("Non puoi aprire questa dashboard.");

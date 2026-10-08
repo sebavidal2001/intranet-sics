@@ -17,10 +17,12 @@ export type ChiaveDataset =
   | "controllo_banco"
   | "consegnato_futuro_per_mese"
   /** Righe d'ordine a fornitore (migration 118), viste come fatti del motore. */
-  | "acquisti";
+  | "acquisti"
+  /** Visite dei commerciali (migration 145), una riga per visita. */
+  | "visite";
 
 /** I dataset che vengono dalle viste delle vendite: tutti sempre presenti. */
-export type ChiaveDatasetVendite = Exclude<ChiaveDataset, "acquisti">;
+export type ChiaveDatasetVendite = Exclude<ChiaveDataset, "acquisti" | "visite">;
 
 /** Riga normalizzata: le viste hanno tutte la stessa forma, salvo i preventivi. */
 export interface RigaFatto {
@@ -55,6 +57,15 @@ export interface RigaFatto {
   valoreResiduo?: number;
   /** Giorni dall'ordine al primo arrivo. */
   giorniConsegna?: number | null;
+  // ── Solo sulle visite dei commerciali ────────────────────────────────────
+  /** CAP della visita (destinazione, altrimenti anagrafica): la mappa si regge su questo. */
+  cap?: string;
+  localita?: string;
+  provincia?: string;
+  /** Grado della visita (es. "conoscitiva"). */
+  grado?: string;
+  /** Tipo di visita (es. "presentazione preventivo"). */
+  tipoVisita?: string;
   /** Solo sull'ordinato: data di consegna chiesta dal cliente. */
   dataConsegnaRichiesta?: string;
   /** Solo sull'ordinato: data di consegna confermata al cliente. */
@@ -133,6 +144,8 @@ export interface Snapshot {
   dataset: Record<ChiaveDatasetVendite, RigaFatto[]> & {
     /** Assente se la vista bi_acquisti non e' raggiungibile. */
     acquisti?: RigaFatto[];
+    /** Assente se la vista bi_visite non e' raggiungibile. */
+    visite?: RigaFatto[];
   };
   conteggi: Record<string, number>;
   /**
@@ -318,7 +331,9 @@ export type ChiaveMetrica =
   | "puntualita_fornitori"
   | "giorni_consegna_fornitori"
   | "acquisti_da_sollecitare"
-  | "acquisti_valore_da_sollecitare";
+  | "acquisti_valore_da_sollecitare"
+  // ── Visite dei commerciali ──────────────────────────────────────────────
+  | "visite_numero";
 
 export type Modificatore =
   | "corrente"
@@ -360,7 +375,14 @@ export type Dimensione =
   /** Fornitore della riga d'ordine d'acquisto. */
   | "fornitore"
   /** Chi ha emesso l'ordine a fornitore. */
-  | "buyer";
+  | "buyer"
+  // ── Solo sulle visite ───────────────────────────────────────────────────
+  /** CAP della visita: la dimensione della mappa. */
+  | "cap"
+  | "provincia"
+  /** Grado della visita. */
+  | "grado"
+  | "tipo_visita";
 
 /** Separatore dei valori di `bu_categoria`: `${bu}${SEPARATORE_RAMO}${categoria}`. */
 export const SEPARATORE_RAMO = " › ";

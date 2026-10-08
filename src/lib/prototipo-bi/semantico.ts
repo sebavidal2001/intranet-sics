@@ -419,6 +419,18 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     unita: "euro",
     valore: (r) => (r.scaduta ? (r.valoreResiduo ?? 0) : 0),
   },
+  // ── Visite dei commerciali ────────────────────────────────────────────────
+  // La data di riga e' quella della visita. Il gestionale non registra l'ora:
+  // dentro una giornata le visite sono distinguibili solo per ordine di
+  // registrazione (dimensione "documento", che qui e' l'id della visita).
+  visite_numero: {
+    chiave: "visite_numero",
+    etichetta: "Visite",
+    descrizione: "Numero di visite registrate dai commerciali, per data della visita.",
+    dataset: "visite",
+    aggregazione: "conta_righe",
+    unita: "numero",
+  },
   // Budget e BEP non vengono dallo snapshot: sono iniettati dal motore budget.
   budget: {
     chiave: "budget",
@@ -439,12 +451,15 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
 };
 
 const SOLO_ACQUISTI = new Set<Dimensione>(["fornitore", "buyer"]);
+const SOLO_VISITE = new Set<Dimensione>(["cap", "provincia", "grado", "tipo_visita"]);
 
-/** Vero se la dimensione appartiene all'altro dominio (acquisti ↔ vendite). */
+/** Vero se la dimensione appartiene a un altro dominio (acquisti, visite, vendite). */
 export function dimensioneFuoriDominio(metrica: ChiaveMetrica, dimensione: Dimensione): boolean {
-  const acquisti = CATALOGO[metrica]?.dataset === "acquisti";
-  if (acquisti) return !dimensioniPerMetrica(metrica).includes(dimensione);
-  return SOLO_ACQUISTI.has(dimensione);
+  const dataset = CATALOGO[metrica]?.dataset;
+  if (dataset === "acquisti" || dataset === "visite") {
+    return !dimensioniPerMetrica(metrica).includes(dimensione);
+  }
+  return SOLO_ACQUISTI.has(dimensione) || SOLO_VISITE.has(dimensione);
 }
 
 export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: RigaFatto) => string }> = {
@@ -454,6 +469,10 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
   categoria: { etichetta: "Categoria", estrai: (r) => r.categoria },
   fornitore: { etichetta: "Fornitore", estrai: (r) => r.fornitore ?? "" },
   buyer: { etichetta: "Buyer", estrai: (r) => r.buyer ?? "" },
+  cap: { etichetta: "CAP", estrai: (r) => r.cap || "(senza CAP)" },
+  provincia: { etichetta: "Provincia", estrai: (r) => r.provincia || "(senza provincia)" },
+  grado: { etichetta: "Grado visita", estrai: (r) => r.grado || "(non indicato)" },
+  tipo_visita: { etichetta: "Tipo visita", estrai: (r) => r.tipoVisita || "(non indicato)" },
   bu_categoria: {
     etichetta: "Business unit › categoria",
     estrai: (r) => `${r.bu}${SEPARATORE_RAMO}${r.categoria || "-"}`,

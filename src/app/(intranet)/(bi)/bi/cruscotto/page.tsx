@@ -24,7 +24,7 @@ import { verificaAccessoSicuro } from "@/lib/prototipo-bi/accesso";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Cruscotto — BI Direzionale",
+  title: "Cruscotto — Statistiche BI",
 };
 
 export default async function PaginaCruscotto() {

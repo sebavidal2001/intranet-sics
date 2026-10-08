@@ -40,13 +40,15 @@ const VOCI = [
  */
 const RAMI_DASHBOARD = ["/bi/dashboard", "/bi/cruscotto", "/bi/analisi", "/bi/esplora"];
 
-export function NavigazionePrototipo() {
+export function NavigazionePrototipo({ soloDashboard = false }: { soloDashboard?: boolean }) {
   const percorso = usePathname();
+  // Chi riceve solo dashboard assegnate ha una sola destinazione.
+  const voci = soloDashboard ? VOCI.filter((v) => v.href === "/bi/dashboard") : VOCI;
 
   return (
     <nav className="border-b border-border bg-bg/80 backdrop-blur-sm sticky top-0 z-20">
       <div className="max-w-[1600px] mx-auto px-4 flex items-center gap-1 overflow-x-auto">
-        {VOCI.map((v) => {
+        {voci.map((v) => {
           const rami = v.href === "/bi/dashboard" ? RAMI_DASHBOARD : [v.href];
           const attivo = rami.some(
             (ramo) => percorso === ramo || (ramo !== "/bi" && percorso.startsWith(`${ramo}/`))

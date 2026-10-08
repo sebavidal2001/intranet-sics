@@ -12,9 +12,11 @@ import {
   Pencil,
   Plus,
   Trash2,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
+import { AssegnaDashboard } from "./assegna-dashboard";
 
 /**
  * Questa pagina è diventata il punto d’ingresso unico ai dati organizzati.
@@ -39,6 +41,7 @@ interface DashboardElenco {
   aggiornato_il: string;
   di_sistema: boolean;
   modificabile: boolean;
+  assegnata?: boolean;
 }
 
 function erroreDa(valore: unknown, ripiego: string): string {
@@ -60,13 +63,23 @@ export function DashboardList() {
   const [modificaId, setModificaId] = useState<string | null>(null);
   const [titoloModifica, setTitoloModifica] = useState("");
   const [azioneInCorso, setAzioneInCorso] = useState<string | null>(null);
+  const [puoCreare, setPuoCreare] = useState(true);
+  const [puoAssegnare, setPuoAssegnare] = useState(false);
+  const [assegnaA, setAssegnaA] = useState<DashboardElenco | null>(null);
 
   useEffect(() => {
     void fetch("/api/bi/dashboard")
       .then(async (risposta) => {
-        const corpo = (await risposta.json()) as { dashboard?: DashboardElenco[]; error?: string };
+        const corpo = (await risposta.json()) as {
+          dashboard?: DashboardElenco[];
+          puoCreare?: boolean;
+          puoAssegnare?: boolean;
+          error?: string;
+        };
         if (!risposta.ok) throw new Error(erroreDa(corpo, "Impossibile leggere le dashboard."));
         setDashboard(corpo.dashboard ?? []);
+        setPuoCreare(corpo.puoCreare !== false);
+        setPuoAssegnare(corpo.puoAssegnare === true);
       })
       .catch((causa: unknown) => setErrore(causa instanceof Error ? causa.message : "Impossibile leggere le dashboard."))
       .finally(() => setCaricamento(false));
@@ -138,9 +151,9 @@ export function DashboardList() {
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="font-tenorite text-3xl font-bold tracking-[-0.02em]">Dashboard</h1>
-            <p className="mt-1 max-w-2xl text-sm text-text-muted">Le tue pagine di grafici. Ognuna si ricalcola sui filtri che scegli e sui dati che puoi vedere tu.</p>
+            <p className="mt-1 max-w-2xl text-sm text-text-muted">{puoCreare ? "Le tue pagine di grafici. Ognuna si ricalcola sui filtri che scegli e sui dati che puoi vedere tu." : "Le dashboard che la direzione ha preparato per te. Si aggiornano da sole sui tuoi dati."}</p>
           </div>
-          <button type="button" onClick={() => setCreazione(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Nuova dashboard</button>
+          {puoCreare && <button type="button" onClick={() => setCreazione(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Nuova dashboard</button>}
         </header>
 
         {/*
@@ -148,7 +161,7 @@ export function DashboardList() {
           trova qui, con una riga che dice a cosa servono invece di lasciarlo
           dedurre dal nome.
         */}
-        <nav aria-label="Altre viste" className="mb-8 grid gap-3 sm:grid-cols-2">
+        {puoCreare && <nav aria-label="Altre viste" className="mb-8 grid gap-3 sm:grid-cols-2">
           <Link href="/bi/cruscotto" className="group flex items-start gap-3 rounded-xl border border-border bg-bg p-4 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <Gauge className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
             <span className="min-w-0">
@@ -163,7 +176,7 @@ export function DashboardList() {
               <span className="mt-0.5 block text-sm text-text-muted">Quelli già fatti: da qui si riaprono, si correggono e si eliminano quelli che non servono più.</span>
             </span>
           </Link>
-        </nav>
+        </nav>}
 
         {errore && <div role="alert" className="mb-5 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{errore}</div>}
 
@@ -182,7 +195,7 @@ export function DashboardList() {
         {caricamento ? (
           <div className="flex min-h-48 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Carico le dashboard…</div>
         ) : dashboard.length === 0 ? (
-          <section className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-10 text-center"><LayoutDashboard className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Ancora nessuna dashboard</h2><p className="mt-1 max-w-md text-sm text-text-muted">Crea uno spazio per tenere insieme i grafici che guardi di seguito.</p><button type="button" onClick={() => setCreazione(true)} className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Crea la prima dashboard</button></section>
+          <section className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-10 text-center"><LayoutDashboard className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">{puoCreare ? "Ancora nessuna dashboard" : "Nessuna dashboard assegnata"}</h2><p className="mt-1 max-w-md text-sm text-text-muted">{puoCreare ? "Crea uno spazio per tenere insieme i grafici che guardi di seguito." : "Quando la direzione te ne assegnerà una, la troverai qui."}</p>{puoCreare && <button type="button" onClick={() => setCreazione(true)} className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Plus className="h-4 w-4" aria-hidden />Crea la prima dashboard</button>}</section>
         ) : (
           <div className="divide-y divide-border border-y border-border bg-bg">
             {dashboard.map((voce) => (
@@ -196,7 +209,7 @@ export function DashboardList() {
                     </form>
                   ) : (
                     <Link href={`/bi/dashboard/${voce.id}`} className="group block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                      <div className="flex flex-wrap items-center gap-2"><h2 className="truncate font-tenorite text-lg font-bold group-hover:text-primary">{voce.titolo}</h2>{voce.di_sistema ? <span className="inline-flex items-center gap-1 rounded-full border border-primary px-2 py-0.5 text-[11px] font-semibold text-primary"><LayoutDashboard className="h-3 w-3" aria-hidden />Cruscotto di sistema</span> : voce.visibilita === "condivisa" ? <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted"><Users className="h-3 w-3" aria-hidden />Condivisa</span> : null}</div>
+                      <div className="flex flex-wrap items-center gap-2"><h2 className="truncate font-tenorite text-lg font-bold group-hover:text-primary">{voce.titolo}</h2>{voce.di_sistema ? <span className="inline-flex items-center gap-1 rounded-full border border-primary px-2 py-0.5 text-[11px] font-semibold text-primary"><LayoutDashboard className="h-3 w-3" aria-hidden />Cruscotto di sistema</span> : voce.assegnata && !voce.modificabile ? <span className="inline-flex items-center gap-1 rounded-full border border-primary px-2 py-0.5 text-[11px] font-semibold text-primary"><UserPlus className="h-3 w-3" aria-hidden />Assegnata a te</span> : voce.visibilita === "condivisa" ? <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted"><Users className="h-3 w-3" aria-hidden />Condivisa</span> : null}</div>
                       {voce.descrizione && <p className="mt-1 text-sm text-text-muted">{voce.descrizione}</p>}
                       {voce.di_sistema && <p className="mt-2 text-xs text-text-muted">È la copia modificabile del Cruscotto: contiene i riquadri che nascono da una sola domanda, non i pannelli compositi. Duplicala per costruirci sopra la tua versione.</p>}
                     </Link>
@@ -205,6 +218,7 @@ export function DashboardList() {
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-text-muted">
                   <span>{voce.conteggio_pagine} {voce.conteggio_pagine === 1 ? "pagina" : "pagine"}</span>
                   <span>{new Date(voce.aggiornato_il).toLocaleDateString("it-IT")}</span>
+                  {puoAssegnare && !voce.di_sistema && <button type="button" onClick={() => setAssegnaA(voce)} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 font-semibold text-text-muted hover:bg-bg-page hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={`Assegna ${voce.titolo}`}><UserPlus className="h-4 w-4" aria-hidden />Assegna</button>}
                   {voce.modificabile && <button type="button" onClick={() => { setModificaId(voce.id); setTitoloModifica(voce.titolo); }} className="rounded-lg p-2 text-text-muted hover:bg-bg-page hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={`Rinomina ${voce.titolo}`}><Pencil className="h-4 w-4" aria-hidden /></button>}
                   {voce.modificabile && <button type="button" onClick={() => void eliminaDashboard(voce)} disabled={azioneInCorso !== null} className="rounded-lg p-2 text-text-muted hover:bg-bg-page hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50" aria-label={`Elimina ${voce.titolo}`}>{azioneInCorso === `elimina-${voce.id}` ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}</button>}
                   <Link href={`/bi/dashboard/${voce.id}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 font-semibold text-primary hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Apri<ArrowRight className="h-4 w-4" aria-hidden /></Link>
@@ -214,6 +228,7 @@ export function DashboardList() {
           </div>
         )}
       </div>
+      {assegnaA && <AssegnaDashboard dashboardId={assegnaA.id} titolo={assegnaA.titolo} onChiudi={() => setAssegnaA(null)} />}
     </main>
   );
 }

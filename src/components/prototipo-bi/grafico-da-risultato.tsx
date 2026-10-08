@@ -40,6 +40,7 @@ import {
 } from "./grafici-nuovi";
 import { AspettoLocale, useImpostazioni } from "./impostazioni";
 import { BarreImpilate, datiBarreImpilate } from "./barre-impilate";
+import { MappaVisite } from "./mappa-visite";
 import {
   COLONNA_VOCE,
   TabellaAnalitica,
@@ -685,6 +686,8 @@ export function GraficoDaRisultato({
       return <Flusso risultato={risultato} altezza={altezza} onClick={onClickEtichetta} />;
     case "istogramma":
       return <Istogramma risultato={risultato} altezza={altezza} />;
+    case "mappa":
+      return <MappaVisite risultato={risultato} altezza={altezza} />;
   }
 }
 
