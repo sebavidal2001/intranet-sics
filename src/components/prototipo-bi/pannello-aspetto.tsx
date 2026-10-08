@@ -13,12 +13,13 @@
  */
 
 import { useState } from "react";
-import { ChevronDown, Palette, RotateCcw } from "lucide-react";
+import { ChevronDown, Palette, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { COLORI_BU, COLORI_SICS, coloreFissato } from "@/lib/prototipo-bi/aspetto";
 import type {
   AggregazioneTotale,
   AspettoAsse,
   AspettoGrafico,
+  DifferenzaTabella,
   PosizioneLegenda,
 } from "@/lib/prototipo-bi/tipi";
 import { NOMI_AGGREGAZIONE } from "./tabella-analitica";
@@ -191,12 +192,15 @@ export function PannelloAspetto({
   aspetto,
   onCambia,
   nomiSerie,
+  ruoliSerie = [],
   categorie,
 }: {
   aspetto: AspettoGrafico | null;
   onCambia: (aspetto: AspettoGrafico | null) => void;
   /** Le misure del riquadro, nell'ordine in cui prendono i colori della palette. */
   nomiSerie: string[];
+  /** Il ruolo di ogni misura, nello stesso ordine: serve a mostrare la differenza automatica. */
+  ruoliSerie?: string[];
   /** Le voci della prima suddivisione (business unit, agenti…), se ce n'è una. */
   categorie: string[];
 }) {
@@ -223,6 +227,34 @@ export function PannelloAspetto({
       .filter((nome) => !nomiSerie.includes(nome))
       .map((nome, i) => ({ nome, gruppo: "Voci", indice: i })),
   ];
+  // Le differenze in tabella. Finche' l'utente non le tocca vale il comportamento
+  // storico — una misura «confronto» ne produce una da sola — e qui si mostra
+  // come riga normale, cosi' si capisce da dove viene e si puo' togliere.
+  const iPrincipale = Math.max(0, ruoliSerie.indexOf("principale"));
+  const iConfronto = ruoliSerie.findIndex((r) => r === "confronto");
+  const differenzeAutomatiche: DifferenzaTabella[] =
+    iConfronto >= 0 && iConfronto !== iPrincipale ? [{ da: iPrincipale, con: iConfronto }] : [];
+  const differenzeScelte = corrente.tabella?.differenze;
+  const differenze = differenzeScelte ?? differenzeAutomatiche;
+
+  function impostaDifferenze(nuove: DifferenzaTabella[]) {
+    aggiorna({ tabella: senzaVuoti({ ...corrente.tabella, differenze: nuove }) });
+  }
+  function cambiaDifferenza(indice: number, parziale: Partial<DifferenzaTabella>) {
+    impostaDifferenze(
+      differenze.map((d, i) => {
+        if (i !== indice) return d;
+        const nuova = { ...d, ...parziale };
+        return nuova.modo === "assoluta" ? { da: nuova.da, con: nuova.con } : nuova;
+      })
+    );
+  }
+  function aggiungiDifferenza() {
+    const con = nomiSerie.findIndex((_, i) => i !== iPrincipale);
+    if (con < 0) return;
+    impostaDifferenze([...differenze, { da: iPrincipale, con }]);
+  }
+
   const ordinamento =
     ORDINAMENTI.find(
       (voce) => voce.ordinaPer === corrente.tabella?.ordinaPer && voce.verso === corrente.tabella?.verso
@@ -390,6 +422,71 @@ export function PannelloAspetto({
                   ))}
                 </select>
               </label>
+            </div>
+            <div className="mt-3 border-t border-border pt-3">
+              <p className="text-xs font-medium">Differenze</p>
+              <p className="mt-0.5 text-xs text-text-muted">
+                {differenzeScelte === undefined && differenzeAutomatiche.length > 0
+                  ? "Questa differenza compare da sola perché una misura ha il ruolo «Confronto». Cambiala o toglila per decidere tu quali mostrare."
+                  : "Aggiungi una colonna solo dove ti serve: scegli le due misure da sottrarre."}
+              </p>
+              {nomiSerie.length < 2 ? (
+                <p className="mt-2 text-xs text-text-muted">Servono almeno due misure nel riquadro.</p>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  {differenze.map((d, indice) => (
+                    <div key={indice} className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-text-muted">Δ</span>
+                      <select
+                        aria-label="Misura da cui sottrarre"
+                        value={d.da}
+                        onChange={(e) => cambiaDifferenza(indice, { da: Number(e.target.value) })}
+                        className={CLASSE_CAMPO}
+                      >
+                        {nomiSerie.map((nome, i) => (
+                          <option key={i} value={i}>{nome}</option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-text-muted">−</span>
+                      <select
+                        aria-label="Misura da sottrarre"
+                        value={d.con}
+                        onChange={(e) => cambiaDifferenza(indice, { con: Number(e.target.value) })}
+                        className={CLASSE_CAMPO}
+                      >
+                        {nomiSerie.map((nome, i) => (
+                          <option key={i} value={i}>{nome}</option>
+                        ))}
+                      </select>
+                      <select
+                        aria-label="Tipo di differenza"
+                        value={d.modo ?? "assoluta"}
+                        onChange={(e) => cambiaDifferenza(indice, { modo: e.target.value as "assoluta" | "percentuale" })}
+                        className={CLASSE_CAMPO}
+                      >
+                        <option value="assoluta">in valore</option>
+                        <option value="percentuale">in percentuale</option>
+                      </select>
+                      <button
+                        type="button"
+                        aria-label="Togli la differenza"
+                        onClick={() => impostaDifferenze(differenze.filter((_, i) => i !== indice))}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-danger focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={aggiungiDifferenza}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-primary hover:bg-bg-page focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden />
+                    Aggiungi una differenza
+                  </button>
+                </div>
+              )}
             </div>
             <p className="mt-2 text-xs text-text-muted">
               Valgono quando il riquadro è mostrato come tabella. Da lì si può comunque riordinare cliccando le intestazioni.

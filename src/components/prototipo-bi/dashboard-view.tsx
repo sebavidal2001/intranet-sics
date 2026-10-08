@@ -23,7 +23,7 @@ import { SelettoreValori } from "./selettore-valori";
 import { SceltaGrafico } from "./scelta-grafico";
 import { SelettoreAnni } from "./selettore-anni";
 import { anniDelPeriodo } from "@/lib/prototipo-bi/periodo";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -49,7 +49,8 @@ import { GraficoDaAnalisi } from "./grafico-da-risultato";
 import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti";
 import { DATASET_DI_METRICA } from "@/lib/prototipo-bi/gruppi-campi";
 import { preparaEsecuzioneAnalisi } from "@/lib/prototipo-bi/analisi-composita";
-import type { FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
+import { applicaFiltriIncrociati, type FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
+import { DIMENSIONI } from "@/lib/prototipo-bi/semantico";
 import { TIPI_GRAFICO, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type {
   AspettoGrafico,
@@ -189,6 +190,13 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
    */
   const [dettaglio, setDettaglio] = useState<RichiestaPannello | null>(null);
   const [duplicazioneInCorso, setDuplicazioneInCorso] = useState(false);
+  /**
+   * I filtri nati dal clic su un grafico. Stanno solo qui: non si salvano con la
+   * pagina e quindi funzionano anche per chi la dashboard l'ha solo ricevuta.
+   */
+  const [incrociati, setIncrociati] = useState<Filtro[]>([]);
+  /** Se l'ultimo clic aveva Ctrl/Alt/Cmd: in quel caso si aprono i documenti invece di filtrare. */
+  const clicPerDocumenti = useRef(false);
 
   const caricaDashboard = useCallback(async () => {
     if (!dashboardId) return;
@@ -219,6 +227,13 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     () => dashboard?.pagine.find((pagina) => pagina.id === paginaAttivaId) ?? dashboard?.pagine[0] ?? null,
     [dashboard, paginaAttivaId]
   );
+
+  // Cambiando pagina il filtro incrociato non la segue: un filtro «IMA» scelto
+  // sulla sintesi non deve restare acceso, invisibile, su una pagina diversa.
+  useEffect(() => {
+    // Stessa identita' se e' gia' vuoto: un nuovo array rieseguirebbe tutti i riquadri per niente.
+    setIncrociati((correnti) => (correnti.length === 0 ? correnti : []));
+  }, [paginaAttiva?.id]);
 
   /**
    * Apre i documenti dietro una categoria cliccata su un riquadro.
@@ -255,6 +270,33 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     [paginaAttiva]
   );
 
+  /**
+   * Il clic su un grafico accende (o spegne) il filtro su quel valore per tutti
+   * i riquadri della pagina, come nel Cruscotto. Ctrl/Alt/Cmd+clic apre invece i
+   * documenti dietro il punto, che prima era l'unico effetto del clic.
+   *
+   * Si filtra solo quando il riquadro ha UNA suddivisione: con due, l'etichetta
+   * è una coppia e non si sa a quale delle due appartiene il valore.
+   */
+  const cliccaEtichetta = useCallback(
+    (riquadro: RiquadroDashboard, etichetta: string) => {
+      const dimensioni = riquadro.analisi.spec.raggruppa ?? [];
+      if (clicPerDocumenti.current || dimensioni.length !== 1) {
+        apriDocumenti(riquadro, etichetta);
+        return;
+      }
+      const campo = dimensioni[0];
+      setIncrociati((correnti) => {
+        const esistente = correnti.find((f) => f.campo === campo);
+        const altri = correnti.filter((f) => f.campo !== campo);
+        return esistente && esistente.valore === etichetta
+          ? altri
+          : [...altri, { campo, op: "eq", valore: etichetta }];
+      });
+    },
+    [apriDocumenti]
+  );
+
   const specsBatch = useMemo(() => {
     if (!paginaAttiva) return [];
     return paginaAttiva.riquadri.flatMap((riquadro) =>
@@ -262,15 +304,25 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
         { spec: riquadro.analisi.spec, serie: riquadro.analisi.serie },
         filtriPuliti(paginaAttiva.filtri),
         riquadro.id
-      ).map((voce) => ({
-        id: voce.id,
-        spec: voce.spec,
-        ruolo: voce.ruolo,
-        nome: voce.nome,
-        ignorati: voce.filtriPaginaIgnorati,
-      }))
+      ).map((voce) => {
+        // Un riquadro che suddivide per la stessa dimensione non si filtra da solo:
+        // altrimenti il grafico cliccato si ridurrebbe alla sola barra scelta e non
+        // si potrebbe piu' passare a un'altra. Resta intero, come nel Cruscotto.
+        const dimensioniRiquadro = riquadro.analisi.spec.raggruppa ?? [];
+        const incrocio = applicaFiltriIncrociati(
+          voce.spec,
+          incrociati.filter((f) => !dimensioniRiquadro.includes(f.campo))
+        );
+        return {
+          id: voce.id,
+          spec: incrocio.spec,
+          ruolo: voce.ruolo,
+          nome: voce.nome,
+          ignorati: [...voce.filtriPaginaIgnorati, ...incrocio.ignorati],
+        };
+      })
     );
-  }, [paginaAttiva]);
+  }, [paginaAttiva, incrociati]);
 
   // Caricamento nuovo sul server: si rieseguono i riquadri, senza ricaricare
   // la pagina ne' perdere la pagina di dashboard aperta.
@@ -319,7 +371,22 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
     };
   }, [specsBatch, generazioneDati]);
 
-  const modificabile = dashboard?.modificabile ?? Boolean(dashboardIniziale);
+  // «Può modificare» (autore, non Cruscotto di sistema) e «sta modificando» sono
+  // due cose: una dashboard si apre SEMPRE in visualizzazione, e i comandi di
+  // modifica compaiono solo dopo il clic su «Modifica». `modificabile` resta il
+  // nome di «sta modificando» perché è quello che gate-a tutti i comandi sotto.
+  const puoModificare = dashboard?.modificabile ?? Boolean(dashboardIniziale);
+  const [inModifica, setInModifica] = useState(false);
+  const modificabile = puoModificare && inModifica;
+
+  // Una dashboard appena creata è vuota: non c'è niente da guardare, quindi si
+  // apre già in modifica. Una volta sola, al primo caricamento.
+  const apertaInModificaPerVuota = useRef(false);
+  useEffect(() => {
+    if (apertaInModificaPerVuota.current || !dashboard || !puoModificare) return;
+    apertaInModificaPerVuota.current = true;
+    if (dashboard.pagine.every((pagina) => pagina.riquadri.length === 0)) setInModifica(true);
+  }, [dashboard, puoModificare]);
 
   function sostituisciPagina(pagina: PaginaDashboard) {
     setDashboard((corrente) => corrente ? {
@@ -472,7 +539,10 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
   }
 
   const filtri = filtriPuliti(paginaAttiva?.filtri);
-  const filtriModificabili = modificabile || dashboard.di_sistema === true;
+  // I filtri della pagina si possono muovere sempre, anche da chi la dashboard
+  // l'ha solo ricevuta: in visualizzazione valgono per chi guarda e non si
+  // salvano; si salvano solo se chi li cambia sta modificando.
+  const filtriModificabili = true;
   const anniPagina = anniDelPeriodo(filtri.periodo);
   const modalitaPeriodo = anniPagina ? "anno" : "intervallo";
   function cambiaAnniPagina(anni: number[]) {
@@ -492,7 +562,11 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-text-muted">
             <span className="rounded-full border border-border bg-bg px-2.5 py-1">{dashboard.visibilita === "condivisa" ? "Condivisa" : "Privata"}</span>
-            {modificabile && <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm font-semibold text-text hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">
+            {puoModificare && <button type="button" onClick={() => setInModifica((v) => !v)} aria-pressed={inModifica} className={`inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${inModifica ? "bg-primary text-white hover:bg-primary-dark" : "border border-border bg-bg text-text hover:bg-bg-page"}`}>
+              {inModifica ? <Check className="h-4 w-4" aria-hidden /> : <Pencil className="h-4 w-4" aria-hidden />}
+              {inModifica ? "Fine modifica" : "Modifica"}
+            </button>}
+            {puoModificare && <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm font-semibold text-text hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">
               {duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
               Duplica
             </button>}
@@ -606,6 +680,26 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
               />
             )}
 
+            {incrociati.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm" role="status">
+                <span className="text-xs font-semibold uppercase tracking-wide text-primary">Filtro dal grafico</span>
+                {incrociati.map((f) => (
+                  <button
+                    key={f.campo}
+                    type="button"
+                    onClick={() => setIncrociati((correnti) => correnti.filter((x) => x.campo !== f.campo))}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary bg-bg px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`Togli il filtro ${DIMENSIONI[f.campo]?.etichetta ?? f.campo} ${String(f.valore)}`}
+                  >
+                    {DIMENSIONI[f.campo]?.etichetta ?? f.campo}: {String(f.valore)}
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                ))}
+                <button type="button" onClick={() => setIncrociati([])} className="text-xs text-text-muted underline hover:text-text">Togli tutti</button>
+                <span className="ml-auto text-[11px] text-text-muted">Ctrl+clic su un grafico per i documenti</span>
+              </div>
+            )}
+
             {paginaAttiva.riquadri.length === 0 ? (
               <div className="flex min-h-64 flex-col items-center justify-center border-y border-dashed border-border py-12 text-center"><BarChart3 className="mb-3 h-8 w-8 text-primary" aria-hidden /><h2 className="font-tenorite text-xl font-bold">Questa pagina è ancora vuota</h2><p className="mt-1 max-w-md text-sm text-text-muted">{modificabile ? "Descrivi a parole cosa vuoi vedere, oppure spunta le misure che ti servono: il grafico compare qui, con questi filtri e con i dati che puoi vedere tu." : "Questa dashboard è condivisa e non si modifica direttamente. Fanne una copia tua per aggiungere il primo grafico."}</p>{modificabile ? <button type="button" onClick={() => setPannelloAggiungi(true)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-bg"><Plus className="h-4 w-4" aria-hidden />Aggiungi</button> : <button type="button" onClick={() => void duplicaDashboard()} disabled={duplicazioneInCorso} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-bg disabled:opacity-50">{duplicazioneInCorso ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}Duplica per modificare</button>}</div>
             ) : (
@@ -625,7 +719,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                     .map((voce) => erroriRiquadri[voce.id])
                     .find(Boolean);
                   return (
-                    <article key={riquadro.id} className={`col-span-12 min-w-0 rounded-xl border border-border bg-bg ${COLONNE[riquadro.larghezza] ?? "lg:col-span-6"}`}>
+                    <article key={riquadro.id} onClickCapture={(e) => { clicPerDocumenti.current = e.ctrlKey || e.altKey || e.metaKey; }} className={`col-span-12 min-w-0 rounded-xl border border-border bg-bg ${COLONNE[riquadro.larghezza] ?? "lg:col-span-6"}`}>
                       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
                         <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} fissato dentro il riquadro</p>}</div>
                         {modificabile && <div className="flex items-center gap-1">
@@ -645,7 +739,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                         </div>}
                       </header>
                       <div className="min-h-48 p-4">
-                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} aspetto={riquadro.analisi.aspetto} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => apriDocumenti(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
+                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} aspetto={riquadro.analisi.aspetto} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => cliccaEtichetta(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
                       </div>
                     </article>
                   );

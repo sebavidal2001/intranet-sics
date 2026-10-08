@@ -565,6 +565,21 @@ export function EditorAnalisi({
     };
     const nome = vocabolario?.metriche.find((voce) => voce.chiave === metricaConfronto)?.etichetta
       ?? metricaConfronto;
+    // Una misura in piu' non deve aggiungere da sola una colonna di differenza:
+    // si fissano le differenze che ci sono GIA' e quelle nuove le sceglie l'utente
+    // dal pannello Aspetto.
+    setAspetto((corrente) => {
+      if (corrente?.tabella?.differenze !== undefined) return corrente;
+      const iPrincipale = Math.max(0, serieAnalisi.findIndex((voce) => voce.ruolo === "principale"));
+      const iConfronto = serieAnalisi.findIndex((voce) => voce.ruolo === "confronto");
+      return {
+        ...(corrente ?? {}),
+        tabella: {
+          ...(corrente?.tabella ?? {}),
+          differenze: iConfronto >= 0 && iConfronto !== iPrincipale ? [{ da: iPrincipale, con: iConfronto }] : [],
+        },
+      };
+    });
     setSerieAggiuntive((correnti) => [
       ...correnti,
       { ruolo: "confronto", nome, spec: nuovaSpec },
@@ -1153,6 +1168,7 @@ export function EditorAnalisi({
               setMessaggioSalvataggio("");
             }}
             nomiSerie={serieAnalisi.map((voce) => voce.nome)}
+            ruoliSerie={serieAnalisi.map((voce) => voce.ruolo)}
             categorie={categorieDelRisultato}
           />
         </div>

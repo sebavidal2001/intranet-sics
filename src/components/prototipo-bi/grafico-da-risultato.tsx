@@ -2,6 +2,7 @@
 
 import type {
   AspettoGrafico,
+  DifferenzaTabella,
   RisultatoQuery,
   RigaRisultato,
   SerieAnalisiEseguita,
@@ -337,6 +338,95 @@ function tipoColonna(unita: UnitaMisura): ColonnaAnalitica["tipo"] {
   return "numero";
 }
 
+/**
+ * Le differenze da mostrare in tabella.
+ *
+ * Se l'utente le ha scelte (anche «nessuna») valgono quelle e basta. Altrimenti
+ * resta il comportamento storico: una misura con ruolo «confronto» produce da
+ * sola una differenza rispetto alla principale. Tenerlo evita di cambiare i
+ * riquadri gia' salvati; la scelta esplicita lo sostituisce.
+ */
+function differenzeEffettive(
+  serie: SerieAnalisiEseguita[],
+  principale: SerieAnalisiEseguita,
+  scelte: DifferenzaTabella[] | undefined
+): { elenco: DifferenzaTabella[]; storico: boolean } {
+  if (scelte !== undefined) return { elenco: scelte, storico: false };
+  const iPrincipale = serie.indexOf(principale);
+  const iConfronto = serie.findIndex((voce) => voce.ruolo === "confronto");
+  return {
+    elenco:
+      iConfronto >= 0 && iConfronto !== iPrincipale
+        ? [{ da: iPrincipale, con: iConfronto, modo: "assoluta" }]
+        : [],
+    storico: true,
+  };
+}
+
+/**
+ * Colonne e celle delle differenze.
+ *
+ * `colonnaDi` traduce una misura nella posizione della sua colonna `serie_N`
+ * (-1 se in questa tabella non c'e', per esempio una misura nel tempo dentro
+ * una tabella senza periodi): quella differenza semplicemente non si mostra.
+ */
+function costruisciDifferenze(
+  serie: SerieAnalisiEseguita[],
+  decise: { elenco: DifferenzaTabella[]; storico: boolean },
+  colonnaDi: (voce: SerieAnalisiEseguita) => number,
+  unita: UnitaMisura,
+  etichettaStorica: (confronto: SerieAnalisiEseguita) => string
+): {
+  colonne: ColonnaAnalitica[];
+  celle: (valore: (colonna: number) => number) => Record<string, number | null>;
+} {
+  const voci = decise.elenco.flatMap((d, k) => {
+    const vDa = serie[d.da];
+    const vCon = serie[d.con];
+    if (!vDa || !vCon || vDa === vCon) return [];
+    const a = colonnaDi(vDa);
+    const b = colonnaDi(vCon);
+    return a < 0 || b < 0 ? [] : [{ k, a, b, vDa, vCon, percentuale: d.modo === "percentuale" }];
+  });
+
+  const colonne = voci.map((v): ColonnaAnalitica => {
+    if (v.percentuale) {
+      return {
+        chiave: `diff_${v.k}`,
+        etichetta: `Δ% ${v.vDa.nome} su ${v.vCon.nome}`,
+        tipo: "delta_pct",
+        // Il totale e' il rapporto fra le somme, non la media delle percentuali.
+        totale: { tipo: "rapporto", numeratore: `_diff_${v.k}`, denominatore: `serie_${v.b}` },
+      };
+    }
+    return {
+      chiave: decise.storico ? "delta_confronto" : `diff_${v.k}`,
+      etichetta: decise.storico ? etichettaStorica(v.vCon) : `Δ ${v.vDa.nome} − ${v.vCon.nome}`,
+      tipo: unita === "euro" ? "delta_euro" : "numero",
+      unita,
+      totale: totaleAutomatico(unita),
+    };
+  });
+
+  return {
+    colonne,
+    celle: (valore) => {
+      const celle: Record<string, number | null> = {};
+      for (const v of voci) {
+        const differenza = valore(v.a) - valore(v.b);
+        if (v.percentuale) {
+          const base = valore(v.b);
+          celle[`diff_${v.k}`] = base === 0 ? null : (differenza / Math.abs(base)) * 100;
+          celle[`_diff_${v.k}`] = differenza;
+        } else {
+          celle[decise.storico ? "delta_confronto" : `diff_${v.k}`] = differenza;
+        }
+      }
+      return celle;
+    },
+  };
+}
+
 function chiaveCategoria(serie: SerieAnalisiEseguita, riga: RigaRisultato): string {
   const dimensione = serie.spec.raggruppa?.[0];
   return dimensione ? riga.chiavi[dimensione] ?? riga.etichetta : riga.etichetta;
@@ -351,14 +441,14 @@ function chiaveCategoria(serie: SerieAnalisiEseguita, riga: RigaRisultato): stri
  * restava una tabella senza numeri, o tutto schiacciato sulla categoria, e le
  * settimane e i mesi sparivano.
  */
-function tabellaComposita(serie: SerieAnalisiEseguita[]): {
+function tabellaComposita(serie: SerieAnalisiEseguita[], scelte?: DifferenzaTabella[]): {
   colonne: ColonnaAnalitica[];
   righe: RigaAnalitica[];
   temporale: boolean;
 } {
   const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
   if (!principale) return { colonne: [], righe: [], temporale: false };
-  if (principale.spec.granularita !== undefined) return tabellaCompositaNelTempo(serie, principale);
+  if (principale.spec.granularita !== undefined) return tabellaCompositaNelTempo(serie, principale, scelte);
   const nonTemporali = serie.filter((voce) => voce.spec.granularita === undefined);
   const fontiRighe = nonTemporali.length > 0 ? nonTemporali : [principale];
   const chiavi = new Set<string>();
@@ -372,16 +462,15 @@ function tabellaComposita(serie: SerieAnalisiEseguita[]): {
     tipo: indice === 0 ? "barra" : tipoColonna(voce.risultato.unita),
     unita: voce.risultato.unita,
   }));
-  const confronto = nonTemporali.find((voce) => voce.ruolo === "confronto");
   const obiettivo = nonTemporali.find((voce) => voce.ruolo === "obiettivo");
-  if (confronto) {
-    colonne.push({
-      chiave: "delta_confronto",
-      etichetta: "Delta",
-      tipo: principale.risultato.unita === "euro" ? "delta_euro" : "numero",
-      unita: principale.risultato.unita,
-    });
-  }
+  const differenze = costruisciDifferenze(
+    serie,
+    differenzeEffettive(serie, principale, scelte),
+    (voce) => nonTemporali.indexOf(voce),
+    principale.risultato.unita,
+    () => "Delta"
+  );
+  colonne.push(...differenze.colonne);
   if (obiettivo) {
     colonne.push({
       chiave: "raggiungimento",
@@ -409,9 +498,10 @@ function tabellaComposita(serie: SerieAnalisiEseguita[]): {
       celle[`serie_${indice}`] = mappe.get(voce)?.get(chiave) ?? 0;
     });
     const valorePrincipale = mappe.get(principale)?.get(chiave) ?? 0;
-    if (confronto) {
-      celle.delta_confronto = valorePrincipale - (mappe.get(confronto)?.get(chiave) ?? 0);
-    }
+    Object.assign(
+      celle,
+      differenze.celle((colonna) => mappe.get(nonTemporali[colonna])?.get(chiave) ?? 0)
+    );
     if (obiettivo) {
       const valoreObiettivo = mappe.get(obiettivo)?.get(chiave) ?? 0;
       celle.raggiungimento = valoreObiettivo === 0 ? null : (valorePrincipale / valoreObiettivo) * 100;
@@ -429,7 +519,8 @@ function tabellaComposita(serie: SerieAnalisiEseguita[]): {
 
 function tabellaCompositaNelTempo(
   serie: SerieAnalisiEseguita[],
-  principale: SerieAnalisiEseguita
+  principale: SerieAnalisiEseguita,
+  scelte?: DifferenzaTabella[]
 ): { colonne: ColonnaAnalitica[]; righe: RigaAnalitica[]; temporale: true } {
   // La principale per prima: e' la colonna con la barra e il termine di
   // paragone di delta e raggiungimento.
@@ -443,7 +534,6 @@ function tabellaCompositaNelTempo(
   const chiavi = [...new Set(mappe.flatMap((mappa) => [...mappa.keys()]))];
 
   const indiceObiettivo = ordinate.findIndex((voce) => voce.ruolo === "obiettivo");
-  const indiceConfronto = ordinate.findIndex((voce) => voce.ruolo === "confronto");
   const unitaPrincipale = principale.risultato.unita;
 
   const colonne: ColonnaAnalitica[] = ordinate.map((voce, indice) => ({
@@ -453,15 +543,14 @@ function tabellaCompositaNelTempo(
     unita: voce.risultato.unita,
     totale: totaleAutomatico(voce.risultato.unita),
   }));
-  if (indiceConfronto > 0) {
-    colonne.push({
-      chiave: "delta_confronto",
-      etichetta: `Δ ${ordinate[indiceConfronto].nome}`,
-      tipo: unitaPrincipale === "euro" ? "delta_euro" : "numero",
-      unita: unitaPrincipale,
-      totale: totaleAutomatico(unitaPrincipale),
-    });
-  }
+  const differenze = costruisciDifferenze(
+    serie,
+    differenzeEffettive(serie, principale, scelte),
+    (voce) => ordinate.indexOf(voce),
+    unitaPrincipale,
+    (confronto) => `Δ ${confronto.nome}`
+  );
+  colonne.push(...differenze.colonne);
   if (indiceObiettivo > 0) {
     colonne.push({
       chiave: "raggiungimento",
@@ -477,9 +566,7 @@ function tabellaCompositaNelTempo(
       celle[`serie_${indice}`] = mappa.get(chiave) ?? null;
     });
     const valorePrincipale = mappe[0].get(chiave) ?? 0;
-    if (indiceConfronto > 0) {
-      celle.delta_confronto = valorePrincipale - (mappe[indiceConfronto].get(chiave) ?? 0);
-    }
+    Object.assign(celle, differenze.celle((colonna) => mappe[colonna].get(chiave) ?? 0));
     if (indiceObiettivo > 0) {
       const atteso = mappe[indiceObiettivo].get(chiave) ?? 0;
       celle.raggiungimento = atteso === 0 ? null : (valorePrincipale / atteso) * 100;
@@ -721,7 +808,7 @@ function TabellaComposita({
   onClickRiga?: (etichetta: string) => void;
 }) {
   const { aspetto } = useImpostazioni();
-  const { temporale, ...dati } = tabellaComposita(serie);
+  const { temporale, ...dati } = tabellaComposita(serie, aspetto?.tabella?.differenze);
   return (
     <TabellaAnalitica
       {...dati}

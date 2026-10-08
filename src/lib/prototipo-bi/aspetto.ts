@@ -53,6 +53,8 @@ export const AGGREGAZIONI_TOTALE: AggregazioneTotale[] = [
   "nessuno",
 ];
 const MASSIMO_COLORI = 60;
+const MASSIMO_DIFFERENZE = 6;
+const MASSIMO_MISURE = 12;
 
 export class AspettoNonValido extends Error {}
 
@@ -158,6 +160,26 @@ export function validaAspetto(valore: unknown): AspettoGrafico | null {
     if (verso !== undefined && verso !== null) {
       if (verso !== "asc" && verso !== "desc") throw new AspettoNonValido("Verso di ordinamento non valido.");
       tabella.verso = verso;
+    }
+    const differenze = valore.tabella.differenze;
+    if (differenze !== undefined && differenze !== null) {
+      if (!Array.isArray(differenze) || differenze.length > MASSIMO_DIFFERENZE) {
+        throw new AspettoNonValido("Le differenze della tabella non sono valide.");
+      }
+      // Un elenco vuoto vale: significa «nessuna differenza, nemmeno quella automatica».
+      tabella.differenze = differenze.map((voce) => {
+        if (!oggetto(voce)) throw new AspettoNonValido("Differenza non valida.");
+        const { da, con, modo } = voce;
+        const indiceValido = (n: unknown): n is number =>
+          typeof n === "number" && Number.isInteger(n) && n >= 0 && n < MASSIMO_MISURE;
+        if (!indiceValido(da) || !indiceValido(con) || da === con) {
+          throw new AspettoNonValido("Una differenza confronta due misure diverse del riquadro.");
+        }
+        if (modo !== undefined && modo !== null && modo !== "assoluta" && modo !== "percentuale") {
+          throw new AspettoNonValido("Tipo di differenza non valido.");
+        }
+        return modo === "percentuale" ? { da, con, modo } : { da, con };
+      });
     }
     if (Object.keys(tabella).length > 0) aspetto.tabella = tabella;
   }

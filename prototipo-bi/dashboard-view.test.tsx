@@ -209,6 +209,8 @@ describe("Dashboard a pagine", () => {
       />
     );
 
+    expect(screen.queryByRole("button", { name: "Aggiungi" })).not.toBeInTheDocument(); // si apre in visualizzazione
+    fireEvent.click(screen.getByRole("button", { name: "Modifica" }));
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
     // L'ordine conta: descrivere a parole e' il gesto che riesce a tutti e apre
     // per primo. Chi cerca qualcosa di gia' fatto sa cosa sta cercando.

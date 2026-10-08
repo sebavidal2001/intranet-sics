@@ -14,7 +14,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { etichettaBusinessUnit, controllaTassonomia } from "./business-unit";
+import { etichettaBusinessUnit, controllaTassonomia, ricollocaNonAssegnate } from "./business-unit";
 import type { ChiaveDataset, ChiaveDatasetVendite, RigaFatto, Snapshot } from "./tipi";
 import { comeFatti, daVista, type RigaAcquisto } from "./acquisti";
 import { comeFatti as visiteComeFatti, daVista as visitaDaVista } from "./visite";
@@ -433,6 +433,23 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
   );
 
   const dataset = Object.fromEntries(risultati) as Snapshot["dataset"];
+
+  // Le righe senza gruppo (note, avvisi, spese) seguono la business unit del
+  // loro documento. Prima della sentinella della tassonomia: quella deve vedere
+  // solo cio' che il gestionale non ha saputo assegnare nemmeno cosi'.
+  let buResidue = 0;
+  let buValoreResiduo = 0;
+  for (const righe of Object.values(dataset)) {
+    const esito = ricollocaNonAssegnate(righe);
+    buResidue += esito.residue;
+    buValoreResiduo += esito.valoreResiduo;
+  }
+  if (buResidue > 0) {
+    console.warn(
+      `[BI] ${buResidue} righe restano senza business unit (documenti senza alcuna riga assegnata), valore ${Math.round(buValoreResiduo)} EUR`
+    );
+  }
+
   const acquisti = await caricaAcquisti();
   const visite = await caricaVisite();
 
@@ -563,10 +580,13 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * 5 (25/09/2026): `dataset.acquisti`, gli ordini a fornitore come fatti del
  * motore semantico (metriche acquisti_*, puntualita_fornitori, ...).
  *
+ * 7 (09/10/2026): le righe senza gruppo prendono la business unit del
+ * documento (`buDedotta`): cambia il valore di `bu` su migliaia di righe.
+ *
  * 6 (08/10/2026): `dataset.visite`, le visite dei commerciali (metrica
  * visite_numero; dimensioni cap, provincia, grado, tipo_visita).
  */
-const VERSIONE_FORMA = 6;
+const VERSIONE_FORMA = 7;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.

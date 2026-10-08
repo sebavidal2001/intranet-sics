@@ -109,6 +109,36 @@ export function fondiFiltriPaginaConEsito(
   };
 }
 
+/**
+ * I filtri nati dal CLIC su un grafico (il «filtro incrociato»).
+ *
+ * Non sono filtri della pagina: non si salvano, valgono finché si guarda e
+ * possono usarli anche gli utenti che la dashboard l'hanno solo ricevuta.
+ * Regole come quelle della pagina — la domanda del riquadro è più specifica —
+ * con un'aggiunta: su budget e BEP si applicano solo business unit e agente,
+ * le uniche dimensioni per cui esiste un obiettivo; su un cliente il riquadro
+ * risponderebbe con un errore invece che con un numero.
+ */
+export function applicaFiltriIncrociati(
+  spec: SpecQuery,
+  incrociati: Filtro[]
+): { spec: SpecQuery; ignorati: Dimensione[] } {
+  if (incrociati.length === 0) return { spec, ignorati: [] };
+  const famiglieSpec = new Set((spec.filtri ?? []).map((filtro) => famiglia(filtro.campo)));
+  const soloObiettivo = spec.metrica === "budget" || spec.metrica === "bep";
+  const nonApplicabile = (f: Filtro) =>
+    dimensioneFuoriDominio(spec.metrica, f.campo) ||
+    (soloObiettivo && f.campo !== "bu" && f.campo !== "agente");
+  const ignorati = incrociati.filter(
+    (f) => famiglieSpec.has(famiglia(f.campo)) || nonApplicabile(f)
+  );
+  const aggiunti = incrociati.filter((f) => !ignorati.includes(f));
+  return {
+    spec: aggiunti.length > 0 ? { ...spec, filtri: [...(spec.filtri ?? []), ...aggiunti] } : spec,
+    ignorati: ignorati.map((f) => f.campo),
+  };
+}
+
 export function fondiFiltriPagina(spec: SpecQuery, filtriPagina: FiltriPagina): SpecQuery {
   return fondiFiltriPaginaConEsito(spec, filtriPagina).spec;
 }

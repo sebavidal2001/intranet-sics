@@ -57,6 +57,12 @@ export interface RigaFatto {
   valoreResiduo?: number;
   /** Giorni dall'ordine al primo arrivo. */
   giorniConsegna?: number | null;
+  /**
+   * Vero se la business unit non e' quella del gestionale (la riga non aveva
+   * gruppo) ma quella del documento a cui appartiene. Vedi
+   * `ricollocaNonAssegnate` in business-unit.ts.
+   */
+  buDedotta?: boolean;
   // ── Solo sulle visite dei commerciali ────────────────────────────────────
   /** CAP della visita (destinazione, altrimenti anagrafica): la mappa si regge su questo. */
   cap?: string;
@@ -478,7 +484,26 @@ export interface AspettoGrafico {
     /** Chiave della colonna su cui ordinare; "voce" per l'etichetta. */
     ordinaPer?: string;
     verso?: "asc" | "desc";
+    /**
+     * Le colonne di differenza scelte a mano.
+     *
+     * `da` e `con` sono posizioni nell'elenco delle misure del riquadro
+     * (0 = la prima): la colonna mostra `da − con`, in valore o in percentuale
+     * su `con`.
+     *
+     * Assente = comportamento storico: se c'e' una misura con ruolo
+     * «confronto», una differenza fra la principale e quella. Presente, anche
+     * vuoto, = si mostrano ESATTAMENTE queste e nessuna in automatico.
+     */
+    differenze?: DifferenzaTabella[];
   };
+}
+
+export interface DifferenzaTabella {
+  da: number;
+  con: number;
+  /** Default: assoluta (nell'unita' della misura). */
+  modo?: "assoluta" | "percentuale";
 }
 
 export interface RigaRisultato {
