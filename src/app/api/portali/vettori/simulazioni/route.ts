@@ -158,6 +158,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Listino, carburante e supplementi dipendono dal giorno di spedizione: una
+    // bolla con una data diversa da quella simulata avrebbe un costo che non le
+    // appartiene (es. simulata il 31/10, bolla del 01/11 senza il supplemento).
+    if (bolla.dataDocumento !== simulazione.data) {
+      return NextResponse.json(
+        { error: "La data della bolla è diversa da quella della simulazione: ripeti la simulazione con la data di spedizione giusta." },
+        { status: 409 }
+      );
+    }
+    // Il costo che si salva deve essere quello che la simulazione ha calcolato
+    // per il vettore scelto, non un numero arrivato dal browser.
+    const costoCalcolato = scelto.calcolo?.totale;
+    if (costoCalcolato === undefined || Math.abs(costoCalcolato - simulazione.costoPrevisto) > 0.005) {
+      return NextResponse.json(
+        { error: "Il costo previsto non corrisponde alla simulazione: ripeti la simulazione." },
+        { status: 409 }
+      );
+    }
+
     const cap = simulazione.cap ?? null;
     const esitoCap = cap ? await risolviCap(cap) : null;
     const destinazione = cap

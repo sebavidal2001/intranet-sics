@@ -102,6 +102,44 @@ describe("simulazione vettori", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 
+  it("la data di spedizione scelta guida il calcolo e resta la stessa sulla bolla", async () => {
+    const vero = {
+      ...risposta,
+      data: "2026-11-02",
+      risultati: [{
+        ...risposta.risultati[0],
+        vettoreId: "00000000-0000-4000-8000-00000000a001",
+        listino: { id: "00000000-0000-4000-8000-00000000b001", etichetta: "Listino 2026", validoDal: "2026-01-01", validoAl: null },
+        differenzaDalMigliore: 0,
+      }],
+    };
+    const fetchMock = vi.fn().mockImplementation(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/cap/")) return { ok: true, status: 200, json: async () => capMilano };
+      if (url.endsWith("/simula")) return { ok: true, status: 200, json: async () => vero };
+      return { ok: true, status: 201, json: async () => ({ simulazioneId: "s1", spedizioneId: "b1", daNumerare: false }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SimulazioneView />);
+    compilaSpedizione();
+    fireEvent.change(screen.getByLabelText(/Data di spedizione/), { target: { value: "2026-11-02" } });
+    await screen.findByText("Milano (MI)");
+    fireEvent.click(screen.getByRole("button", { name: "Confronta i vettori" }));
+    const gls = await screen.findByRole("article", { name: "Vettore GLS Italy" });
+    fireEvent.click(within(gls).getByRole("button", { name: "Scegli" }));
+    fireEvent.click(screen.getByRole("button", { name: "Conferma e crea la bolla" }));
+    fireEvent.change(screen.getByLabelText("Numero bolla"), { target: { value: "2631" } });
+    fireEvent.change(screen.getByLabelText("Cliente/fornitore"), { target: { value: "Cliente Alfa" } });
+    fireEvent.click(screen.getByRole("button", { name: "Crea bolla" }));
+    await screen.findByText("Bolla creata");
+
+    const simula = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/simula"));
+    expect(JSON.parse(String(simula?.[1]?.body)).data).toBe("2026-11-02");
+    const conferma = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/simulazioni"));
+    const corpo = JSON.parse(String(conferma?.[1]?.body));
+    expect(corpo.simulazione.data).toBe("2026-11-02");
+    expect(corpo.bolla.dataDocumento).toBe("2026-11-02");
+  });
   it("il corpo della conferma passa lo schema del server, con l'addebito deciso al banco", async () => {
     // Con la risposta VERA di /simula (id uuid, listino con id) la conferma
     // tornava «Dati non validi»: il mock sopra non aveva l'id del listino e il

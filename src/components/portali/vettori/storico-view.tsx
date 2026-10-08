@@ -22,6 +22,7 @@ import type {
   RigaStorico,
   ValoriFiltroStorico,
 } from "@/lib/portali/vettori/tipi";
+import type { FiltriInizialiSpedizioni } from "@/lib/portali/vettori/storico-query";
 
 /**
  * Storico delle spedizioni registrate — quello che nei fogli erano le due
@@ -40,8 +41,9 @@ import type {
 interface Props {
   iniziali: EsitoStorico;
   valori: ValoriFiltroStorico;
-  /** Amministrazione: puo' annullare un aggancio fattura-bolla sbagliato. */
-  puoSganciare?: boolean;
+  filtriIniziali?: FiltriInizialiSpedizioni;
+  /** Amministrazione: puo' decidere gli agganci e verificare gli addebiti. */
+  puoGestire?: boolean;
 }
 
 const MESI = [
@@ -171,8 +173,8 @@ function corpoRichiesta(f: Filtri, perPagina = 100) {
   };
 }
 
-export function StoricoView({ iniziali, valori, puoSganciare = false }: Props) {
-  const [filtri, setFiltri] = useState<Filtri>(FILTRI_INIZIALI);
+export function StoricoView({ iniziali, valori, filtriIniziali, puoGestire = false }: Props) {
+  const [filtri, setFiltri] = useState<Filtri>(() => ({ ...FILTRI_INIZIALI, ...filtriIniziali }));
   const [dati, setDati] = useState(iniziali);
   const [inCorso, setInCorso] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
@@ -711,9 +713,11 @@ export function StoricoView({ iniziali, valori, puoSganciare = false }: Props) {
                       <th className="text-right font-semibold px-3 py-2" title="Addebito del trasporto al cliente: fissato in simulazione o calcolato dagli scaglioni (solo porto franco con addebito in fattura)">
                         Addebito cliente
                       </th>
-                      <th className="text-center font-semibold px-3 py-2" title="Spunta manuale: addebito verificato in fase di fatturazione al cliente">
-                        Verificato
-                      </th>
+                      {puoGestire ? (
+                        <th className="text-center font-semibold px-3 py-2" title="Spunta manuale: addebito verificato in fase di fatturazione al cliente">
+                          Verificato
+                        </th>
+                      ) : null}
                     </>
                   )}
                 </tr>
@@ -728,7 +732,7 @@ export function StoricoView({ iniziali, valori, puoSganciare = false }: Props) {
                     onApri={() => setAperta((v) => (v === r.id ? null : r.id))}
                     // Un oggetto nuovo con gli stessi filtri rilegge la pagina.
                     onAgganciata={() => setFiltri((f) => ({ ...f }))}
-                    puoSganciare={puoSganciare}
+                    puoGestire={puoGestire}
                     onVerificato={(verificatoIl) =>
                       setDati((correnti) => ({
                         ...correnti,
@@ -788,7 +792,7 @@ function Riga({
   onApri,
   onVerificato,
   onAgganciata,
-  puoSganciare = false,
+  puoGestire = false,
 }: {
   r: RigaStorico;
   conAddebito: boolean;
@@ -796,7 +800,7 @@ function Riga({
   onApri: () => void;
   onVerificato: (verificatoIl: string | null) => void;
   onAgganciata?: () => void;
-  puoSganciare?: boolean;
+  puoGestire?: boolean;
 }) {
   const differenza = r.fatturato != null && r.atteso != null ? r.fatturato - r.atteso : null;
   const senzaFattura = r.stato_fatturazione === "non_fatturata";
@@ -926,7 +930,7 @@ function Riga({
                 <span className="text-text-muted">—</span>
               )}
             </td>
-            <td className="px-3 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+            {puoGestire ? <td className="px-3 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
                 aria-label={`Addebito verificato per la bolla ${r.riferimento ?? ""}`}
@@ -943,7 +947,7 @@ function Riga({
                 onChange={(e) => void spunta(e.target.checked)}
               />
               {erroreSpunta && <span role="alert" className="block max-w-[140px] whitespace-normal text-[10px] text-danger">{erroreSpunta}</span>}
-            </td>
+            </td> : null}
           </>
         )}
       </tr>
@@ -951,7 +955,7 @@ function Riga({
       {aperta && (
         <tr className="border-t border-border/30 bg-bg-page/40">
           <td />
-          <td colSpan={conAddebito ? 12 : 10} className="px-3 py-3">
+          <td colSpan={10 + (conAddebito ? 1 : 0) + (conAddebito && puoGestire ? 1 : 0)} className="px-3 py-3">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-[12px]">
               <Blocco titolo="Pesi">
                 <Voce nome="Reale" valore={`${num(r.peso, 1)} kg`} />
@@ -1014,10 +1018,10 @@ function Riga({
               </Blocco>
             </div>
 
-            {!senzaFattura && !r.spedizione_id ? (
+            {!senzaFattura && !r.spedizione_id && puoGestire ? (
               <AggancioBolla rigaId={r.id} onAgganciata={() => onAgganciata?.()} />
             ) : null}
-            {!senzaFattura && r.spedizione_id && puoSganciare ? (
+            {!senzaFattura && r.spedizione_id && puoGestire ? (
               <SganciaBolla rigaId={r.id} onSganciata={() => onAgganciata?.()} />
             ) : null}
 

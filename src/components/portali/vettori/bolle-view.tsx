@@ -710,7 +710,7 @@ function BollaCard({ documento, vettori, puoScongelare, onAggiornata }: { docume
           <div className="min-w-0"><dt className="text-xs text-text-muted">Vettore</dt><dd className="break-words font-medium text-text">{vettoreDescrizione}</dd></div>
           <div className="min-w-0 lg:mt-1"><dt className="text-xs text-text-muted">Documenti collegati</dt><dd className="text-text">{documento.idDocumenti.length || "Nessuno"}</dd></div>
         </dl>
-        <div><p className="text-xs text-text-muted">Colli</p><p className="font-tenorite text-xl font-bold tabular-nums text-text">{documento.numColli === null ? "—" : numero.format(documento.numColli)}</p></div>
+        <div><p className="text-xs text-text-muted">Colli</p><p className="font-tenorite text-xl font-bold tabular-nums text-text">{documento.numColli === null ? "—" : numero.format(documento.numColli)}</p>{documento.aspettoBeni ? <p className="mt-1 text-xs text-text-muted"><span className="font-medium text-text">Aspetto dei beni:</span> {documento.aspettoBeni}</p> : null}</div>
         <div><p className="text-xs text-text-muted">Peso volumetrico</p><p className="font-tenorite text-xl font-bold tabular-nums text-primary-dark">{pesoVolumetrico}</p><p className="text-xs text-text-muted">{motivoPesoNonCalcolabile(documento)}</p></div>
         <Button type="button" size="sm" variant="outline" aria-expanded={aperta} onClick={() => setAperta((valore) => !valore)} className="justify-self-start lg:justify-self-end">
           <Ruler className="h-4 w-4" aria-hidden="true" />Dettagli e misure{aperta ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

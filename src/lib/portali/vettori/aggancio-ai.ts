@@ -294,15 +294,36 @@ export async function cercaBolle(rigaId: string, testo: string): Promise<Candida
   );
 }
 
+export interface EsitoAggancioRicalcolo {
+  ok: true;
+  ricalcolo: "riuscito" | "fallito";
+  fatturaId: string;
+  messaggio?: string;
+}
+
+/** Il cambio di aggancio e il ricalcolo sono due operazioni distinte. */
+export async function ricalcolaDopoAggancio(fatturaId: string): Promise<EsitoAggancioRicalcolo> {
+  try {
+    await ricalcolaFattura(fatturaId, { scrivi: true });
+    return { ok: true, ricalcolo: "riuscito", fatturaId };
+  } catch (errore) {
+    return {
+      ok: true,
+      ricalcolo: "fallito",
+      fatturaId,
+      messaggio: errore instanceof Error ? errore.message : "Ricalcolo non riuscito.",
+    };
+  }
+}
+
 /** Annulla un aggancio sbagliato, con il motivo, e rifa' il controllo della fattura. */
-export async function sganciaAggancio(rigaId: string, utenteId: string | null, motivo: string): Promise<{ fatturaId: string; bollaScongelata: boolean }> {
+export async function sganciaAggancio(rigaId: string, utenteId: string | null, motivo: string): Promise<EsitoAggancioRicalcolo & { bollaScongelata: boolean }> {
   const { data, error } = await createAdminClient()
     .schema("vettori")
     .rpc("sgancia_aggancio", { p_riga: rigaId, p_utente: utenteId, p_motivo: motivo });
   if (error) throw new Error(error.message);
   const esito = data as { fattura_id: string; bolla_scongelata: boolean };
-  await ricalcolaFattura(String(esito.fattura_id), { scrivi: true });
-  return { fatturaId: String(esito.fattura_id), bollaScongelata: esito.bolla_scongelata };
+  return { ...(await ricalcolaDopoAggancio(String(esito.fattura_id))), bollaScongelata: esito.bolla_scongelata };
 }
 
 const SCHEMA = {
@@ -492,14 +513,13 @@ export async function dettaglioAggancio(rigaId: string): Promise<DettaglioAgganc
 }
 
 /** Aggancia la riga alla bolla e rifa' il controllo della fattura. */
-export async function applicaAggancio(rigaId: string, spedizioneId: string, utenteId: string | null): Promise<{ fatturaId: string }> {
+export async function applicaAggancio(rigaId: string, spedizioneId: string, utenteId: string | null): Promise<EsitoAggancioRicalcolo> {
   const { data, error } = await createAdminClient()
     .schema("vettori")
     .rpc("applica_aggancio", { p_riga: rigaId, p_spedizione: spedizioneId, p_utente: utenteId });
   if (error) throw new Error(error.message);
   const fatturaId = String((data as { fattura_id: string }).fattura_id);
-  await ricalcolaFattura(fatturaId, { scrivi: true });
-  return { fatturaId };
+  return ricalcolaDopoAggancio(fatturaId);
 }
 
 /** «Nessuna di queste»: chiude la proposta senza agganciare. */

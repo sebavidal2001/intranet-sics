@@ -163,6 +163,7 @@ export async function leggiFedexOcr(
 
     return {
       fattura: {
+        metodoLettura: "ocr",
         vettore: "fedex",
         numero: perRighe.numero,
         data: perRighe.data,
@@ -683,6 +684,7 @@ function componiFattura(
   }
 
   return {
+    metodoLettura: "ocr",
     vettore: "fedex",
     numero: null,
     data: null,

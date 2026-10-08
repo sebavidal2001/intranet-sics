@@ -126,7 +126,7 @@ describe("StoricoView: addebito al cliente e spunta di verifica", () => {
   it("mostra l'importo e salva la spunta sulla spedizione", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ verificatoIl: "2026-09-24T12:00:00Z" }) });
     vi.stubGlobal("fetch", fetchMock);
-    render(<StoricoView iniziali={{ ...iniziali, righe: [conAddebito] }} valori={valori} />);
+    render(<StoricoView iniziali={{ ...iniziali, righe: [conAddebito] }} valori={valori} puoGestire />);
 
     expect(screen.getByText("Addebito cliente")).toBeInTheDocument();
     expect(screen.getByText(/22,50/)).toBeInTheDocument();
@@ -138,6 +138,23 @@ describe("StoricoView: addebito al cliente e spunta di verifica", () => {
       "/api/portali/vettori/spedizioni/verifica-addebito",
       expect.objectContaining({ body: JSON.stringify({ spedizioneId: conAddebito.spedizione_id, verificato: true }) })
     );
+  });
+
+  it("nasconde spunta e azioni di aggancio a chi non puo gestire", () => {
+    const daAgganciare = {
+      ...conAddebito,
+      id: "riga-fattura",
+      fattura_id: "fattura-1",
+      stato_fatturazione: "fatturata" as const,
+      spedizione_id: null,
+      abbinamento: "assistito" as const,
+    };
+    render(<StoricoView iniziali={{ ...iniziali, righe: [daAgganciare] }} valori={valori} />);
+    expect(screen.queryByText("Verificato")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Addebito verificato/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("2631"));
+    expect(screen.queryByText("Aggancia questa")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sgancia dalla bolla")).not.toBeInTheDocument();
   });
 
   it("una fattura acquisita senza quadratura resta segnalata sulla riga", () => {

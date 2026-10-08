@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import Link from "next/link";
 import {
   CheckCircle2,
+  Download,
   FileText,
   Link2,
   Link2Off,
@@ -14,6 +16,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { MisureSpedizione } from "./misure-spedizione";
 import type { MisuraRiga } from "@/lib/portali/vettori/misure";
+import {
+  generaCsvConfronto,
+  type TotaliConfrontoCsv,
+} from "@/lib/portali/vettori/csv-confronto";
 
 /**
  * Caricamento e acquisizione delle fatture dei vettori.
@@ -47,6 +53,7 @@ interface Riga {
   dettaglio?: Record<string, unknown>;
   riga_numero: number;
   data: string | null;
+  numero_spedizione: string | null;
   riferimento: string | null;
   controparte: string | null;
   direzione: string | null;
@@ -54,6 +61,8 @@ interface Riga {
   peso: number | null;
   peso_tassato: number | null;
   nolo: number | null;
+  supplementi: number;
+  carburante: number;
   totale: number | null;
   abbinamento: "numero" | "assistito" | "nessuno";
   motivo_abbinamento: string;
@@ -92,6 +101,7 @@ interface Anteprima {
     vettore: string;
     numero: string | null;
     data: string | null;
+    totali: TotaliConfrontoCsv;
     avvertenze: string[];
     righeNonLette: string[];
   };
@@ -106,6 +116,8 @@ const NOMI: Record<string, string> = {
   fedex: "FedEx",
   trading_post: "Trading Post",
 };
+
+type FiltroEsito = "agganciate" | "senza_bolla" | "anomalia" | "da_verificare" | null;
 
 export function estremiDalNomeFile(nomeFile: string): { numero: string; data: string } | null {
   const parti = /^FAT-BM_([^_]+)_.+_(\d{4})_(\d{2})\.pdf$/i.exec(nomeFile);
@@ -139,11 +151,13 @@ export function FattureView() {
   const [inCorso, setInCorso] = useState<"lettura" | "salvataggio" | null>(null);
   const [sopra, setSopra] = useState(false);
   const [direzione, setDirezione] = useState("entrata");
+  const [filtroEsito, setFiltroEsito] = useState<FiltroEsito>(null);
   const [misure, setMisure] = useState<MisuraRiga[]>([]);
   const [numeroFattura, setNumeroFattura] = useState("");
   const [dataFattura, setDataFattura] = useState("");
   const [motivoSenzaQuadratura, setMotivoSenzaQuadratura] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const listaRighe = useRef<HTMLDivElement>(null);
 
   const invia = useCallback(async (
     f: File,
@@ -205,18 +219,41 @@ export function FattureView() {
   const q = anteprima?.quadratura;
   const estremiAssenti = Boolean(anteprima && (!anteprima.fattura.numero || !anteprima.fattura.data));
   const propostaDalNome = file ? estremiDalNomeFile(file.name) : null;
-  const visibili = anteprima?.righe.filter((r) => direzione === "tutte" || (direzione === "ignota" ? !r.direzione : r.direzione === direzione)) ?? [];
-  const somma = (fn: (r: Riga) => number) => Math.round(visibili.reduce((s, x) => s + fn(x), 0) * 100) / 100;
+  const righeDirezione = anteprima?.righe.filter((r) => direzione === "tutte" || (direzione === "ignota" ? !r.direzione : r.direzione === direzione)) ?? [];
+  const visibili = righeDirezione.filter((riga) => {
+    if (filtroEsito === "agganciate") return riga.abbinamento === "numero";
+    if (filtroEsito === "senza_bolla") return riga.abbinamento === "assistito" || riga.abbinamento === "nessuno";
+    if (filtroEsito === "anomalia") return riga.controllo?.esito === "anomalia";
+    if (filtroEsito === "da_verificare") return riga.controllo?.esito === "da_verificare";
+    return true;
+  });
+  const somma = (fn: (r: Riga) => number) => Math.round(righeDirezione.reduce((s, x) => s + fn(x), 0) * 100) / 100;
   const r = anteprima ? {
-    righe: visibili.length, agganciate: visibili.filter((x) => x.abbinamento === "numero").length,
-    daConfermare: visibili.filter((x) => x.abbinamento === "assistito").length, senzaCandidati: visibili.filter((x) => x.abbinamento === "nessuno").length,
-    anomalie: visibili.filter((x) => x.controllo?.esito === "anomalia").length,
-    daVerificare: visibili.filter((x) => x.controllo?.esito === "da_verificare").length,
-    inLinea: visibili.filter((x) => x.controllo?.esito === "in_linea").length,
-    nonValutabili: visibili.filter((x) => !x.controllo || x.controllo.esito === "non_valutabile").length,
+    righe: righeDirezione.length, agganciate: righeDirezione.filter((x) => x.abbinamento === "numero").length,
+    daConfermare: righeDirezione.filter((x) => x.abbinamento === "assistito").length, senzaCandidati: righeDirezione.filter((x) => x.abbinamento === "nessuno").length,
+    anomalie: righeDirezione.filter((x) => x.controllo?.esito === "anomalia").length,
+    daVerificare: righeDirezione.filter((x) => x.controllo?.esito === "da_verificare").length,
+    inLinea: righeDirezione.filter((x) => x.controllo?.esito === "in_linea").length,
+    nonValutabili: righeDirezione.filter((x) => !x.controllo || x.controllo.esito === "non_valutabile").length,
     totaleFatturato: somma((x) => x.totale ?? 0), totaleAtteso: somma((x) => x.controllo?.atteso_totale ?? 0),
     differenza: somma((x) => (x.totale ?? 0) - (x.controllo?.atteso_totale ?? 0)),
   } : null;
+
+  const applicaFiltro = (filtro: Exclude<FiltroEsito, null>) => {
+    setFiltroEsito((corrente) => corrente === filtro ? null : filtro);
+    requestAnimationFrame(() => listaRighe.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+
+  const scaricaConfronto = useCallback(() => {
+    if (!anteprima) return;
+    const csv = generaCsvConfronto(anteprima.righe, anteprima.fattura.totali);
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const collegamento = document.createElement("a");
+    collegamento.href = url;
+    collegamento.download = `${anteprima.nomeFile.replace(/\.pdf$/i, "") || "fattura"}-confronto.csv`;
+    collegamento.click();
+    URL.revokeObjectURL(url);
+  }, [anteprima]);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -294,11 +331,16 @@ export function FattureView() {
 
       {salvata && (
         <div
-          className="mt-4 rounded-lg border p-4 flex items-start gap-3"
+          className="mt-4 rounded-lg border p-4 flex flex-wrap items-start gap-3"
           style={{ borderColor: "var(--color-success)", background: "rgba(34,197,94,0.06)" }}
         >
           <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
-          <p className="text-sm text-text">{salvata}</p>
+          <p className="min-w-0 flex-1 text-sm text-text">{salvata}</p>
+          <Button asChild type="button" size="sm" variant="outline">
+            <Link href={`/vettori/spedizioni?direzione=${direzione === "entrata" ? "entrata" : "uscita"}&abbinamenti=assistito,nessuno`}>
+              Vai a Spedizioni
+            </Link>
+          </Button>
         </div>
       )}
 
@@ -441,6 +483,16 @@ export function FattureView() {
           )}
 
           {/* --------------------------- riepilogo ---------------------------- */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-bg-page px-4 py-3">
+            <p className="max-w-3xl text-sm text-text-muted">
+              Queste righe non compaiono ancora in Spedizioni: si salvano solo con <strong className="font-semibold text-text">Acquisisci la fattura</strong>.
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={scaricaConfronto}>
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Scarica il confronto (CSV)
+            </Button>
+          </div>
+
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Tessera
               titolo="Agganciate alle bolle"
@@ -451,30 +503,60 @@ export function FattureView() {
                   : "nessuna in coda"
               }
               colore="var(--color-primary)"
+              premuta={filtroEsito === "agganciate"}
+              onClick={() => applicaFiltro("agganciate")}
             />
             <Tessera
               titolo="Senza bolla"
-              valore={String(r.senzaCandidati)}
+              valore={String(r.daConfermare + r.senzaCandidati)}
               nota={
                 r.senzaCandidati > 0
                   ? "fatturate ma non risultano a gestionale"
                   : "nessuna"
               }
               colore={r.senzaCandidati > 0 ? "var(--color-danger)" : "var(--color-success)"}
+              premuta={filtroEsito === "senza_bolla"}
+              onClick={() => applicaFiltro("senza_bolla")}
             />
             <Tessera
               titolo="Anomalie di importo"
               valore={String(r.anomalie)}
-              nota={`${r.daVerificare} da verificare · ${r.inLinea} in linea · ${r.nonValutabili} non valutabili`}
+              nota={`${r.inLinea} in linea · ${r.nonValutabili} dati da completare`}
               colore={r.anomalie > 0 ? "var(--color-danger)" : r.nonValutabili > 0 ? "var(--color-warning)" : "var(--color-success)"}
+              premuta={filtroEsito === "anomalia"}
+              onClick={() => applicaFiltro("anomalia")}
             />
             <Tessera
-              titolo="Fatturato contro atteso"
-              valore={r.nonValutabili > 0 ? "Confronto incompleto" : eur(r.differenza)}
-              nota={`${eur(r.totaleFatturato)} contro ${eur(r.totaleAtteso)}`}
-              colore={r.differenza > 0 ? "var(--color-warning)" : "var(--color-text-muted)"}
+              titolo="Da verificare"
+              valore={String(r.daVerificare)}
+              nota="scostamento tra il 5% e il 10%"
+              colore={r.daVerificare > 0 ? "var(--color-warning)" : "var(--color-success)"}
+              premuta={filtroEsito === "da_verificare"}
+              onClick={() => applicaFiltro("da_verificare")}
             />
           </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p className="text-text-muted tabular-nums">
+              Fatturato {eur(r.totaleFatturato)} · atteso {eur(r.totaleAtteso)} · differenza {r.nonValutabili > 0 ? "confronto incompleto" : eur(r.differenza)}
+            </p>
+            {filtroEsito ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setFiltroEsito(null)}>
+                Mostra tutte
+              </Button>
+            ) : null}
+          </div>
+
+          <details className="mt-4 rounded-xl border border-border bg-bg px-4 py-3">
+            <summary className="cursor-pointer font-tenorite text-sm font-bold text-text">Come leggere questi esiti</summary>
+            <div className="mt-3 space-y-2 text-sm leading-relaxed text-text-muted">
+              <p><strong className="text-text">In linea</strong> significa che l'importo è entro il 5% dall'atteso.</p>
+              <p><strong className="text-text">Da verificare</strong> significa che lo scostamento è tra il 5% e il 10%: controlla peso, misure, zona, carburante e voci, poi correggi i dati dal dettaglio della riga.</p>
+              <p><strong className="text-text">Anomalia</strong> significa che lo scostamento supera il 10%.</p>
+              <p><strong className="text-text">Dati da completare</strong> significa che manca la bolla o un dato necessario. Senza bolla l'esito non è un controllo.</p>
+              <p>“Agganciate” conta le righe della direzione selezionata.</p>
+            </div>
+          </details>
 
           <div className="flex flex-wrap gap-2 mt-4" role="group" aria-label="Direzione delle spedizioni">
             {[["entrata", "Arrivi da fornitori"], ["uscita", "Invii a clienti"], ["ignota", "Da classificare"], ["tutte", "Tutte"]].map(([v, label]) => <Button key={v} variant={direzione === v ? "default" : "outline"} aria-pressed={direzione === v} onClick={() => setDirezione(v)}>{label} ({anteprima.righe.filter((x) => v === "tutte" || (v === "ignota" ? !x.direzione : x.direzione === v)).length})</Button>)}
@@ -485,7 +567,7 @@ export function FattureView() {
             {r.nonValutabili} righe non sono valutabili: zero anomalie non significa che siano corrette.
             Apri “Completa i dati” sulla spedizione per vedere il motivo e correggerlo.
           </p>}
-          <div className="mt-4 rounded-xl border border-border bg-bg overflow-hidden">
+          <div ref={listaRighe} className="mt-4 scroll-mt-4 rounded-xl border border-border bg-bg overflow-hidden">
             <div className="px-5 py-3 border-b border-border flex items-center gap-2">
               <FileText className="w-4 h-4 text-primary" />
               <h2 className="font-tenorite font-bold text-sm text-text">Spedizioni lette</h2>
@@ -493,7 +575,7 @@ export function FattureView() {
             <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_8rem_8rem_8rem] gap-4 px-5 py-2 bg-bg-page text-sm text-text-muted" aria-hidden="true">
               <span>Spedizione</span><span className="text-right">Fatturato</span><span className="text-right">Atteso</span><span className="text-right">Differenza</span>
             </div>
-            {visibili.length === 0 && <p className="p-5 text-sm text-text-muted">Nessuna spedizione in questa direzione.</p>}
+            {visibili.length === 0 && <p className="p-5 text-sm text-text-muted">Nessuna spedizione con la direzione e l'esito selezionati.</p>}
             {visibili.map((riga) => {
               const c = riga.controllo;
               const valutabile = c && c.esito !== "non_valutabile";
@@ -591,14 +673,24 @@ function Tessera({
   valore,
   nota,
   colore,
+  premuta,
+  onClick,
 }: {
   titolo: string;
   valore: string;
   nota: string;
   colore: string;
+  premuta: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-bg px-4 py-3">
+    <button
+      type="button"
+      aria-pressed={premuta}
+      onClick={onClick}
+      className="rounded-xl border bg-bg px-4 py-3 text-left transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,161,190,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      style={{ borderColor: premuta ? "var(--color-primary)" : "var(--color-border)" }}
+    >
       <p className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
         {titolo}
       </p>
@@ -609,7 +701,7 @@ function Tessera({
         {valore}
       </p>
       <p className="text-[11px] text-text-muted mt-0.5 leading-snug">{nota}</p>
-    </div>
+    </button>
   );
 }
 

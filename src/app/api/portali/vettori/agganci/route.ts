@@ -7,6 +7,7 @@ import {
   cercaBolle,
   dettaglioAggancio,
   proponiPerRiga,
+  ricalcolaDopoAggancio,
   scartaAggancio,
   sganciaAggancio,
 } from "@/lib/portali/vettori/aggancio-ai";
@@ -23,6 +24,7 @@ export const dynamic = "force-dynamic";
  *      { riga, azione: "nessuna" }                chiude la proposta, non aggancia
  *      { riga, azione: "proponi" }                chiede la proposta al modello
  *      { riga, azione: "sgancia", motivo }        annulla un aggancio sbagliato
+ *      { azione: "ricalcola", fatturaId }          riprova il controllo dell'importo
  *
  * Guardare e' di chi vede gli importi; decidere e' dell'amministrazione, come
  * le anomalie: un aggancio congela la bolla e cambia il controllo.
@@ -35,6 +37,7 @@ const Corpo = z.discriminatedUnion("azione", [
   z.object({ azione: z.literal("nessuna"), riga: Riga }).strict(),
   z.object({ azione: z.literal("proponi"), riga: Riga }).strict(),
   z.object({ azione: z.literal("sgancia"), riga: Riga, motivo: z.string().trim().min(3).max(500) }).strict(),
+  z.object({ azione: z.literal("ricalcola"), fatturaId: z.string().uuid() }).strict(),
 ]);
 
 export async function GET(request: NextRequest) {
@@ -78,6 +81,9 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) return NextResponse.json({ error: "Dati non validi." }, { status: 400 });
     const c = parsed.data;
 
+    if (c.azione === "ricalcola") {
+      return NextResponse.json(await ricalcolaDopoAggancio(c.fatturaId));
+    }
     if (c.azione === "conferma") {
       try {
         const esito = await applicaAggancio(c.riga, c.spedizione, guard.user.id);

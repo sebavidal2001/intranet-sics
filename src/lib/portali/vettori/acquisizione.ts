@@ -190,7 +190,7 @@ export async function caricaBolle(
       "id_documento, codice_profilo, tipo_registro, numero_progressivo, numero_documento, " +
         "data_documento, data_registrazione, id_sog_commerciale, codice_soggetto, soggetto, " +
         "zona_cap, zona_provincia, fonte_zona, tipo_trasporto_codice, tipo_trasporto, " +
-        "vettore_codice, vettore, num_colli, peso_netto, peso_lordo, volume"
+        "tras_mezzo, vettore_codice, vettore, num_colli, peso_netto, peso_lordo, volume"
     )
     .gte("data_documento", giorni(daISO, -GIORNI_MARGINE))
     .lte("data_documento", giorni(aISO, GIORNI_MARGINE))
@@ -440,7 +440,7 @@ export async function calcolaControlloRiga(
   riga.dettaglio.condizioniApplicate = JSON.stringify(fisici.dati.condizioni ?? []);
   riga.dettaglio.formulaVolumetrico = `Volume totale dei colli (m³) × ${listino.vettore.divisoreVolumetrico} kg/m³; per ogni collo: L × P × H in cm ÷ 1.000.000.`;
   const calcolo = calcolaCostoAtteso(fisici.dati, listino);
-  const valutabile = riga.totale != null && listino.carburante != null &&
+  const valutabile = Boolean(sped) && riga.totale != null && listino.carburante != null &&
     calcolo.pesoTassabile > 0 && calcolo.fasciaDescrizione !== "nessuna fascia";
   const cls = valutabile ? classifica(riga.totale!, calcolo.totale, SOGLIE_DEFAULT)
     : { esito: "non_valutabile", scostamento: null };
@@ -469,6 +469,7 @@ export async function calcolaControlloRiga(
         ...(!provincia ? ["Provincia assente: applicata la zona predefinita del vettore, da verificare."] : []),
         ...(calcolo.pesoTassabile <= 0 ? ["Peso assente: inserire il peso della spedizione."] : []),
         ...(riga.totale == null ? ["Importo fatturato assente."] : []),
+        ...(!sped ? ["Bolla non agganciata: il costo calcolato e' solo una simulazione sui dati del vettore, non un controllo."] : []),
         ...(ctx.vettoreCodice === "gls" ? ["ISTAT e carburante di fattura ripartiti sul nolo per confrontare importi completi."] : []),
       ],
     },

@@ -28,9 +28,10 @@ interface VettoriSidebarProps {
   ruoli: string[]
   puoGestire: boolean
   puoRegistrareArrivi: boolean
+  vedeImporti: boolean
 }
 
-type Visibilita = "tutti" | "banco" | "gestione";
+type Visibilita = "tutti" | "banco" | "importi" | "gestione";
 
 /**
  * L'ordine segue la giornata dell'operatore, come l'ha descritta
@@ -41,7 +42,7 @@ type Visibilita = "tutti" | "banco" | "gestione";
 const VOCI: ReadonlyArray<{ name: string; url: string; icon: typeof Calculator; visibile: Visibilita }> = [
   { name: "Simulazione", url: "/vettori/simulazione", icon: Calculator, visibile: "tutti" },
   { name: "Bolle", url: "/vettori/bolle", icon: Ruler, visibile: "banco" },
-  { name: "Spedizioni", url: "/vettori/spedizioni", icon: PackageSearch, visibile: "gestione" },
+  { name: "Spedizioni", url: "/vettori/spedizioni", icon: PackageSearch, visibile: "importi" },
   { name: "Fatture", url: "/vettori/fatture", icon: FileText, visibile: "gestione" },
   { name: "Anomalie", url: "/vettori/anomalie", icon: TriangleAlert, visibile: "gestione" },
   { name: "Analisi", url: "/vettori/analisi", icon: BarChart3, visibile: "tutti" },
@@ -53,6 +54,7 @@ export function VettoriSidebar({
   profile,
   puoGestire,
   puoRegistrareArrivi,
+  vedeImporti,
 }: VettoriSidebarProps) {
   const pathname = usePathname()
 
@@ -61,6 +63,7 @@ export function VettoriSidebar({
   const voci = VOCI.filter(({ visibile }) =>
     visibile === "tutti" ||
     (visibile === "banco" && puoRegistrareArrivi) ||
+    (visibile === "importi" && vedeImporti) ||
     (visibile === "gestione" && puoGestire)
   )
 

@@ -211,6 +211,7 @@ function componiFattura(grezza: FatturaGrezza, vettore: CodiceVettore): FatturaL
   });
 
   return {
+    metodoLettura: "modello",
     vettore,
     numero: grezza.numero,
     data: normalizzaData(grezza.data),
@@ -230,7 +231,10 @@ function componiFattura(grezza: FatturaGrezza, vettore: CodiceVettore): FatturaL
       adeguamento: null,
       carburante: null,
       percentualeCarburante: null,
-      totaleDocumento: grezza.totali.totaleDocumento ?? grezza.totali.imponibile,
+      // Il totale del documento puo' includere l'IVA: il netto usato dal
+      // controllo resta l'imponibile, mentre il lordo viene conservato a parte.
+      totaleDocumento: grezza.totali.imponibile,
+      totaleDocumentoIvaInclusa: grezza.totali.totaleDocumento,
       totaleRighe: grezza.totali.imponibile,
     },
     righeNonLette: [],

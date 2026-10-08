@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { getVettoriContext, puoGestire, vedeImporti } from "@/lib/portali/vettori/ruoli";
 import { elencoSpedizioni, valoriFiltro } from "@/lib/portali/vettori/storico";
 import { StoricoView } from "@/components/portali/vettori/storico-view";
+import { leggiFiltriInizialiSpedizioni } from "@/lib/portali/vettori/storico-query";
 
 export const dynamic = "force-dynamic";
 
@@ -15,17 +16,22 @@ export const metadata = {
  * quella su cui si discute di più con i clienti. Gli arrivi sono a una
  * linguetta di distanza, non dietro un filtro da impostare.
  */
-export default async function SpedizioniPage() {
+export default async function SpedizioniPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await getSessionUser();
   if (!user) redirect("/auth/login");
   const ctx = await getVettoriContext(user.id);
   if (ctx.livello === null) redirect("/");
   if (!vedeImporti(ctx)) redirect("/vettori/simulazione");
 
+  const filtriIniziali = leggiFiltriInizialiSpedizioni(await searchParams);
   const [iniziali, valori] = await Promise.all([
-    elencoSpedizioni({ direzione: "uscita", perPagina: 100 }),
+    elencoSpedizioni({ ...filtriIniziali, perPagina: 100 }),
     valoriFiltro(),
   ]);
 
-  return <StoricoView iniziali={iniziali} valori={valori} puoSganciare={puoGestire(ctx)} />;
+  return <StoricoView iniziali={iniziali} valori={valori} filtriIniziali={filtriIniziali} puoGestire={puoGestire(ctx)} />;
 }

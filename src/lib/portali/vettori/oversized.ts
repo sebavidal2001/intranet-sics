@@ -40,7 +40,7 @@ export function basePallet(lunghezzaCm: number, larghezzaCm: number): boolean {
   const corto = Math.min(lunghezzaCm, larghezzaCm);
   const [lMin, lMax] = SOGLIE_OVERSIZED_GLS.palletLatoLungoCm;
   const [cMin, cMax] = SOGLIE_OVERSIZED_GLS.palletLatoCortoCm;
-  return lungo > lMin && lungo <= lMax && corto > cMin && corto <= cMax;
+  return lungo >= lMin && lungo <= lMax && corto >= cMin && corto <= cMax;
 }
 
 /** La lettera `I` fra i codici supplemento GLS: fuori misura addebitato. */

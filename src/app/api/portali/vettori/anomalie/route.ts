@@ -13,7 +13,7 @@ const STATI = ["aperta", "contestata", "accettata", "corretta"] as const;
 /** GET — elenco filtrato. */
 export async function GET(request: NextRequest) {
   try {
-    const guard = await requireVettori();
+    const guard = await requireVettori({ ruoli: [VETTORI_RUOLI.amministrazione] });
     if (!guard.ok) return guard.response;
 
     const p = request.nextUrl.searchParams;

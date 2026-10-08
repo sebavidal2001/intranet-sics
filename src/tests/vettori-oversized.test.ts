@@ -12,6 +12,7 @@ import type { ListinoRisolto } from "@/lib/portali/vettori/tipi";
 
 describe("pallet secondo GLS", () => {
   it("riconosce l'europallet con la tolleranza del 15%", () => {
+    expect(basePallet(102, 68)).toBe(true);
     expect(basePallet(120, 80)).toBe(true);
     expect(basePallet(80, 120)).toBe(true);
     expect(basePallet(138, 92)).toBe(true);

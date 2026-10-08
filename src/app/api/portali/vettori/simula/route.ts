@@ -21,6 +21,7 @@ import type {
   RispostaSimulazione,
 } from "@/lib/portali/vettori/tipi";
 import { logError } from "@/lib/logger";
+import { oggiRoma } from "@/lib/portali/vettori/oggi-roma";
 
 export const dynamic = "force-dynamic";
 
@@ -64,10 +65,6 @@ function euro(valore: number): number {
   return Math.round((valore + Number.EPSILON) * 100) / 100;
 }
 
-function dataOggi(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 /**
  * Calcola il costo pieno su tutti i vettori a nostro carico senza creare dati.
  * Chi non copre la destinazione resta nell'elenco con il motivo: anche una
@@ -102,7 +99,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const dataIso = input.data ?? dataOggi();
+    const dataIso = input.data ?? oggiRoma();
     const data = new Date(`${dataIso}T12:00:00Z`);
     const cap = input.cap ?? null;
     const esitoCapRisolto = cap ? await risolviCap(cap) : null;

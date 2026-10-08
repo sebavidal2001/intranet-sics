@@ -57,6 +57,8 @@ export interface TotaliDichiarati {
   carburante: number | null;
   percentualeCarburante: number | null;
   totaleDocumento: number | null;
+  /** Totale lordo IVA inclusa, quando il documento lo distingue dall'imponibile. */
+  totaleDocumentoIvaInclusa?: number | null;
   /**
    * Il totale che la **somma delle righe** deve fare, quando la fattura lo
    * dichiara in una forma confrontabile.
@@ -90,6 +92,7 @@ export interface EsitoQuadratura {
 }
 
 export interface FatturaLetta {
+  metodoLettura?: "testo" | "ocr" | "modello" | "manuale";
   vettore: CodiceVettore;
   numero: string | null;
   data: string | null;

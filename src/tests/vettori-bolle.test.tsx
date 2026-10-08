@@ -28,6 +28,7 @@ const incompleta: BollaDocumento = {
   vettoreEsito: "assegnato",
   vettoreRegola: null,
   numColli: 1,
+  aspettoBeni: null,
   porto: "F.CO ADDEB.FT",
   aNostroCarico: true,
   riaddebitoPrevisto: null,
@@ -61,6 +62,18 @@ function risposta(documenti: BollaDocumento[], puoScongelare = false): BolleResp
 }
 
 describe("bolle manuali e congelamento", () => {
+  it("mostra l'aspetto dei beni solo quando il gestionale lo valorizza", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => risposta([{ ...incompleta, aspettoBeni: "PALLET FILMATO" }]),
+    }));
+    render(<BolleView />);
+
+    const bolla = await screen.findByRole("article", { name: "Bolla DV-101" });
+    expect(within(bolla).getByText("Aspetto dei beni:")).toBeInTheDocument();
+    expect(within(bolla).getByText("PALLET FILMATO")).toBeInTheDocument();
+  });
+
   it("spiega perche il vettore manca e quale azione serve", async () => {
     const regola: BollaDocumento = {
       ...incompleta,

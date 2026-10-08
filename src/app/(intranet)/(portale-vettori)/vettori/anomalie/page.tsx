@@ -16,6 +16,7 @@ export default async function AnomaliePage() {
   if (!user) redirect("/auth/login");
   const ctx = await getVettoriContext(user.id);
   if (ctx.livello === null) redirect("/");
+  if (!puoGestire(ctx)) redirect("/vettori/simulazione");
 
   const [anomalie, vettori] = await Promise.all([
     elencoAnomalie(),
@@ -26,7 +27,7 @@ export default async function AnomaliePage() {
     <AnomalieView
       iniziali={anomalie}
       vettori={vettori.map((v) => ({ codice: v.codice, nome: v.nome }))}
-      puoDecidere={puoGestire(ctx)}
+      puoDecidere
     />
   );
 }

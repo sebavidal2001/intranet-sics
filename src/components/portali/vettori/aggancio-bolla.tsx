@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link2, Loader2, Search, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AvvisoRicalcolo, segnalaEsitoRicalcolo } from "./ricalcolo-avviso";
 
 /**
  * Aggancio di una riga di fattura gia' in archivio alla sua bolla.
@@ -114,7 +115,10 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
         setErrore(corpo.error ?? "Operazione non riuscita.");
         return;
       }
-      if (azione === "conferma") onAgganciata();
+      if (azione === "conferma") {
+        segnalaEsitoRicalcolo(rigaId, corpo, "aggancio");
+        onAgganciata();
+      }
       else await leggi();
     } catch {
       setErrore("Non è stato possibile contattare il server.");
@@ -225,6 +229,7 @@ export function AggancioBolla({ rigaId, onAgganciata }: { rigaId: string; onAgga
       {errore ? (
         <p role="alert" className="mt-2 text-xs text-red-700">{errore}</p>
       ) : null}
+      <AvvisoRicalcolo rigaId={rigaId} />
 
       {dettaglio && dettaglio.candidate.length > 0 ? (
         <ul className="mt-2 space-y-1.5">

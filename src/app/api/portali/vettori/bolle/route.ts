@@ -119,6 +119,7 @@ interface DocumentoGestionaleRow {
   id_documento: number;
   vettore_codice: string | null;
   vettore: string | null;
+  asp_beni: string | null;
 }
 
 interface ControlloRow {
@@ -317,7 +318,7 @@ export async function GET(request: NextRequest) {
         const { data: gestionaliData, error: gestionaliError } = await admin
           .schema("bi")
           .from("trasporti_documenti")
-          .select("id_documento,vettore_codice,vettore")
+          .select("id_documento,vettore_codice,vettore,asp_beni")
           .in("id_documento", documentiIds);
         if (gestionaliError) throw new Error(gestionaliError.message);
         for (const riga of (gestionaliData ?? []) as unknown as DocumentoGestionaleRow[]) {
@@ -408,6 +409,10 @@ export async function GET(request: NextRequest) {
         vettoreEsito,
         vettoreRegola: risoluzioneGestionale.regola,
         numColli: numeroPositivo(spedizione.colli_bolla),
+        aspettoBeni:
+          (documentiPerSpedizione.get(spedizione.id) ?? [])
+            .map((idDocumento) => gestionalePerDocumento.get(idDocumento)?.asp_beni?.trim())
+            .find(Boolean) ?? null,
         porto: spedizione.porto_descrizione,
         aNostroCarico: spedizione.a_nostro_carico,
         riaddebitoPrevisto:

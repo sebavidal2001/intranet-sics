@@ -182,6 +182,20 @@ export function quadra(fattura: FatturaLetta): EsitoQuadratura {
   // tipo: su GLS i due numeri sono diversi di proposito.
   confronta("il totale delle spedizioni", t.totaleRighe ?? null, somma((r) => r.totale));
 
+  const letturaNonNativa = fattura.metodoLettura === "modello" || fattura.metodoLettura === "ocr";
+  const totaleMonetarioLetto = [
+    t.totaleDocumento,
+    t.totaleDocumentoIvaInclusa,
+    t.totaleRighe,
+    t.nolo,
+    t.supplementi,
+    t.adeguamento,
+    t.carburante,
+  ].some((valore) => valore != null);
+  if (letturaNonNativa && !totaleMonetarioLetto) {
+    note.push("Il totale della fattura non e' stato letto dal piede: la quadratura non e' verificabile.");
+  }
+
   // Zero righe non è mai una fattura letta: è una lettura fallita che, senza
   // questo controllo, passerebbe indenne perché non c'è niente da confrontare.
   if (n === 0) {
@@ -195,7 +209,10 @@ export function quadra(fattura: FatturaLetta): EsitoQuadratura {
   }
 
   const ok =
-    n > 0 && confronti.every((c) => c.ok) && fattura.righeNonLette.length === 0;
+    n > 0 &&
+    confronti.every((c) => c.ok) &&
+    fattura.righeNonLette.length === 0 &&
+    (!letturaNonNativa || totaleMonetarioLetto);
 
   if (!ok) {
     note.push(

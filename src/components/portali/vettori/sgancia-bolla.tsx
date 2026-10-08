@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AvvisoRicalcolo, segnalaEsitoRicalcolo } from "./ricalcolo-avviso";
 
 /**
  * Annullare un aggancio fattura -> bolla sbagliato.
@@ -45,6 +46,7 @@ export function SganciaBolla({ rigaId, onSganciata }: { rigaId: string; onSganci
         setErrore(corpo.error ?? "Sgancio non riuscito.");
         return;
       }
+      segnalaEsitoRicalcolo(rigaId, corpo, "sgancio");
       onSganciata();
     } catch {
       setErrore("Non è stato possibile contattare il server.");
@@ -56,6 +58,7 @@ export function SganciaBolla({ rigaId, onSganciata }: { rigaId: string; onSganci
   if (!aperto) {
     return (
       <div className="mt-3">
+        <AvvisoRicalcolo rigaId={rigaId} />
         <Button type="button" size="sm" variant="ghost" onClick={() => setAperto(true)}>
           <Unlink className="h-4 w-4" aria-hidden="true" />
           Sgancia dalla bolla
@@ -66,6 +69,7 @@ export function SganciaBolla({ rigaId, onSganciata }: { rigaId: string; onSganci
 
   return (
     <section className="mt-3 max-w-3xl rounded-lg border border-border bg-bg-page p-3" aria-label="Sgancio dalla bolla">
+      <AvvisoRicalcolo rigaId={rigaId} />
       <p className="font-tenorite text-sm font-bold text-text">Sgancia dalla bolla</p>
       <p className="text-xs text-text-muted">
         Da usare se questa riga di fattura è stata agganciata alla bolla sbagliata. La bolla torna libera, la riga torna fra

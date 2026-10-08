@@ -4,8 +4,12 @@ import { requireVettori } from "@/lib/portali/vettori/api-guard";
 import { vedeImporti } from "@/lib/portali/vettori/ruoli";
 import { elencoSpedizioni, versoCsv } from "@/lib/portali/vettori/storico";
 import { logError } from "@/lib/logger";
+import type { RigaStorico } from "@/lib/portali/vettori/tipi";
 
 export const dynamic = "force-dynamic";
+
+const RIGHE_PER_PAGINA_CSV = 500;
+const MASSIMO_RIGHE_CSV = 50_000;
 
 const Filtri = z.object({
   direzione: z.enum(["entrata", "uscita"]).nullable().optional(),
@@ -74,15 +78,35 @@ export async function POST(request: NextRequest) {
     const { formato, ...filtri } = parsed.data;
 
     if (formato === "csv") {
-      // L'export non pagina: chi scarica vuole tutto quello che ha filtrato.
-      const tutto = await elencoSpedizioni({ ...filtri, pagina: 1, perPagina: 500 });
-      const csv = versoCsv(tutto.righe);
+      // L'RPC accetta al massimo 500 righe: si scorrono pagine con lo stesso
+      // ordinamento deterministico (la funzione SQL chiude sempre con id).
+      const righe: RigaStorico[] = [];
+      const filtriStabili = { ...filtri, ordine: filtri.ordine ?? "data_desc" };
+      let pagina = 1;
+      let troncato = false;
+      while (righe.length < MASSIMO_RIGHE_CSV) {
+        const blocco = await elencoSpedizioni({
+          ...filtriStabili,
+          pagina,
+          perPagina: RIGHE_PER_PAGINA_CSV,
+        });
+        const spazio = MASSIMO_RIGHE_CSV - righe.length;
+        righe.push(...blocco.righe.slice(0, spazio));
+        if (blocco.righe.length < RIGHE_PER_PAGINA_CSV) break;
+        if (righe.length >= MASSIMO_RIGHE_CSV) {
+          troncato = true;
+          break;
+        }
+        pagina += 1;
+      }
+      const csv = versoCsv(righe);
       const parte = filtri.direzione === "entrata" ? "arrivi" : filtri.direzione === "uscita" ? "partenze" : "spedizioni";
       return new NextResponse(csv, {
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
           "Content-Disposition": `attachment; filename="${parte}-${new Date().toISOString().slice(0, 10)}.csv"`,
           "Cache-Control": "no-store",
+          "X-Righe-Troncate": troncato ? "1" : "0",
         },
       });
     }

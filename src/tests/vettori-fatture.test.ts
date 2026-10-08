@@ -484,6 +484,25 @@ describe("quello che non si può leggere lo dice, invece di fingere", () => {
     f.righeNonLette.push("una riga che il parser non ha capito");
     expect(quadra(f).ok).toBe(false);
   });
+
+  it("una lettura FedEx non nativa senza totali monetari di piede non puo quadrare", () => {
+    const f = leggiFattura(fattura("ft-tnt-07-26"));
+    f.vettore = "fedex";
+    f.metodoLettura = "modello";
+    f.totali.nolo = null;
+    f.totali.supplementi = null;
+    f.totali.adeguamento = null;
+    f.totali.carburante = null;
+    f.totali.totaleDocumento = null;
+    f.totali.totaleDocumentoIvaInclusa = null;
+    f.totali.totaleRighe = null;
+
+    const esito = quadra(f);
+    expect(esito.ok).toBe(false);
+    expect(esito.note).toContain(
+      "Il totale della fattura non e' stato letto dal piede: la quadratura non e' verificabile."
+    );
+  });
 });
 
 describe("TNT: il nostro nome storpiato dal mittente", () => {

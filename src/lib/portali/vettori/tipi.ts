@@ -207,6 +207,7 @@ export interface BollaDocumento {
   vettoreEsito: VettoreEsito;
   vettoreRegola: string | null;
   numColli: number | null;
+  aspettoBeni: string | null;
   /** Porto del gestionale e se la spedizione la paghiamo noi (null = non deducibile). */
   porto: string | null;
   aNostroCarico: boolean | null;

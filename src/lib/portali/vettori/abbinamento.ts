@@ -44,6 +44,7 @@ export interface BollaGestionale {
   peso_netto: string | number | null;
   peso_lordo: string | number | null;
   volume: string | number | null;
+  asp_beni: string | null;
 }
 
 export type Direzione = "entrata" | "uscita";
@@ -411,6 +412,15 @@ export function abbina(
       nomiCompatibili(r.controparte, s.controparte)
     );
     if (certi.length === 1) {
+      if (certi[0].aNostroCarico === false) {
+        return {
+          rigaFattura: r.numero,
+          spedizione: null,
+          qualita: "assistito",
+          candidati: [certi[0]],
+          motivo: "Bolla non a nostro carico: verificare",
+        };
+      }
       return {
         rigaFattura: r.numero,
         spedizione: certi[0],
