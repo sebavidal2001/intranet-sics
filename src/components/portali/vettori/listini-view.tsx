@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Fuel, Loader2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ListinoRiepilogo } from "@/lib/portali/vettori/letture";
-import { carburanteVigente } from "@/lib/portali/vettori/carburante";
+import { carburanteDatato, carburanteVigente } from "@/lib/portali/vettori/carburante";
 import { ListinoEditor } from "./listino-editor";
+import { periodoSupplemento, SupplementoPeriodo } from "./supplemento-periodo";
 import { MailImpostazioni } from "./mail-impostazioni";
 import { RiaddebitoImpostazioni } from "./riaddebito-impostazioni";
 
@@ -107,6 +108,14 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
     (l) => l.vettore.codice !== "trading_post" && !carburanteVigente(l.carburante, annoScelto, meseScelto)
   );
 
+  // Vale l'ultima comunicazione, ma se è di un mese precedente va detto: è il
+  // caso in cui il costo atteso scarta di qualche centesimo dalla fattura.
+  const datati = nostri.filter((l) => {
+    if (l.vettore.codice === "trading_post") return false;
+    const v = carburanteVigente(l.carburante, annoScelto, meseScelto);
+    return !!v && carburanteDatato(v, annoScelto, meseScelto);
+  });
+
   return (
     <div className="max-w-6xl mx-auto">
       <header className="mb-5">
@@ -163,6 +172,19 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
               costo atteso di quelle spedizioni viene calcolato{" "}
               <strong>al netto del carburante</strong> e dichiarato come non
               confrontabile con la fattura.
+            </p>
+          </div>
+        )}
+
+        {datati.length > 0 && (
+          <div className="px-5 py-2.5 flex items-start gap-2.5 bg-bg-page">
+            <TriangleAlert className="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
+            <p className="text-xs text-text-muted leading-snug">
+              Per {datati.map((m) => m.vettore.nome).join(", ")} la percentuale di{" "}
+              {MESI[meseScelto - 1]} {annoScelto} non è ancora inserita: si usa
+              l’ultima disponibile. Si aggiorna da sola quando viene caricata la
+              fattura del mese; se serve prima, inseriscila qui sotto. Nelle
+              simulazioni il costo viene segnalato come «può variare di poco».
             </p>
           </div>
         )}
@@ -291,6 +313,7 @@ function Scheda({ l }: { l: ListinoRiepilogo }) {
       </div>
 
       <ListinoEditor l={l} />
+      <SupplementoPeriodo l={l} />
       <div className="px-5 py-4 grid gap-4 md:grid-cols-2">
         <div>
           <p className="text-[11px] uppercase tracking-wider text-text-muted font-semibold mb-1.5">
@@ -381,6 +404,7 @@ function Scheda({ l }: { l: ListinoRiepilogo }) {
                     </td>
                     <td className="py-1 pl-4 text-text-muted">
                       {quandoSiApplica(s)}
+                      {periodoSupplemento(s) ? <span className="block text-[11px]">{periodoSupplemento(s)}</span> : null}
                     </td>
                     <td className="py-1 text-center text-text-muted">
                       {s.base_nolo ? "sì" : "no"}

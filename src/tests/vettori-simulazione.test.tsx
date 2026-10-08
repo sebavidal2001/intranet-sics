@@ -25,6 +25,23 @@ function compilaSpedizione() {
 }
 
 describe("simulazione vettori", () => {
+
+  it("segnala con una nota piccola quando il carburante non è del mese", async () => {
+    const conNota = { ...risposta, risultati: [
+      { ...risposta.risultati[0], carburanteNonAggiornato: { anno: 2026, mese: 8 } },
+      risposta.risultati[1],
+    ] };
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (_: string, init?: RequestInit) => ({
+      ok: true, status: 200, json: async () => init?.method === "POST" ? conNota : capMilano,
+    })));
+    render(<SimulazioneView />);
+    compilaSpedizione();
+    expect(await screen.findByText("Milano (MI)")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Confronta i vettori" }));
+    const gls = await screen.findByRole("article", { name: "Vettore GLS Italy" });
+    expect(within(gls).getByRole("note").textContent).toMatch(/agosto 2026.*non ancora aggiornata/);
+    expect(screen.getAllByRole("note")).toHaveLength(1);
+  });
   it("risolve il CAP, somma gruppi diversi e invia tutti i colli", async () => {
     const fetchMock = vi.fn().mockImplementation(async (input: string, init?: RequestInit) => ({
       ok: true, status: 200,
