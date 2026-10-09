@@ -21,6 +21,7 @@
 
 import type { Dimensione, Filtro, Periodo, SpecQuery } from "./tipi";
 import { dimensioneFuoriDominio } from "./semantico";
+import { dimensioneAmmessaDallaMisura, operandiDellaMisura } from "./misure";
 import { periodoPresente } from "./periodo";
 
 export interface FiltriPagina {
@@ -53,6 +54,22 @@ function famiglia(campo: Dimensione): string {
   return campo === "categoria" || campo === "bu_categoria" ? "bu" : campo;
 }
 
+/**
+ * Le famiglie su cui la spec ha già deciso: i filtri della spec e quelli
+ * incorporati negli operandi della misura. Una misura «solo COMPONENTI» non
+ * cambia significato perché la pagina è filtrata su IMPIANTI, e una quota di
+ * COMPONENTI sul totale non ha senso dentro una sola business unit.
+ */
+function famiglieDecise(spec: SpecQuery): Set<string> {
+  const campi = [
+    ...(spec.filtri ?? []).map((filtro) => filtro.campo),
+    ...(spec.misura
+      ? operandiDellaMisura(spec.misura.espressione).flatMap((o) => (o.filtri ?? []).map((filtro) => filtro.campo))
+      : []),
+  ];
+  return new Set(campi.map(famiglia));
+}
+
 export interface EsitoFusioneFiltriPagina {
   spec: SpecQuery;
   filtriPaginaIgnorati: Dimensione[];
@@ -80,10 +97,12 @@ export function fondiFiltriPaginaConEsito(
 ): EsitoFusioneFiltriPagina {
   const proposti = filtriDellaPagina(filtriPagina);
   const esistenti = spec.filtri ?? [];
-  const famiglieSpec = new Set(esistenti.map((filtro) => famiglia(filtro.campo)));
+  const famiglieSpec = famiglieDecise(spec);
   // Un filtro di pagina che non si applica alla metrica del riquadro (la
   // business unit su un riquadro di ordini a fornitore) si salta e si dice.
-  const nonApplicabile = (f: Filtro) => dimensioneFuoriDominio(spec.metrica, f.campo);
+  const nonApplicabile = (f: Filtro) =>
+    dimensioneFuoriDominio(spec.metrica, f.campo) ||
+    (spec.misura !== undefined && !dimensioneAmmessaDallaMisura(spec.misura, f.campo));
   const scartato = (f: Filtro) => famiglieSpec.has(famiglia(f.campo)) || nonApplicabile(f);
   const filtriPaginaIgnorati = proposti
     .filter(scartato)
@@ -124,10 +143,11 @@ export function applicaFiltriIncrociati(
   incrociati: Filtro[]
 ): { spec: SpecQuery; ignorati: Dimensione[] } {
   if (incrociati.length === 0) return { spec, ignorati: [] };
-  const famiglieSpec = new Set((spec.filtri ?? []).map((filtro) => famiglia(filtro.campo)));
+  const famiglieSpec = famiglieDecise(spec);
   const soloObiettivo = spec.metrica === "budget" || spec.metrica === "bep";
   const nonApplicabile = (f: Filtro) =>
     dimensioneFuoriDominio(spec.metrica, f.campo) ||
+    (spec.misura !== undefined && !dimensioneAmmessaDallaMisura(spec.misura, f.campo)) ||
     (soloObiettivo && f.campo !== "bu" && f.campo !== "agente");
   const ignorati = incrociati.filter(
     (f) => famiglieSpec.has(famiglia(f.campo)) || nonApplicabile(f)

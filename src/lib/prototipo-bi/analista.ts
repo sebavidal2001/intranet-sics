@@ -64,7 +64,7 @@ function haChiave() {
   return Boolean(process.env.OPENROUTER_API_KEY);
 }
 
-interface MessaggioChat {
+export interface MessaggioChat {
   role: "system" | "user" | "assistant" | "tool";
   content: string | null;
   tool_calls?: ToolCall[];
@@ -72,13 +72,13 @@ interface MessaggioChat {
   name?: string;
 }
 
-interface ToolCall {
+export interface ToolCall {
   id: string;
   type: "function";
   function: { name: string; arguments: string };
 }
 
-interface EsitoModello {
+export interface EsitoModello {
   testo: string;
   toolCalls: ToolCall[];
   ingresso: number;
@@ -89,7 +89,7 @@ interface EsitoModello {
   cache: number;
 }
 
-async function chiamaModello(
+export async function chiamaModello(
   modelloId: string,
   messaggi: MessaggioChat[],
   opzioni: { strumenti?: unknown[]; temperatura?: number; maxToken?: number } = {}

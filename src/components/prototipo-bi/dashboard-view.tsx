@@ -246,6 +246,10 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
   const apriDocumenti = useCallback(
     (riquadro: RiquadroDashboard, etichetta: string) => {
       const spec = riquadro.analisi.spec;
+      // Una misura personalizzata non ha UN insieme di documenti dietro: i
+      // filtri incorporati negli operandi non passano al dettaglio, che
+      // mostrerebbe documenti che la misura non conta.
+      if (spec.misura) return;
       const dataset = DATASET_DI_METRICA[spec.metrica];
       const dimensione = spec.raggruppa?.[0];
       if (!dataset || !dimensione) return;

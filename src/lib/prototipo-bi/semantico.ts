@@ -24,6 +24,7 @@ import type {
   Dimensione,
   Filtro,
   Granularita,
+  MisuraDefinita,
   Periodo,
   RigaFatto,
   RigaRisultato,
@@ -36,6 +37,12 @@ import { anniDelPeriodo, dataNelPeriodo, normalizzaPeriodo, spostaPeriodo } from
 import { SEPARATORE_RAMO } from "./tipi";
 import { dataDaIso, settimanaIso } from "./calendario";
 import { dimensioniPerMetrica, TIPOLOGIE } from "./tassonomia";
+import {
+  controllaDimensioniMisura,
+  eseguiMisura,
+  metricaRappresentativa,
+  validaMisura,
+} from "./misure";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Catalogo delle metriche
@@ -666,7 +673,13 @@ export function validaSpec(spec: unknown): SpecQuery {
   if (!spec || typeof spec !== "object") throw new SpecNonValida("Spec assente.");
   const s = spec as Record<string, unknown>;
 
-  const metrica = String(s.metrica ?? "") as ChiaveMetrica;
+  // Una spec con misura personalizzata ha come metrica l'operando
+  // rappresentativo, che decide il validatore: quella dell'input si ignora.
+  let misura: MisuraDefinita | undefined;
+  if (s.misura !== undefined && s.misura !== null) misura = validaMisura(s.misura);
+  const metrica = (
+    misura ? metricaRappresentativa(misura.espressione) : String(s.metrica ?? "")
+  ) as ChiaveMetrica;
   if (!CATALOGO[metrica]) {
     throw new SpecNonValida(
       `Metrica "${String(s.metrica)}" non esiste.`,
@@ -751,8 +764,19 @@ export function validaSpec(spec: unknown): SpecQuery {
 
   const periodo = normalizzaPeriodo(s.periodo);
 
+  if (misura) {
+    controllaDimensioniMisura(misura, raggruppa, filtri);
+    if (modificatore === "progressivo" || modificatore === "progressivo_ap") {
+      throw new SpecNonValida(
+        "Il progressivo non è disponibile per le misure personalizzate.",
+        "Usa 'corrente' o 'anno_precedente'."
+      );
+    }
+  }
+
   return {
     metrica,
+    ...(misura ? { misura } : {}),
     modificatore,
     granularita,
     raggruppa,
@@ -875,6 +899,10 @@ function risolviBudgetSuSnapshot(spec: SpecQuery, snapshot: Snapshot): Risultato
  * non da SQL improvvisato.
  */
 export function esegui(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
+  // Misura personalizzata: si combinano i risultati delle metriche di base,
+  // che girano su questa stessa funzione e sullo stesso snapshot perimetrato.
+  if (spec.misura) return eseguiMisura(spec, snapshot);
+
   // Budget e BEP non stanno nei dataset del gestionale: vanno risolti sulla
   // serie agganciata allo snapshot. Il passaggio e' qui, e non nelle singole
   // route, perche' `esegui()` e' chiamata da decine di punti — chat, briefing,

@@ -28,6 +28,7 @@ import { Scheda, Scheletro, euro, numero } from "@/components/prototipo-bi/primi
 import { useImpostazioni } from "@/components/prototipo-bi/impostazioni";
 import { PannelloAspetto } from "@/components/prototipo-bi/pannello-aspetto";
 import { SelettoreAnni } from "@/components/prototipo-bi/selettore-anni";
+import { CreaMisura } from "@/components/prototipo-bi/crea-misura";
 import {
   anniDelPeriodo,
   descriviPeriodo as descriviPeriodoFissato,
@@ -56,6 +57,7 @@ import type {
   Dimensione,
   Filtro,
   Granularita,
+  MisuraDefinita,
   Modificatore,
   Periodo,
   RisultatoQuery,
@@ -65,6 +67,15 @@ import type {
   SpecQuery,
 } from "@/lib/prototipo-bi/tipi";
 import type { ChiaveTipologia } from "@/lib/prototipo-bi/tassonomia";
+import {
+  chiaveDellaSpec,
+  chiaveMisura,
+  estendiVocabolario,
+  misureNelleSpec,
+  specPerChiave,
+  type ChiaveCampo,
+} from "@/lib/prototipo-bi/misure-vocabolario";
+import type { MisuraSalvata } from "@/lib/prototipo-bi/misure-catalogo";
 
 interface VoceMetrica {
   chiave: ChiaveMetrica;
@@ -188,7 +199,11 @@ function specDaScorciatoia(spec: SpecQuery, scorciatoia: ScorciatoiaConfronto): 
   if (scorciatoia === "progressivo") {
     return { ...spec, modificatore: "progressivo" };
   }
-  return { ...spec, metrica: scorciatoia };
+  // Un'altra metrica sostituisce la domanda: una misura personalizzata rimasta
+  // nella spec la farebbe calcolare ancora, con la metrica sbagliata accanto.
+  const senzaMisura: SpecQuery = { ...spec };
+  delete senzaMisura.misura;
+  return { ...senzaMisura, metrica: scorciatoia };
 }
 
 function eOggetto(valore: unknown): valore is Record<string, unknown> {
@@ -200,7 +215,8 @@ function messaggioErrore(corpo: unknown, ripiego: string): string {
 }
 
 function costruisciTitolo(spec: SpecQuery, vocabolario: Vocabolario): string {
-  const metrica = vocabolario.metriche.find((voce) => voce.chiave === spec.metrica)?.etichetta;
+  const metrica = spec.misura?.nome
+    ?? vocabolario.metriche.find((voce) => voce.chiave === spec.metrica)?.etichetta;
   const dimensioni = (spec.raggruppa ?? [])
     .map((chiave) =>
       vocabolario.dimensioni.find((voce) => voce.chiave === chiave)?.etichetta.toLocaleLowerCase("it")
@@ -293,6 +309,12 @@ export function EditorAnalisi({
   const [caricamento, setCaricamento] = useState(false);
   const [errore, setErrore] = useState("");
   const [erroreVocabolario, setErroreVocabolario] = useState("");
+  // Le misure personalizzate del catalogo. Caricate a parte e senza fare rumore
+  // se mancano: l'editor funziona anche senza (utente senza permesso, migration
+  // non ancora applicata), e il vocabolario delle metriche resta quello di prima.
+  const [misureSalvate, setMisureSalvate] = useState<MisuraSalvata[]>([]);
+  const [chiGestisceMisure, setChiGestisceMisure] = useState<{ utenteId: string; tutte: boolean }>({ utenteId: "", tutte: false });
+  const [creaMisuraAperta, setCreaMisuraAperta] = useState(false);
   const [titolo, setTitolo] = useState(titoloIniziale ?? "");
   const [graficoScelto, setGraficoScelto] = useState<TipoGrafico | undefined>(graficoIniziale);
   // L'aspetto non entra in `chiaveSpec`: e' resa, non domanda, e cambiarlo
@@ -331,9 +353,54 @@ export function EditorAnalisi({
     return () => controller.abort();
   }, []);
 
+  function leggiMisure(segnale?: AbortSignal) {
+    return fetch("/api/bi/misure", { signal: segnale })
+      .then(async (risposta) => {
+        if (!risposta.ok) return;
+        const corpo: unknown = await risposta.json();
+        if (!eOggetto(corpo) || !Array.isArray(corpo.misure)) return;
+        setMisureSalvate(corpo.misure as MisuraSalvata[]);
+        setChiGestisceMisure({
+          utenteId: typeof corpo.utenteId === "string" ? corpo.utenteId : "",
+          tutte: corpo.puoGestireTutte === true,
+        });
+      })
+      .catch(() => undefined);
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void leggiMisure(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  async function togliMisura(chiave: ChiaveCampo) {
+    const salvata = misureSalvate.find((m) => m.misura && chiaveMisura(m.misura) === chiave);
+    if (!salvata) return;
+    if (
+      !window.confirm(
+        `Togliere «${salvata.nome}» dal catalogo? I riquadri che già la usano continuano a funzionare e a dare gli stessi numeri.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const risposta = await fetch(`/api/bi/misure/${encodeURIComponent(salvata.id)}`, { method: "DELETE" });
+      if (!risposta.ok) {
+        const corpo: unknown = await risposta.json().catch(() => null);
+        setErrore(messaggioErrore(corpo, "Non riesco a togliere la misura."));
+        return;
+      }
+      await leggiMisure();
+    } catch {
+      setErrore("Non riesco a togliere la misura.");
+    }
+  }
+
   const serieAnalisi = useMemo<SerieAnalisi[]>(() => {
     if (!spec) return [];
     const nomePrincipale = serieIniziali?.find((voce) => voce.ruolo === "principale")?.nome
+      ?? spec.misura?.nome
       ?? vocabolario?.metriche.find((voce) => voce.chiave === spec.metrica)?.etichetta
       ?? spec.metrica;
     return [{ ruolo: "principale", nome: nomePrincipale, spec }, ...serieAggiuntive];
@@ -440,61 +507,93 @@ export function EditorAnalisi({
    * misure diverse. Tenerli distinti e' l'unico modo perche' l'uno non
    * cancelli le serie dell'altro a ogni spunta.
    */
+  const esteso = useMemo(() => {
+    if (!vocabolario) return null;
+    // Prima quelle del catalogo, poi quelle che le spec gia' portano (un
+    // riquadro salvato con una misura poi archiviata deve poterla mostrare).
+    const dalCatalogo = misureSalvate.flatMap((m) => (m.misura ? [m.misura] : []));
+    const dalleSpec = misureNelleSpec([
+      specIniziale,
+      ...(serieIniziali ?? []).map((voce) => voce.spec),
+      spec,
+      ...serieAggiuntive.map((voce) => voce.spec),
+    ]);
+    return estendiVocabolario(vocabolario, [...dalCatalogo, ...dalleSpec]);
+  }, [misureSalvate, serieAggiuntive, serieIniziali, spec, specIniziale, vocabolario]);
+
   const selezioneCampi: SelezioneCampi = spec
     ? {
         misure: [
-          spec.metrica,
-          ...serieAggiuntive.filter((voce) => !voce.scorciatoia).map((voce) => voce.spec.metrica),
+          chiaveDellaSpec(spec),
+          ...serieAggiuntive.filter((voce) => !voce.scorciatoia).map((voce) => chiaveDellaSpec(voce.spec)),
         ],
         suddivisioni: spec.raggruppa ?? [],
         granularita: spec.granularita,
       }
     : SELEZIONE_VUOTA;
 
-  function applicaSelezione(nuova: SelezioneCampi) {
+  function applicaSelezione(nuova: SelezioneCampi, definizioniExtra: Record<string, MisuraDefinita> = {}) {
     const [principale, ...altre] = nuova.misure;
     if (!principale) return;
+    const definizioni = { ...(esteso?.definizioni ?? {}), ...definizioniExtra };
 
-    const tipologia = vocabolario?.tipologie.find((voce) => voce.metriche.includes(principale));
-    if (tipologia) setTipologiaScelta(tipologia.chiave);
+    const tipologia = esteso?.vocabolario.tipologie.find((voce) => voce.metriche.includes(principale));
+    // Il gruppo delle misure personalizzate non esiste nel pannello «Un'altra
+    // metrica»: non va scelto come tipologia di partenza.
+    if (tipologia && tipologia.chiave !== "misure") setTipologiaScelta(tipologia.chiave);
 
-    setSpec((corrente) => ({
-      ...(corrente ?? { metrica: principale, modificatore: "corrente" as const }),
-      metrica: principale,
-      raggruppa: nuova.suddivisioni.length > 0 ? [...nuova.suddivisioni] : undefined,
-      granularita: nuova.granularita,
-    }));
+    const principaleSpec = specPerChiave(
+      {
+        ...(spec ?? { metrica: "ordinato" as const, modificatore: "corrente" as const }),
+        raggruppa: nuova.suddivisioni.length > 0 ? [...nuova.suddivisioni] : undefined,
+        granularita: nuova.granularita,
+      },
+      principale,
+      definizioni
+    );
+    // Senza definizione non c'e' domanda: si lascia com'era invece di calcolare altro.
+    if (!principaleSpec) return;
+    setSpec(principaleSpec);
 
     setSerieAggiuntive((correnti) => {
       const scorciatoie = correnti.filter((voce) => voce.scorciatoia);
-      const misureExtra = altre.map((metrica) => {
-        const gia = correnti.find((voce) => !voce.scorciatoia && voce.spec.metrica === metrica);
+      const misureExtra = altre.flatMap((chiave) => {
+        const gia = correnti.find((voce) => !voce.scorciatoia && chiaveDellaSpec(voce.spec) === chiave);
         const nome =
           gia?.nome ??
-          vocabolario?.metriche.find((voce) => voce.chiave === metrica)?.etichetta ??
-          metrica;
-        return {
-          ruolo:
-            metrica === "budget"
-              ? ("obiettivo" as const)
-              : metrica === "bep"
-                ? ("soglia" as const)
-                : ("confronto" as const),
-          nome,
-          // Il colore scelto a mano sopravvive a una rispuntata.
-          ...(gia?.colore ? { colore: gia.colore } : {}),
-          // La misura in piu' deve condividere suddivisione e granularita'
-          // della principale: e' la stessa domanda su un altro numero. Senza,
-          // la serie si riduce a un solo valore e compare sull'asse come una
-          // categoria di troppo chiamata «totale», accanto ai mesi.
-          spec: {
-            metrica,
-            modificatore: "corrente" as const,
+          esteso?.vocabolario.metriche.find((voce) => voce.chiave === chiave)?.etichetta ??
+          definizioni[chiave]?.nome ??
+          chiave;
+        // La misura in piu' deve condividere suddivisione e granularita'
+        // della principale: e' la stessa domanda su un altro numero. Senza,
+        // la serie si riduce a un solo valore e compare sull'asse come una
+        // categoria di troppo chiamata «totale», accanto ai mesi.
+        const specExtra = specPerChiave(
+          {
+            metrica: "ordinato",
+            modificatore: "corrente",
             ...(nuova.suddivisioni.length > 0 ? { raggruppa: [...nuova.suddivisioni] } : {}),
             ...(nuova.granularita ? { granularita: nuova.granularita } : {}),
             ...(spec?.periodo ? { periodo: { ...spec.periodo } } : {}),
           },
-        };
+          chiave,
+          definizioni
+        );
+        if (!specExtra) return [];
+        return [
+          {
+            ruolo:
+              chiave === "budget"
+                ? ("obiettivo" as const)
+                : chiave === "bep"
+                  ? ("soglia" as const)
+                  : ("confronto" as const),
+            nome,
+            // Il colore scelto a mano sopravvive a una rispuntata.
+            ...(gia?.colore ? { colore: gia.colore } : {}),
+            spec: specExtra,
+          },
+        ];
       });
       return [...scorciatoie, ...misureExtra];
     });
@@ -517,7 +616,7 @@ export function EditorAnalisi({
     .map((chiave) => vocabolario?.metriche.find((metrica) => metrica.chiave === chiave))
     .filter((metrica): metrica is VoceMetrica => Boolean(metrica));
   const chiaviDimensioniAmmesse = spec
-    ? vocabolario?.dimensioniPerMetrica[spec.metrica] ?? []
+    ? esteso?.vocabolario.dimensioniPerMetrica[chiaveDellaSpec(spec)] ?? []
     : [];
   const dimensioniAmmesse = chiaviDimensioniAmmesse
     .map((chiave) => vocabolario?.dimensioni.find((dimensione) => dimensione.chiave === chiave))
@@ -555,8 +654,12 @@ export function EditorAnalisi({
   function aggiungiAltraMetrica() {
     if (!spec || !metricaConfronto) return;
     const ammesse = new Set(vocabolario?.dimensioniPerMetrica[metricaConfronto] ?? []);
+    // L'altra metrica e' una domanda diversa: la misura personalizzata della
+    // principale non deve restarle attaccata.
+    const specSenzaMisura: SpecQuery = { ...spec };
+    delete specSenzaMisura.misura;
     const nuovaSpec: SpecQuery = {
-      ...spec,
+      ...specSenzaMisura,
       metrica: metricaConfronto,
       raggruppa: spec.raggruppa?.filter((dimensione) => ammesse.has(dimensione)),
       filtri: spec.filtri?.filter(
@@ -718,15 +821,49 @@ export function EditorAnalisi({
           </div>
           <AlberoCampi
             vocabolario={{
-              tipologie: vocabolario.tipologie,
-              metriche: vocabolario.metriche,
+              tipologie: esteso?.vocabolario.tipologie ?? vocabolario.tipologie,
+              metriche: esteso?.vocabolario.metriche ?? vocabolario.metriche,
               dimensioni: vocabolario.dimensioni,
-              dimensioniPerMetrica: vocabolario.dimensioniPerMetrica,
+              dimensioniPerMetrica: esteso?.vocabolario.dimensioniPerMetrica ?? vocabolario.dimensioniPerMetrica,
             }}
             selezione={selezioneCampi}
-            onCambia={applicaSelezione}
+            onCambia={(nuova) => applicaSelezione(nuova)}
+            azioneMisure={
+              <button
+                type="button"
+                onClick={() => setCreaMisuraAperta(true)}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-primary bg-bg-page px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Nuova misura a parole
+              </button>
+            }
+            puoTogliereMisura={(chiave) => {
+              const salvata = misureSalvate.find((m) => m.misura && chiaveMisura(m.misura) === chiave);
+              return Boolean(salvata && (chiGestisceMisure.tutte || salvata.autoreId === chiGestisceMisure.utenteId));
+            }}
+            onTogliMisura={(chiave) => void togliMisura(chiave)}
           />
         </section>
+      )}
+
+      {creaMisuraAperta && (
+        <CreaMisura
+          onChiudi={() => setCreaMisuraAperta(false)}
+          onSalvata={(salvata) => {
+            setCreaMisuraAperta(false);
+            if (!salvata.misura) return;
+            const misura = salvata.misura;
+            setMisureSalvate((correnti) => [salvata, ...correnti.filter((m) => m.id !== salvata.id)]);
+            const chiave = chiaveMisura(misura);
+            // Si usa subito: la misura appena creata si aggiunge a quelle
+            // spuntate (o diventa la principale se non c'era niente).
+            applicaSelezione(
+              { ...selezioneCampi, misure: [...selezioneCampi.misure, chiave] },
+              { [chiave]: misura }
+            );
+          }}
+        />
       )}
 
       {!spec ? (
@@ -876,7 +1013,11 @@ export function EditorAnalisi({
                   className={`${CLASSE_CAMPO} mt-1`}
                 >
                   {vocabolario.modificatori.map((modificatore) => (
-                    <option key={modificatore.chiave} value={modificatore.chiave}>
+                    <option
+                      key={modificatore.chiave}
+                      value={modificatore.chiave}
+                      disabled={Boolean(spec.misura) && modificatore.chiave.startsWith("progressivo")}
+                    >
                       {modificatore.descrizione}
                     </option>
                   ))}
@@ -917,8 +1058,10 @@ export function EditorAnalisi({
               </button>
               <button
                 type="button"
+                disabled={Boolean(spec.misura)}
+                title={spec.misura ? "Il progressivo non è disponibile per le misure personalizzate." : undefined}
                 onClick={() => aggiungiScorciatoia("progressivo", "Progressivo", "confronto")}
-                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
               >
                 Progressivo
               </button>

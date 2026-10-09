@@ -251,8 +251,12 @@ function etichettaDimensione(spec: SpecQuery): string {
  * "Valore". Quattro tabelle intitolate diversamente ma tutte con la colonna
  * "Ordinato (EUR)" si smascherano da sole.
  */
+function etichettaSpec(spec: SpecQuery): string {
+  return spec.misura?.nome ?? CATALOGO[spec.metrica]?.etichetta ?? spec.metrica;
+}
+
 function intestazioneValore(spec: SpecQuery, res: RisultatoQuery): string {
-  const nome = CATALOGO[spec.metrica]?.etichetta ?? spec.metrica;
+  const nome = etichettaSpec(spec);
   const unita =
     res.unita === "euro" ? " (€)" : res.unita === "percentuale" ? " (%)" : res.unita === "giorni" ? " (gg)" : "";
   const mod = spec.modificatore ?? "corrente";
@@ -262,7 +266,7 @@ function intestazioneValore(spec: SpecQuery, res: RisultatoQuery): string {
 
 /** Riga di provenienza sotto la tabella: metrica, periodo, filtri. */
 function provenienzaSpec(spec: SpecQuery): string {
-  const parti = [`Metrica certificata: ${CATALOGO[spec.metrica]?.etichetta ?? spec.metrica}`];
+  const parti = [`${spec.misura ? "Misura personalizzata" : "Metrica certificata"}: ${etichettaSpec(spec)}`];
   const p = spec.periodo ?? {};
   if (p.anno) parti.push(`anno ${p.anno}`);
   else if (p.dal || p.al) parti.push(`dal ${p.dal ?? "inizio"} al ${p.al ?? "ultimo dato"}`);
@@ -343,6 +347,7 @@ function raggruppaPerForma(blocchi: BloccoCalcolato[]): BloccoCalcolato[][] {
     const gia = gruppo.some(
       (g) =>
         g.spec.metrica === b.spec.metrica &&
+        (g.spec.misura?.nome ?? null) === (b.spec.misura?.nome ?? null) &&
         (g.spec.modificatore ?? "corrente") === (b.spec.modificatore ?? "corrente")
     );
     if (!gia) gruppo.push(b);
@@ -354,7 +359,7 @@ function raggruppaPerForma(blocchi: BloccoCalcolato[]): BloccoCalcolato[][] {
 /** Titolo di un gruppo: quello del blocco se e' solo, altrimenti composto. */
 function titoloGruppo(gruppo: BloccoCalcolato[]): string {
   if (gruppo.length === 1) return gruppo[0].titolo;
-  const nomi = gruppo.map((g) => CATALOGO[g.spec.metrica]?.etichetta ?? g.spec.metrica);
+  const nomi = gruppo.map((g) => etichettaSpec(g.spec));
   const ultimo = nomi.pop();
   const elenco = nomi.length > 0 ? `${nomi.join(", ")} e ${ultimo}` : (ultimo ?? "");
   const per = etichettaDimensione(gruppo[0].spec);
@@ -496,7 +501,7 @@ export async function generaReportWord(opzioni: {
     figli.push(
       p(
         `Totale: ${gruppo
-          .map((b) => `${CATALOGO[b.spec.metrica]?.etichetta ?? b.spec.metrica} ${formattaValore(b.res.totale, b.res.unita)}`)
+          .map((b) => `${etichettaSpec(b.spec)} ${formattaValore(b.res.totale, b.res.unita)}`)
           .join(" · ")}`,
         { grassetto: true }
       )
@@ -505,11 +510,11 @@ export async function generaReportWord(opzioni: {
     for (const b of gruppo) {
       figli.push(p(provenienzaSpec(b.spec), { size: 16, colore: "64748B" }));
       for (const avviso of b.res.avvisi ?? []) {
-        const nome = CATALOGO[b.spec.metrica]?.etichetta ?? b.spec.metrica;
+        const nome = etichettaSpec(b.spec);
         figli.push(p(`Avvertenza (${nome}): ${avviso}`, { size: 18, colore: "B45309" }));
       }
       if (b.res.righe.length === 0) {
-        const nome = CATALOGO[b.spec.metrica]?.etichetta ?? b.spec.metrica;
+        const nome = etichettaSpec(b.spec);
         figli.push(
           p(`Nessun dato per "${nome}" nel periodo richiesto.`, { size: 18, colore: "B45309" })
         );

@@ -418,8 +418,54 @@ export interface Periodo {
   anni?: number[];
 }
 
+// ── Misure personalizzate ───────────────────────────────────────────────────
+//
+// Una misura personalizzata e' una DEFINIZIONE DICHIARATIVA composta da metriche
+// del catalogo, mai una formula libera: ogni operando e' una metrica certificata
+// (con eventuali filtri incorporati) e l'unico modo di combinarli e' uno dei
+// cinque operatori qui sotto. Niente ricorsione: un solo livello di operatori.
+// Regole in `misure.ts`.
+
+/** Una metrica del catalogo, con filtri incorporati nella misura. */
+export interface OperandoMisura {
+  metrica: ChiaveMetrica;
+  filtri?: Filtro[];
+}
+
+export type EspressioneMisura =
+  /** La metrica stessa, con filtri incorporati (es. fatturato dei soli COMPONENTI). */
+  | ({ tipo: "metrica" } & OperandoMisura)
+  /**
+   * Numeratore diviso denominatore. Stessa unita' (euro/euro, numero/numero) =
+   * percentuale; euro/numero = euro per unita' (es. fatturato per ordine).
+   */
+  | { tipo: "rapporto"; numeratore: OperandoMisura; denominatore: OperandoMisura }
+  /** `da` meno `sottrai`, nella stessa unita'. */
+  | { tipo: "differenza"; da: OperandoMisura; sottrai: OperandoMisura }
+  /** Somma di 2-4 operandi nella stessa unita'. */
+  | { tipo: "somma"; addendi: OperandoMisura[] }
+  /**
+   * Quota: la metrica con i filtri incorporati sulla stessa metrica SENZA quei
+   * filtri (restano quelli della spec e della dashboard), in percentuale.
+   */
+  | { tipo: "quota"; metrica: ChiaveMetrica; filtri: Filtro[] };
+
+export interface MisuraDefinita {
+  /** Id della misura salvata da cui questa copia deriva (assente se creata al volo). */
+  id?: string;
+  /** Versione della misura salvata al momento della copia. */
+  versione?: number;
+  nome: string;
+  espressione: EspressioneMisura;
+}
+
 export interface SpecQuery {
   metrica: ChiaveMetrica;
+  /**
+   * Se presente, la spec calcola questa misura personalizzata e `metrica` e'
+   * soltanto l'operando rappresentativo (lo riscrive il validatore, mai l'input).
+   */
+  misura?: MisuraDefinita;
   modificatore?: Modificatore;
   granularita?: Granularita;
   raggruppa?: Dimensione[];

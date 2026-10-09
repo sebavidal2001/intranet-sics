@@ -184,9 +184,14 @@ function risultatoPerSerie(
   };
 }
 
+/** Il nome da mostrare: quello della misura personalizzata, o la chiave della metrica. */
+function nomeDelRisultato(risultato: RisultatoQuery): string {
+  return risultato.spec.misura?.nome ?? risultato.metrica;
+}
+
 function serieTemporali(risultato: RisultatoQuery): { nome: string; risultato: RisultatoQuery }[] {
   const dimensione = risultato.spec.raggruppa?.[0];
-  if (!dimensione) return [{ nome: risultato.metrica, risultato }];
+  if (!dimensione) return [{ nome: nomeDelRisultato(risultato), risultato }];
 
   const totali = new Map<string, number>();
   for (const riga of risultato.righe) {
@@ -658,8 +663,8 @@ export function GraficoDaRisultato({
     case "combo":
       return (
         <GraficoCombo
-          barre={{ nome: risultato.metrica, risultato, colore: colorePrincipale }}
-          linee={[{ nome: `${risultato.metrica} — andamento`, risultato, colore: colore(1) || PALETTE[1] }]}
+          barre={{ nome: nomeDelRisultato(risultato), risultato, colore: colorePrincipale }}
+          linee={[{ nome: `${nomeDelRisultato(risultato)} — andamento`, risultato, colore: colore(1) || PALETTE[1] }]}
           altezza={altezza}
         />
       );

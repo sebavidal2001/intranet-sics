@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
         const risultato = esegui(spec, snapshot);
         return {
           titolo,
-          natura: "Metrica certificata",
+          natura: spec.misura ? `Misura personalizzata: ${spec.misura.nome}` : "Metrica certificata",
           righe: risultato.righe.map((r) => ({ ...r.chiavi, Voce: r.etichetta, Valore: r.valore, Righe: r.conteggio })),
         };
       }));

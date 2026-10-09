@@ -17,7 +17,9 @@ export type ChiaveTipologia =
   | "budget"
   | "margine"
   | "acquisti"
-  | "visite";
+  | "visite"
+  /** Le misure personalizzate salvate: non sta in `TIPOLOGIE`, la aggiunge il vocabolario. */
+  | "misure";
 
 export interface Tipologia {
   chiave: ChiaveTipologia;

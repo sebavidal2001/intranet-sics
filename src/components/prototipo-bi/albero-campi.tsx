@@ -27,8 +27,8 @@
  * sia una pagina, non salva. Riceve una selezione e ne comunica una nuova.
  */
 
-import { useId, useState } from "react";
-import { ChevronRight, GripVertical, ArrowUp, ArrowDown, X } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { ChevronRight, GripVertical, ArrowUp, ArrowDown, Trash2, X } from "lucide-react";
 import {
   GRUPPI_DIMENSIONI,
   VOCI_CALENDARIO,
@@ -36,10 +36,11 @@ import {
 } from "@/lib/prototipo-bi/gruppi-campi";
 import { ammetteConfrontoBudget, motivoBudgetNonDisponibile } from "@/lib/prototipo-bi/analisi-composita";
 import type { ChiaveTipologia } from "@/lib/prototipo-bi/tassonomia";
+import { eChiaveMisura, specPerChiave, type ChiaveCampo } from "@/lib/prototipo-bi/misure-vocabolario";
 import type {
-  ChiaveMetrica,
   Dimensione,
   Granularita,
+  MisuraDefinita,
   RuoloSerie,
   SerieAnalisi,
   SpecQuery,
@@ -50,8 +51,11 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface SelezioneCampi {
-  /** Le misure spuntate, in ordine di spunta. La prima è la principale. */
-  misure: ChiaveMetrica[];
+  /**
+   * Le voci spuntate, in ordine di spunta. La prima è la principale. Sono
+   * metriche del catalogo o misure personalizzate (`misura:<id>`).
+   */
+  misure: ChiaveCampo[];
   /** Le dimensioni spuntate, in ordine. Al massimo due. */
   suddivisioni: Dimensione[];
   /** Granularità temporale, se spuntata nel Calendario. */
@@ -61,7 +65,7 @@ export interface SelezioneCampi {
 export const SELEZIONE_VUOTA: SelezioneCampi = { misure: [], suddivisioni: [] };
 
 interface VoceMetrica {
-  chiave: ChiaveMetrica;
+  chiave: ChiaveCampo;
   etichetta: string;
   descrizione: string;
   unita: string;
@@ -71,14 +75,14 @@ interface VoceTipologia {
   chiave: ChiaveTipologia;
   etichetta: string;
   descrizione: string;
-  metriche: ChiaveMetrica[];
+  metriche: ChiaveCampo[];
 }
 
 export interface VocabolarioAlbero {
   tipologie: VoceTipologia[];
   metriche: VoceMetrica[];
   dimensioni: { chiave: Dimensione; etichetta: string }[];
-  dimensioniPerMetrica: Record<ChiaveMetrica, Dimensione[]>;
+  dimensioniPerMetrica: Record<string, Dimensione[]>;
 }
 
 /**
@@ -96,7 +100,7 @@ const MASSIME_SUDDIVISIONI = 2;
  * disegna già come bersaglio e come soglia, e chiamarli «confronto» li
  * farebbe diventare una seconda linea indistinguibile.
  */
-function ruoloPerMisura(metrica: ChiaveMetrica, primaSpuntata: boolean): RuoloSerie {
+function ruoloPerMisura(metrica: ChiaveCampo, primaSpuntata: boolean): RuoloSerie {
   if (primaSpuntata) return "principale";
   if (metrica === "budget") return "obiettivo";
   if (metrica === "bep") return "soglia";
@@ -111,24 +115,36 @@ function ruoloPerMisura(metrica: ChiaveMetrica, primaSpuntata: boolean): RuoloSe
  */
 export function specDaSelezione(
   selezione: SelezioneCampi,
-  nomi?: Partial<Record<ChiaveMetrica, string>>
+  nomi?: Partial<Record<string, string>>,
+  /** Le definizioni delle misure personalizzate spuntate, per chiave. */
+  definizioni: Record<string, MisuraDefinita> = {}
 ): { spec: SpecQuery; serie: SerieAnalisi[] | null } | null {
   const [principale, ...altre] = selezione.misure;
   if (!principale) return null;
 
-  const base: SpecQuery = {
-    metrica: principale,
+  const comune = {
     ...(selezione.suddivisioni.length > 0 ? { raggruppa: [...selezione.suddivisioni] } : {}),
     ...(selezione.granularita ? { granularita: selezione.granularita } : {}),
   };
+  // Una misura senza definizione disponibile non si puo' eseguire: meglio
+  // nessuna domanda che una domanda su un'altra metrica.
+  const specDi = (chiave: ChiaveCampo): SpecQuery | null =>
+    specPerChiave({ metrica: eChiaveMisura(chiave) ? "ordinato" : chiave, ...comune }, chiave, definizioni);
 
+  const base = specDi(principale);
+  if (!base) return null;
   if (altre.length === 0) return { spec: base, serie: null };
 
-  const serie: SerieAnalisi[] = selezione.misure.map((metrica, indice) => ({
-    ruolo: ruoloPerMisura(metrica, indice === 0),
-    nome: nomi?.[metrica] ?? metrica,
-    spec: { ...base, metrica },
-  }));
+  const serie: SerieAnalisi[] = [];
+  for (const [indice, chiave] of selezione.misure.entries()) {
+    const spec = specDi(chiave);
+    if (!spec) return null;
+    serie.push({
+      ruolo: ruoloPerMisura(chiave, indice === 0),
+      nome: nomi?.[chiave] ?? definizioni[chiave]?.nome ?? chiave,
+      spec,
+    });
+  }
   return { spec: base, serie };
 }
 
@@ -144,8 +160,8 @@ export function specDaSelezione(
  * sembra un crollo e non lo è.
  */
 export function dimensioniAmmesse(
-  misure: ChiaveMetrica[],
-  perMetrica: Record<ChiaveMetrica, Dimensione[]>
+  misure: ChiaveCampo[],
+  perMetrica: Record<string, Dimensione[]>
 ): Dimensione[] {
   if (misure.length === 0) return [];
   return misure.reduce<Dimensione[]>(
@@ -163,9 +179,9 @@ export function dimensioniAmmesse(
  * sola — un confronto che sembra legittimo e non significa niente.
  */
 export function motivoMisuraNonSelezionabile(
-  metrica: ChiaveMetrica,
+  metrica: ChiaveCampo,
   selezione: SelezioneCampi,
-  perMetrica: Record<ChiaveMetrica, Dimensione[]>
+  perMetrica: Record<string, Dimensione[]>
 ): string | null {
   if (selezione.misure.includes(metrica)) return null;
 
@@ -229,16 +245,22 @@ function Casella({
   spuntata,
   motivoBloccata,
   onCambia,
+  nota,
+  azione,
 }: {
   etichetta: string;
   spuntata: boolean;
   motivoBloccata: string | null;
   onCambia: (spuntata: boolean) => void;
+  /** Una riga sotto l'etichetta: per le misure, la definizione in parole. */
+  nota?: string;
+  /** Un pulsante a destra (per esempio «Togli la misura»), fuori dalla casella. */
+  azione?: ReactNode;
 }) {
   const bloccata = motivoBloccata !== null && !spuntata;
-  return (
+  const casella = (
     <label
-      className={`flex min-h-10 items-center gap-2 rounded px-1 ${
+      className={`flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded px-1 ${
         bloccata ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-bg-page"
       }`}
     >
@@ -256,9 +278,17 @@ function Casella({
           passaggio del mouse non esiste e una casella grigia senza spiegazione
           sembra un guasto.
         */}
+        {nota && <span className="block text-xs text-text-muted">{nota}</span>}
         {bloccata && <span className="block text-xs text-text-muted">{motivoBloccata}</span>}
       </span>
     </label>
+  );
+  if (!azione) return casella;
+  return (
+    <div className="flex items-center gap-1">
+      {casella}
+      {azione}
+    </div>
   );
 }
 
@@ -266,14 +296,22 @@ export function AlberoCampi({
   vocabolario,
   selezione,
   onCambia,
+  azioneMisure,
+  puoTogliereMisura,
+  onTogliMisura,
 }: {
   vocabolario: VocabolarioAlbero;
   selezione: SelezioneCampi;
   onCambia: (selezione: SelezioneCampi) => void;
+  /** In fondo alla sezione delle misure: per esempio «Nuova misura a parole». */
+  azioneMisure?: ReactNode;
+  /** Se l'utente puo' togliere questa misura personalizzata dal catalogo. */
+  puoTogliereMisura?: (chiave: ChiaveCampo) => boolean;
+  onTogliMisura?: (chiave: ChiaveCampo) => void;
 }) {
   const [trascinata, setTrascinata] = useState<number | null>(null);
 
-  const etichettaMetrica = (chiave: ChiaveMetrica) =>
+  const etichettaMetrica = (chiave: ChiaveCampo) =>
     vocabolario.metriche.find((m) => m.chiave === chiave)?.etichetta ?? chiave;
   const etichettaDimensione = (chiave: Dimensione) =>
     vocabolario.dimensioni.find((d) => d.chiave === chiave)?.etichetta ?? chiave;
@@ -281,7 +319,7 @@ export function AlberoCampi({
   const ammesse = dimensioniAmmesse(selezione.misure, vocabolario.dimensioniPerMetrica);
   const pieno = selezione.suddivisioni.length >= MASSIME_SUDDIVISIONI;
 
-  function cambiaMisura(metrica: ChiaveMetrica, spuntata: boolean) {
+  function cambiaMisura(metrica: ChiaveCampo, spuntata: boolean) {
     const misure = spuntata
       ? [...selezione.misure, metrica]
       : selezione.misure.filter((m) => m !== metrica);
@@ -359,11 +397,29 @@ export function AlberoCampi({
                     vocabolario.dimensioniPerMetrica
                   )}
                   onCambia={(spuntata) => cambiaMisura(chiave, spuntata)}
+                  nota={
+                    eChiaveMisura(chiave)
+                      ? vocabolario.metriche.find((m) => m.chiave === chiave)?.descrizione
+                      : undefined
+                  }
+                  azione={
+                    eChiaveMisura(chiave) && puoTogliereMisura?.(chiave) && onTogliMisura ? (
+                      <button
+                        type="button"
+                        aria-label={`Togli la misura ${etichettaMetrica(chiave)} dal catalogo`}
+                        onClick={() => onTogliMisura(chiave)}
+                        className="rounded p-2 text-text-muted hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </button>
+                    ) : undefined
+                  }
                 />
               ))}
             </Gruppo>
           ))}
         </div>
+        {azioneMisure && <div className="border-t border-border px-3 py-2">{azioneMisure}</div>}
       </section>
 
       <section aria-labelledby="albero-suddivisioni" className="rounded-xl border border-border bg-bg">

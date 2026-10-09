@@ -125,7 +125,7 @@ export function validaSerieAnalisi(valore: unknown): SerieAnalisi[] {
 export function serieEffettiveAnalisi(analisi: AnalisiEseguibile): SerieAnalisi[] {
   if (analisi.serie === null || analisi.serie === undefined) {
     const spec = validaSpec(analisi.spec);
-    return [{ ruolo: "principale", nome: spec.metrica, spec }];
+    return [{ ruolo: "principale", nome: spec.misura?.nome ?? spec.metrica, spec }];
   }
   return validaSerieAnalisi(analisi.serie);
 }
