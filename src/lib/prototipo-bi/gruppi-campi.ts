@@ -61,6 +61,18 @@ export const GRUPPI_DIMENSIONI: GruppoDimensioni[] = [
     descrizione: "Disponibili solo sulle metriche dei preventivi.",
     dimensioni: ["creatore", "esito", "fascia_eta"],
   },
+  {
+    chiave: "visite",
+    etichetta: "Visite e territorio",
+    descrizione: "Dove e come si fanno le visite: CAP o provincia attivano la mappa.",
+    dimensioni: ["cap", "provincia", "grado", "tipo_visita"],
+  },
+  {
+    chiave: "acquisti",
+    etichetta: "Acquisti",
+    descrizione: "Disponibili solo sugli ordini a fornitore.",
+    dimensioni: ["fornitore", "buyer"],
+  },
 ];
 
 export interface VoceCalendario {
@@ -95,6 +107,14 @@ export function motivoDimensioneNonAmmessa(dimensione: Dimensione): string {
       return "Solo per i preventivi";
     case "causale":
       return "Solo per consegnato e banco";
+    case "cap":
+    case "provincia":
+    case "grado":
+    case "tipo_visita":
+      return "Solo per le visite";
+    case "fornitore":
+    case "buyer":
+      return "Solo per gli ordini a fornitore";
     default:
       return "Non disponibile per questa misura";
   }

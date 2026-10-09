@@ -93,6 +93,12 @@ export interface ColonnaAnalitica {
   titolo?: string;
   /** Strategia di totale. Default: somma per le colonne numeriche. */
   totale?: TotaleColonna;
+  /**
+   * Come si scrive un valore di testo (per esempio una data in gg/mm/aaaa).
+   * Si ordina e si cerca sul valore grezzo / mostrato rispettivamente: il
+   * grezzo e' ordinabile, quello mostrato e' cio' che l'utente digita.
+   */
+  formatta?: (valore: string) => string;
 }
 
 export interface RigaAnalitica {
@@ -128,7 +134,7 @@ function fmt(v: unknown, col: ColonnaAnalitica): string {
     case "raggiungimento":
       return `${n.toFixed(0)}%`;
     default:
-      return String(v);
+      return col.formatta ? col.formatta(String(v)) : String(v);
   }
 }
 
@@ -151,6 +157,7 @@ export function TabellaAnalitica({
   rigaEvidenziata,
   ricercabile = true,
   ultimoPeriodoParziale = false,
+  senzaColonnaVoce = false,
 }: {
   colonne: ColonnaAnalitica[];
   righe: RigaAnalitica[];
@@ -177,6 +184,11 @@ export function TabellaAnalitica({
    */
   ultimoPeriodoParziale?: boolean;
   ricercabile?: boolean;
+  /**
+   * Niente colonna «Voce» concatenata: ogni dimensione ha la sua colonna
+   * (`tipo: "testo"`, in testa a `colonne`) e le righe restano una per una.
+   */
+  senzaColonnaVoce?: boolean;
 }) {
   const { aspetto } = useImpostazioni();
   // «valore» e' la scelta generica del pannello Aspetto, che non conosce le
@@ -216,8 +228,14 @@ export function TabellaAnalitica({
   const filtrate = useMemo(() => {
     const q = cerca.trim().toLowerCase();
     if (!q) return righe;
-    return righe.filter((r) => r.chiave.toLowerCase().includes(q));
-  }, [righe, cerca]);
+    const testuali = colonne.filter((c) => c.tipo === "testo");
+    return righe.filter(
+      (r) =>
+        r.chiave.toLowerCase().includes(q) ||
+        // Si cerca anche in cio' che si vede (una data scritta 05/10/2026).
+        testuali.some((c) => fmt(r.celle[c.chiave], c).toLowerCase().includes(q))
+    );
+  }, [righe, cerca, colonne]);
 
   const ordinate = useMemo(() => {
     if (ordinaPer === COLONNA_VOCE) {
@@ -234,9 +252,12 @@ export function TabellaAnalitica({
       const va = a.celle[ordinaPer];
       const vb = b.celle[ordinaPer];
       if (col.tipo === "testo") {
+        // Confronto naturale sul valore grezzo: «2026-10-05» in ordine di data,
+        // «Agente 2» prima di «Agente 10».
+        const confronta = new Intl.Collator("it", { numeric: true, sensitivity: "base" }).compare;
         return discendente
-          ? String(vb ?? "").localeCompare(String(va ?? ""))
-          : String(va ?? "").localeCompare(String(vb ?? ""));
+          ? confronta(String(vb ?? ""), String(va ?? ""))
+          : confronta(String(va ?? ""), String(vb ?? ""));
       }
       const na = Number(va ?? 0);
       const nb = Number(vb ?? 0);
@@ -245,6 +266,12 @@ export function TabellaAnalitica({
   }, [filtrate, ordinaPer, discendente, colonne]);
 
   const visibili = tutte ? ordinate : ordinate.slice(0, massimoIniziale);
+  // Senza colonna «Voce», le colonne di testo in testa stanno sotto l'etichetta dei totali.
+  const testoIniziali = senzaColonnaVoce
+    ? colonne.findIndex((c) => c.tipo !== "testo") === -1
+      ? colonne.length
+      : colonne.findIndex((c) => c.tipo !== "testo")
+    : 0;
 
   const totali = useMemo(() => {
     if (!mostraTotali || aggregazione === "nessuno") return null;
@@ -452,7 +479,8 @@ export function TabellaAnalitica({
     return (
       <td
         key={c.chiave}
-        className={`py-1.5 px-2 tabular-nums ${c.tipo === "testo" ? "text-left" : "text-right"} ${
+        title={c.tipo === "testo" ? fmt(v, c) : undefined}
+        className={`py-1.5 px-2 tabular-nums ${c.tipo === "testo" ? "max-w-[260px] truncate text-left" : "text-right"} ${
           isDelta ? coloreDelta(n, c.altoBuono ?? true) + " font-medium" : ""
         }`}
       >
@@ -482,6 +510,7 @@ export function TabellaAnalitica({
         <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="border-b border-border">
+              {!senzaColonnaVoce && (
               <th className="py-2 px-2 text-left font-tenorite text-[11px] uppercase tracking-wide">
                 <button
                   type="button"
@@ -495,6 +524,7 @@ export function TabellaAnalitica({
                   {freccia(ordinaPer === COLONNA_VOCE)}
                 </button>
               </th>
+              )}
               {colonne.map(intestazione)}
             </tr>
           </thead>
@@ -509,12 +539,14 @@ export function TabellaAnalitica({
                     onClickRiga ? "cursor-pointer hover:bg-primary/5" : ""
                   } ${evidenziata ? "bg-primary/10" : ""}`}
                 >
+                  {!senzaColonnaVoce && (
                   <td
                     className="py-1.5 px-2 max-w-[240px] truncate font-medium"
                     title={r.chiave}
                   >
                     {r.chiave}
                   </td>
+                  )}
                   {colonne.map((c) => cella(r, c))}
                 </tr>
               );
@@ -523,7 +555,7 @@ export function TabellaAnalitica({
             {visibili.length === 0 && (
               <tr>
                 <td
-                  colSpan={colonne.length + 1}
+                  colSpan={colonne.length + (senzaColonnaVoce ? 0 : 1)}
                   className="py-6 text-center text-xs text-text-muted"
                 >
                   Nessuna riga
@@ -535,10 +567,10 @@ export function TabellaAnalitica({
           {totali && visibili.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-border font-semibold bg-bg-page/60">
-                <td className="py-2 px-2">
+                <td className="py-2 px-2" colSpan={Math.max(1, testoIniziali)}>
                   {ETICHETTA_RIGA[aggregazione]} ({filtrate.length})
                 </td>
-                {colonne.map((c) => {
+                {colonne.slice(testoIniziali).map((c) => {
                   if (c.tipo === "sparkline") return <td key={c.chiave} />;
                   const v = totali[c.chiave];
                   if (v === undefined || v === null)

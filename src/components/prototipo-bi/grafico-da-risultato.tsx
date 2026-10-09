@@ -1,5 +1,7 @@
 "use client";
 
+import { CATALOGO, DIMENSIONI } from "@/lib/prototipo-bi/semantico";
+import { formattaPeriodo } from "@/lib/prototipo-bi/formato-periodo";
 import type {
   AspettoGrafico,
   DifferenzaTabella,
@@ -66,9 +68,6 @@ interface ProprietaGraficoDaAnalisi {
   onClickEtichetta?: (etichetta: string) => void;
 }
 
-/** Oltre queste colonne una tabella a incrocio non si legge più: si torna all'elenco. */
-const MASSIMO_COLONNE_INCROCIO = 12;
-
 function totaleAutomatico(unita: UnitaMisura): ColonnaAnalitica["totale"] {
   // Percentuali e giorni sono medie o rapporti: sommarli darebbe un numero
   // mai misurato. Meglio la cella vuota, oppure la scelta esplicita
@@ -76,70 +75,92 @@ function totaleAutomatico(unita: UnitaMisura): ColonnaAnalitica["totale"] {
   return unita === "percentuale" || unita === "giorni" ? { tipo: "nessuno" } : { tipo: "somma" };
 }
 
+/** Il nome della colonna del tempo, secondo la granularita' scelta. */
+const NOME_COLONNA_TEMPO: Record<string, string> = {
+  giorno: "Data",
+  settimana: "Settimana",
+  mese: "Mese",
+  anno: "Anno",
+};
+
 /**
  * La tabella di un risultato solo.
  *
- * Con tempo e una suddivisione (ordinato per mese e business unit) diventa un
- * incrocio: i periodi sulle righe, le categorie sulle colonne. Prima era un
- * elenco di «2026-03 · COMPONENTI» da leggere in fila, senza ordinamento né
- * totali; l'incrocio è quello che si costruisce in Power BI con la matrice.
+ * Una riga per ogni combinazione e una colonna per ogni valore: data, cliente,
+ * agente, e in fondo la misura. Prima le suddivisioni venivano unite in una
+ * sola «Voce» («2026-10-05 · PELLICONI · BATTELANI») e, con tempo piu' una
+ * suddivisione, anche incrociate in colonne: leggibile per un riepilogo, ma
+ * non per chi vuole ordinare o cercare per cliente o per data. Le date si
+ * scrivono gg/mm/aaaa.
  */
 function datiTabellaRisultato(risultato: RisultatoQuery): {
   colonne: ColonnaAnalitica[];
   righe: RigaAnalitica[];
   intestazione: string;
   temporale: boolean;
+  senzaVoce: boolean;
+  colonnaOrdinamento?: string;
 } {
   const dimensioni = risultato.spec.raggruppa ?? [];
-  const temporale = risultato.spec.granularita !== undefined;
-  const chiaveRiga = temporale ? "periodo" : dimensioni[0];
-  const chiaveColonna = temporale ? dimensioni[0] : dimensioni[1];
+  const granularita = risultato.spec.granularita;
+  const temporale = granularita !== undefined;
   const tipo = tipoColonna(risultato.unita);
+  const nomeMisura =
+    risultato.spec.misura?.nome ?? CATALOGO[risultato.metrica]?.etichetta ?? "Valore";
 
-  if (chiaveRiga && chiaveColonna) {
-    const totaliColonna = new Map<string, number>();
-    for (const riga of risultato.righe) {
-      const colonna = riga.chiavi[chiaveColonna] ?? "";
-      totaliColonna.set(colonna, (totaliColonna.get(colonna) ?? 0) + Math.abs(riga.valore));
-    }
-    if (totaliColonna.size <= MASSIMO_COLONNE_INCROCIO) {
-      const nomiColonne = [...totaliColonna.entries()].sort((a, b) => b[1] - a[1]).map(([nome]) => nome);
-      const perRiga = new Map<string, RigaAnalitica>();
-      for (const riga of risultato.righe) {
-        const nomeRiga = riga.chiavi[chiaveRiga] ?? riga.etichetta;
-        const voce = perRiga.get(nomeRiga) ?? { chiave: nomeRiga, celle: {} };
-        const colonna = `c_${nomiColonne.indexOf(riga.chiavi[chiaveColonna] ?? "")}`;
-        voce.celle[colonna] = (Number(voce.celle[colonna]) || 0) + riga.valore;
-        perRiga.set(nomeRiga, voce);
-      }
-      return {
-        colonne: nomiColonne.map((nome, indice) => ({
-          chiave: `c_${indice}`,
-          etichetta: nome,
-          tipo,
-          unita: risultato.unita,
-          totale: totaleAutomatico(risultato.unita),
-        })),
-        righe: [...perRiga.values()],
-        intestazione: temporale ? "Periodo" : "Voce",
-        temporale,
-      };
-    }
+  const colonneValore: ColonnaAnalitica[] = [
+    {
+      chiave: "valore",
+      etichetta: nomeMisura,
+      tipo: tipo === "euro" ? "barra" : tipo,
+      unita: risultato.unita,
+      totale: totaleAutomatico(risultato.unita),
+    },
+  ];
+
+  // Senza suddivisioni e senza tempo c'e' un numero solo: niente da scomporre.
+  if (!temporale && dimensioni.length === 0) {
+    return {
+      colonne: colonneValore,
+      righe: risultato.righe.map((riga) => ({ chiave: riga.etichetta, celle: { valore: riga.valore } })),
+      intestazione: "Voce",
+      temporale,
+      senzaVoce: false,
+    };
   }
 
+  const colonneDimensione: ColonnaAnalitica[] = [
+    ...(temporale
+      ? [
+          {
+            chiave: "d_periodo",
+            etichetta: NOME_COLONNA_TEMPO[granularita] ?? "Periodo",
+            tipo: "testo" as const,
+            formatta: formattaPeriodo,
+          },
+        ]
+      : []),
+    ...dimensioni.map((dimensione) => ({
+      chiave: `d_${dimensione}`,
+      etichetta: DIMENSIONI[dimensione]?.etichetta ?? dimensione,
+      tipo: "testo" as const,
+      formatta: formattaPeriodo,
+    })),
+  ];
+
   return {
-    colonne: [
-      {
-        chiave: "valore",
-        etichetta: "Valore",
-        tipo: tipo === "euro" ? "barra" : tipo,
-        unita: risultato.unita,
-        totale: totaleAutomatico(risultato.unita),
-      },
-    ],
-    righe: risultato.righe.map((riga) => ({ chiave: riga.etichetta, celle: { valore: riga.valore } })),
-    intestazione: temporale && dimensioni.length === 0 ? "Periodo" : "Voce",
+    colonne: [...colonneDimensione, ...colonneValore],
+    righe: risultato.righe.map((riga) => {
+      const celle: RigaAnalitica["celle"] = { valore: riga.valore };
+      if (temporale) celle.d_periodo = riga.chiavi.periodo ?? "";
+      for (const dimensione of dimensioni) celle[`d_${dimensione}`] = riga.chiavi[dimensione] ?? "";
+      return { chiave: riga.etichetta, celle };
+    }),
+    intestazione: "Voce",
     temporale,
+    senzaVoce: true,
+    // Nel tempo si legge in ordine cronologico.
+    colonnaOrdinamento: temporale ? "d_periodo" : undefined,
   };
 }
 
@@ -158,11 +179,9 @@ function TabellaRisultato({
       colonne={dati.colonne}
       righe={dati.righe}
       colonnaDimensione={dati.intestazione}
-      // Nel tempo si legge in ordine cronologico; il resto dal più grande.
-      // Un ordinamento scelto nel riquadro prevale su entrambi.
-      colonnaOrdinamentoIniziale={
-        aspetto?.tabella?.ordinaPer ? undefined : dati.temporale ? COLONNA_VOCE : undefined
-      }
+      senzaColonnaVoce={dati.senzaVoce}
+      // Un ordinamento scelto nel riquadro prevale su quello cronologico.
+      colonnaOrdinamentoIniziale={aspetto?.tabella?.ordinaPer ? undefined : dati.colonnaOrdinamento}
       massimoIniziale={15}
       onClickRiga={onClickRiga}
     />
