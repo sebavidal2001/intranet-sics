@@ -276,14 +276,18 @@ function Gruppo({
   etichetta,
   descrizione,
   apertoDiDefault,
+  forzaAperto = false,
   children,
 }: {
   etichetta: string;
   descrizione: string;
   apertoDiDefault: boolean;
+  /** Durante una ricerca i gruppi con risultati restano aperti: chiusi, li nasconderebbero. */
+  forzaAperto?: boolean;
   children: React.ReactNode;
 }) {
-  const [aperto, setAperto] = useState(apertoDiDefault);
+  const [apertoScelto, setAperto] = useState(apertoDiDefault);
+  const aperto = forzaAperto || apertoScelto;
   const idContenuto = useId();
   return (
     <div className="border-b border-border last:border-b-0">
@@ -389,10 +393,16 @@ export function AlberoCampi({
   azioneMisure,
   puoTogliereMisura,
   onTogliMisura,
+  compatto = false,
 }: {
   vocabolario: VocabolarioAlbero;
   selezione: SelezioneCampi;
   onCambia: (selezione: SelezioneCampi) => void;
+  /**
+   * Per il pannello laterale del builder: una colonna sola, con la ricerca, e
+   * senza l'elenco «Suddivisioni scelte» (lo mostrano gia' i pozzetti).
+   */
+  compatto?: boolean;
   /** In fondo alla sezione delle misure: per esempio «Nuova misura a parole». */
   azioneMisure?: ReactNode;
   /** Se l'utente puo' togliere questa misura personalizzata dal catalogo. */
@@ -400,6 +410,11 @@ export function AlberoCampi({
   onTogliMisura?: (chiave: ChiaveCampo) => void;
 }) {
   const [trascinata, setTrascinata] = useState<number | null>(null);
+  const [ricerca, setRicerca] = useState("");
+  const cerca = ricerca.trim().toLocaleLowerCase("it");
+  // Una voce passa se la ricerca e' vuota o compare nel suo nome o in quello del gruppo.
+  const passa = (...testi: string[]) =>
+    cerca === "" || testi.some((testo) => testo.toLocaleLowerCase("it").includes(cerca));
 
   const etichettaMetrica = (chiave: ChiaveCampo) =>
     vocabolario.metriche.find((m) => m.chiave === chiave)?.etichetta ?? chiave;
@@ -425,23 +440,59 @@ export function AlberoCampi({
     onCambia({ ...selezione, suddivisioni });
   }
 
+  const nessunRisultato =
+    cerca !== "" &&
+    !vocabolario.tipologie.some((t) =>
+      t.metriche.some((m) => passa(etichettaMetrica(m), t.etichetta))
+    ) &&
+    !vocabolario.dimensioni.some((d) => passa(d.etichetta)) &&
+    !VOCI_CALENDARIO.some((v) => passa(v.etichetta, "calendario", "tempo"));
+
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className={compatto ? "space-y-3" : "grid gap-4 lg:grid-cols-2"}>
+      {compatto && (
+        <div>
+          <label htmlFor="cerca-campi" className="sr-only">
+            Cerca un campo
+          </label>
+          <input
+            id="cerca-campi"
+            type="search"
+            value={ricerca}
+            onChange={(evento) => setRicerca(evento.target.value)}
+            placeholder="Cerca un campo…"
+            className="h-10 w-full rounded-lg border border-border bg-bg-page px-3 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+          />
+          {nessunRisultato && (
+            <p role="status" className="mt-2 text-xs text-text-muted">
+              Nessun campo corrisponde a «{ricerca.trim()}».
+            </p>
+          )}
+        </div>
+      )}
       <section aria-labelledby="albero-misure" className="rounded-xl border border-border bg-bg">
         <header className="border-b border-border px-3 py-2">
           <h3 id="albero-misure" className="font-tenorite text-sm font-bold uppercase tracking-wide">
-            Che cosa vuoi misurare
+            {compatto ? "Misure" : "Che cosa vuoi misurare"}
           </h3>
           <p className="mt-0.5 text-xs text-text-muted">
-            Spuntane una e il grafico compare. Spuntane due e finiscono nello stesso riquadro.
+            {compatto
+              ? "Spunta o trascina nei Valori. Due misure finiscono nello stesso grafico."
+              : "Spuntane una e il grafico compare. Spuntane due e finiscono nello stesso riquadro."}
           </p>
         </header>
         <div>
-          {vocabolario.tipologie.map((tipologia, indice) => (
+          {vocabolario.tipologie.map((tipologia, indice) => {
+            const metriche = tipologia.metriche.filter((chiave) =>
+              passa(etichettaMetrica(chiave), tipologia.etichetta)
+            );
+            if (metriche.length === 0) return null;
+            return (
             <Gruppo
               key={tipologia.chiave}
               etichetta={tipologia.etichetta}
               descrizione={tipologia.descrizione}
+              forzaAperto={cerca !== ""}
               // Riaprendo un riquadro salvato, un gruppo chiuso nasconderebbe
               // proprio i campi gia' scelti: chi lo apre penserebbe di averli
               // persi.
@@ -449,7 +500,7 @@ export function AlberoCampi({
                 indice === 0 || tipologia.metriche.some((m) => selezione.misure.includes(m))
               }
             >
-              {tipologia.metriche.map((chiave) => (
+              {metriche.map((chiave) => (
                 <Casella
                   key={chiave}
                   etichetta={etichettaMetrica(chiave)}
@@ -481,7 +532,8 @@ export function AlberoCampi({
                 />
               ))}
             </Gruppo>
-          ))}
+            );
+          })}
         </div>
         {azioneMisure && <div className="border-t border-border px-3 py-2">{azioneMisure}</div>}
       </section>
@@ -489,14 +541,16 @@ export function AlberoCampi({
       <section aria-labelledby="albero-suddivisioni" className="rounded-xl border border-border bg-bg">
         <header className="border-b border-border px-3 py-2">
           <h3 id="albero-suddivisioni" className="font-tenorite text-sm font-bold uppercase tracking-wide">
-            Come vuoi vederlo suddiviso
+            {compatto ? "Dimensioni e tempo" : "Come vuoi vederlo suddiviso"}
           </h3>
           <p className="mt-0.5 text-xs text-text-muted">
-            Facoltativo, al massimo due. Senza suddivisioni vedi il totale.
+            {compatto
+              ? "Spunta o trascina in Asse e Legenda. Al massimo due."
+              : "Facoltativo, al massimo due. Senza suddivisioni vedi il totale."}
           </p>
         </header>
 
-        {selezione.suddivisioni.length > 0 && (
+        {!compatto && selezione.suddivisioni.length > 0 && (
           <ol className="border-b border-border px-3 py-2" aria-label="Suddivisioni scelte, in ordine">
             {selezione.suddivisioni.map((dimensione, indice) => (
               <li
@@ -559,8 +613,10 @@ export function AlberoCampi({
             // Solo le dimensioni che il vocabolario dichiara davvero: se una
             // sparisce dal modello, la casella non deve restare qui a promettere
             // un raggruppamento che il motore non sa fare.
-            const visibili = gruppo.dimensioni.filter((d) =>
-              vocabolario.dimensioni.some((voce) => voce.chiave === d)
+            const visibili = gruppo.dimensioni.filter(
+              (d) =>
+                vocabolario.dimensioni.some((voce) => voce.chiave === d) &&
+                passa(etichettaDimensione(d), gruppo.etichetta)
             );
             if (visibili.length === 0) return null;
             return (
@@ -568,6 +624,7 @@ export function AlberoCampi({
                 key={gruppo.chiave}
                 etichetta={gruppo.etichetta}
                 descrizione={gruppo.descrizione}
+                forzaAperto={cerca !== ""}
                 apertoDiDefault={
                   indice === 0 || gruppo.dimensioni.some((d) => selezione.suddivisioni.includes(d))
                 }
@@ -596,9 +653,11 @@ export function AlberoCampi({
             );
           })}
 
+          {VOCI_CALENDARIO.some((voce) => passa(voce.etichetta, "calendario", "tempo")) && (
           <Gruppo
             etichetta="Calendario"
             descrizione="Per vedere l’andamento nel tempo."
+            forzaAperto={cerca !== ""}
             apertoDiDefault={selezione.granularita !== undefined}
           >
             {/*
@@ -606,7 +665,7 @@ export function AlberoCampi({
               sono la stessa cosa a granularità diverse. Spuntare «mese» e
               «anno» insieme non significa niente.
             */}
-            {VOCI_CALENDARIO.map((voce) => (
+            {VOCI_CALENDARIO.filter((voce) => passa(voce.etichetta, "calendario", "tempo")).map((voce) => (
               <Casella
                 key={voce.chiave}
                 etichetta={voce.etichetta}
@@ -622,6 +681,7 @@ export function AlberoCampi({
               />
             ))}
           </Gruppo>
+          )}
         </div>
       </section>
     </div>

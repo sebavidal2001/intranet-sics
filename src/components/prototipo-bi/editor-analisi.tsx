@@ -183,7 +183,21 @@ const NOMI_OPERATORI: Record<Filtro["op"], string> = {
 const CLASSE_CAMPO =
   "min-h-10 w-full rounded-lg border border-border bg-bg-page px-3 text-sm outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50";
 
-type ScorciatoiaConfronto = "anno_precedente" | "budget" | "bep" | "progressivo";
+/**
+ * Le schede del pannello destro. «Campi» e' quella dove si costruisce; le altre
+ * raccolgono il resto dei parametri, cosi' il pannello resta una colonna sola
+ * accanto al grafico invece di una pagina da scorrere.
+ */
+type SchedaPannello = "campi" | "filtri" | "confronti" | "aspetto";
+
+const SCHEDE_PANNELLO: { chiave: SchedaPannello; etichetta: string }[] = [
+  { chiave: "campi", etichetta: "Campi" },
+  { chiave: "filtri", etichetta: "Filtri" },
+  { chiave: "confronti", etichetta: "Confronti" },
+  { chiave: "aspetto", etichetta: "Aspetto" },
+];
+
+type ScorciatoiaConfronto ="anno_precedente" | "budget" | "bep" | "progressivo";
 
 interface SerieEditor extends SerieAnalisi {
   scorciatoia?: ScorciatoiaConfronto;
@@ -339,6 +353,7 @@ export function EditorAnalisi({
   // L'aspetto non entra in `chiaveSpec`: e' resa, non domanda, e cambiarlo
   // non deve far ripartire la query.
   const [aspetto, setAspetto] = useState<AspettoGrafico | null>(aspettoIniziale ?? null);
+  const [schedaPannello, setSchedaPannello] = useState<SchedaPannello>("campi");
   const [salvataggio, setSalvataggio] = useState<"pronto" | "in_corso" | "salvata">("pronto");
   const [messaggioSalvataggio, setMessaggioSalvataggio] = useState("");
   const titoloModificato = useRef(Boolean(titoloIniziale));
@@ -881,77 +896,23 @@ export function EditorAnalisi({
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6">
-      <header className="mb-6 max-w-3xl">
-        <Link href="/bi/analisi" className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          Torna alle analisi
-        </Link>
-        <h1 className="font-tenorite text-3xl font-semibold">
-          {aggiornaEsistente ? "Modifica il riquadro" : modificabile ? "Costruisci un riquadro" : "Crea una copia modificabile"}
-        </h1>
-        <p className="mt-2 text-sm leading-relaxed text-text-muted">
+    <main className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6">
+      <header className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <Link href="/bi/analisi" className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Torna alle analisi
+          </Link>
+          <h1 className="font-tenorite text-2xl font-semibold">
+            {aggiornaEsistente ? "Modifica il riquadro" : modificabile ? "Costruisci un riquadro" : "Crea una copia modificabile"}
+          </h1>
+        </div>
+        <p className="max-w-xl text-sm leading-relaxed text-text-muted">
           {modificabile
-            ? "Costruisci la stessa domanda certificata che usa l’Analista AI. Ogni scelta aggiorna subito il risultato e può essere riaperta, modificata o condivisa."
+            ? "Il grafico è qui, i campi sono a destra: scegli, trascina e combina, e il risultato si aggiorna subito."
             : "Questo riquadro è condiviso o appartiene al Cruscotto: le tue modifiche finiranno in una copia tua, l’originale resta com’è."}
         </p>
       </header>
-
-      {/*
-        L'albero prende il posto di tre tendine in fila — tipologia, metrica,
-        raggruppa — che chiedevano di compilare un modulo prima di vedere
-        qualcosa. Qui si spunta e il risultato si aggiorna.
-      */}
-      {vocabolario && vocabolarioAlbero && (
-        <section aria-labelledby="titolo-campi" className="mb-6">
-          <div className="mb-3">
-            <h2 id="titolo-campi" className="font-tenorite text-xl font-semibold">
-              Scegli i campi
-            </h2>
-            <p className="mt-1 text-sm text-text-muted">
-              Spunta la misura che ti interessa e, se vuoi, come suddividerla. Due misure spuntate finiscono nello stesso grafico.
-            </p>
-          </div>
-          <AlberoCampi
-            vocabolario={vocabolarioAlbero}
-            selezione={selezioneCampi}
-            onCambia={(nuova) => applicaSelezione(nuova)}
-            azioneMisure={
-              <button
-                type="button"
-                onClick={() => setCreaMisuraAperta(true)}
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-primary bg-bg-page px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Nuova misura a parole
-              </button>
-            }
-            puoTogliereMisura={(chiave) => {
-              const salvata = misureSalvate.find((m) => m.misura && chiaveMisura(m.misura) === chiave);
-              return Boolean(salvata && (chiGestisceMisure.tutte || salvata.autoreId === chiGestisceMisure.utenteId));
-            }}
-            onTogliMisura={(chiave) => void togliMisura(chiave)}
-          />
-          <Pozzetti
-            vocabolario={vocabolarioAlbero}
-            selezione={selezioneCampi}
-            filtri={spec?.filtri ?? []}
-            onCambia={(nuova) => applicaSelezione(nuova)}
-            onAggiungiFiltro={(campo) =>
-              aggiornaSpec((corrente) => ({
-                ...corrente,
-                filtri: [...(corrente.filtri ?? []), { campo, op: "in", valore: [] }],
-              }))
-            }
-            onTogliFiltro={(indice) =>
-              aggiornaSpec((corrente) => ({
-                ...corrente,
-                filtri: (corrente.filtri ?? []).filter((_, posizione) => posizione !== indice),
-              }))
-            }
-          />
-        </section>
-      )}
 
       {creaMisuraAperta && (
         <CreaMisura
@@ -972,12 +933,68 @@ export function EditorAnalisi({
         />
       )}
 
-      {!spec ? (
-        <p className="rounded-xl border border-border bg-bg-page p-5 text-sm text-text-muted">
-          Spunta una misura qui sopra per vedere il risultato.
-        </p>
-      ) : (
-      <>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px] xl:items-start">
+        {/* LA TELA: il grafico in grande, con titolo e salvataggio sopra. */}
+        <div className="min-w-0 space-y-4">
+          <div className="rounded-xl border border-border bg-bg p-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label htmlFor="editor-titolo" className="sr-only">
+                Titolo del riquadro
+              </label>
+              <input
+                id="editor-titolo"
+                aria-label="Titolo del riquadro"
+                placeholder="Titolo del riquadro"
+                required
+                disabled={!spec}
+                value={titolo}
+                onChange={(evento) => {
+                  titoloModificato.current = true;
+                  setTitolo(evento.target.value);
+                  setSalvataggio("pronto");
+                  setMessaggioSalvataggio("");
+                }}
+                className={`${CLASSE_CAMPO} flex-1 font-tenorite text-base font-semibold`}
+              />
+              <button
+                type="button"
+                onClick={() => void salva()}
+                disabled={!spec || salvataggio === "in_corso" || salvataggio === "salvata"}
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" aria-hidden />
+                {salvataggio === "in_corso"
+                  ? dentroUnaPagina ? "Aggiungo…" : "Salvataggio…"
+                  : salvataggio === "salvata"
+                    ? dentroUnaPagina ? "Aggiunta" : "Salvata"
+                    : aggiornaEsistente
+                      ? "Salva modifiche"
+                      : dentroUnaPagina
+                        ? "Aggiungi alla pagina"
+                        : modificabile
+                          ? "Salva il riquadro"
+                          : "Salva una copia"}
+              </button>
+            </div>
+            {messaggioSalvataggio && (
+              <p
+                role="status"
+                className={`mt-2 text-xs ${salvataggio === "salvata" ? "text-primary" : "text-danger"}`}
+              >
+                {messaggioSalvataggio}
+              </p>
+            )}
+          </div>
+
+          {!spec ? (
+            <div className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-6 py-16 text-center">
+              <p className="font-tenorite text-lg font-semibold">Il grafico comparirà qui</p>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-text-muted">
+                Spunta una misura nel pannello a destra, oppure trascinala nei Valori. Aggiungi una dimensione all’Asse e il grafico si ricalcola a ogni scelta.
+              </p>
+            </div>
+          ) : (
+          <>
       {statoRiquadro && (
         <ModificaAParole
           stato={statoRiquadro}
@@ -990,12 +1007,191 @@ export function EditorAnalisi({
           onAnnulla={annullaUltimaModifica}
         />
       )}
-      <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.5fr)] xl:items-start">
-        <div className="space-y-4">
+          <Scheda
+            titolo="Risultato in tempo reale"
+            sottotitolo="La domanda viene rieseguita dopo ogni modifica"
+            azione={
+              risultato ? (
+                <div className="text-right">
+                  <p className="text-xs text-text-muted">Totale</p>
+                  <p className="font-tenorite text-xl font-semibold text-primary tabular-nums">
+                    {formattaTotale(risultato)}
+                  </p>
+                </div>
+              ) : null
+            }
+          >
+            {errore && (
+              <p role="alert" className="mb-4 rounded-lg border border-border bg-bg-page p-3 text-sm text-danger">
+                {errore}
+              </p>
+            )}
+
+            <div className="relative min-h-[480px]" aria-busy={caricamento}>
+              {risultato && tipoGrafico && serieEseguite.length > 0 ? (
+                <div className={caricamento ? "opacity-50" : undefined}>
+                  <GraficoDaAnalisi serie={serieEseguite} aspetto={aspetto} tipo={tipoGrafico} altezza={520} />
+                </div>
+              ) : (
+                <Scheletro altezza={520} />
+              )}
+              {caricamento && risultato && (
+                <div className="pointer-events-none absolute inset-0 opacity-50">
+                  <Scheletro altezza={520} />
+                </div>
+              )}
+            </div>
+
+            {!periodoPresente(spec.periodo) && (
+              <p className="mt-3 text-xs leading-relaxed text-text-muted">
+                Anteprima con il periodo ereditato: {descriviPeriodo(periodoEreditato)}. La spec salvata non fissa il periodo.
+              </p>
+            )}
+
+            {risultato && proposta && tipoGrafico && (
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="text-xs text-text-muted">
+                  <span className="font-medium text-text">Grafico proposto: {NOMI_GRAFICI[proposta.tipo]}.</span>{" "}
+                  {proposta.motivo} Puoi cambiarlo dalla scheda «Campi».
+                </p>
+                {sbloccaGrafici.length > 0 && (
+                  <ul className="mt-3 space-y-1 border-t border-border pt-3 text-xs leading-relaxed text-text-muted">
+                    {sbloccaGrafici.map((suggerimento) => (
+                      <li key={suggerimento}>{suggerimento}</li>
+                    ))}
+                  </ul>
+                )}
+
+                {risultato.avvisi.length > 0 && (
+                  <div className="mt-4 space-y-2" aria-label="Avvisi del risultato">
+                    {risultato.avvisi.map((avviso) => (
+                      <p key={avviso} className="rounded-lg border border-border bg-bg-page p-3 text-xs leading-relaxed text-warning">
+                        {avviso}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </Scheda>
+          </>
+          )}
+        </div>
+
+        {/* IL PANNELLO DEI PARAMETRI: tutto quello che si puo' usare e combinare. */}
+        <aside
+          aria-label="Parametri del riquadro"
+          className="min-w-0 rounded-xl border border-border bg-bg xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto"
+        >
+          <div
+            role="tablist"
+            aria-label="Sezioni del pannello"
+            className="sticky top-0 z-10 grid grid-cols-4 border-b border-border bg-bg"
+          >
+            {SCHEDE_PANNELLO.map((voce) => (
+              <button
+                key={voce.chiave}
+                type="button"
+                role="tab"
+                id={`scheda-${voce.chiave}`}
+                aria-selected={schedaPannello === voce.chiave}
+                aria-controls={`pannello-${voce.chiave}`}
+                onClick={() => setSchedaPannello(voce.chiave)}
+                className={`min-h-11 border-b-2 px-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                  schedaPannello === voce.chiave
+                    ? "border-primary text-primary"
+                    : "border-transparent text-text-muted hover:text-text"
+                }`}
+              >
+                {voce.etichetta}
+              </button>
+            ))}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="pannello-campi"
+            aria-labelledby="scheda-campi"
+            hidden={schedaPannello !== "campi"}
+            className="space-y-4 p-3"
+          >
+            {vocabolario && vocabolarioAlbero && (
+              <>
+                {risultato && proposta && tipoGrafico && (
+                  <section aria-labelledby="titolo-visualizzazione">
+                    <h3 id="titolo-visualizzazione" className="mb-2 font-tenorite text-sm font-bold uppercase tracking-wide">
+                      Visualizzazione
+                    </h3>
+                    <SceltaGrafico
+                      etichetta="Visualizzazione"
+                      valore={tipoGrafico}
+                      opzioni={grafici}
+                      onChange={(tipo) => {
+                        setGraficoScelto(tipo);
+                        setSalvataggio("pronto");
+                        setMessaggioSalvataggio("");
+                      }}
+                    />
+                  </section>
+                )}
+                <Pozzetti
+                  compatto
+                  vocabolario={vocabolarioAlbero}
+                  selezione={selezioneCampi}
+                  filtri={spec?.filtri ?? []}
+                  onCambia={(nuova) => applicaSelezione(nuova)}
+                  onAggiungiFiltro={(campo) =>
+                    aggiornaSpec((corrente) => ({
+                      ...corrente,
+                      filtri: [...(corrente.filtri ?? []), { campo, op: "in", valore: [] }],
+                    }))
+                  }
+                  onTogliFiltro={(indice) =>
+                    aggiornaSpec((corrente) => ({
+                      ...corrente,
+                      filtri: (corrente.filtri ?? []).filter((_, posizione) => posizione !== indice),
+                    }))
+                  }
+                  onVaiAiFiltri={() => setSchedaPannello("filtri")}
+                />
+                <AlberoCampi
+                  compatto
+                  vocabolario={vocabolarioAlbero}
+                  selezione={selezioneCampi}
+                  onCambia={(nuova) => applicaSelezione(nuova)}
+                  azioneMisure={
+                    <button
+                      type="button"
+                      onClick={() => setCreaMisuraAperta(true)}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-primary bg-bg-page px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <Plus className="h-4 w-4" aria-hidden />
+                      Nuova misura a parole
+                    </button>
+                  }
+                  puoTogliereMisura={(chiave) => {
+                    const salvata = misureSalvate.find((m) => m.misura && chiaveMisura(m.misura) === chiave);
+                    return Boolean(salvata && (chiGestisceMisure.tutte || salvata.autoreId === chiGestisceMisure.utenteId));
+                  }}
+                  onTogliMisura={(chiave) => void togliMisura(chiave)}
+                />
+              </>
+            )}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="pannello-filtri"
+            aria-labelledby="scheda-filtri"
+            hidden={schedaPannello !== "filtri"}
+            className="space-y-4 p-3"
+          >
+            {spec ? (
+              <>
           <Scheda titolo="Quando" sottotitolo="Segui la dashboard oppure mantieni un confronto fisso">
             <fieldset>
               <legend className="sr-only">Modalità del periodo</legend>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                 <label className="flex min-h-14 cursor-pointer items-start gap-3 rounded-lg border border-border bg-bg-page p-3 text-sm">
                   <input
                     type="radio"
@@ -1062,7 +1258,7 @@ export function EditorAnalisi({
                     </div>
                   )}
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                   <label className="text-xs text-text-muted">
                     Dal
                     <input
@@ -1096,7 +1292,7 @@ export function EditorAnalisi({
                 </div>
               </div>
             )}
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <label className="text-xs text-text-muted">
                 Granularità
                 <select
@@ -1143,167 +1339,6 @@ export function EditorAnalisi({
                 </select>
               </label>
             </div>
-          </Scheda>
-
-          <Scheda
-            titolo="Confronta con…"
-            sottotitolo="Aggiungi una misura allo stesso riquadro"
-          >
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => aggiungiScorciatoia("anno_precedente", "Anno precedente", "confronto")}
-                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                Anno precedente
-              </button>
-              <button
-                type="button"
-                disabled={!budgetDisponibile}
-                title={motivoBudget ?? undefined}
-                onClick={() => aggiungiScorciatoia("budget", "Budget", "obiettivo")}
-                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
-              >
-                Budget
-              </button>
-              <button
-                type="button"
-                disabled={!budgetDisponibile}
-                title={motivoBudget ?? undefined}
-                onClick={() => aggiungiScorciatoia("bep", "BEP", "soglia")}
-                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
-              >
-                BEP
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(spec.misura)}
-                title={spec.misura ? "Il progressivo non è disponibile per le misure personalizzate." : undefined}
-                onClick={() => aggiungiScorciatoia("progressivo", "Progressivo", "confronto")}
-                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
-              >
-                Progressivo
-              </button>
-              {motivoBudget && (
-                <p className="text-xs leading-relaxed text-text-muted sm:col-span-2 xl:col-span-1 2xl:col-span-2">
-                  {motivoBudget}
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={apriAltraMetrica}
-                className="min-h-10 rounded-lg border border-primary bg-bg-page px-3 text-left text-sm font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary sm:col-span-2 xl:col-span-1 2xl:col-span-2"
-              >
-                Un’altra metrica…
-              </button>
-            </div>
-
-            {altraMetricaAperta && (
-              <div className="mt-3 space-y-3 border-t border-border pt-3">
-                <label className="block text-xs text-text-muted">
-                  Tipologia
-                  <select
-                    aria-label="Tipologia della metrica di confronto"
-                    value={tipologiaConfronto ?? ""}
-                    onChange={(evento) => {
-                      const chiave = evento.target.value as ChiaveTipologia;
-                      const prima = vocabolario.tipologie.find((voce) => voce.chiave === chiave)?.metriche[0] ?? null;
-                      setTipologiaConfronto(chiave);
-                      setMetricaConfronto(prima);
-                    }}
-                    className={`${CLASSE_CAMPO} mt-1`}
-                  >
-                    {vocabolario.tipologie.map((tipologia) => (
-                      <option key={tipologia.chiave} value={tipologia.chiave}>{tipologia.etichetta}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-xs text-text-muted">
-                  Metrica
-                  <select
-                    aria-label="Metrica di confronto"
-                    value={metricaConfronto ?? ""}
-                    onChange={(evento) => setMetricaConfronto(evento.target.value as ChiaveMetrica)}
-                    className={`${CLASSE_CAMPO} mt-1`}
-                  >
-                    {metricheConfrontoVisibili.map((metrica) => (
-                      <option key={metrica.chiave} value={metrica.chiave}>{metrica.etichetta}</option>
-                    ))}
-                  </select>
-                </label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={aggiungiAltraMetrica}
-                    disabled={!metricaConfronto}
-                    className="min-h-10 rounded-lg bg-primary px-3 text-sm font-semibold text-bg focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-                  >
-                    Aggiungi confronto
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAltraMetricaAperta(false)}
-                    className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    Annulla
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {serieAggiuntive.length > 0 && (
-              <div className="mt-4 space-y-2 border-t border-border pt-4" aria-label="Serie aggiunte">
-                {serieAggiuntive.map((voce, indice) => (
-                  <div key={`${voce.ruolo}-${indice}`} className="grid gap-2 rounded-lg bg-bg-page p-2 sm:grid-cols-[auto_1fr_auto_auto] sm:items-center">
-                    <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
-                      {NOMI_RUOLI[voce.ruolo]}
-                    </span>
-                    <input
-                      aria-label={`Nome serie ${indice + 1}`}
-                      value={voce.nome}
-                      onChange={(evento) => {
-                        const nome = evento.target.value;
-                        setSerieAggiuntive((correnti) => correnti.map((serie, posizione) =>
-                          posizione === indice ? { ...serie, nome } : serie
-                        ));
-                        setSalvataggio("pronto");
-                        setMessaggioSalvataggio("");
-                      }}
-                      className={CLASSE_CAMPO}
-                    />
-                    <SelettoreColore
-                      valore={voce.colore}
-                      etichetta={`Colore di ${voce.nome || `serie ${indice + 1}`}`}
-                      onCambia={(colore) => {
-                        setSerieAggiuntive((correnti) => correnti.map((serie, posizione) => {
-                          if (posizione !== indice) return serie;
-                          // Togliere la chiave, non metterla a undefined: il
-                          // jsonb salvato porterebbe con se' un campo nullo che
-                          // il validatore poi rifiuta.
-                          const { colore: _tolto, ...resto } = serie;
-                          return colore === undefined ? resto : { ...resto, colore };
-                        }));
-                        setSalvataggio("pronto");
-                        setMessaggioSalvataggio("");
-                      }}
-                    />
-                    <button
-                      type="button"
-                      aria-label={`Rimuovi serie ${voce.nome}`}
-                      onClick={() => {
-                        setSerieAggiuntive((correnti) => correnti.filter((_, posizione) => posizione !== indice));
-                        setGraficoScelto(undefined);
-                        setSalvataggio("pronto");
-                        setMessaggioSalvataggio("");
-                      }}
-                      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-border text-danger focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </Scheda>
 
           <div id="editor-filtri">
@@ -1423,7 +1458,195 @@ export function EditorAnalisi({
             )}
           </Scheda>
           </div>
+              </>
+            ) : (
+              <p className="text-sm text-text-muted">Scegli prima una misura nella scheda «Campi».</p>
+            )}
+          </div>
 
+          <div
+            role="tabpanel"
+            id="pannello-confronti"
+            aria-labelledby="scheda-confronti"
+            hidden={schedaPannello !== "confronti"}
+            className="space-y-4 p-3"
+          >
+            {spec ? (
+              <>
+          <Scheda
+            titolo="Confronta con…"
+            sottotitolo="Aggiungi una misura allo stesso riquadro"
+          >
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <button
+                type="button"
+                onClick={() => aggiungiScorciatoia("anno_precedente", "Anno precedente", "confronto")}
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                Anno precedente
+              </button>
+              <button
+                type="button"
+                disabled={!budgetDisponibile}
+                title={motivoBudget ?? undefined}
+                onClick={() => aggiungiScorciatoia("budget", "Budget", "obiettivo")}
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
+              >
+                Budget
+              </button>
+              <button
+                type="button"
+                disabled={!budgetDisponibile}
+                title={motivoBudget ?? undefined}
+                onClick={() => aggiungiScorciatoia("bep", "BEP", "soglia")}
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
+              >
+                BEP
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(spec.misura)}
+                title={spec.misura ? "Il progressivo non è disponibile per le misure personalizzate." : undefined}
+                onClick={() => aggiungiScorciatoia("progressivo", "Progressivo", "confronto")}
+                className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-left text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-text"
+              >
+                Progressivo
+              </button>
+              {motivoBudget && (
+                <p className="text-xs leading-relaxed text-text-muted sm:col-span-2 xl:col-span-1">
+                  {motivoBudget}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={apriAltraMetrica}
+                className="min-h-10 rounded-lg border border-primary bg-bg-page px-3 text-left text-sm font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary sm:col-span-2 xl:col-span-1"
+              >
+                Un’altra metrica…
+              </button>
+            </div>
+
+            {altraMetricaAperta && (
+              <div className="mt-3 space-y-3 border-t border-border pt-3">
+                <label className="block text-xs text-text-muted">
+                  Tipologia
+                  <select
+                    aria-label="Tipologia della metrica di confronto"
+                    value={tipologiaConfronto ?? ""}
+                    onChange={(evento) => {
+                      const chiave = evento.target.value as ChiaveTipologia;
+                      const prima = vocabolario.tipologie.find((voce) => voce.chiave === chiave)?.metriche[0] ?? null;
+                      setTipologiaConfronto(chiave);
+                      setMetricaConfronto(prima);
+                    }}
+                    className={`${CLASSE_CAMPO} mt-1`}
+                  >
+                    {vocabolario.tipologie.map((tipologia) => (
+                      <option key={tipologia.chiave} value={tipologia.chiave}>{tipologia.etichetta}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs text-text-muted">
+                  Metrica
+                  <select
+                    aria-label="Metrica di confronto"
+                    value={metricaConfronto ?? ""}
+                    onChange={(evento) => setMetricaConfronto(evento.target.value as ChiaveMetrica)}
+                    className={`${CLASSE_CAMPO} mt-1`}
+                  >
+                    {metricheConfrontoVisibili.map((metrica) => (
+                      <option key={metrica.chiave} value={metrica.chiave}>{metrica.etichetta}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={aggiungiAltraMetrica}
+                    disabled={!metricaConfronto}
+                    className="min-h-10 rounded-lg bg-primary px-3 text-sm font-semibold text-bg focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                  >
+                    Aggiungi confronto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAltraMetricaAperta(false)}
+                    className="min-h-10 rounded-lg border border-border bg-bg-page px-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    Annulla
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {serieAggiuntive.length > 0 && (
+              <div className="mt-4 space-y-2 border-t border-border pt-4" aria-label="Serie aggiunte">
+                {serieAggiuntive.map((voce, indice) => (
+                  <div key={`${voce.ruolo}-${indice}`} className="grid gap-2 rounded-lg bg-bg-page p-2 sm:grid-cols-[auto_1fr_auto_auto] sm:items-center">
+                    <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
+                      {NOMI_RUOLI[voce.ruolo]}
+                    </span>
+                    <input
+                      aria-label={`Nome serie ${indice + 1}`}
+                      value={voce.nome}
+                      onChange={(evento) => {
+                        const nome = evento.target.value;
+                        setSerieAggiuntive((correnti) => correnti.map((serie, posizione) =>
+                          posizione === indice ? { ...serie, nome } : serie
+                        ));
+                        setSalvataggio("pronto");
+                        setMessaggioSalvataggio("");
+                      }}
+                      className={CLASSE_CAMPO}
+                    />
+                    <SelettoreColore
+                      valore={voce.colore}
+                      etichetta={`Colore di ${voce.nome || `serie ${indice + 1}`}`}
+                      onCambia={(colore) => {
+                        setSerieAggiuntive((correnti) => correnti.map((serie, posizione) => {
+                          if (posizione !== indice) return serie;
+                          // Togliere la chiave, non metterla a undefined: il
+                          // jsonb salvato porterebbe con se' un campo nullo che
+                          // il validatore poi rifiuta.
+                          const { colore: _tolto, ...resto } = serie;
+                          return colore === undefined ? resto : { ...resto, colore };
+                        }));
+                        setSalvataggio("pronto");
+                        setMessaggioSalvataggio("");
+                      }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Rimuovi serie ${voce.nome}`}
+                      onClick={() => {
+                        setSerieAggiuntive((correnti) => correnti.filter((_, posizione) => posizione !== indice));
+                        setGraficoScelto(undefined);
+                        setSalvataggio("pronto");
+                        setMessaggioSalvataggio("");
+                      }}
+                      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-border text-danger focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Scheda>
+              </>
+            ) : (
+              <p className="text-sm text-text-muted">Scegli prima una misura nella scheda «Campi».</p>
+            )}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="pannello-aspetto"
+            aria-labelledby="scheda-aspetto"
+            hidden={schedaPannello !== "aspetto"}
+            className="space-y-4 p-3"
+          >
+            {spec ? (
           <PannelloAspetto
             aspetto={aspetto}
             onCambia={(nuovo) => {
@@ -1435,144 +1658,12 @@ export function EditorAnalisi({
             ruoliSerie={serieAnalisi.map((voce) => voce.ruolo)}
             categorie={categorieDelRisultato}
           />
-        </div>
-
-        <section className="min-w-0 xl:sticky xl:top-4">
-          <Scheda
-            titolo="Risultato in tempo reale"
-            sottotitolo="La domanda viene rieseguita dopo ogni modifica"
-            azione={
-              risultato ? (
-                <div className="text-right">
-                  <p className="text-xs text-text-muted">Totale</p>
-                  <p className="font-tenorite text-xl font-semibold text-primary tabular-nums">
-                    {formattaTotale(risultato)}
-                  </p>
-                </div>
-              ) : null
-            }
-          >
-            {errore && (
-              <p role="alert" className="mb-4 rounded-lg border border-border bg-bg-page p-3 text-sm text-danger">
-                {errore}
-              </p>
+            ) : (
+              <p className="text-sm text-text-muted">Scegli prima una misura nella scheda «Campi».</p>
             )}
-
-            <div className="relative min-h-[340px]" aria-busy={caricamento}>
-              {risultato && tipoGrafico && serieEseguite.length > 0 ? (
-                <div className={caricamento ? "opacity-50" : undefined}>
-                  <GraficoDaAnalisi serie={serieEseguite} aspetto={aspetto} tipo={tipoGrafico} altezza={340} />
-                </div>
-              ) : (
-                <Scheletro altezza={340} />
-              )}
-              {caricamento && risultato && (
-                <div className="pointer-events-none absolute inset-0 opacity-50">
-                  <Scheletro altezza={340} />
-                </div>
-              )}
-            </div>
-
-            {!periodoPresente(spec.periodo) && (
-              <p className="mt-3 text-xs leading-relaxed text-text-muted">
-                Anteprima con il periodo ereditato: {descriviPeriodo(periodoEreditato)}. La spec salvata non fissa il periodo.
-              </p>
-            )}
-
-            {risultato && proposta && tipoGrafico && (
-              <div className="mt-4 border-t border-border pt-4">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-end">
-                  <div>
-                    <p className="text-xs font-medium">Grafico proposto: {NOMI_GRAFICI[proposta.tipo]}</p>
-                    <p className="mt-1 text-xs leading-relaxed text-text-muted">{proposta.motivo}</p>
-                  </div>
-                  <div className="text-xs text-text-muted">
-                    <span className="mb-1 block">Visualizzazione</span>
-                    <SceltaGrafico
-                      etichetta="Visualizzazione"
-                      valore={tipoGrafico}
-                      opzioni={grafici}
-                      onChange={(tipo) => {
-                        setGraficoScelto(tipo);
-                        setSalvataggio("pronto");
-                        setMessaggioSalvataggio("");
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {sbloccaGrafici.length > 0 && (
-                  <ul className="mt-3 space-y-1 border-t border-border pt-3 text-xs leading-relaxed text-text-muted">
-                    {sbloccaGrafici.map((suggerimento) => (
-                      <li key={suggerimento}>{suggerimento}</li>
-                    ))}
-                  </ul>
-                )}
-
-                {risultato.avvisi.length > 0 && (
-                  <div className="mt-4 space-y-2" aria-label="Avvisi del risultato">
-                    {risultato.avvisi.map((avviso) => (
-                      <p key={avviso} className="rounded-lg border border-border bg-bg-page p-3 text-xs leading-relaxed text-warning">
-                        {avviso}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="mt-5 border-t border-border pt-5">
-              <label htmlFor="editor-titolo" className="text-sm font-medium">
-                {dentroUnaPagina ? "Titolo del riquadro" : "Titolo del riquadro"}
-              </label>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                <input
-                  id="editor-titolo"
-                  aria-label="Titolo del riquadro"
-                  required
-                  value={titolo}
-                  onChange={(evento) => {
-                    titoloModificato.current = true;
-                    setTitolo(evento.target.value);
-                    setSalvataggio("pronto");
-                    setMessaggioSalvataggio("");
-                  }}
-                  className={`${CLASSE_CAMPO} flex-1`}
-                />
-                <button
-                  type="button"
-                  onClick={() => void salva()}
-                  disabled={salvataggio === "in_corso" || salvataggio === "salvata"}
-                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-bg-page px-4 text-sm font-medium text-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4" aria-hidden />
-                  {salvataggio === "in_corso"
-                    ? dentroUnaPagina ? "Aggiungo…" : "Salvataggio…"
-                    : salvataggio === "salvata"
-                      ? dentroUnaPagina ? "Aggiunta" : "Salvata"
-                      : aggiornaEsistente
-                        ? "Salva modifiche"
-                        : dentroUnaPagina
-                          ? "Aggiungi alla pagina"
-                          : modificabile
-                            ? "Salva il riquadro"
-                            : "Salva una copia"}
-                </button>
-              </div>
-              {messaggioSalvataggio && (
-                <p
-                  role="status"
-                  className={`mt-2 text-xs ${salvataggio === "salvata" ? "text-primary" : "text-danger"}`}
-                >
-                  {messaggioSalvataggio}
-                </p>
-              )}
-            </div>
-          </Scheda>
-        </section>
+          </div>
+        </aside>
       </div>
-      </>
-      )}
     </main>
   );
 }

@@ -193,6 +193,8 @@ export function Pozzetti({
   onCambia,
   onAggiungiFiltro,
   onTogliFiltro,
+  compatto = false,
+  onVaiAiFiltri,
 }: {
   vocabolario: VocabolarioAlbero;
   selezione: SelezioneCampi;
@@ -202,6 +204,10 @@ export function Pozzetti({
   /** Aggiunge un filtro (senza valori) su questa dimensione. */
   onAggiungiFiltro: (dimensione: Dimensione) => void;
   onTogliFiltro: (indice: number) => void;
+  /** Nel pannello laterale: una colonna sola, come in Power BI. */
+  compatto?: boolean;
+  /** Porta a dove si scelgono i valori dei filtri (un'altra scheda del pannello). */
+  onVaiAiFiltri?: () => void;
 }) {
   const [messaggio, setMessaggio] = useState<Messaggio | null>(null);
   const inTrascinamento = useSyncExternalStore(iscriviTrascinamento, leggiTrascinamento, () => null);
@@ -321,7 +327,7 @@ export function Pozzetti({
   const haFiltriDaCompletare = filtri.some((f) => riassuntoFiltro(f) === "da scegliere");
 
   return (
-    <section aria-labelledby="titolo-pozzetti" className="mt-4">
+    <section aria-labelledby="titolo-pozzetti" className={compatto ? undefined : "mt-4"}>
       <div className="mb-2">
         <h3 id="titolo-pozzetti" className="font-tenorite text-sm font-bold uppercase tracking-wide">
           Pozzetti
@@ -331,7 +337,7 @@ export function Pozzetti({
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className={compatto ? "grid gap-2" : "grid gap-3 sm:grid-cols-2"}>
         <Pozzetto nome="asse" idoneo={idoneo("asse")} onRilascia={(v) => deponiVoce("asse", v)} vuoto={!contenuto.asse} menu={menu("asse")}>
           {contenuto.asse && (
             <Chip
@@ -387,7 +393,13 @@ export function Pozzetti({
           I valori dei filtri si scelgono nel riquadro «Solo dove».{" "}
           <button
             type="button"
-            onClick={() => document.getElementById("editor-filtri")?.scrollIntoView?.({ behavior: "smooth", block: "center" })}
+            onClick={() => {
+              if (onVaiAiFiltri) {
+                onVaiAiFiltri();
+                return;
+              }
+              document.getElementById("editor-filtri")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+            }}
             className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             Vai ai filtri
