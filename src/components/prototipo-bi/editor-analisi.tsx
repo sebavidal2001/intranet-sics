@@ -40,7 +40,9 @@ import {
   AlberoCampi,
   SELEZIONE_VUOTA,
   type SelezioneCampi,
+  type VocabolarioAlbero,
 } from "@/components/prototipo-bi/albero-campi";
+import { Pozzetti } from "@/components/prototipo-bi/pozzetti";
 import {
   ammetteConfrontoBudget,
   eseguiAnalisiComposita,
@@ -539,6 +541,15 @@ export function EditorAnalisi({
     return estendiVocabolario(vocabolario, [...dalCatalogo, ...dalleSpec]);
   }, [misureSalvate, serieAggiuntive, serieIniziali, spec, specIniziale, vocabolario]);
 
+  const vocabolarioAlbero: VocabolarioAlbero | null = vocabolario
+    ? {
+        tipologie: esteso?.vocabolario.tipologie ?? vocabolario.tipologie,
+        metriche: esteso?.vocabolario.metriche ?? vocabolario.metriche,
+        dimensioni: vocabolario.dimensioni,
+        dimensioniPerMetrica: esteso?.vocabolario.dimensioniPerMetrica ?? vocabolario.dimensioniPerMetrica,
+      }
+    : null;
+
   const selezioneCampi: SelezioneCampi = spec
     ? {
         misure: [
@@ -891,7 +902,7 @@ export function EditorAnalisi({
         raggruppa — che chiedevano di compilare un modulo prima di vedere
         qualcosa. Qui si spunta e il risultato si aggiorna.
       */}
-      {vocabolario && (
+      {vocabolario && vocabolarioAlbero && (
         <section aria-labelledby="titolo-campi" className="mb-6">
           <div className="mb-3">
             <h2 id="titolo-campi" className="font-tenorite text-xl font-semibold">
@@ -902,12 +913,7 @@ export function EditorAnalisi({
             </p>
           </div>
           <AlberoCampi
-            vocabolario={{
-              tipologie: esteso?.vocabolario.tipologie ?? vocabolario.tipologie,
-              metriche: esteso?.vocabolario.metriche ?? vocabolario.metriche,
-              dimensioni: vocabolario.dimensioni,
-              dimensioniPerMetrica: esteso?.vocabolario.dimensioniPerMetrica ?? vocabolario.dimensioniPerMetrica,
-            }}
+            vocabolario={vocabolarioAlbero}
             selezione={selezioneCampi}
             onCambia={(nuova) => applicaSelezione(nuova)}
             azioneMisure={
@@ -925,6 +931,24 @@ export function EditorAnalisi({
               return Boolean(salvata && (chiGestisceMisure.tutte || salvata.autoreId === chiGestisceMisure.utenteId));
             }}
             onTogliMisura={(chiave) => void togliMisura(chiave)}
+          />
+          <Pozzetti
+            vocabolario={vocabolarioAlbero}
+            selezione={selezioneCampi}
+            filtri={spec?.filtri ?? []}
+            onCambia={(nuova) => applicaSelezione(nuova)}
+            onAggiungiFiltro={(campo) =>
+              aggiornaSpec((corrente) => ({
+                ...corrente,
+                filtri: [...(corrente.filtri ?? []), { campo, op: "in", valore: [] }],
+              }))
+            }
+            onTogliFiltro={(indice) =>
+              aggiornaSpec((corrente) => ({
+                ...corrente,
+                filtri: (corrente.filtri ?? []).filter((_, posizione) => posizione !== indice),
+              }))
+            }
           />
         </section>
       )}
@@ -1282,6 +1306,7 @@ export function EditorAnalisi({
             )}
           </Scheda>
 
+          <div id="editor-filtri">
           <Scheda
             titolo="Solo dove"
             sottotitolo="Tieni solo le righe che ti interessano"
@@ -1397,6 +1422,7 @@ export function EditorAnalisi({
               </div>
             )}
           </Scheda>
+          </div>
 
           <PannelloAspetto
             aspetto={aspetto}

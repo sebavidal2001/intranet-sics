@@ -37,6 +37,7 @@ import {
 import { ammetteConfrontoBudget, motivoBudgetNonDisponibile } from "@/lib/prototipo-bi/analisi-composita";
 import type { ChiaveTipologia } from "@/lib/prototipo-bi/tassonomia";
 import { eChiaveMisura, specPerChiave, type ChiaveCampo } from "@/lib/prototipo-bi/misure-vocabolario";
+import { TIPO_MIME_CAMPO, impostaTrascinamento, type VoceCampo } from "./pozzetti-trascinamento";
 import type {
   Dimensione,
   Granularita,
@@ -199,6 +200,75 @@ export function motivoMisuraNonSelezionabile(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Trasformazioni della selezione (pure)
+//
+// Le usano sia le caselle dell'albero sia i pozzetti: due modi di fare la stessa
+// cosa devono dare lo stesso risultato, e l'unico modo di garantirlo e' che
+// passino dalla stessa funzione.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Le misure che restano valide con queste suddivisioni.
+ *
+ * Una misura in piu' puo' diventare incompatibile quando si aggiunge una
+ * suddivisione (e' il caso di budget e BEP fuori da business unit e agente):
+ * va tolta, altrimenti resterebbe a produrre una riga sola che sembra un dato.
+ * La prima (la principale) non si tocca mai. Restituisce anche quelle tolte, per
+ * poterlo dire a chi ha fatto il gesto.
+ */
+export function riconciliaMisure(
+  selezione: SelezioneCampi,
+  suddivisioni: Dimensione[],
+  perMetrica: Record<string, Dimensione[]>
+): { misure: ChiaveCampo[]; tolte: ChiaveCampo[] } {
+  const misure = selezione.misure.filter((metrica, indice) => {
+    if (indice === 0) return true;
+    const ammesseQui = perMetrica[metrica] ?? [];
+    if (!suddivisioni.every((d) => ammesseQui.includes(d))) return false;
+    if (metrica === "budget" || metrica === "bep") {
+      return ammetteConfrontoBudget({ metrica, raggruppa: suddivisioni });
+    }
+    return true;
+  });
+  return { misure, tolte: selezione.misure.filter((m) => !misure.includes(m)) };
+}
+
+/** Spunta o toglie una misura. Togliendola, le suddivisioni che solo lei ammetteva vanno via con lei. */
+export function selezioneConMisura(
+  selezione: SelezioneCampi,
+  metrica: ChiaveCampo,
+  spuntata: boolean,
+  perMetrica: Record<string, Dimensione[]>
+): SelezioneCampi {
+  const misure = spuntata ? [...selezione.misure, metrica] : selezione.misure.filter((m) => m !== metrica);
+  // Togliendo una misura, le suddivisioni che solo lei ammetteva vanno via con
+  // lei: lasciarle darebbe una spec che il motore non sa eseguire.
+  const restano = dimensioniAmmesse(misure, perMetrica);
+  return {
+    ...selezione,
+    misure,
+    suddivisioni: selezione.suddivisioni.filter((d) => misure.length === 0 || restano.includes(d)),
+  };
+}
+
+/** Spunta o toglie una suddivisione, riconciliando le misure se se ne aggiunge una. */
+export function selezioneConSuddivisione(
+  selezione: SelezioneCampi,
+  dimensione: Dimensione,
+  spuntata: boolean,
+  perMetrica: Record<string, Dimensione[]>
+): SelezioneCampi {
+  const suddivisioni = spuntata
+    ? [...selezione.suddivisioni, dimensione]
+    : selezione.suddivisioni.filter((d) => d !== dimensione);
+  const misure =
+    suddivisioni.length > selezione.suddivisioni.length
+      ? riconciliaMisure(selezione, suddivisioni, perMetrica).misure
+      : selezione.misure;
+  return { ...selezione, misure, suddivisioni };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Interfaccia
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -247,6 +317,7 @@ function Casella({
   onCambia,
   nota,
   azione,
+  voce,
 }: {
   etichetta: string;
   spuntata: boolean;
@@ -256,12 +327,31 @@ function Casella({
   nota?: string;
   /** Un pulsante a destra (per esempio «Togli la misura»), fuori dalla casella. */
   azione?: ReactNode;
+  /**
+   * Se c'e', la voce si puo' trascinare in un pozzetto. Una voce bloccata non
+   * si trascina: non ci sarebbe un pozzetto che la accetta, e il motivo e'
+   * gia' scritto accanto alla casella.
+   */
+  voce?: VoceCampo;
 }) {
   const bloccata = motivoBloccata !== null && !spuntata;
+  const trascinabile = Boolean(voce) && !bloccata;
   const casella = (
     <label
+      draggable={trascinabile}
+      onDragStart={
+        voce && trascinabile
+          ? (evento) => {
+              evento.dataTransfer.setData(TIPO_MIME_CAMPO, JSON.stringify(voce));
+              evento.dataTransfer.setData("text/plain", etichetta);
+              evento.dataTransfer.effectAllowed = "move";
+              impostaTrascinamento(voce);
+            }
+          : undefined
+      }
+      onDragEnd={voce ? () => impostaTrascinamento(null) : undefined}
       className={`flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded px-1 ${
-        bloccata ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-bg-page"
+        bloccata ? "cursor-not-allowed opacity-60" : trascinabile ? "cursor-grab hover:bg-bg-page active:cursor-grabbing" : "cursor-pointer hover:bg-bg-page"
       }`}
     >
       <input
@@ -320,38 +410,11 @@ export function AlberoCampi({
   const pieno = selezione.suddivisioni.length >= MASSIME_SUDDIVISIONI;
 
   function cambiaMisura(metrica: ChiaveCampo, spuntata: boolean) {
-    const misure = spuntata
-      ? [...selezione.misure, metrica]
-      : selezione.misure.filter((m) => m !== metrica);
-    // Togliendo una misura, le suddivisioni che solo lei ammetteva vanno via
-    // con lei: lasciarle darebbe una spec che il motore non sa eseguire.
-    const restano = dimensioniAmmesse(misure, vocabolario.dimensioniPerMetrica);
-    onCambia({
-      ...selezione,
-      misure,
-      suddivisioni: selezione.suddivisioni.filter((d) => misure.length === 0 || restano.includes(d)),
-    });
+    onCambia(selezioneConMisura(selezione, metrica, spuntata, vocabolario.dimensioniPerMetrica));
   }
 
   function cambiaSuddivisione(dimensione: Dimensione, spuntata: boolean) {
-    const suddivisioni = spuntata
-      ? [...selezione.suddivisioni, dimensione]
-      : selezione.suddivisioni.filter((d) => d !== dimensione);
-    // Aggiungendo una suddivisione, una misura già spuntata può diventare
-    // incompatibile (è il caso di budget fuori da BU e agente): va tolta,
-    // altrimenti resterebbe a produrre una riga sola che sembra un dato.
-    const misure = suddivisioni.length > selezione.suddivisioni.length
-      ? selezione.misure.filter((metrica, indice) => {
-          if (indice === 0) return true;
-          const ammesseQui = vocabolario.dimensioniPerMetrica[metrica] ?? [];
-          if (!suddivisioni.every((d) => ammesseQui.includes(d))) return false;
-          if (metrica === "budget" || metrica === "bep") {
-            return ammetteConfrontoBudget({ metrica, raggruppa: suddivisioni });
-          }
-          return true;
-        })
-      : selezione.misure;
-    onCambia({ ...selezione, misure, suddivisioni });
+    onCambia(selezioneConSuddivisione(selezione, dimensione, spuntata, vocabolario.dimensioniPerMetrica));
   }
 
   function spostaSuddivisione(da: number, a: number) {
@@ -390,6 +453,7 @@ export function AlberoCampi({
                 <Casella
                   key={chiave}
                   etichetta={etichettaMetrica(chiave)}
+                  voce={{ tipo: "misura", chiave }}
                   spuntata={selezione.misure.includes(chiave)}
                   motivoBloccata={motivoMisuraNonSelezionabile(
                     chiave,
@@ -521,6 +585,7 @@ export function AlberoCampi({
                     <Casella
                       key={dimensione}
                       etichetta={etichettaDimensione(dimensione)}
+                      voce={{ tipo: "dimensione", chiave: dimensione }}
                       spuntata={spuntata}
                       motivoBloccata={motivo}
                       onCambia={(valore) => cambiaSuddivisione(dimensione, valore)}
@@ -545,6 +610,7 @@ export function AlberoCampi({
               <Casella
                 key={voce.chiave}
                 etichetta={voce.etichetta}
+                voce={{ tipo: "calendario", chiave: voce.chiave }}
                 spuntata={selezione.granularita === voce.chiave}
                 motivoBloccata={selezione.misure.length === 0 ? "Scegli prima una misura" : null}
                 onCambia={(spuntata) =>

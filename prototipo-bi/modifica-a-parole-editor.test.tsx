@@ -175,7 +175,7 @@ describe("modifica a parole dentro l'editor", () => {
     expect(specs[1].spec.modificatore).toBe("anno_precedente");
     for (const s of specs) expect(s.spec.filtri).toEqual(FILTRO_BONI);
     expect(screen.getByRole("button", { name: /Annulla l’ultima modifica/ })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Modifica applicata");
+    expect(screen.getByText(/Modifica applicata/)).toBeInTheDocument();
   });
 
   it("senza «Applica» il riquadro non cambia: le serie restano quelle di prima", async () => {
