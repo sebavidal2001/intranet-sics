@@ -19,7 +19,7 @@
  *    di essere raccontato.
  */
 
-import { esegui, quantitaOrientata } from "./semantico";
+import { chiaveDocumento, esegui, quantitaOrientata } from "./semantico";
 import {
   budgetProgressivoAl,
   distribuisci,
@@ -409,7 +409,7 @@ function rilevaClientiDormienti(ctx: ContestoRilevatori): Segnale[] {
       c.agente = r.agente;
     }
     c.totale += r.importo;
-    if (r.documento) c.ordini.add(r.documento);
+    if (r.documento) c.ordini.add(chiaveDocumento(r));
     perCliente.set(r.cliente, c);
   }
 
@@ -538,7 +538,7 @@ function rilevaPipeline(ctx: ContestoRilevatori): Segnale[] {
   if (valoreVecchi < SOGLIE.magnitudineMinimaEuro) return [];
 
   const quota = pct(valoreVecchi, valoreTotale);
-  const documentiVecchi = new Set(vecchi.map((r) => r.documento).filter(Boolean)).size;
+  const documentiVecchi = new Set(vecchi.filter((r) => r.documento).map(chiaveDocumento)).size;
 
   const perAgente = new Map<string, number>();
   for (const r of vecchi) perAgente.set(r.agente, (perAgente.get(r.agente) ?? 0) + r.importo);
@@ -1057,7 +1057,7 @@ function rilevaCostiAcquisto(ctx: ContestoRilevatori): Segnale[] {
     };
     if (r.data > inizioAnno) {
       a.quantita += quantitaOrientata(r);
-      if (r.documento) a.documenti.add(r.documento);
+      if (r.documento) a.documenti.add(chiaveDocumento(r));
     }
     if (r.data > inizioRecente && (!a.recente || r.data > a.recente.data)) {
       a.recente = { data: r.data, costo: r.costoUnitario };

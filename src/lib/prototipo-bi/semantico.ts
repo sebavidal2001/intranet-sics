@@ -79,6 +79,33 @@ interface DefinizioneMetrica {
 }
 
 /**
+ * L'identita' di un documento.
+ *
+ * Il «Numero Doc.» da solo NON identifica un documento: la numerazione riparte
+ * ogni anno e, nelle consegne, serie diverse hanno gli stessi numeri per clienti
+ * diversi. Misurato sul database di produzione il 09/10/2026 (dati dal gennaio
+ * 2025 all'ottobre 2026): il solo numero dava 2.524 fatture contro 4.643 vere,
+ * 3.256 ordini contro 6.303, 1.324 preventivi contro 2.235 — meta' dei documenti
+ * spariva in un conteggio che attraversasse due anni, e le medie per documento
+ * venivano il doppio.
+ *
+ * L'identita' fedele e' numero + data + cliente: nei dati le righe di uno stesso
+ * documento hanno sempre la stessa data (nelle consegne le uniche date diverse a
+ * parita' di numero e anno sono di clienti diversi, cioe' di documenti diversi),
+ * quindi la chiave non spezza mai un documento vero. E' la stessa che
+ * `ricollocaNonAssegnate` usa dal 09/10/2026.
+ *
+ * Fanno eccezione gli ORDINI A FORNITORE (le righe che portano `fornitore`):
+ * il loro `documento` e' gia' «OF 12/2026», con profilo e anno dentro, e le
+ * righe di un ordine possono avere date diverse. Per loro l'identita' e' il
+ * numero com'e'. Le visite hanno come `documento` il proprio id, gia' unico.
+ */
+export function chiaveDocumento(r: RigaFatto): string {
+  if (r.fornitore !== undefined) return r.documento;
+  return `${r.documento}|${r.data}|${r.codiceCliente ?? ""}`;
+}
+
+/**
  * Quantità col segno della transazione.
  *
  * Nelle viste `bi_*` l'importo porta il segno del documento, la quantità no:
@@ -173,8 +200,9 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     unita: "numero",
   },
   // ── Documenti: quanti e di che valore medio ──────────────────────────────
-  // Un documento = un valore distinto di `documento` (il «Numero Doc.» delle
-  // viste), come per `n_ordini`. Le note di credito sono documenti: in
+  // Un documento = un valore distinto di `chiaveDocumento` (numero + data +
+  // cliente: il solo «Numero Doc.» si ripete fra anni e serie). Le note di
+  // credito sono documenti: in
   // `n_fatture` si contano, in `fattura_media` abbassano la media col loro
   // importo negativo. Sul fatturato la causale non e' una dimensione, quindi le
   // sole fatture NON si separano dalle note di credito: la descrizione lo dice.
@@ -1061,8 +1089,9 @@ export function esegui(spec: SpecQuery, snapshot: Snapshot): RisultatoQuery {
     g.conteggio += 1;
     complessivo.conteggio += 1;
     if (r.documento) {
-      g.documenti.add(r.documento);
-      complessivo.documenti.add(r.documento);
+      const chiaveDoc = chiaveDocumento(r);
+      g.documenti.add(chiaveDoc);
+      complessivo.documenti.add(chiaveDoc);
     }
     gruppi.set(k, g);
   }
