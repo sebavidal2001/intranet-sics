@@ -29,6 +29,7 @@ import type { Snapshot } from "@/lib/prototipo-bi/tipi";
 import { caricaEnvLocale } from "./_env";
 
 const CANDIDATI = [
+  { id: "anthropic/claude-haiku-5.5", nome: "Haiku 5.5", ingresso: 0.1, uscita: 0.5 },
   { id: "anthropic/claude-haiku-4.5", nome: "Haiku 4.5", ingresso: 1.0, uscita: 5.0 },
   { id: "anthropic/claude-sonnet-5", nome: "Sonnet 5", ingresso: 2.0, uscita: 10.0 },
   { id: "openai/gpt-5.6-luna", nome: "gpt-5.6-luna", ingresso: 0.2, uscita: 1.2 },

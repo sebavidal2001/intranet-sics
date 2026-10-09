@@ -75,8 +75,8 @@ describe("Costi", () => {
   it("il modello leggero costa al più la metà a parità di token", () => {
     // Con Sonnet 4.5 il rapporto era 3x; con Sonnet 5 è esattamente 2x, perché
     // il livello standard è sceso e il leggero no. Detto altrimenti: sul livello
-    // leggero Haiku 4.5 non è più un affare, ed è lì che un modello a
-    // 0,20/1,20 (misurato il 17/09/2026) varrebbe cinque volte tanto.
+    // leggero Haiku 4.5 non era più un affare. Dal 09/10/2026 il leggero è Haiku 5.5
+    // (0,10/0,50): un decimo di Haiku 4.5 e un ventesimo dello standard.
     const grande = calcolaCosto(MODELLI.standard, 10_000, 2_000).costoUsd;
     const piccolo = calcolaCosto(MODELLI.leggero, 10_000, 2_000).costoUsd;
     expect(piccolo).toBeLessThanOrEqual(grande / 2);

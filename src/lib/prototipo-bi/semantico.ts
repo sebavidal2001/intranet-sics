@@ -165,6 +165,46 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     aggregazione: "conta_documenti",
     unita: "numero",
   },
+  // ── Documenti: quanti e di che valore medio ──────────────────────────────
+  // Un documento = un valore distinto di `documento` (il «Numero Doc.» delle
+  // viste), come per `n_ordini`. Le note di credito sono documenti: in
+  // `n_fatture` si contano, in `fattura_media` abbassano la media col loro
+  // importo negativo. Sul fatturato la causale non e' una dimensione, quindi le
+  // sole fatture NON si separano dalle note di credito: la descrizione lo dice.
+  n_fatture: {
+    chiave: "n_fatture",
+    etichetta: "Numero fatture",
+    descrizione:
+      "Documenti di fatturazione distinti, note di credito comprese (non sono separabili dalle fatture).",
+    dataset: "fatturato",
+    aggregazione: "conta_documenti",
+    unita: "numero",
+  },
+  fattura_media: {
+    chiave: "fattura_media",
+    etichetta: "Fattura media",
+    descrizione:
+      "Valore netto medio per documento di fatturazione: le note di credito entrano col loro importo negativo e abbassano la media.",
+    dataset: "fatturato",
+    aggregazione: "media_documento",
+    unita: "euro",
+  },
+  n_consegne: {
+    chiave: "n_consegne",
+    etichetta: "Numero consegne",
+    descrizione: "Documenti di consegna distinti (DDT e simili), resi compresi.",
+    dataset: "consegnato",
+    aggregazione: "conta_documenti",
+    unita: "numero",
+  },
+  consegna_media: {
+    chiave: "consegna_media",
+    etichetta: "Consegna media",
+    descrizione: "Valore netto medio per documento di consegna.",
+    dataset: "consegnato",
+    aggregazione: "media_documento",
+    unita: "euro",
+  },
   // ── Esito dei preventivi ─────────────────────────────────────────────────
   // ATTENZIONE alla semantica: nel gestionale la colonna `importo_evaso` NON
   // è l'evaso, è il valore totale della riga (verificato: vale il totale anche

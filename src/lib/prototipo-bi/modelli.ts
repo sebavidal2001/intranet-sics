@@ -23,13 +23,17 @@ export interface Modello {
   note: string;
 }
 
-/** Listino al 17/09/2026, letto da https://openrouter.ai/api/v1/models. */
+/** Listino letto da https://openrouter.ai/api/v1/models (leggero: 09/10/2026, gli altri: 17/09/2026). */
 export const MODELLI: Record<string, Modello> = {
   leggero: {
-    id: "anthropic/claude-haiku-4.5",
-    nome: "Haiku 4.5",
-    ingresso: 1.0,
-    uscita: 5.0,
+    // Haiku 4.5 (1,00/5,00) fino al 09/10/2026. Haiku 5.5 costa un decimo
+    // (0,10/0,50). Le cifre non verificate misurate il 17/09 erano di 4.5: sul
+    // briefing le controlla `verifica-numeri`, sulle letture dirette i numeri
+    // vengono dagli strumenti. Rimisurare col banco se cambia l'uso.
+    id: "anthropic/claude-haiku-5.5",
+    nome: "Haiku 5.5",
+    ingresso: 0.1,
+    uscita: 0.5,
     note: "Veloce ed economico. Adatto a letture dirette e riassunti.",
   },
   standard: {

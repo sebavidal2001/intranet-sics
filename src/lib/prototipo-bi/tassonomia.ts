@@ -37,13 +37,13 @@ export const TIPOLOGIE: Tipologia[] = [
     chiave: "fatturato",
     etichetta: "Fatturato",
     descrizione: "Valore delle fatture emesse.",
-    metriche: ["fatturato"],
+    metriche: ["fatturato", "n_fatture", "fattura_media"],
   },
   {
     chiave: "consegnato",
     etichetta: "Consegnato",
     descrizione: "Merce consegnata, portafoglio e consegne future.",
-    metriche: ["consegnato", "portafoglio", "consegnato_futuro"],
+    metriche: ["consegnato", "n_consegne", "consegna_media", "portafoglio", "consegnato_futuro"],
   },
   {
     chiave: "preventivi",

@@ -309,6 +309,11 @@ export type ChiaveMetrica =
   | "n_ordini"
   | "ordine_medio"
   | "n_preventivi"
+  // ── Documenti: quanti e di che valore medio ─────────────────────────────
+  | "n_fatture"
+  | "fattura_media"
+  | "n_consegne"
+  | "consegna_media"
   | "budget"
   | "bep"
   // ── Esito dei preventivi ────────────────────────────────────────────────
