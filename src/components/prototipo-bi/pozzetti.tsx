@@ -17,7 +17,15 @@
  * Power BI Desktop (e al pannello Aspetto per le scelte di resa).
  */
 
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { SelezioneCampi, VocabolarioAlbero } from "@/components/prototipo-bi/albero-campi";
 import {
@@ -88,14 +96,20 @@ function Chip({
   nota,
   togli,
   sposta,
+  compatto = false,
 }: {
   etichetta: string;
   nota?: string;
   togli: { nome: string; onClick: () => void };
   sposta?: { prima?: () => void; dopo?: () => void };
+  compatto?: boolean;
 }) {
   return (
-    <li className="flex min-h-9 items-center gap-1 rounded-lg border border-border bg-bg-page py-1 pl-2 pr-1 text-sm">
+    <li
+      className={`flex max-w-full items-center gap-0.5 rounded-md border border-border bg-bg-page ${
+        compatto ? "min-h-6 py-0 pl-1.5 pr-0.5 text-xs" : "min-h-9 gap-1 rounded-lg py-1 pl-2 pr-1 text-sm"
+      }`}
+    >
       {sposta?.prima && (
         <button
           type="button"
@@ -139,6 +153,7 @@ function Pozzetto({
   menu,
   children,
   vuoto,
+  compatto,
 }: {
   nome: NomePozzetto;
   /** Se, mentre si trascina qualcosa, questo pozzetto lo accetterebbe (null = niente in corso). */
@@ -147,6 +162,7 @@ function Pozzetto({
   menu: ReactNode;
   children: ReactNode;
   vuoto: boolean;
+  compatto: boolean;
 }) {
   const testi = TITOLI[nome];
   const stato =
@@ -170,32 +186,47 @@ function Pozzetto({
           leggiVoceDalTrasferimento(evento.dataTransfer.getData(TIPO_MIME_CAMPO)) ?? leggiTrascinamento();
         if (voce) onRilascia(voce);
       }}
-      className={`rounded-xl border bg-bg p-3 transition-colors ${stato}`}
+      className={`rounded-lg border bg-bg transition-colors ${compatto ? "p-2" : "rounded-xl p-3"} ${stato}`}
     >
-      <header className="mb-2">
-        <h3 className="font-tenorite text-sm font-bold uppercase tracking-wide">{testi.titolo}</h3>
-        <p className="text-xs text-text-muted">{testi.descrizione}</p>
-      </header>
-      {vuoto ? (
-        <p className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-text-muted">{testi.vuoto}</p>
+      {compatto ? (
+        <>
+          {/* Titolo e menu «+» sulla stessa riga: il pozzetto resta basso. */}
+          <header className="mb-1.5 flex items-center justify-between gap-2">
+            <h3 className="font-tenorite text-[11px] font-bold uppercase tracking-wide" title={testi.descrizione}>
+              {testi.titolo}
+            </h3>
+            <div className="w-24 shrink-0">{menu}</div>
+          </header>
+          {vuoto ? (
+            <p className="rounded border border-dashed border-border px-2 py-1 text-[11px] text-text-muted">Trascina qui</p>
+          ) : (
+            <ul className="flex flex-wrap gap-1">{children}</ul>
+          )}
+        </>
       ) : (
-        <ul className="flex flex-wrap gap-2">{children}</ul>
+        <>
+          <header className="mb-2">
+            <h3 className="font-tenorite text-sm font-bold uppercase tracking-wide">{testi.titolo}</h3>
+            <p className="text-xs text-text-muted">{testi.descrizione}</p>
+          </header>
+          {vuoto ? (
+            <p className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-text-muted">{testi.vuoto}</p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">{children}</ul>
+          )}
+          <div className="mt-2">{menu}</div>
+        </>
       )}
-      <div className="mt-2">{menu}</div>
     </section>
   );
 }
 
-export function Pozzetti({
-  vocabolario,
-  selezione,
-  filtri,
-  onCambia,
-  onAggiungiFiltro,
-  onTogliFiltro,
-  compatto = false,
-  onVaiAiFiltri,
-}: {
+/** Cio' che il resto della pagina puo' chiedere ai pozzetti: per esempio la tela, quando ci si lascia un campo. */
+export interface ManigliaPozzetti {
+  deponi: (pozzetto: NomePozzetto, voce: VoceCampo) => void;
+}
+
+interface ProprietaPozzetti {
   vocabolario: VocabolarioAlbero;
   selezione: SelezioneCampi;
   /** I filtri della spec: non fanno parte della selezione, li gestisce chi usa il componente. */
@@ -208,8 +239,30 @@ export function Pozzetti({
   compatto?: boolean;
   /** Porta a dove si scelgono i valori dei filtri (un'altra scheda del pannello). */
   onVaiAiFiltri?: () => void;
-}) {
+  /** Ogni volta che un gesto produce un avviso o un rifiuto (null = nessuno): per mostrarlo dove si sta guardando. */
+  onMessaggio?: (messaggio: { tipo: "avviso" | "rifiuto"; testo: string } | null) => void;
+}
+
+export const Pozzetti = forwardRef<ManigliaPozzetti, ProprietaPozzetti>(function Pozzetti(
+  {
+    vocabolario,
+    selezione,
+    filtri,
+    onCambia,
+    onAggiungiFiltro,
+    onTogliFiltro,
+    compatto = false,
+    onVaiAiFiltri,
+    onMessaggio,
+  },
+  ref
+) {
   const [messaggio, setMessaggio] = useState<Messaggio | null>(null);
+  useEffect(() => {
+    if (messaggio) onMessaggio?.(messaggio);
+    // La notifica parte solo quando il messaggio cambia, non a ogni render del genitore.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messaggio]);
   const inTrascinamento = useSyncExternalStore(iscriviTrascinamento, leggiTrascinamento, () => null);
 
   const etichettaDimensione = (chiave: Dimensione) =>
@@ -308,9 +361,11 @@ export function Pozzetti({
           const scelta = disponibili.find((v) => valore(v) === evento.target.value);
           if (scelta) deponiVoce(pozzetto, scelta);
         }}
-        className="h-9 w-full rounded-lg border border-border bg-bg-page px-2 text-xs text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+        className={`${compatto ? "h-6" : "h-9"} w-full rounded-md border border-border bg-bg-page px-1.5 text-xs text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50`}
       >
-        <option value="">{disponibili.length === 0 ? "Niente da aggiungere" : "Aggiungi un campo…"}</option>
+        <option value="">
+          {disponibili.length === 0 ? (compatto ? "—" : "Niente da aggiungere") : compatto ? "+ Aggiungi" : "Aggiungi un campo…"}
+        </option>
         {gruppi.map((g) => (
           <optgroup key={g.etichetta} label={g.etichetta}>
             {g.voci.map((v) => (
@@ -324,11 +379,13 @@ export function Pozzetti({
     );
   }
 
+  useImperativeHandle(ref, () => ({ deponi: deponiVoce }));
+
   const haFiltriDaCompletare = filtri.some((f) => riassuntoFiltro(f) === "da scegliere");
 
   return (
     <section aria-labelledby="titolo-pozzetti" className={compatto ? undefined : "mt-4"}>
-      <div className="mb-2">
+      <div className={compatto ? "sr-only" : "mb-2"}>
         <h3 id="titolo-pozzetti" className="font-tenorite text-sm font-bold uppercase tracking-wide">
           Pozzetti
         </h3>
@@ -337,20 +394,22 @@ export function Pozzetti({
         </p>
       </div>
 
-      <div className={compatto ? "grid gap-2" : "grid gap-3 sm:grid-cols-2"}>
-        <Pozzetto nome="asse" idoneo={idoneo("asse")} onRilascia={(v) => deponiVoce("asse", v)} vuoto={!contenuto.asse} menu={menu("asse")}>
+      <div className={compatto ? "grid grid-cols-2 gap-1.5" : "grid gap-3 sm:grid-cols-2"}>
+        <Pozzetto nome="asse" idoneo={idoneo("asse")} onRilascia={(v) => deponiVoce("asse", v)} vuoto={!contenuto.asse} menu={menu("asse")} compatto={compatto}>
           {contenuto.asse && (
             <Chip
+              compatto={compatto}
               etichetta={contesto.etichetta(contenuto.asse)}
-              nota={contenuto.asse.tipo === "calendario" ? "tempo" : undefined}
+              nota={contenuto.asse.tipo === "calendario" && !compatto ? "tempo" : undefined}
               togli={{ nome: `Togli ${contesto.etichetta(contenuto.asse)} dall'asse`, onClick: () => togliDa(contenuto.asse!) }}
             />
           )}
         </Pozzetto>
 
-        <Pozzetto nome="legenda" idoneo={idoneo("legenda")} onRilascia={(v) => deponiVoce("legenda", v)} vuoto={contenuto.legenda.length === 0} menu={menu("legenda")}>
+        <Pozzetto nome="legenda" idoneo={idoneo("legenda")} onRilascia={(v) => deponiVoce("legenda", v)} vuoto={contenuto.legenda.length === 0} menu={menu("legenda")} compatto={compatto}>
           {contenuto.legenda.map((voce) => (
             <Chip
+              compatto={compatto}
               key={voce.chiave}
               etichetta={contesto.etichetta(voce)}
               togli={{ nome: `Togli ${contesto.etichetta(voce)} dalla legenda`, onClick: () => togliDa(voce) }}
@@ -358,15 +417,16 @@ export function Pozzetti({
           ))}
         </Pozzetto>
 
-        <Pozzetto nome="valori" idoneo={idoneo("valori")} onRilascia={(v) => deponiVoce("valori", v)} vuoto={contenuto.valori.length === 0} menu={menu("valori")}>
+        <Pozzetto nome="valori" idoneo={idoneo("valori")} onRilascia={(v) => deponiVoce("valori", v)} vuoto={contenuto.valori.length === 0} menu={menu("valori")} compatto={compatto}>
           {contenuto.valori.map((chiave, indice) => {
             const voce: VoceCampo = { tipo: "misura", chiave };
             const nome = contesto.etichetta(voce);
             return (
               <Chip
+                compatto={compatto}
                 key={chiave}
                 etichetta={nome}
-                nota={ruoloDelValore(chiave, indice)}
+                nota={compatto ? undefined : ruoloDelValore(chiave, indice)}
                 togli={{ nome: `Togli ${nome} dai valori`, onClick: () => togliDa(voce) }}
                 sposta={{
                   prima: indice > 0 ? () => onCambia(spostaValore(selezione, indice, indice - 1)) : undefined,
@@ -377,9 +437,10 @@ export function Pozzetti({
           })}
         </Pozzetto>
 
-        <Pozzetto nome="filtri" idoneo={idoneo("filtri")} onRilascia={(v) => deponiVoce("filtri", v)} vuoto={filtri.length === 0} menu={menu("filtri")}>
+        <Pozzetto nome="filtri" idoneo={idoneo("filtri")} onRilascia={(v) => deponiVoce("filtri", v)} vuoto={filtri.length === 0} menu={menu("filtri")} compatto={compatto}>
           {filtri.map((f, indice) => (
             <Chip
+              compatto={compatto}
               key={`${f.campo}-${indice}`}
               etichetta={`${etichettaDimensione(f.campo === "bu_categoria" ? "bu" : f.campo)}: ${riassuntoFiltro(f)}`}
               togli={{ nome: `Togli il filtro su ${etichettaDimensione(f.campo === "bu_categoria" ? "bu" : f.campo)}`, onClick: () => onTogliFiltro(indice) }}
@@ -389,7 +450,7 @@ export function Pozzetti({
       </div>
 
       {haFiltriDaCompletare && (
-        <p className="mt-2 text-xs text-text-muted">
+        <p className="mt-1.5 text-xs text-text-muted">
           I valori dei filtri si scelgono nel riquadro «Solo dove».{" "}
           <button
             type="button"
@@ -411,7 +472,7 @@ export function Pozzetti({
         role="status"
         aria-live="polite"
         className={
-          messaggio
+          messaggio && !compatto
             ? `mt-2 rounded-lg border p-2 text-xs ${messaggio.tipo === "rifiuto" ? "border-warning/40 bg-warning/5" : "border-primary/40 bg-primary/5"}`
             : "sr-only"
         }
@@ -420,4 +481,4 @@ export function Pozzetti({
       </p>
     </section>
   );
-}
+});

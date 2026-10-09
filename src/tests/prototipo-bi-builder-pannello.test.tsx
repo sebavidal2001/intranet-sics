@@ -77,6 +77,28 @@ describe("builder a pannello laterale", () => {
     expect(screen.getByRole("tabpanel", { name: "Filtri" })).toHaveTextContent("Solo dove");
   });
 
+  it("un campo trascinato sulla tela finisce nel pozzetto della zona scelta", async () => {
+    render(<EditorAnalisi />);
+    await screen.findByRole("tab", { name: "Campi" });
+
+    const dataTransfer = { setData: vi.fn(), getData: vi.fn(() => ""), effectAllowed: "", dropEffect: "" };
+    const casella = within(screen.getByRole("tabpanel", { name: "Campi" }))
+      .getByLabelText(/^Ordinato/)
+      .closest("label") as HTMLElement;
+
+    // Prima del gesto non ci sono zone di rilascio; mentre si trascina compare «Valori».
+    expect(screen.queryByText("Cosa misurare")).not.toBeInTheDocument();
+    fireEvent.dragStart(casella, { dataTransfer });
+    const zona = (await screen.findByText("Cosa misurare")).parentElement as HTMLElement;
+
+    fireEvent.drop(zona, { dataTransfer });
+    fireEvent.dragEnd(casella, { dataTransfer });
+
+    const valori = screen.getByRole("region", { name: "Valori" });
+    expect(within(valori).getByRole("button", { name: /Togli Ordinato dai valori/ })).toBeInTheDocument();
+    expect(screen.queryByText("Cosa misurare")).not.toBeInTheDocument();
+  });
+
   it("cerca un campo e tiene aperti i gruppi che corrispondono", async () => {
     render(<EditorAnalisi />);
     await screen.findByRole("tab", { name: "Campi" });

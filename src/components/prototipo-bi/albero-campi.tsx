@@ -27,7 +27,7 @@
  * sia una pagina, non salva. Riceve una selezione e ne comunica una nuova.
  */
 
-import { useId, useState, type ReactNode } from "react";
+import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { ChevronRight, GripVertical, ArrowUp, ArrowDown, Trash2, X } from "lucide-react";
 import {
   GRUPPI_DIMENSIONI,
@@ -272,6 +272,9 @@ export function selezioneConSuddivisione(
 // Interfaccia
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Vero dentro il pannello laterale del builder: righe piu' basse, niente descrizioni. */
+const ContestoCompatto = createContext(false);
+
 function Gruppo({
   etichetta,
   descrizione,
@@ -288,6 +291,7 @@ function Gruppo({
 }) {
   const [apertoScelto, setAperto] = useState(apertoDiDefault);
   const aperto = forzaAperto || apertoScelto;
+  const compatto = useContext(ContestoCompatto);
   const idContenuto = useId();
   return (
     <div className="border-b border-border last:border-b-0">
@@ -296,18 +300,18 @@ function Gruppo({
         onClick={() => setAperto((prima) => !prima)}
         aria-expanded={aperto}
         aria-controls={idContenuto}
-        className="flex min-h-11 w-full items-center gap-2 px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className={`flex w-full items-center gap-2 px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${compatto ? "min-h-8" : "min-h-11"}`}
       >
         <ChevronRight
           className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${aperto ? "rotate-90" : ""}`}
           aria-hidden
         />
         <span className="min-w-0">
-          <span className="block truncate font-tenorite text-sm font-semibold">{etichetta}</span>
-          {!aperto && <span className="block truncate text-xs text-text-muted">{descrizione}</span>}
+          <span className={`block truncate font-tenorite font-semibold ${compatto ? "text-[13px]" : "text-sm"}`}>{etichetta}</span>
+          {!aperto && !compatto && <span className="block truncate text-xs text-text-muted">{descrizione}</span>}
         </span>
       </button>
-      <div id={idContenuto} hidden={!aperto} className="pb-2 pl-8 pr-2">
+      <div id={idContenuto} hidden={!aperto} className={compatto ? "pb-1 pl-6 pr-1" : "pb-2 pl-8 pr-2"}>
         {children}
       </div>
     </div>
@@ -338,6 +342,7 @@ function Casella({
    */
   voce?: VoceCampo;
 }) {
+  const compatto = useContext(ContestoCompatto);
   const bloccata = motivoBloccata !== null && !spuntata;
   const trascinabile = Boolean(voce) && !bloccata;
   const casella = (
@@ -354,7 +359,7 @@ function Casella({
           : undefined
       }
       onDragEnd={voce ? () => impostaTrascinamento(null) : undefined}
-      className={`flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded px-1 ${
+      className={`flex min-w-0 flex-1 items-center gap-2 rounded px-1 ${compatto ? "min-h-7" : "min-h-10"} ${
         bloccata ? "cursor-not-allowed opacity-60" : trascinabile ? "cursor-grab hover:bg-bg-page active:cursor-grabbing" : "cursor-pointer hover:bg-bg-page"
       }`}
     >
@@ -449,9 +454,10 @@ export function AlberoCampi({
     !VOCI_CALENDARIO.some((v) => passa(v.etichetta, "calendario", "tempo"));
 
   return (
-    <div className={compatto ? "space-y-3" : "grid gap-4 lg:grid-cols-2"}>
+    <ContestoCompatto.Provider value={compatto}>
+    <div className={compatto ? "flex min-h-0 flex-1 flex-col gap-2" : "grid gap-4 lg:grid-cols-2"}>
       {compatto && (
-        <div>
+        <div className="shrink-0">
           <label htmlFor="cerca-campi" className="sr-only">
             Cerca un campo
           </label>
@@ -470,8 +476,9 @@ export function AlberoCampi({
           )}
         </div>
       )}
-      <section aria-labelledby="albero-misure" className="rounded-xl border border-border bg-bg">
-        <header className="border-b border-border px-3 py-2">
+      <div className={compatto ? "min-h-0 flex-1 space-y-2 overflow-y-auto pr-1" : "contents"}>
+      <section aria-labelledby="albero-misure" className={compatto ? "rounded-lg border border-border bg-bg" : "rounded-xl border border-border bg-bg"}>
+        <header className={compatto ? "sr-only" : "border-b border-border px-3 py-2"}>
           <h3 id="albero-misure" className="font-tenorite text-sm font-bold uppercase tracking-wide">
             {compatto ? "Misure" : "Che cosa vuoi misurare"}
           </h3>
@@ -538,8 +545,8 @@ export function AlberoCampi({
         {azioneMisure && <div className="border-t border-border px-3 py-2">{azioneMisure}</div>}
       </section>
 
-      <section aria-labelledby="albero-suddivisioni" className="rounded-xl border border-border bg-bg">
-        <header className="border-b border-border px-3 py-2">
+      <section aria-labelledby="albero-suddivisioni" className={compatto ? "rounded-lg border border-border bg-bg" : "rounded-xl border border-border bg-bg"}>
+        <header className={compatto ? "sr-only" : "border-b border-border px-3 py-2"}>
           <h3 id="albero-suddivisioni" className="font-tenorite text-sm font-bold uppercase tracking-wide">
             {compatto ? "Dimensioni e tempo" : "Come vuoi vederlo suddiviso"}
           </h3>
@@ -684,6 +691,8 @@ export function AlberoCampi({
           )}
         </div>
       </section>
+      </div>
     </div>
+    </ContestoCompatto.Provider>
   );
 }

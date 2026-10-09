@@ -19,10 +19,11 @@
  */
 
 import { SelettoreValori } from "./selettore-valori";
-import { SceltaGrafico } from "./scelta-grafico";
+import { TipoGraficoCompatto } from "./tipo-grafico-compatto";
+import { TelaRilascio } from "./tela-rilascio";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { GraficoDaAnalisi } from "@/components/prototipo-bi/grafico-da-risultato";
 import { Scheda, Scheletro, euro, numero } from "@/components/prototipo-bi/primitivi";
 import { useImpostazioni } from "@/components/prototipo-bi/impostazioni";
@@ -42,7 +43,8 @@ import {
   type SelezioneCampi,
   type VocabolarioAlbero,
 } from "@/components/prototipo-bi/albero-campi";
-import { Pozzetti } from "@/components/prototipo-bi/pozzetti";
+import { Pozzetti, type ManigliaPozzetti } from "@/components/prototipo-bi/pozzetti";
+import type { NomePozzetto, VoceCampo } from "@/components/prototipo-bi/pozzetti-regole";
 import {
   ammetteConfrontoBudget,
   eseguiAnalisiComposita,
@@ -354,6 +356,24 @@ export function EditorAnalisi({
   // non deve far ripartire la query.
   const [aspetto, setAspetto] = useState<AspettoGrafico | null>(aspettoIniziale ?? null);
   const [schedaPannello, setSchedaPannello] = useState<SchedaPannello>("campi");
+  // «Modifica a parole» sta chiusa finche' non serve: aperta, spingerebbe il grafico fuori schermo.
+  const [modificaAperta, setModificaAperta] = useState(false);
+  // L'esito dell'ultimo gesto sui pozzetti, mostrato sopra il grafico (dove si guarda).
+  const [avvisoTela, setAvvisoTela] = useState<{ tipo: "avviso" | "rifiuto"; testo: string } | null>(null);
+  const pozzettiRef = useRef<ManigliaPozzetti>(null);
+  // Il grafico occupa l'altezza che lo schermo lascia: niente scroll per vederlo intero.
+  const [altezzaGrafico, setAltezzaGrafico] = useState(520);
+  useEffect(() => {
+    const calcola = () => setAltezzaGrafico(Math.max(340, Math.min(760, window.innerHeight - 330)));
+    calcola();
+    window.addEventListener("resize", calcola);
+    return () => window.removeEventListener("resize", calcola);
+  }, []);
+  useEffect(() => {
+    if (!avvisoTela) return;
+    const timer = window.setTimeout(() => setAvvisoTela(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [avvisoTela]);
   const [salvataggio, setSalvataggio] = useState<"pronto" | "in_corso" | "salvata">("pronto");
   const [messaggioSalvataggio, setMessaggioSalvataggio] = useState("");
   const titoloModificato = useRef(Boolean(titoloIniziale));
@@ -801,6 +821,11 @@ export function EditorAnalisi({
     setMessaggioSalvataggio("");
   }
 
+  // Un campo lasciato sulla tela va nella zona scelta col gesto; la regola e' quella dei pozzetti.
+  function rilasciaSullaTela(pozzetto: NomePozzetto, voce: VoceCampo) {
+    pozzettiRef.current?.deponi(pozzetto, voce);
+  }
+
   function ereditaPeriodo() {
     aggiornaSpec((corrente) => {
       const copia = { ...corrente };
@@ -890,28 +915,26 @@ export function EditorAnalisi({
   if (!vocabolario) {
     return (
       <main className="mx-auto w-full max-w-7xl px-4 py-8">
-        <Scheletro altezza={520} />
+        <Scheletro altezza={altezzaGrafico} />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6">
-      <header className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-        <div className="min-w-0">
-          <Link href="/bi/analisi" className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-            Torna alle analisi
-          </Link>
-          <h1 className="font-tenorite text-2xl font-semibold">
-            {aggiornaEsistente ? "Modifica il riquadro" : modificabile ? "Costruisci un riquadro" : "Crea una copia modificabile"}
-          </h1>
-        </div>
-        <p className="max-w-xl text-sm leading-relaxed text-text-muted">
-          {modificabile
-            ? "Il grafico è qui, i campi sono a destra: scegli, trascina e combina, e il risultato si aggiorna subito."
-            : "Questo riquadro è condiviso o appartiene al Cruscotto: le tue modifiche finiranno in una copia tua, l’originale resta com’è."}
-        </p>
+    <main className="mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6">
+      <header className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Link href="/bi/analisi" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Torna alle analisi
+        </Link>
+        <h1 className="font-tenorite text-xl font-semibold">
+          {aggiornaEsistente ? "Modifica il riquadro" : modificabile ? "Costruisci un riquadro" : "Crea una copia modificabile"}
+        </h1>
+        {!modificabile && (
+          <p className="text-sm text-text-muted">
+            Questo riquadro è condiviso o appartiene al Cruscotto: le tue modifiche finiranno in una copia tua, l’originale resta com’è.
+          </p>
+        )}
       </header>
 
       {creaMisuraAperta && (
@@ -958,6 +981,18 @@ export function EditorAnalisi({
               />
               <button
                 type="button"
+                disabled={!spec}
+                aria-expanded={modificaAperta}
+                onClick={() => setModificaAperta((aperta) => !aperta)}
+                className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 ${
+                  modificaAperta ? "border-primary bg-primary/10 text-primary" : "border-border bg-bg-page text-text"
+                }`}
+              >
+                <Sparkles className="h-4 w-4" aria-hidden />
+                A parole
+              </button>
+              <button
+                type="button"
                 onClick={() => void salva()}
                 disabled={!spec || salvataggio === "in_corso" || salvataggio === "salvata"}
                 className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -987,15 +1022,18 @@ export function EditorAnalisi({
           </div>
 
           {!spec ? (
-            <div className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-6 py-16 text-center">
+            <TelaRilascio onRilascia={rilasciaSullaTela} avviso={avvisoTela} onChiudiAvviso={() => setAvvisoTela(null)}>
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-6 text-center" style={{ minHeight: altezzaGrafico + 80 }}>
               <p className="font-tenorite text-lg font-semibold">Il grafico comparirà qui</p>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-text-muted">
-                Spunta una misura nel pannello a destra, oppure trascinala nei Valori. Aggiungi una dimensione all’Asse e il grafico si ricalcola a ogni scelta.
+                Trascina qui una misura dall’elenco a destra, oppure spuntala. Poi trascina una dimensione per suddividerla: il grafico si ricalcola a ogni scelta.
               </p>
             </div>
+            </TelaRilascio>
           ) : (
           <>
       {statoRiquadro && (
+        <div hidden={!modificaAperta}>
         <ModificaAParole
           stato={statoRiquadro}
           risultatiPrima={serieEseguite}
@@ -1006,10 +1044,10 @@ export function EditorAnalisi({
           puoAnnullare={cronologia.length > 0}
           onAnnulla={annullaUltimaModifica}
         />
+        </div>
       )}
           <Scheda
             titolo="Risultato in tempo reale"
-            sottotitolo="La domanda viene rieseguita dopo ogni modifica"
             azione={
               risultato ? (
                 <div className="text-right">
@@ -1027,20 +1065,22 @@ export function EditorAnalisi({
               </p>
             )}
 
-            <div className="relative min-h-[480px]" aria-busy={caricamento}>
+            <TelaRilascio onRilascia={rilasciaSullaTela} avviso={avvisoTela} onChiudiAvviso={() => setAvvisoTela(null)}>
+            <div className="relative" style={{ minHeight: altezzaGrafico }} aria-busy={caricamento}>
               {risultato && tipoGrafico && serieEseguite.length > 0 ? (
                 <div className={caricamento ? "opacity-50" : undefined}>
-                  <GraficoDaAnalisi serie={serieEseguite} aspetto={aspetto} tipo={tipoGrafico} altezza={520} />
+                  <GraficoDaAnalisi serie={serieEseguite} aspetto={aspetto} tipo={tipoGrafico} altezza={altezzaGrafico} />
                 </div>
               ) : (
-                <Scheletro altezza={520} />
+                <Scheletro altezza={altezzaGrafico} />
               )}
               {caricamento && risultato && (
                 <div className="pointer-events-none absolute inset-0 opacity-50">
-                  <Scheletro altezza={520} />
+                  <Scheletro altezza={altezzaGrafico} />
                 </div>
               )}
             </div>
+            </TelaRilascio>
 
             {!periodoPresente(spec.periodo) && (
               <p className="mt-3 text-xs leading-relaxed text-text-muted">
@@ -1052,7 +1092,7 @@ export function EditorAnalisi({
               <div className="mt-4 border-t border-border pt-3">
                 <p className="text-xs text-text-muted">
                   <span className="font-medium text-text">Grafico proposto: {NOMI_GRAFICI[proposta.tipo]}.</span>{" "}
-                  {proposta.motivo} Puoi cambiarlo dalla scheda «Campi».
+                  {proposta.motivo}
                 </p>
                 {sbloccaGrafici.length > 0 && (
                   <ul className="mt-3 space-y-1 border-t border-border pt-3 text-xs leading-relaxed text-text-muted">
@@ -1081,12 +1121,12 @@ export function EditorAnalisi({
         {/* IL PANNELLO DEI PARAMETRI: tutto quello che si puo' usare e combinare. */}
         <aside
           aria-label="Parametri del riquadro"
-          className="min-w-0 rounded-xl border border-border bg-bg xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto"
+          className="flex min-w-0 flex-col rounded-xl border border-border bg-bg xl:sticky xl:top-4 xl:h-[calc(100vh-2rem)]"
         >
           <div
             role="tablist"
             aria-label="Sezioni del pannello"
-            className="sticky top-0 z-10 grid grid-cols-4 border-b border-border bg-bg"
+            className="grid shrink-0 grid-cols-4 border-b border-border bg-bg"
           >
             {SCHEDE_PANNELLO.map((voce) => (
               <button
@@ -1097,7 +1137,7 @@ export function EditorAnalisi({
                 aria-selected={schedaPannello === voce.chiave}
                 aria-controls={`pannello-${voce.chiave}`}
                 onClick={() => setSchedaPannello(voce.chiave)}
-                className={`min-h-11 border-b-2 px-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                className={`min-h-9 border-b-2 px-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
                   schedaPannello === voce.chiave
                     ? "border-primary text-primary"
                     : "border-transparent text-text-muted hover:text-text"
@@ -1113,39 +1153,37 @@ export function EditorAnalisi({
             id="pannello-campi"
             aria-labelledby="scheda-campi"
             hidden={schedaPannello !== "campi"}
-            className="space-y-4 p-3"
+            className="flex min-h-0 flex-1 flex-col gap-3 p-2.5 max-xl:min-h-[560px] [&[hidden]]:hidden"
           >
             {vocabolario && vocabolarioAlbero && (
               <>
                 {risultato && proposta && tipoGrafico && (
-                  <section aria-labelledby="titolo-visualizzazione">
-                    <h3 id="titolo-visualizzazione" className="mb-2 font-tenorite text-sm font-bold uppercase tracking-wide">
-                      Visualizzazione
-                    </h3>
-                    <SceltaGrafico
-                      etichetta="Visualizzazione"
-                      valore={tipoGrafico}
-                      opzioni={grafici}
-                      onChange={(tipo) => {
-                        setGraficoScelto(tipo);
-                        setSalvataggio("pronto");
-                        setMessaggioSalvataggio("");
-                      }}
-                    />
-                  </section>
+                  <TipoGraficoCompatto
+                    valore={tipoGrafico}
+                    opzioni={grafici}
+                    onChange={(tipo) => {
+                      setGraficoScelto(tipo);
+                      setSalvataggio("pronto");
+                      setMessaggioSalvataggio("");
+                    }}
+                  />
                 )}
                 <Pozzetti
+                  ref={pozzettiRef}
                   compatto
+                  onMessaggio={setAvvisoTela}
                   vocabolario={vocabolarioAlbero}
                   selezione={selezioneCampi}
                   filtri={spec?.filtri ?? []}
                   onCambia={(nuova) => applicaSelezione(nuova)}
-                  onAggiungiFiltro={(campo) =>
+                  onAggiungiFiltro={(campo) => {
                     aggiornaSpec((corrente) => ({
                       ...corrente,
                       filtri: [...(corrente.filtri ?? []), { campo, op: "in", valore: [] }],
-                    }))
-                  }
+                    }));
+                    // I valori si scelgono nella scheda Filtri: ci si porta chi ha appena aggiunto il filtro.
+                    setSchedaPannello("filtri");
+                  }}
                   onTogliFiltro={(indice) =>
                     aggiornaSpec((corrente) => ({
                       ...corrente,
@@ -1163,9 +1201,9 @@ export function EditorAnalisi({
                     <button
                       type="button"
                       onClick={() => setCreaMisuraAperta(true)}
-                      className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-primary bg-bg-page px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-primary bg-bg-page px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary"
                     >
-                      <Plus className="h-4 w-4" aria-hidden />
+                      <Plus className="h-3.5 w-3.5" aria-hidden />
                       Nuova misura a parole
                     </button>
                   }
@@ -1184,7 +1222,7 @@ export function EditorAnalisi({
             id="pannello-filtri"
             aria-labelledby="scheda-filtri"
             hidden={schedaPannello !== "filtri"}
-            className="space-y-4 p-3"
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3 [&[hidden]]:hidden"
           >
             {spec ? (
               <>
@@ -1469,7 +1507,7 @@ export function EditorAnalisi({
             id="pannello-confronti"
             aria-labelledby="scheda-confronti"
             hidden={schedaPannello !== "confronti"}
-            className="space-y-4 p-3"
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3 [&[hidden]]:hidden"
           >
             {spec ? (
               <>
@@ -1644,7 +1682,7 @@ export function EditorAnalisi({
             id="pannello-aspetto"
             aria-labelledby="scheda-aspetto"
             hidden={schedaPannello !== "aspetto"}
-            className="space-y-4 p-3"
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3 [&[hidden]]:hidden"
           >
             {spec ? (
           <PannelloAspetto
