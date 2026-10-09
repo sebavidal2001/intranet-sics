@@ -598,33 +598,42 @@ export function provaMisura(
  * Un valore che non esiste nemmeno ignorando le maiuscole e' un errore vero e
  * viene rifiutato col suggerimento di cosa esiste.
  */
-export function normalizzaValoriFiltri(misura: MisuraDefinita, snapshot: Snapshot): MisuraDefinita {
-  const correggi = (o: OperandoMisura): OperandoMisura => {
-    if (!o.filtri?.length) return o;
-    const dataset = snapshot.dataset[CATALOGO[o.metrica].dataset] ?? [];
-    const filtri = o.filtri.map((f): Filtro => {
-      if (f.op === "contiene") return f;
-      const esistenti = new Map<string, string>();
-      for (const r of dataset) {
-        const v = DIMENSIONI[f.campo].estrai(r);
-        if (v && !esistenti.has(v.toLowerCase())) esistenti.set(v.toLowerCase(), v);
+/**
+ * Riporta i valori di un elenco di filtri alla grafia del dato, per una
+ * metrica. Rifiuta (SpecNonValida, con i valori presenti) quelli che non
+ * esistono. Usata anche per i filtri di un riquadro, non solo per le misure.
+ */
+export function normalizzaFiltri(metrica: ChiaveMetrica, filtri: Filtro[], snapshot: Snapshot): Filtro[] {
+  if (filtri.length === 0) return filtri;
+  const dataset = snapshot.dataset[CATALOGO[metrica].dataset] ?? [];
+  return filtri.map((f): Filtro => {
+    // Un filtro senza valore non restringe niente: non c'e' nulla da verificare.
+    const vuoto = Array.isArray(f.valore) ? f.valore.length === 0 : String(f.valore).trim() === "";
+    if (f.op === "contiene" || vuoto) return f;
+    const esistenti = new Map<string, string>();
+    for (const r of dataset) {
+      const v = DIMENSIONI[f.campo].estrai(r);
+      if (v && !esistenti.has(v.toLowerCase())) esistenti.set(v.toLowerCase(), v);
+    }
+    const dati = Array.isArray(f.valore) ? f.valore : [f.valore];
+    const corretti = dati.map((v) => {
+      const trovato = esistenti.get(String(v).trim().toLowerCase());
+      if (!trovato) {
+        const simili = [...esistenti.values()].slice(0, 12).join(", ");
+        throw new SpecNonValida(
+          `Il valore "${String(v)}" non esiste nella dimensione "${f.campo}" per «${CATALOGO[metrica].etichetta}».`,
+          `Valori presenti (primi 12): ${simili || "nessuno"}. Per un confronto parziale usa l'operatore "contiene".`
+        );
       }
-      const dati = Array.isArray(f.valore) ? f.valore : [f.valore];
-      const corretti = dati.map((v) => {
-        const trovato = esistenti.get(String(v).trim().toLowerCase());
-        if (!trovato) {
-          const simili = [...esistenti.values()].slice(0, 12).join(", ");
-          throw new SpecNonValida(
-            `Il valore "${String(v)}" non esiste nella dimensione "${f.campo}" per «${CATALOGO[o.metrica].etichetta}».`,
-            `Valori presenti (primi 12): ${simili || "nessuno"}. Per un confronto parziale usa l'operatore "contiene".`
-          );
-        }
-        return trovato;
-      });
-      return { ...f, valore: Array.isArray(f.valore) ? corretti : corretti[0] };
+      return trovato;
     });
-    return { ...o, filtri };
-  };
+    return { ...f, valore: Array.isArray(f.valore) ? corretti : corretti[0] };
+  });
+}
+
+export function normalizzaValoriFiltri(misura: MisuraDefinita, snapshot: Snapshot): MisuraDefinita {
+  const correggi = (o: OperandoMisura): OperandoMisura =>
+    o.filtri?.length ? { ...o, filtri: normalizzaFiltri(o.metrica, o.filtri, snapshot) } : o;
 
   const e = misura.espressione;
   switch (e.tipo) {

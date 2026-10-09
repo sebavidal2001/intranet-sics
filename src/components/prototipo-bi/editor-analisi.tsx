@@ -29,6 +29,8 @@ import { useImpostazioni } from "@/components/prototipo-bi/impostazioni";
 import { PannelloAspetto } from "@/components/prototipo-bi/pannello-aspetto";
 import { SelettoreAnni } from "@/components/prototipo-bi/selettore-anni";
 import { CreaMisura } from "@/components/prototipo-bi/crea-misura";
+import { ModificaAParole } from "@/components/prototipo-bi/modifica-a-parole";
+import { riallineaDifferenze, scorciatoiaDi, type StatoRiquadro } from "@/lib/prototipo-bi/modifica-riquadro";
 import {
   anniDelPeriodo,
   descriviPeriodo as descriviPeriodoFissato,
@@ -185,6 +187,17 @@ interface SerieEditor extends SerieAnalisi {
   scorciatoia?: ScorciatoiaConfronto;
 }
 
+/** Il riquadro com'era prima di una modifica a parole, per poterla annullare. */
+interface PuntoDiRipristino {
+  titolo: string;
+  titoloModificato: boolean;
+  spec: SpecQuery;
+  serieAggiuntive: SerieEditor[];
+  graficoScelto: TipoGrafico | undefined;
+  aspetto: AspettoGrafico | null;
+  nomePrincipale: string | null;
+}
+
 const NOMI_RUOLI: Record<RuoloSerie, string> = {
   principale: "Principale",
   confronto: "Confronto",
@@ -315,6 +328,10 @@ export function EditorAnalisi({
   const [misureSalvate, setMisureSalvate] = useState<MisuraSalvata[]>([]);
   const [chiGestisceMisure, setChiGestisceMisure] = useState<{ utenteId: string; tutte: boolean }>({ utenteId: "", tutte: false });
   const [creaMisuraAperta, setCreaMisuraAperta] = useState(false);
+  // Modifica a parole: il nome della principale scelto da una modifica (altrimenti
+  // si deriva) e i punti di ripristino per «Annulla l'ultima modifica».
+  const [nomePrincipaleScelto, setNomePrincipaleScelto] = useState<string | null>(null);
+  const [cronologia, setCronologia] = useState<PuntoDiRipristino[]>([]);
   const [titolo, setTitolo] = useState(titoloIniziale ?? "");
   const [graficoScelto, setGraficoScelto] = useState<TipoGrafico | undefined>(graficoIniziale);
   // L'aspetto non entra in `chiaveSpec`: e' resa, non domanda, e cambiarlo
@@ -399,12 +416,13 @@ export function EditorAnalisi({
 
   const serieAnalisi = useMemo<SerieAnalisi[]>(() => {
     if (!spec) return [];
-    const nomePrincipale = serieIniziali?.find((voce) => voce.ruolo === "principale")?.nome
+    const nomePrincipale = nomePrincipaleScelto
+      ?? serieIniziali?.find((voce) => voce.ruolo === "principale")?.nome
       ?? spec.misura?.nome
       ?? vocabolario?.metriche.find((voce) => voce.chiave === spec.metrica)?.etichetta
       ?? spec.metrica;
     return [{ ruolo: "principale", nome: nomePrincipale, spec }, ...serieAggiuntive];
-  }, [serieAggiuntive, serieIniziali, spec, vocabolario]);
+  }, [nomePrincipaleScelto, serieAggiuntive, serieIniziali, spec, vocabolario]);
   const seriePersistita = serieAggiuntive.length > 0 ? serieAnalisi : null;
   // La chiave che decide se rieseguire deve contenere solo cio' che cambia i
   // NUMERI. Il colore e' una scelta di resa: lasciarlo qui dentro farebbe
@@ -693,6 +711,70 @@ export function EditorAnalisi({
     setMessaggioSalvataggio("");
   }
 
+  /** Il riquadro com'e' ora, nella forma che l'assistente puo' modificare. */
+  const statoRiquadro: StatoRiquadro | null = spec
+    ? {
+        titolo,
+        serie: serieAnalisi.map(({ ruolo, nome, colore, spec: specSerie }) => ({
+          ruolo,
+          nome,
+          ...(colore ? { colore } : {}),
+          spec: specSerie,
+        })),
+        ...(graficoScelto ? { grafico: graficoScelto } : {}),
+      }
+    : null;
+
+  /**
+   * Adotta lo stato proposto da una modifica a parole.
+   *
+   * Le serie che l'editor rigenera dalla principale (anno precedente, budget,
+   * BEP, progressivo) vanno riconosciute e segnate come scorciatoie, altrimenti
+   * resterebbero ferme quando la principale cambia. Prima si salva un punto di
+   * ripristino: l'annullamento riporta il riquadro com'era.
+   */
+  function applicaStatoRiquadro(nuovo: StatoRiquadro) {
+    if (!spec) return;
+    setCronologia((correnti) => [
+      ...correnti.slice(-9),
+      { titolo, titoloModificato: titoloModificato.current, spec, serieAggiuntive, graficoScelto, aspetto, nomePrincipale: nomePrincipaleScelto },
+    ]);
+    const [principale, ...altre] = nuovo.serie;
+    setNomePrincipaleScelto(principale.nome);
+    setSpec(principale.spec);
+    setSerieAggiuntive(
+      altre.map((serie) => {
+        const scorciatoia = scorciatoiaDi(serie, principale);
+        return scorciatoia ? { ...serie, scorciatoia } : serie;
+      })
+    );
+    setAspetto(riallineaDifferenze(aspetto, serieAnalisi, nuovo.serie));
+    setGraficoScelto(nuovo.grafico);
+    // Il titolo cambia solo se la modifica lo ha chiesto: altrimenti resta
+    // quello di prima (o quello automatico, che segue la domanda).
+    if (nuovo.titolo !== titolo.trim()) {
+      titoloModificato.current = true;
+      setTitolo(nuovo.titolo);
+    }
+    setSalvataggio("pronto");
+    setMessaggioSalvataggio("");
+  }
+
+  function annullaUltimaModifica() {
+    const ultima = cronologia.at(-1);
+    if (!ultima) return;
+    setCronologia((correnti) => correnti.slice(0, -1));
+    setNomePrincipaleScelto(ultima.nomePrincipale);
+    setSpec(ultima.spec);
+    setSerieAggiuntive(ultima.serieAggiuntive);
+    setGraficoScelto(ultima.graficoScelto);
+    setAspetto(ultima.aspetto);
+    titoloModificato.current = ultima.titoloModificato;
+    setTitolo(ultima.titolo);
+    setSalvataggio("pronto");
+    setMessaggioSalvataggio("");
+  }
+
   function ereditaPeriodo() {
     aggiornaSpec((corrente) => {
       const copia = { ...corrente };
@@ -871,6 +953,19 @@ export function EditorAnalisi({
           Spunta una misura qui sopra per vedere il risultato.
         </p>
       ) : (
+      <>
+      {statoRiquadro && (
+        <ModificaAParole
+          stato={statoRiquadro}
+          risultatiPrima={serieEseguite}
+          graficoPrima={tipoGrafico}
+          aspetto={aspetto}
+          periodoEreditato={periodoEreditato}
+          onApplica={applicaStatoRiquadro}
+          puoAnnullare={cronologia.length > 0}
+          onAnnulla={annullaUltimaModifica}
+        />
+      )}
       <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.5fr)] xl:items-start">
         <div className="space-y-4">
           <Scheda titolo="Quando" sottotitolo="Segui la dashboard oppure mantieni un confronto fisso">
@@ -1450,6 +1545,7 @@ export function EditorAnalisi({
           </Scheda>
         </section>
       </div>
+      </>
       )}
     </main>
   );

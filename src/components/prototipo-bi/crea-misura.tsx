@@ -21,7 +21,7 @@ import type { MisuraDefinita, UnitaMisura } from "@/lib/prototipo-bi/tipi";
  * salvataggio.
  */
 
-function formatta(valore: number, unita: UnitaMisura | string): string {
+export function formatta(valore: number, unita: UnitaMisura | string): string {
   if (unita === "euro") return euro(valore, false);
   if (unita === "percentuale") return percentuale(valore);
   if (unita === "giorni") return `${valore.toLocaleString("it-IT", { maximumFractionDigits: 1 })} giorni`;

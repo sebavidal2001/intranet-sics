@@ -50,7 +50,7 @@ function filtroSu(campo: Dimensione, valori: string[]): Filtro {
  * Business unit, categoria e la loro coppia sono la stessa famiglia: un
  * riquadro «Solo COMPONENTI» non deve ricevere anche il ramo scelto in pagina.
  */
-function famiglia(campo: Dimensione): string {
+export function famiglia(campo: Dimensione): string {
   return campo === "categoria" || campo === "bu_categoria" ? "bu" : campo;
 }
 

@@ -20,7 +20,7 @@
  * toccano la rete.
  */
 
-import { calcolaCosto, MODELLI, type Modello } from "./modelli";
+import type { Modello } from "./modelli";
 import { CacheRisultati } from "./cache";
 import {
   descriviMisura,
@@ -36,26 +36,24 @@ import {
   elencaValoriDimensione,
 } from "./semantico";
 import { BUSINESS_UNIT } from "./business-unit";
-import type { EsitoModello, MessaggioChat } from "./analista";
+import {
+  NESSUN_CONSUMO,
+  conEscalation,
+  nuovoAccumulo,
+  tentativo,
+  type Accumulo,
+  type ChiamaModello,
+  type ConsumoAssistente,
+  type EsitoStrumento,
+} from "./assistente-comune";
 import type { Dimensione, MisuraDefinita, Snapshot } from "./tipi";
 
 /** Cambia quando cambiano le istruzioni o gli strumenti: svuota la cache. */
 const VERSIONE_PROMPT = 1;
-const MAX_PASSI = 6;
-const MAX_CORREZIONI = 2;
 const MAX_CARATTERI_RICHIESTA = 500;
 
-export type ChiamaModello = (
-  modelloId: string,
-  messaggi: MessaggioChat[],
-  opzioni?: { strumenti?: unknown[]; temperatura?: number; maxToken?: number }
-) => Promise<EsitoModello>;
-
-export interface ConsumoProposta {
-  tokenIngresso: number;
-  tokenUscita: number;
-  costoUsd: number;
-}
+export type { ChiamaModello };
+export type ConsumoProposta = ConsumoAssistente;
 
 export interface EsitoProposta {
   tipo: "misura" | "chiarimento";
@@ -204,130 +202,75 @@ export function normalizzaRichiesta(testo: string): string {
 // Un tentativo con un modello
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface Accumulo {
-  ingresso: number;
-  uscita: number;
-  costoUsd: number;
-}
+type VoceTentativo = VoceCache & { misuraValida?: MisuraDefinita; prova?: ProvaMisura; descrizione?: string };
 
-interface RisultatoTentativo {
-  voce?: VoceCache & { misuraValida?: MisuraDefinita; prova?: ProvaMisura; descrizione?: string };
-  ultimoErrore: string;
-}
-
-function leggiArgomenti(grezzi: string): Record<string, unknown> | null {
-  try {
-    const v = JSON.parse(grezzi) as unknown;
-    return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
-async function tentativo(
+function tentaConModello(
   modello: Modello,
   richiesta: string,
   snapshot: Snapshot,
   chiama: ChiamaModello,
   acc: Accumulo,
   indizio: string | null
-): Promise<RisultatoTentativo> {
-  const messaggi: MessaggioChat[] = [
-    { role: "system", content: istruzioniMisure() },
-    {
-      role: "user",
-      content:
-        `Richiesta dell'utente: «${richiesta}»` +
-        (indizio ? `\n\nUn primo tentativo non ha prodotto una misura valida. Motivo: ${indizio}` : ""),
-    },
-  ];
-  let correzioni = 0;
-  let ultimoErrore = indizio ?? "nessuna proposta";
-
-  for (let passo = 0; passo < MAX_PASSI; passo += 1) {
-    const res = await chiama(modello.id, messaggi, { strumenti: STRUMENTI, temperatura: 0.1, maxToken: 900 });
-    const consumo = calcolaCosto(modello, res.ingresso, res.uscita, res.costo, res.cache);
-    acc.ingresso += consumo.tokenIngresso;
-    acc.uscita += consumo.tokenUscita;
-    acc.costoUsd += consumo.costoUsd;
-
-    messaggi.push({
-      role: "assistant",
-      content: res.testo || null,
-      ...(res.toolCalls.length ? { tool_calls: res.toolCalls } : {}),
-    });
-
-    if (res.toolCalls.length === 0) {
-      correzioni += 1;
-      ultimoErrore = "il modello ha risposto a parole invece di usare uno strumento";
-      if (correzioni > MAX_CORREZIONI) return { ultimoErrore };
-      messaggi.push({ role: "user", content: "Rispondi usando uno strumento: proponi_misura, chiedi_chiarimento o elenca_valori." });
-      continue;
-    }
-
-    for (const tc of res.toolCalls) {
-      const args = leggiArgomenti(tc.function.arguments);
-      const rispondi = (contenuto: string) =>
-        messaggi.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: contenuto });
-
-      if (!args) {
-        rispondi("Argomenti non validi: devono essere un oggetto JSON.");
-        correzioni += 1;
-        ultimoErrore = "argomenti dello strumento non validi";
-        continue;
-      }
-
-      if (tc.function.name === "chiedi_chiarimento") {
+) {
+  return tentativo<VoceTentativo>({
+    modello,
+    chiama,
+    acc,
+    strumenti: STRUMENTI,
+    ultimoErroreIniziale: indizio,
+    messaggi: [
+      { role: "system", content: istruzioniMisure() },
+      {
+        role: "user",
+        content:
+          `Richiesta dell'utente: «${richiesta}»` +
+          (indizio ? `\n\nUn primo tentativo non ha prodotto una misura valida. Motivo: ${indizio}` : ""),
+      },
+    ],
+    gestisci: (nome, args): EsitoStrumento<VoceTentativo> => {
+      if (nome === "chiedi_chiarimento") {
         const domanda = typeof args.domanda === "string" ? args.domanda.trim() : "";
-        if (domanda) return { voce: { chiarimento: domanda }, ultimoErrore };
-        rispondi("La domanda e' vuota.");
-        continue;
+        return domanda ? { fine: { chiarimento: domanda } } : { risposta: "La domanda e' vuota." };
       }
 
-      if (tc.function.name === "elenca_valori") {
+      if (nome === "elenca_valori") {
         const dimensione = String(args.dimensione ?? "") as Dimensione;
         if (!DIMENSIONI[dimensione]) {
-          rispondi(`Dimensione "${String(args.dimensione)}" non esiste. Esistenti: ${Object.keys(DIMENSIONI).join(", ")}.`);
-          continue;
+          return { risposta: `Dimensione "${String(args.dimensione)}" non esiste. Esistenti: ${Object.keys(DIMENSIONI).join(", ")}.` };
         }
         const elenco = elencaValoriDimensione(snapshot, dimensione, {
           contiene: typeof args.contiene === "string" ? args.contiene : undefined,
           massimo: 30,
         });
-        rispondi(JSON.stringify(elenco));
-        continue;
+        return { risposta: JSON.stringify(elenco) };
       }
 
-      if (tc.function.name === "proponi_misura") {
+      if (nome === "proponi_misura") {
         try {
           const validata = validaMisura({ nome: args.nome, espressione: args.espressione });
           const normalizzata = normalizzaValoriFiltri(validata, snapshot);
           const prova = provaMisura(normalizzata, snapshot);
           return {
-            voce: {
+            fine: {
               misura: normalizzata,
               misuraValida: normalizzata,
               prova,
               descrizione: descriviMisura(normalizzata),
               nota: typeof args.nota === "string" && args.nota.trim() ? args.nota.trim() : undefined,
             },
-            ultimoErrore,
           };
         } catch (e) {
           if (!(e instanceof SpecNonValida)) throw e;
-          correzioni += 1;
-          ultimoErrore = e.message;
-          rispondi(`Misura non valida: ${e.message}${e.suggerimento ? ` ${e.suggerimento}` : ""}`);
-          if (correzioni > MAX_CORREZIONI) return { ultimoErrore };
-          continue;
+          return {
+            risposta: `Misura non valida: ${e.message}${e.suggerimento ? ` ${e.suggerimento}` : ""}`,
+            errore: e.message,
+          };
         }
       }
 
-      rispondi(`Strumento "${tc.function.name}" non disponibile.`);
-      correzioni += 1;
-    }
-  }
-  return { ultimoErrore };
+      return { risposta: `Strumento "${nome}" non disponibile.`, errore: "strumento non disponibile" };
+    },
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -347,13 +290,12 @@ export async function proponiMisura(opzioni: {
   }
   const { snapshot, chiama } = opzioni;
   const chiave = `${versioneCatalogo()}|${opzioni.chiavePerimetro}|${richiesta.toLowerCase()}`;
-  const nessunConsumo: ConsumoProposta = { tokenIngresso: 0, tokenUscita: 0, costoUsd: 0 };
 
   // Dalla cache si riparte dalla definizione, non dal risultato: si rivalida e
   // si riprova sui dati correnti. Se non regge piu', si rifa' da capo.
   const inCache = cacheProposte.leggi(chiave);
   if (inCache?.chiarimento) {
-    return { tipo: "chiarimento", chiarimento: inCache.chiarimento, modelli: [], escalato: false, consumo: nessunConsumo, dalCache: true };
+    return { tipo: "chiarimento", chiarimento: inCache.chiarimento, modelli: [], escalato: false, consumo: NESSUN_CONSUMO, dalCache: true };
   }
   if (inCache?.misura) {
     try {
@@ -366,7 +308,7 @@ export async function proponiMisura(opzioni: {
         prova: provaMisura(misura, snapshot),
         modelli: [],
         escalato: false,
-        consumo: nessunConsumo,
+        consumo: NESSUN_CONSUMO,
         dalCache: true,
       };
     } catch (e) {
@@ -374,48 +316,35 @@ export async function proponiMisura(opzioni: {
     }
   }
 
-  const acc: Accumulo = { ingresso: 0, uscita: 0, costoUsd: 0 };
-  const modelli: string[] = [];
+  const acc = nuovoAccumulo();
+  const esito = await conEscalation<VoceTentativo>(acc, (modello, indizio) =>
+    tentaConModello(modello, richiesta, snapshot, chiama, acc, indizio)
+  );
 
-  const primo = await tentativo(MODELLI.leggero, richiesta, snapshot, chiama, acc, null);
-  modelli.push(MODELLI.leggero.nome);
-  let esito = primo;
-  let escalato = false;
-  if (!primo.voce) {
-    escalato = true;
-    esito = await tentativo(MODELLI.standard, richiesta, snapshot, chiama, acc, primo.ultimoErrore);
-    modelli.push(MODELLI.standard.nome);
-  }
-
-  const consumo: ConsumoProposta = {
-    tokenIngresso: acc.ingresso,
-    tokenUscita: acc.uscita,
-    costoUsd: Math.round(acc.costoUsd * 1e6) / 1e6,
-  };
-
-  if (!esito.voce) {
+  if (!esito.valore) {
     throw new PropostaFallita(
       `Non sono riuscito a tradurre la richiesta in una misura valida (${esito.ultimoErrore}). Prova a riformularla.`,
-      consumo,
-      modelli
+      esito.consumo,
+      esito.modelli
     );
   }
+  const voce = esito.valore;
 
-  if (esito.voce.chiarimento) {
-    cacheProposte.scrivi(chiave, { chiarimento: esito.voce.chiarimento });
-    return { tipo: "chiarimento", chiarimento: esito.voce.chiarimento, modelli, escalato, consumo, dalCache: false };
+  if (voce.chiarimento) {
+    cacheProposte.scrivi(chiave, { chiarimento: voce.chiarimento });
+    return { tipo: "chiarimento", chiarimento: voce.chiarimento, modelli: esito.modelli, escalato: esito.escalato, consumo: esito.consumo, dalCache: false };
   }
 
-  cacheProposte.scrivi(chiave, { misura: esito.voce.misuraValida, nota: esito.voce.nota });
+  cacheProposte.scrivi(chiave, { misura: voce.misuraValida, nota: voce.nota });
   return {
     tipo: "misura",
-    misura: esito.voce.misuraValida,
-    descrizione: esito.voce.descrizione,
-    nota: esito.voce.nota,
-    prova: esito.voce.prova,
-    modelli,
-    escalato,
-    consumo,
+    misura: voce.misuraValida,
+    descrizione: voce.descrizione,
+    nota: voce.nota,
+    prova: voce.prova,
+    modelli: esito.modelli,
+    escalato: esito.escalato,
+    consumo: esito.consumo,
     dalCache: false,
   };
 }

@@ -4,31 +4,13 @@ import { SpecNonValida } from "@/lib/prototipo-bi/semantico";
 import { chiamaModello } from "@/lib/prototipo-bi/analista";
 import { PropostaFallita, proponiMisura } from "@/lib/prototipo-bi/proposta-misura";
 import { chiaveStabile } from "@/lib/prototipo-bi/cache";
+import { creaLimitatore } from "@/lib/prototipo-bi/assistente-comune";
 import { registraAccesso } from "@/lib/prototipo-bi/registro";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Tetto di proposte per persona: ogni proposta costa una chiamata al modello
- * (frazioni di centesimo, ma un ciclo in un loop sono comunque soldi).
- * In memoria, per processo: basta a fermare un errore, non e' un limite di
- * sicurezza.
- */
-const MAX_PROPOSTE_ORA = 20;
-const FINESTRA_MS = 60 * 60 * 1000;
-const richieste = new Map<string, number[]>();
-
-function dentroIlLimite(utenteId: string): boolean {
-  const adesso = Date.now();
-  const recenti = (richieste.get(utenteId) ?? []).filter((t) => adesso - t < FINESTRA_MS);
-  if (recenti.length >= MAX_PROPOSTE_ORA) {
-    richieste.set(utenteId, recenti);
-    return false;
-  }
-  recenti.push(adesso);
-  richieste.set(utenteId, recenti);
-  return true;
-}
+/** Ogni proposta e' una chiamata al modello: 20 all'ora per persona (in memoria, per processo: ferma un errore, non e' un limite di sicurezza). */
+const dentroIlLimite = creaLimitatore(20, 60 * 60 * 1000);
 
 /**
  * Traduce una richiesta in italiano in una misura personalizzata.
