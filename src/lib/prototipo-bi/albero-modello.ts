@@ -145,172 +145,330 @@ export interface GruppoOperazione {
   famiglieDocumento?: string[];
 }
 
-export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
+/**
+ * Una voce dell'albero: un'operazione con i suoi valori, le sue misure
+ * calcolate e i suoi campi.
+ *
+ * I VALORI sono somme e conteggi; le MISURE sono medie, rapporti e massimi, con
+ * il calcolo scritto (`GRUPPI_MISURE`). Una metrica sta in una sola voce.
+ */
+export interface VoceAlbero extends GruppoOperazione {
+  /** Le misure calcolate di questa voce: medie, tassi, percentuali. */
+  misure?: ChiaveMetrica[];
+}
+
+/** Una cartella dell'albero: raccoglie le voci di un'area, come Vendite o Acquisti. */
+export interface Cartella {
+  chiave: string;
+  etichetta: string;
+  descrizione: string;
+  voci: VoceAlbero[];
+}
+
+/** I campi per leggere un documento di vendita: numero, tipo, date di consegna, condizione. */
+const CAMPI_DOCUMENTO_VENDITA = (etichettaNumero: string): CampoSuddivisione[] => [
+  { chiave: "documento_anno", etichetta: etichettaNumero },
+  { chiave: "profilo" },
+  { chiave: "data_consegna_richiesta" },
+  { chiave: "data_consegna_confermata" },
+  { chiave: "condizione_pagamento" },
+];
+
+/**
+ * L'albero in tre aree e qualche cartella di dati a parte.
+ *
+ * VENDITE e ACQUISTI seguono il ciclo del documento (ordinato, consegnato,
+ * fatturato); PERSONALE guarda le persone e gli uffici; le altre cartelle
+ * raccolgono dati che prima il builder non vedeva (magazzino, spedizioni,
+ * anagrafica clienti).
+ */
+export const CARTELLE: Cartella[] = [
   {
-    chiave: "ordinato",
-    etichetta: "Ordinato",
-    descrizione: "Gli ordini ricevuti dai clienti.",
-    valori: ["ordinato", "n_ordini", "quantita_ordinata"],
-    campi: [
-      { chiave: "documento_anno", etichetta: "Numero ordine/anno" },
-      { chiave: "profilo" },
-      { chiave: "data_consegna_richiesta" },
-      { chiave: "data_consegna_confermata" },
+    chiave: "vendite",
+    etichetta: "Vendite",
+    descrizione: "Ordini, consegne, fatture, portafoglio, banco, preventivi e budget.",
+    voci: [
+      {
+        chiave: "ordinato",
+        etichetta: "Ordinato",
+        descrizione: "Gli ordini ricevuti dai clienti.",
+        valori: ["ordinato", "n_ordini", "quantita_ordinata"],
+        misure: ["ordine_medio"],
+        campi: CAMPI_DOCUMENTO_VENDITA("Numero ordine/anno"),
+        famiglieDocumento: ["ordinato"],
+      },
+      {
+        chiave: "fatturato",
+        etichetta: "Fatturato",
+        descrizione: "Le fatture emesse, con costo, margine, incassi attesi e tempi di incasso.",
+        valori: ["fatturato", "n_fatture", "quantita_fatturata", "costo_venduto", "margine", "incassi_attesi", "saldo_cassa"],
+        misure: ["fattura_media", "margine_pct", "copertura_costi_pct", "giorni_incasso"],
+        // «Incasso / pagamento» serve al saldo (incassi − pagamenti): divide i due versi.
+        campi: [...CAMPI_DOCUMENTO_VENDITA("Numero fattura/anno"), { chiave: "tipo_scadenza" }],
+        famiglieDocumento: ["fatturato", "scadenze", "pagamenti"],
+      },
+      {
+        chiave: "consegnato",
+        etichetta: "Consegnato",
+        descrizione: "La merce uscita con i documenti di consegna.",
+        valori: ["consegnato", "n_consegne", "quantita_consegnata"],
+        misure: ["consegna_media"],
+        campi: CAMPI_DOCUMENTO_VENDITA("Numero consegna/anno"),
+        famiglieDocumento: ["consegnato"],
+      },
+      {
+        chiave: "portafoglio",
+        etichetta: "Portafoglio",
+        descrizione:
+          "Ordini acquisiti non ancora consegnati. Con le date di consegna richiesta e confermata puoi leggerlo per giorno, settimana, mese o anno di consegna.",
+        // `consegnato_futuro` e' lo stesso portafoglio sul mese di consegna: resta nel motore
+        // (lo usa il Cruscotto) ma non si offre due volte.
+        valori: ["portafoglio"],
+        campi: CAMPI_DOCUMENTO_VENDITA("Numero ordine/anno"),
+        famiglieDocumento: ["portafoglio"],
+      },
+      {
+        chiave: "banco",
+        etichetta: "Banco",
+        descrizione: "Vendite e movimenti gestiti al banco.",
+        valori: ["banco"],
+        campi: [
+          { chiave: "documento_anno", etichetta: "Numero documento/anno" },
+          { chiave: "profilo" },
+          { chiave: "condizione_pagamento" },
+        ],
+        famiglieDocumento: ["controllo_banco"],
+      },
+      {
+        chiave: "preventivi",
+        etichetta: "Preventivi",
+        descrizione: "Le offerte: valore, esito, causale, anzianità. Aperti sono i preventivi in corso (causale PIC).",
+        valori: [
+          "preventivi_valore",
+          "preventivi_convertito",
+          "n_preventivi",
+          "preventivi_aperti",
+          "preventivi_inevaso",
+          "preventivi_aperti_oltre_90",
+        ],
+        misure: ["tasso_conversione", "valore_medio_preventivo", "giorni_apertura", "eta_massima_apertura"],
+        campi: [
+          { chiave: "documento_anno", etichetta: "Numero preventivo/anno" },
+          { chiave: "profilo" },
+          { chiave: "causale_codice", etichetta: "Codice causale (PIC, POR…)" },
+          { chiave: "causale", etichetta: "Causale (descrizione)" },
+          { chiave: "esito" },
+          { chiave: "fascia_eta" },
+          { chiave: "condizione_pagamento" },
+        ],
+        famiglieDocumento: ["preventivi_aperti"],
+      },
+      {
+        chiave: "budget",
+        etichetta: "Budget",
+        descrizione: "Obiettivi commerciali e punto di pareggio.",
+        valori: ["budget", "bep"],
+        campi: [],
+      },
     ],
-    famiglieDocumento: ["ordinato"],
-  },
-  {
-    chiave: "fatturato",
-    etichetta: "Fatturato",
-    descrizione: "Le fatture emesse, con costo e margine.",
-    valori: ["fatturato", "n_fatture", "quantita_fatturata", "costo_venduto", "margine"],
-    campi: [
-      { chiave: "documento_anno", etichetta: "Numero fattura/anno" },
-      { chiave: "profilo" },
-      { chiave: "data_consegna_richiesta" },
-      { chiave: "data_consegna_confermata" },
-    ],
-    famiglieDocumento: ["fatturato"],
-  },
-  {
-    chiave: "consegnato",
-    etichetta: "Consegnato",
-    descrizione: "La merce uscita con i documenti di consegna.",
-    valori: ["consegnato", "n_consegne", "quantita_consegnata"],
-    campi: [
-      { chiave: "documento_anno", etichetta: "Numero consegna/anno" },
-      { chiave: "profilo" },
-      { chiave: "data_consegna_richiesta" },
-      { chiave: "data_consegna_confermata" },
-    ],
-    famiglieDocumento: ["consegnato"],
-  },
-  {
-    chiave: "portafoglio",
-    etichetta: "Portafoglio",
-    descrizione: "Ordini acquisiti non ancora consegnati.",
-    valori: ["portafoglio", "consegnato_futuro"],
-    campi: [{ chiave: "documento_anno", etichetta: "Numero ordine/anno" }, { chiave: "profilo" }],
-    famiglieDocumento: ["portafoglio"],
-  },
-  {
-    chiave: "preventivi",
-    etichetta: "Preventivi",
-    descrizione: "Le offerte: valore, esito, carico e anzianità.",
-    valori: [
-      "preventivi_valore",
-      "preventivi_convertito",
-      "preventivi_aperti",
-      "preventivi_aperti_oltre_90",
-      "n_preventivi",
-      "preventivi_inevaso",
-      "preventivi_creati",
-      "righe_preventivo",
-    ],
-    campi: [
-      { chiave: "documento_anno", etichetta: "Numero preventivo/anno" },
-      { chiave: "profilo" },
-      { chiave: "causale_codice", etichetta: "Codice causale (PIC, POR…)" },
-      { chiave: "causale", etichetta: "Causale (descrizione)" },
-      { chiave: "creatore" },
-      { chiave: "esito" },
-      { chiave: "fascia_eta" },
-    ],
-    famiglieDocumento: ["preventivi_aperti"],
-  },
-  {
-    chiave: "banco",
-    etichetta: "Banco",
-    descrizione: "Vendite e movimenti gestiti al banco.",
-    valori: ["banco"],
-    campi: [{ chiave: "documento_anno", etichetta: "Numero documento/anno" }, { chiave: "profilo" }],
-    famiglieDocumento: ["controllo_banco"],
   },
   {
     chiave: "acquisti",
     etichetta: "Acquisti",
-    descrizione:
-      "Tutto sui fornitori: gli ordini, le fatture e le note di credito, i pagamenti dovuti. Metti il fornitore fra i campi e scegli quanti valori vuoi: ordinato, fatturato, pagamenti.",
-    valori: [
-      "acquisti_valore",
-      "acquisti_quantita",
-      "acquisti_ordini",
-      "acquisti_righe",
-      "acquisti_da_sollecitare",
-      "acquisti_valore_da_sollecitare",
-      "fatturato_fornitore",
-      "n_fatture_fornitore",
-      "pagamenti_dovuti",
-    ],
-    // Il numero dell'ordine a fornitore porta gia' profilo e anno («OF 12/2026»),
-    // quello di registrazione della fattura pure («FF 22/2024»). Ordini, fatture
-    // e scadenze hanno numerazioni diverse: il numero si puo' scegliere solo con
-    // valori di una sola di queste (lo dice la regola generale sul documento).
-    campi: [
-      { chiave: "fornitore" },
-      { chiave: "buyer" },
-      { chiave: "documento", etichetta: "Numero documento (ordine o fattura)" },
-      { chiave: "numero_fattura_fornitore" },
-      { chiave: "profilo", etichetta: "Tipo documento" },
-      { chiave: "condizione_pagamento" },
-      { chiave: "profilo_ordine" },
-      { chiave: "data_promessa" },
-    ],
-    famiglieDocumento: ["acquisti", "fatture_fornitore", "scadenze"],
-  },
-  {
-    chiave: "pagamenti",
-    etichetta: "Condizioni di pagamento",
-    descrizione:
-      "Un documento per riga (preventivi, ordini e fatture, di clienti e fornitori) con la condizione scritta sul documento. Per separare clienti e fornitori usa il tipo documento. I giorni medi di incasso e di pagamento stanno nelle Misure.",
-    valori: ["imponibile_documenti", "n_documenti_pagamento"],
-    campi: [
-      { chiave: "soggetto" },
-      { chiave: "profilo", etichetta: "Tipo documento" },
-      { chiave: "condizione_pagamento" },
-      { chiave: "documento", etichetta: "Documento (registrazione/anno)" },
-      { chiave: "numero_fattura_fornitore", etichetta: "Numero del documento di origine" },
-    ],
-    famiglieDocumento: ["pagamenti"],
-  },
-  {
-    chiave: "scadenzario",
-    etichetta: "Scadenzario",
-    descrizione:
-      "Le scadenze ancora aperte, per data di scadenza: incassi attesi dai clienti e saldo con i pagamenti. I pagamenti dovuti ai fornitori stanno negli Acquisti. Il tempo del grafico è la data di scadenza.",
-    valori: ["incassi_attesi", "saldo_cassa"],
-    campi: [
-      { chiave: "tipo_scadenza" },
-      { chiave: "soggetto" },
-      { chiave: "fornitore" },
-      { chiave: "profilo", etichetta: "Origine (tipo documento)" },
-      { chiave: "condizione_pagamento" },
-      { chiave: "documento" },
-    ],
-    famiglieDocumento: ["scadenze"],
-  },
-  {
-    chiave: "visite",
-    etichetta: "Visite commerciali",
-    descrizione: "Le visite dei commerciali ai clienti: quante, dove, con quale esito. CAP o provincia attivano la mappa.",
-    valori: ["visite_numero"],
-    campi: [
-      { chiave: "cap" },
-      { chiave: "provincia" },
-      { chiave: "grado" },
-      { chiave: "tipo_visita" },
-      { chiave: "esito_visita" },
-      { chiave: "prossima_visita" },
+    descrizione: "Ordini a fornitore, arrivi della merce, fatture e pagamenti dovuti.",
+    voci: [
+      {
+        chiave: "acquisti_ordinato",
+        etichetta: "Ordinato",
+        descrizione: "Gli ordini a fornitore.",
+        valori: ["acquisti_valore", "acquisti_quantita", "acquisti_ordini", "acquisti_righe"],
+        // Il numero dell'ordine a fornitore porta gia' profilo e anno («OF 12/2026»).
+        campi: [
+          { chiave: "fornitore" },
+          { chiave: "buyer" },
+          { chiave: "documento", etichetta: "Numero ordine fornitore" },
+          { chiave: "profilo", etichetta: "Tipo ordine" },
+          { chiave: "data_promessa" },
+          { chiave: "condizione_pagamento" },
+        ],
+        famiglieDocumento: ["acquisti"],
+      },
+      {
+        chiave: "acquisti_consegnato",
+        etichetta: "Consegnato",
+        descrizione: "Gli arrivi della merce (DDT del fornitore): puntualità, tempi di consegna, righe da sollecitare.",
+        valori: ["acquisti_da_sollecitare", "acquisti_valore_da_sollecitare"],
+        misure: ["puntualita_fornitori", "giorni_consegna_fornitori"],
+        campi: [
+          { chiave: "fornitore" },
+          { chiave: "buyer" },
+          { chiave: "documento", etichetta: "Numero ordine fornitore" },
+          { chiave: "profilo", etichetta: "Tipo ordine" },
+          { chiave: "data_promessa" },
+        ],
+        famiglieDocumento: ["acquisti"],
+      },
+      {
+        chiave: "acquisti_fatturato",
+        etichetta: "Fatturato",
+        descrizione:
+          "Le fatture e le note di credito dei fornitori (le note tolgono), i pagamenti dovuti e i tempi di pagamento. Il legame con l'ordine c'è quando la fattura passa da un DDT d'acquisto.",
+        valori: ["fatturato_fornitore", "n_fatture_fornitore", "pagamenti_dovuti"],
+        misure: ["giorni_pagamento"],
+        campi: [
+          { chiave: "fornitore" },
+          { chiave: "documento", etichetta: "Fattura (registrazione/anno)" },
+          { chiave: "numero_fattura_fornitore" },
+          { chiave: "profilo", etichetta: "Tipo documento" },
+          { chiave: "condizione_pagamento" },
+          { chiave: "profilo_ordine" },
+        ],
+        famiglieDocumento: ["fatture_fornitore", "scadenze", "pagamenti"],
+      },
     ],
   },
   {
-    chiave: "budget",
-    etichetta: "Budget",
-    descrizione: "Obiettivi commerciali e punto di pareggio.",
-    valori: ["budget", "bep"],
-    campi: [],
+    chiave: "personale",
+    etichetta: "Personale",
+    descrizione: "Il lavoro di commerciali, ufficio acquisti e backoffice.",
+    voci: [
+      {
+        chiave: "personale_commerciale",
+        etichetta: "Commerciale (visite)",
+        descrizione: "Le visite dei commerciali ai clienti: quante, dove, con quale esito. CAP o provincia attivano la mappa.",
+        valori: ["visite_numero"],
+        campi: [
+          { chiave: "cap" },
+          { chiave: "provincia" },
+          { chiave: "grado" },
+          { chiave: "tipo_visita" },
+          { chiave: "esito_visita" },
+          { chiave: "prossima_visita" },
+        ],
+      },
+      {
+        chiave: "personale_acquisti",
+        etichetta: "Acquisti (ordini e fatture)",
+        descrizione: "Il lavoro dell'ufficio acquisti: ordini a fornitore, DDT e fatture creati da ogni utente.",
+        valori: ["documenti_acquisto_creati", "righe_acquisto_inserite"],
+        campi: [
+          { chiave: "creatore" },
+          { chiave: "profilo", etichetta: "Tipo documento" },
+          { chiave: "ora_creazione" },
+          { chiave: "soggetto", etichetta: "Fornitore" },
+          { chiave: "documento" },
+        ],
+        famiglieDocumento: ["documenti_utente"],
+      },
+      {
+        chiave: "personale_backoffice",
+        etichetta: "Backoffice (carico di lavoro)",
+        descrizione:
+          "Il carico di lavoro: preventivi, ordini, bolle e fatture creati da ogni utente, con i tempi di risposta sui preventivi. Alcuni utenti sono condivisi (vendite, segreteria): ruoli, non persone.",
+        valori: ["preventivi_creati", "righe_preventivo", "documenti_vendita_creati", "righe_vendita_inserite"],
+        misure: ["giorni_risposta", "quota_stesso_giorno"],
+        campi: [
+          { chiave: "creatore" },
+          { chiave: "profilo", etichetta: "Tipo documento" },
+          { chiave: "ora_creazione" },
+          { chiave: "soggetto", etichetta: "Cliente" },
+          { chiave: "documento" },
+        ],
+        famiglieDocumento: ["documenti_utente"],
+      },
+    ],
+  },
+  {
+    chiave: "magazzino",
+    etichetta: "Magazzino e articoli",
+    descrizione: "Giacenze, impegni e ordinato per articolo e magazzino; variazioni di costo.",
+    voci: [
+      {
+        chiave: "articoli",
+        etichetta: "Giacenze e impegni",
+        descrizione:
+          "Fotografia dell'ultimo caricamento: esistenza, disponibilità, ordinato da clienti e a fornitori, impegni di produzione, valore della giacenza. Il tempo non ha senso; il periodo deve contenere oggi.",
+        valori: [
+          "articoli_numero",
+          "articoli_esistenza",
+          "articoli_disponibilita",
+          "articoli_qta_ord_clienti",
+          "articoli_qta_ord_fornitori",
+          "articoli_qta_imp_produzione",
+          "articoli_qta_ord_produzione",
+          "articoli_valore_giacenza",
+        ],
+        misure: ["articoli_ultimo_costo"],
+        campi: [{ chiave: "magazzino" }, { chiave: "reparto" }, { chiave: "fornitore" }],
+      },
+      {
+        chiave: "variazioni_costo",
+        etichetta: "Variazioni di costo",
+        descrizione: "Quando e di quanto cambia l'ultimo costo di acquisto degli articoli.",
+        valori: ["variazioni_costo_numero"],
+        misure: ["variazioni_costo_pct_media"],
+        campi: [],
+      },
+    ],
+  },
+  {
+    chiave: "logistica",
+    etichetta: "Logistica",
+    descrizione: "I documenti di trasporto: vettore, colli, peso, destinazione.",
+    voci: [
+      {
+        chiave: "spedizioni",
+        etichetta: "Spedizioni",
+        descrizione: "DDT di vendita (merce in uscita) e di acquisto (merce in entrata).",
+        valori: [
+          "spedizioni_numero",
+          "spedizioni_colli",
+          "spedizioni_pallet",
+          "spedizioni_peso_lordo",
+          "spedizioni_volume",
+          "spedizioni_spese",
+        ],
+        campi: [
+          { chiave: "vettore" },
+          { chiave: "direzione_merce" },
+          { chiave: "tipo_trasporto" },
+          { chiave: "causale_trasporto" },
+          { chiave: "provincia_destinazione" },
+          { chiave: "zona_spedizione" },
+          { chiave: "mezzo_trasporto" },
+          { chiave: "soggetto", etichetta: "Cliente / fornitore" },
+          { chiave: "profilo", etichetta: "Tipo documento" },
+          { chiave: "documento", etichetta: "Numero documento" },
+        ],
+        famiglieDocumento: ["spedizioni"],
+      },
+    ],
+  },
+  {
+    chiave: "anagrafiche",
+    etichetta: "Clienti",
+    descrizione: "L'anagrafica dei clienti.",
+    voci: [
+      {
+        chiave: "clienti",
+        etichetta: "Anagrafica clienti",
+        descrizione: "Quanti clienti, di che categoria, in che zona, con quale agente. Con il tempo: i clienti nuovi.",
+        valori: ["clienti_numero"],
+        campi: [
+          { chiave: "cliente_attivo" },
+          { chiave: "provincia" },
+          { chiave: "cap" },
+        ],
+      },
+    ],
   },
 ];
+
+/**
+ * Le voci in elenco piatto: per chi non guarda le cartelle (i menu dei pozzetti,
+ * i controlli di completezza). L'ordine e' quello dell'albero.
+ */
+export const GRUPPI_OPERAZIONI: GruppoOperazione[] = CARTELLE.flatMap((cartella) => cartella.voci);
 
 /** Vero se il periodo sta dentro un anno solo (anno scelto, o intervallo nello stesso anno). */
 function periodoDiUnAnno(periodo: Periodo | undefined): boolean {
@@ -395,8 +553,17 @@ export const GRUPPI_COMUNI: GruppoComune[] = [
   {
     chiave: "commerciale",
     etichetta: "Clienti e agenti",
-    descrizione: "Chi compra e chi vende.",
-    dimensioni: ["cliente", "codice_cliente", "agente", "codice_agente"],
+    descrizione: "Chi compra e chi vende, con la categoria, la zona e il tipo del cliente.",
+    dimensioni: [
+      "cliente",
+      "codice_cliente",
+      "agente",
+      "codice_agente",
+      "categoria_attivita",
+      "categoria_commerciale",
+      "zona_cliente",
+      "tipo_cliente",
+    ],
   },
   {
     chiave: "prodotti",
@@ -510,6 +677,20 @@ export const GRUPPI_MISURE: GruppoMisure[] = [
         chiave: "giorni_pagamento",
         calcolo:
           "Per ogni fattura fornitore, i giorni fra la data della fattura e ciascuna scadenza, mediati sull'importo delle rate; poi la media fra le fatture. Dalle scadenze vere.",
+      },
+    ],
+  },
+  {
+    chiave: "articoli",
+    etichetta: "Magazzino e articoli",
+    misure: [
+      {
+        chiave: "articoli_ultimo_costo",
+        calcolo: "Media dell'ultimo costo di acquisto delle righe articolo-magazzino che hanno un costo noto.",
+      },
+      {
+        chiave: "variazioni_costo_pct_media",
+        calcolo: "Media delle variazioni percentuali dell'ultimo costo: positiva se i costi salgono.",
       },
     ],
   },

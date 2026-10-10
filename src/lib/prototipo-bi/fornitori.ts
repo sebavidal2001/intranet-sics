@@ -27,7 +27,7 @@ const num = (v: unknown): number => {
 const data = (v: unknown): string => testo(v).slice(0, 10);
 
 /** Le fatture di vendita: il soggetto e' un cliente. Tutto il resto e' un fornitore. */
-const PROFILI_CLIENTE = new Set(["PC", "PCA", "OC", "OCB", "OCINT", "OCT", "FC", "FCA", "FCT"]);
+const PROFILI_CLIENTE = new Set(["PC", "PCA", "OC", "OCB", "OCINT", "OCT", "BC", "FC", "FCA", "FCT", "FCPA", "NAC"]);
 /** Fatture cliente e fornitore: le uniche con scadenze vere. */
 export const PROFILI_FATTURA_CLIENTE = new Set(["FC", "FCA", "FCT"]);
 export const PROFILI_FATTURA_FORNITORE = new Set(["FF", "FFCEE"]);

@@ -38,6 +38,7 @@ import { SEPARATORE_RAMO } from "./tipi";
 import { dataDaIso, settimanaIso } from "./calendario";
 import { dimensioniPerMetrica, TIPOLOGIE } from "./tassonomia";
 import { PROFILI_FATTURA_CLIENTE, PROFILI_FATTURA_FORNITORE } from "./fornitori";
+import { PROFILI_AREA_ACQUISTI, PROFILI_AREA_VENDITE } from "./altri-dati";
 import {
   controllaDimensioniMisura,
   eseguiMisura,
@@ -612,22 +613,212 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     aggregazione: "somma",
     unita: "euro",
   },
-  imponibile_documenti: {
-    chiave: "imponibile_documenti",
-    etichetta: "Imponibile dei documenti",
+  // ── Carico di lavoro: documenti creati dagli utenti (migration 151) ────────
+  // La data di riga e' quella di CREAZIONE del documento: il giorno in cui
+  // qualcuno ha lavorato. Alcuni utenti sono condivisi (vendite, segreteria,
+  // amministrazione, acquisti, magazzino1/2): sono ruoli, non persone.
+  documenti_vendita_creati: {
+    chiave: "documenti_vendita_creati",
+    etichetta: "Documenti di vendita creati",
     descrizione:
-      "Imponibile di preventivi, ordini e fatture, di clienti e fornitori, per data del documento. Mescola tipi diversi: separali con «Tipo documento».",
-    dataset: "pagamenti",
-    aggregazione: "somma",
-    unita: "euro",
-  },
-  n_documenti_pagamento: {
-    chiave: "n_documenti_pagamento",
-    etichetta: "Numero documenti",
-    descrizione: "Documenti con condizione di pagamento. Mescola tipi diversi: separali con «Tipo documento».",
-    dataset: "pagamenti",
+      "Preventivi, ordini, bolle e fatture dei clienti creati, per utente e giorno di creazione. Alcuni utenti sono condivisi (vendite, segreteria, amministrazione): ruoli, non persone.",
+    dataset: "documenti_utente",
     aggregazione: "conta_righe",
     unita: "numero",
+    filtroImplicito: (r) => PROFILI_AREA_VENDITE.has(r.profilo ?? ""),
+  },
+  righe_vendita_inserite: {
+    chiave: "righe_vendita_inserite",
+    etichetta: "Righe di vendita inserite",
+    descrizione: "Righe dei documenti di vendita creati: il lavoro di inserimento, piu' fedele del numero di documenti.",
+    dataset: "documenti_utente",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.quantita,
+    filtroImplicito: (r) => PROFILI_AREA_VENDITE.has(r.profilo ?? ""),
+  },
+  documenti_acquisto_creati: {
+    chiave: "documenti_acquisto_creati",
+    etichetta: "Documenti di acquisto creati",
+    descrizione:
+      "Ordini a fornitore, DDT d'acquisto e fatture fornitore creati, per utente e giorno di creazione. Alcuni utenti sono condivisi (acquisti, magazzino1/2, amministrazione): ruoli, non persone.",
+    dataset: "documenti_utente",
+    aggregazione: "conta_righe",
+    unita: "numero",
+    filtroImplicito: (r) => PROFILI_AREA_ACQUISTI.has(r.profilo ?? ""),
+  },
+  righe_acquisto_inserite: {
+    chiave: "righe_acquisto_inserite",
+    etichetta: "Righe di acquisto inserite",
+    descrizione: "Righe dei documenti di acquisto creati: il lavoro di inserimento.",
+    dataset: "documenti_utente",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.quantita,
+    filtroImplicito: (r) => PROFILI_AREA_ACQUISTI.has(r.profilo ?? ""),
+  },
+  // ── Clienti ──────────────────────────────────────────────────────────────
+  clienti_numero: {
+    chiave: "clienti_numero",
+    etichetta: "Numero clienti",
+    descrizione: "Clienti in anagrafica, per data di creazione dell'anagrafica. Con il tempo: quanti clienti nuovi.",
+    dataset: "clienti",
+    aggregazione: "conta_righe",
+    unita: "numero",
+  },
+  // ── Articoli: fotografia per magazzino ───────────────────────────────────
+  // Una FOTOGRAFIA dell'ultimo caricamento: il tempo del grafico non ha senso e
+  // il periodo scelto deve contenere oggi.
+  articoli_numero: {
+    chiave: "articoli_numero",
+    etichetta: "Numero articoli",
+    descrizione: "Articoli distinti (non articoli per magazzino).",
+    dataset: "articoli",
+    aggregazione: "conta_documenti",
+    unita: "numero",
+  },
+  articoli_esistenza: {
+    chiave: "articoli_esistenza",
+    etichetta: "Esistenza",
+    descrizione: "Pezzi a magazzino, fotografia dell'ultimo caricamento.",
+    dataset: "articoli",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.esistenza ?? 0,
+  },
+  articoli_disponibilita: {
+    chiave: "articoli_disponibilita",
+    etichetta: "Disponibilità",
+    descrizione: "Pezzi disponibili: esistenza meno gli impegni.",
+    dataset: "articoli",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.disponibilita ?? 0,
+  },
+  articoli_qta_ord_clienti: {
+    chiave: "articoli_qta_ord_clienti",
+    etichetta: "Ordinato dai clienti (pezzi)",
+    descrizione: "Pezzi ordinati dai clienti e non ancora consegnati.",
+    dataset: "articoli",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.qtaOrdClienti ?? 0,
+  },
+  articoli_qta_ord_fornitori: {
+    chiave: "articoli_qta_ord_fornitori",
+    etichetta: "Ordinato ai fornitori (pezzi)",
+    descrizione: "Pezzi ordinati ai fornitori e non ancora arrivati.",
+    dataset: "articoli",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.qtaOrdFornitori ?? 0,
+  },
+  articoli_qta_imp_produzione: {
+    chiave: "articoli_qta_imp_produzione",
+    etichetta: "Impegnato in produzione (pezzi)",
+    descrizione: "Pezzi impegnati dagli ordini di produzione.",
+    dataset: "articoli",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.qtaImpProduzione ?? 0,
+  },
+  articoli_qta_ord_produzione: {
+    chiave: "articoli_qta_ord_produzione",
+    etichetta: "In ordine di produzione (pezzi)",
+    descrizione: "Pezzi attesi dagli ordini di produzione.",
+    dataset: "articoli",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.qtaOrdProduzione ?? 0,
+  },
+  articoli_valore_giacenza: {
+    chiave: "articoli_valore_giacenza",
+    etichetta: "Valore della giacenza",
+    descrizione:
+      "Esistenza per ultimo costo di acquisto, solo dove il costo e' noto e l'esistenza e' positiva. E' un valore a costo di ricostituzione, non un valore contabile.",
+    dataset: "articoli",
+    aggregazione: "somma",
+    unita: "euro",
+    valore: (r) => r.valoreGiacenza ?? 0,
+  },
+  articoli_ultimo_costo: {
+    chiave: "articoli_ultimo_costo",
+    etichetta: "Ultimo costo medio",
+    descrizione: "Media dell'ultimo costo di acquisto delle righe articolo-magazzino che hanno un costo.",
+    dataset: "articoli",
+    aggregazione: "media",
+    unita: "euro",
+    valore: (r) => r.ultimoCosto ?? null,
+  },
+  variazioni_costo_numero: {
+    chiave: "variazioni_costo_numero",
+    etichetta: "Variazioni di costo",
+    descrizione: "Quante volte e' cambiato l'ultimo costo di acquisto, per data della variazione.",
+    dataset: "variazioni_costo",
+    aggregazione: "conta_righe",
+    unita: "numero",
+  },
+  variazioni_costo_pct_media: {
+    chiave: "variazioni_costo_pct_media",
+    etichetta: "Variazione media del costo",
+    descrizione: "Variazione percentuale media dell'ultimo costo: positiva se i costi salgono.",
+    dataset: "variazioni_costo",
+    aggregazione: "media",
+    unita: "percentuale",
+    valore: (r) => r.variazionePct ?? null,
+  },
+  // ── Spedizioni ───────────────────────────────────────────────────────────
+  spedizioni_numero: {
+    chiave: "spedizioni_numero",
+    etichetta: "Spedizioni",
+    descrizione: "Documenti di trasporto (DDT) di vendita e di acquisto, per data del documento.",
+    dataset: "spedizioni",
+    aggregazione: "conta_documenti",
+    unita: "numero",
+  },
+  spedizioni_colli: {
+    chiave: "spedizioni_colli",
+    etichetta: "Colli",
+    descrizione: "Colli dei documenti di trasporto.",
+    dataset: "spedizioni",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.colli ?? 0,
+  },
+  spedizioni_pallet: {
+    chiave: "spedizioni_pallet",
+    etichetta: "Pallet",
+    descrizione: "Pallet dei documenti di trasporto.",
+    dataset: "spedizioni",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.pallet ?? 0,
+  },
+  spedizioni_peso_lordo: {
+    chiave: "spedizioni_peso_lordo",
+    etichetta: "Peso lordo",
+    descrizione: "Peso lordo spedito, nell'unita' di misura del documento (di norma kg).",
+    dataset: "spedizioni",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.pesoLordo ?? 0,
+  },
+  spedizioni_volume: {
+    chiave: "spedizioni_volume",
+    etichetta: "Volume",
+    descrizione: "Volume spedito, nell'unita' di misura del documento.",
+    dataset: "spedizioni",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.volume ?? 0,
+  },
+  spedizioni_spese: {
+    chiave: "spedizioni_spese",
+    etichetta: "Spese di trasporto",
+    descrizione: "Spese di trasporto addebitate sul documento: non e' il costo pagato al vettore.",
+    dataset: "spedizioni",
+    aggregazione: "somma",
+    unita: "euro",
   },
   // ── Quantita' ───────────────────────────────────────────────────────────
   // I pezzi, non gli euro: sono nelle stesse viste dell'importo e prima non
@@ -690,8 +881,18 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
 
 const SOLO_ACQUISTI = new Set<Dimensione>(["fornitore", "buyer"]);
 const SOLO_VISITE = new Set<Dimensione>(["cap", "provincia", "grado", "tipo_visita", "esito_visita", "prossima_visita"]);
-const SOLO_PAGAMENTI = new Set<Dimensione>(["soggetto", "condizione_pagamento", "tipo_scadenza", "numero_fattura_fornitore", "profilo_ordine"]);
-const DATASET_PAGAMENTI = new Set<string>(["fatture_fornitore", "pagamenti", "scadenze"]);
+// Le dimensioni che appartengono a un solo dominio: sulle vendite non esistono. La
+// condizione di pagamento, l'utente creatore e i campi dell'anagrafica cliente
+// invece sono agganciati anche a righe di piu' domini, quindi non sono qui.
+const SOLO_PAGAMENTI = new Set<Dimensione>([
+  "soggetto", "tipo_scadenza", "numero_fattura_fornitore", "profilo_ordine",
+  "ora_creazione", "cliente_attivo", "magazzino", "reparto",
+  "vettore", "tipo_trasporto", "causale_trasporto", "direzione_merce", "provincia_destinazione", "zona_spedizione", "mezzo_trasporto",
+]);
+// I dataset con un elenco proprio di dimensioni (vedi `dimensioniPerMetrica`).
+const DATASET_PAGAMENTI = new Set<string>([
+  "fatture_fornitore", "pagamenti", "scadenze", "documenti_utente", "clienti", "articoli", "variazioni_costo", "spedizioni",
+]);
 
 /** Vero se la dimensione appartiene a un altro dominio (acquisti, visite, vendite). */
 export function dimensioneFuoriDominio(metrica: ChiaveMetrica, dimensione: Dimensione): boolean {
@@ -736,6 +937,21 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
     etichetta: "Collegata a",
     estrai: (r) => r.profiloOrdine || "(nessun ordine)",
   },
+  categoria_attivita: { etichetta: "Categoria di attività del cliente", estrai: (r) => r.catAttivita || "(non indicata)" },
+  categoria_commerciale: { etichetta: "Categoria commerciale del cliente", estrai: (r) => r.catCommerciale || "(non indicata)" },
+  zona_cliente: { etichetta: "Zona del cliente", estrai: (r) => r.zonaCliente || "(non indicata)" },
+  tipo_cliente: { etichetta: "Tipo di cliente", estrai: (r) => r.tipoCliente || "(non indicato)" },
+  cliente_attivo: { etichetta: "Cliente attivo", estrai: (r) => r.clienteAttivo || "(non indicato)" },
+  ora_creazione: { etichetta: "Ora di creazione", estrai: (r) => (r.oraCreazione ? `${r.oraCreazione}:00` : "(non indicata)") },
+  magazzino: { etichetta: "Magazzino", estrai: (r) => r.magazzino || "(non indicato)" },
+  reparto: { etichetta: "Reparto", estrai: (r) => r.reparto || "(non indicato)" },
+  vettore: { etichetta: "Vettore", estrai: (r) => r.vettore || "(senza vettore)" },
+  tipo_trasporto: { etichetta: "Tipo di trasporto", estrai: (r) => r.tipoTrasporto || "(non indicato)" },
+  causale_trasporto: { etichetta: "Causale del trasporto", estrai: (r) => r.causaleTrasporto || "(non indicata)" },
+  direzione_merce: { etichetta: "Merce in entrata o in uscita", estrai: (r) => r.direzioneMerce || "(non indicata)" },
+  provincia_destinazione: { etichetta: "Provincia di destinazione", estrai: (r) => r.provinciaDestinazione || "(non indicata)" },
+  zona_spedizione: { etichetta: "Zona di spedizione", estrai: (r) => r.zonaSpedizione || "(non indicata)" },
+  mezzo_trasporto: { etichetta: "Mezzo di trasporto", estrai: (r) => r.mezzoTrasporto || "(non indicato)" },
   // La chiave `articolo` resta com'e': le analisi e i filtri gia' salvati
   // portano le descrizioni, e cambiarne il significato li svuoterebbe in
   // silenzio. Il codice e' una dimensione a parte.
@@ -763,7 +979,7 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
   esito_visita: { etichetta: "Esito visita", estrai: (r) => r.esitoVisita || "(non indicato)" },
   prossima_visita: { etichetta: "Prossima visita", estrai: (r) => r.prossimaVisita || "(non indicata)" },
   creatore: {
-    etichetta: "Addetto back office",
+    etichetta: "Utente creatore",
     estrai: (r) => r.creatore || "(non indicato)",
   },
   fascia_eta: {

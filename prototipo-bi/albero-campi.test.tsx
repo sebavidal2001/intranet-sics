@@ -252,7 +252,7 @@ describe("L'albero sullo schermo", () => {
     const onCambia = monta(sel({ misure: ["preventivi_valore", "ordinato"], suddivisioni: ["bu"] }));
     // I valori stanno nella sezione «Operazioni», nel gruppo «Preventivi», gia'
     // aperto perche' contiene una misura spuntata.
-    const misure = within(screen.getByRole("region", { name: /Operazioni/ }));
+    const misure = within(screen.getByRole("region", { name: /^Dati/ }));
     fireEvent.click(misure.getByRole("checkbox", { name: /Valore preventivi/ }));
     expect(onCambia).toHaveBeenCalledWith(
       expect.objectContaining({ misure: ["ordinato"], suddivisioni: ["bu"] })

@@ -39,9 +39,9 @@ import { createContext, useContext, useId, useState, type ReactNode } from "reac
 import { CalendarDays, ChevronRight, GripVertical, ArrowUp, ArrowDown, Info, Tag, Trash2, X } from "lucide-react";
 import { VOCI_CALENDARIO, motivoDimensioneNonAmmessa } from "@/lib/prototipo-bi/gruppi-campi";
 import {
+  CARTELLE,
   GRUPPI_COMUNI,
-  GRUPPI_MISURE,
-  GRUPPI_OPERAZIONI,
+  calcoloDellaMetrica,
   MOTIVO_DOCUMENTO_MISTO,
   eDocumento,
   MOTIVO_MISURA_ALTRA_OPERAZIONE,
@@ -747,18 +747,39 @@ export function AlberoCampi({
 
   const nessunRisultato =
     cerca !== "" &&
-    !GRUPPI_OPERAZIONI.some(
-      (g) =>
-        passa(g.etichetta) ||
-        g.valori.some((m) => haMetrica(m) && passa(etichettaMetrica(m))) ||
-        g.campi.some((c) => haDimensione(c.chiave) && passa(c.etichetta ?? etichettaDimensione(c.chiave)))
+    !CARTELLE.some(
+      (cartella) =>
+        passa(cartella.etichetta) ||
+        cartella.voci.some(
+          (v) =>
+            passa(v.etichetta) ||
+            [...v.valori, ...(v.misure ?? [])].some((m) => haMetrica(m) && passa(etichettaMetrica(m))) ||
+            v.campi.some((c) => haDimensione(c.chiave) && passa(c.etichetta ?? etichettaDimensione(c.chiave)))
+        )
     ) &&
     !GRUPPI_COMUNI.some(
       (g) => passa(g.etichetta) || g.dimensioni.some((d) => haDimensione(d) && passa(etichettaDimensione(d)))
     ) &&
-    !GRUPPI_MISURE.some((g) => passa(g.etichetta) || g.misure.some((m) => haMetrica(m.chiave) && passa(etichettaMetrica(m.chiave)))) &&
     !vocabolario.tipologie.some((t) => t.chiave === "misure" && t.metriche.some((m) => passa(etichettaMetrica(m)))) &&
     !VOCI_CALENDARIO.some((v) => passa(v.etichetta, "calendario", "tempo"));
+
+  /** Una misura calcolata dentro la sua voce: con la natura (x̄, %…) e come si calcola. */
+  function rigaMisura(chiave: ChiaveCampo) {
+    return (
+      <div key={chiave}>
+        <Casella
+          etichetta={etichettaMetrica(chiave)}
+          voce={{ tipo: "misura", chiave }}
+          spuntata={selezione.misure.includes(chiave)}
+          motivoBloccata={motivoMisuraNonSelezionabile(chiave, selezione, perMetrica, famiglie)}
+          onCambia={(spuntata) => cambiaMisura(chiave, spuntata)}
+          segno={<Natura natura={naturaDellaVoce(chiave)} />}
+          azione={bottoneCalcolo(chiave, etichettaMetrica(chiave))}
+        />
+        {dettaglioCalcolo(chiave, etichettaMetrica(chiave), calcoloDellaMetrica(chiave as never) ?? "")}
+      </div>
+    );
+  }
 
   const personalizzate = vocabolario.tipologie.find((t) => t.chiave === "misure")?.metriche ?? [];
   const sceltaIn = (chiavi: readonly string[]) => selezione.misure.filter((m) => chiavi.includes(chiaveBase(m))).length;
@@ -903,41 +924,67 @@ export function AlberoCampi({
           )}
         </section>
 
-        {/* ── Operazioni ───────────────────────────────────────────────── */}
+        {/* ── Dati: cartelle, sottocartelle e voci ──────────────────────── */}
         <section
           aria-labelledby="albero-operazioni"
           className={`${compatto ? "mt-2 rounded-lg" : "rounded-xl"} border border-border bg-bg`}
         >
-          <TitoloSezione id="albero-operazioni" nota="Che cosa è successo: i valori da misurare e i campi di ogni operazione.">
-            Operazioni
+          <TitoloSezione id="albero-operazioni" nota="Cartelle e voci: scegli i valori, le misure e i campi di ciascuna.">
+            Dati
           </TitoloSezione>
-          {GRUPPI_OPERAZIONI.map((gruppo, indice) => {
-            const valori = gruppo.valori.filter(
-              (m) => haMetrica(m) && (passa(gruppo.etichetta) || passa(etichettaMetrica(m)))
-            );
-            const campi = gruppo.campi.filter(
-              (c) => haDimensione(c.chiave) && (passa(gruppo.etichetta) || passa(c.etichetta ?? etichettaDimensione(c.chiave)))
-            );
-            if (valori.length === 0 && campi.length === 0) return null;
-            const sceltiQui =
-              sceltaIn(gruppo.valori) +
-              gruppo.campi.filter(
+          {CARTELLE.map((cartella, indiceCartella) => {
+            const voci = cartella.voci
+              .map((voce) => {
+                const tutta = passa(cartella.etichetta) || passa(voce.etichetta);
+                return {
+                  voce,
+                  valori: voce.valori.filter((m) => haMetrica(m) && (tutta || passa(etichettaMetrica(m)))),
+                  misure: (voce.misure ?? []).filter((m) => haMetrica(m) && (tutta || passa(etichettaMetrica(m)))),
+                  campi: voce.campi.filter(
+                    (c) => haDimensione(c.chiave) && (tutta || passa(c.etichetta ?? etichettaDimensione(c.chiave)))
+                  ),
+                };
+              })
+              .filter((v) => v.valori.length > 0 || v.misure.length > 0 || v.campi.length > 0);
+            if (voci.length === 0) return null;
+            const sceltiNellaVoce = (voce: (typeof voci)[number]["voce"]) =>
+              sceltaIn([...voce.valori, ...(voce.misure ?? [])]) +
+              voce.campi.filter(
                 (c) =>
                   selezione.suddivisioni.includes(c.chiave) &&
                   (!eDocumento(c.chiave) ||
-                    (famiglieScelte.length > 0 && famiglieScelte.every((f) => gruppo.famiglieDocumento?.includes(f))))
+                    (famiglieScelte.length > 0 && famiglieScelte.every((f) => voce.famiglieDocumento?.includes(f))))
               ).length;
+            const sceltiQui = voci.reduce((somma, v) => somma + sceltiNellaVoce(v.voce), 0);
             return (
               <Gruppo
-                key={gruppo.chiave}
-                etichetta={gruppo.etichetta}
-                descrizione={gruppo.descrizione}
+                key={cartella.chiave}
+                etichetta={cartella.etichetta}
+                descrizione={cartella.descrizione}
                 forzaAperto={cerca !== ""}
                 conteggio={sceltiQui}
-                apertoDiDefault={sceltiQui > 0 || (indice === 0 && selezione.misure.length === 0)}
+                apertoDiDefault={sceltiQui > 0 || (indiceCartella === 0 && selezione.misure.length === 0)}
               >
-                {valori.map((chiave) => rigaValore(chiave))}
-                {campi.map((campo) => rigaDimensione(campo.chiave, campo.etichetta, gruppo.famiglieDocumento))}
+                {voci.map(({ voce, valori, misure, campi }, indiceVoce) => (
+                  <Gruppo
+                    key={voce.chiave}
+                    etichetta={voce.etichetta}
+                    descrizione={voce.descrizione}
+                    forzaAperto={cerca !== ""}
+                    conteggio={sceltiNellaVoce(voce)}
+                    apertoDiDefault={sceltiNellaVoce(voce) > 0 || (indiceCartella === 0 && indiceVoce === 0 && selezione.misure.length === 0)}
+                  >
+                    {valori.map((chiave) => rigaValore(chiave))}
+                    {misure.length > 0 && (
+                      <p className="mt-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Misure</p>
+                    )}
+                    {misure.map((chiave) => rigaMisura(chiave))}
+                    {campi.length > 0 && (
+                      <p className="mt-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Campi</p>
+                    )}
+                    {campi.map((campo) => rigaDimensione(campo.chiave, campo.etichetta, voce.famiglieDocumento))}
+                  </Gruppo>
+                ))}
               </Gruppo>
             );
           })}
@@ -948,41 +995,9 @@ export function AlberoCampi({
           aria-labelledby="albero-misure"
           className={`${compatto ? "mt-2 rounded-lg" : "rounded-xl"} border border-border bg-bg`}
         >
-          <TitoloSezione id="albero-misure" nota="Valori calcolati: medie, tassi, percentuali. Ognuno dice come si calcola.">
-            Misure
+          <TitoloSezione id="albero-misure" nota="Quelle create a parole. Le misure calcolate di ogni voce (medie, tassi) stanno dentro la voce.">
+            Misure personalizzate
           </TitoloSezione>
-          {GRUPPI_MISURE.map((gruppo) => {
-            const misure = gruppo.misure.filter(
-              (m) => haMetrica(m.chiave) && (passa(gruppo.etichetta) || passa(etichettaMetrica(m.chiave)))
-            );
-            if (misure.length === 0) return null;
-            return (
-              <Gruppo
-                key={gruppo.chiave}
-                etichetta={gruppo.etichetta}
-                descrizione="Valori calcolati."
-                forzaAperto={cerca !== ""}
-                conteggio={sceltaIn(gruppo.misure.map((m) => m.chiave))}
-                apertoDiDefault={gruppo.misure.some((m) => selezione.misure.some((v) => chiaveBase(v) === m.chiave))}
-              >
-                {misure.map((misura) => (
-                  <div key={misura.chiave}>
-                    <Casella
-                      etichetta={etichettaMetrica(misura.chiave)}
-                      voce={{ tipo: "misura", chiave: misura.chiave }}
-                      spuntata={selezione.misure.includes(misura.chiave)}
-                      motivoBloccata={motivoMisuraNonSelezionabile(misura.chiave, selezione, perMetrica, famiglie)}
-                      onCambia={(spuntata) => cambiaMisura(misura.chiave, spuntata)}
-                      segno={<Natura natura={naturaDellaVoce(misura.chiave)} />}
-                      azione={bottoneCalcolo(misura.chiave, etichettaMetrica(misura.chiave))}
-                    />
-                    {dettaglioCalcolo(misura.chiave, etichettaMetrica(misura.chiave), misura.calcolo)}
-                  </div>
-                ))}
-              </Gruppo>
-            );
-          })}
-
           {personalizzate.length > 0 && (
             <Gruppo
               etichetta="Misure personalizzate"

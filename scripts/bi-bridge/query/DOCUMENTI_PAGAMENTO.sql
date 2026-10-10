@@ -8,9 +8,16 @@
    Una riga per DOCUMENTO (non per riga) dal 2024:
      PC PCA                    preventivi
      OC OCB OCINT OCT          ordini cliente
-     FC FCA FCT                fatture cliente
+     BC                        bolle (DDT) di vendita
+     FC FCA FCT FCPA NAC       fatture e note di credito cliente
      OF OFT OFR                ordini fornitore
+     BF                        DDT di acquisto
      FF FFCEE                  fatture fornitore
+
+   Le BOLLE (BC, BF) ci sono perche' il BI le consegna: senza, il «consegnato» non
+   puo' avere la condizione di pagamento accanto. NAC e FCPA perche' sono
+   documenti di fatturato e il 1% delle righe del fatturato non trovava la sua
+   condizione.
 
    Serve all'analisi dei tempi di incasso e di pagamento. Tre informazioni:
    - la CONDIZIONE scritta sul documento (id_con_pagamento): un codice e un
@@ -72,12 +79,12 @@ FROM dba.documento d
         FROM dba.scadenza s
         JOIN dba.documento dd ON dd.id_documento = s.id_documento
        WHERE dd.data_registrazione >= '2024-01-01'
-         AND dd.codice_profilo IN ('FC', 'FCA', 'FCT', 'FF', 'FFCEE', 'OC', 'OCB', 'OCINT', 'OCT', 'OF', 'OFT', 'OFR')
+         AND dd.codice_profilo IN ('FC', 'FCA', 'FCT', 'FCPA', 'NAC', 'FF', 'FFCEE', 'OC', 'OCB', 'OCINT', 'OCT', 'OF', 'OFT', 'OFR')
        GROUP BY s.id_documento
   ) sd ON sd.id_documento = d.id_documento
 
-WHERE d.codice_profilo IN ('PC', 'PCA', 'OC', 'OCB', 'OCINT', 'OCT', 'FC', 'FCA', 'FCT',
-                           'OF', 'OFT', 'OFR', 'FF', 'FFCEE')
+WHERE d.codice_profilo IN ('PC', 'PCA', 'OC', 'OCB', 'OCINT', 'OCT', 'BC', 'FC', 'FCA', 'FCT', 'FCPA', 'NAC',
+                           'OF', 'OFT', 'OFR', 'BF', 'FF', 'FFCEE')
   AND d.data_registrazione >= '2024-01-01'
 
 ORDER BY d.data_registrazione, d.id_documento;

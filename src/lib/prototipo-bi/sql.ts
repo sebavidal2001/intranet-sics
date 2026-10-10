@@ -68,6 +68,24 @@ FATTURE FORNITORE, CONDIZIONI DI PAGAMENTO E SCADENZARIO — schema public, colo
   che un acquisto "serve" un ordine cliente: la copertura incassi/pagamenti si legge a calendario
   (bi_scadenzario per mese di data_scadenza), non per singolo ordine.
 
+ALTRI DATI — schema public, colonne SENZA virgolette (salvo dove indicato):
+- bi_documenti_utente: carico di lavoro. Un documento per riga (PC/PCA preventivi, OC/OCB/OCINT/OCT ordini cliente,
+  BC bolle, FC/FCA/FCT/NAC fatture cliente, OF/OFT/OFR ordini fornitore, BF DDT acquisto, FF/FFCEE/NAF/NAFCEE fatture
+  fornitore) dal 2024: id_documento, profilo, numero_registrazione, data_registrazione, data_creazione (timestamp),
+  codice_utente, utente (chi l'ha creato; ATTENZIONE: vendite, segreteria, amministrazione, acquisti, magazzino1/2 sono
+  utenti condivisi, ruoli e non persone), n_righe, importo_documento, codice_soggetto, soggetto.
+- bi_clienti_anagrafica: codice_cliente, ragione_sociale, cat_attivita, cat_commerciale, cat_zona, agente_codice, agente,
+  tipo, attivo, creato_il, cap, localita, provincia.
+- bi_articoli_corrente (colonne CON virgolette): fotografia articolo per magazzino: "Codice Articolo", "Descrizione",
+  "Categoria", "Gruppo", "Reparto", "Fornitore", "Magazzino", "Esistenza", "Disponibilita", "Qta Ord Clienti",
+  "Qta Ord Fornitori", "Qta Imp Produzione", "Qta Ord Produzione", "Ultimo Costo", "Aggiornato Il".
+- bi_variazioni_costo (colonne CON virgolette): "Codice Articolo", "Descrizione", "Data Variazione", "Costo Precedente",
+  "Costo Nuovo", "Delta", "Delta %".
+- bi_spedizioni: documenti di trasporto. id_documento, direzione (ENTRATA = acquisti, USCITA = vendite), codice_profilo,
+  numero_progressivo, data_documento, codice_soggetto, soggetto, provincia_destinazione, zona_provincia, tipo_trasporto,
+  causale_trasporto, tras_mezzo, vettore, num_colli, num_pallet, peso_lordo, volume, val_spese (spese addebitate, non il
+  costo pagato al vettore), data_trasporto, data_consegna_cliente.
+
 COSA È CONSENTITO
 SELECT e WITH, inclusi CTE, join, subquery, CASE, HAVING, funzioni finestra,
 ranking, aggregazioni e condizioni fra parentesi.
@@ -132,6 +150,11 @@ const VISTE_AUTORIZZATE = new Set([
   "public.bi_fatture_fornitore",
   "public.bi_documenti_pagamento",
   "public.bi_scadenzario",
+  "public.bi_documenti_utente",
+  "public.bi_clienti_anagrafica",
+  "public.bi_articoli_corrente",
+  "public.bi_variazioni_costo",
+  "public.bi_spedizioni",
   "powerbi.bi_cruscotto_articoli_corrente",
   "powerbi.bi_ultimo_costo_storico",
   "powerbi.bi_variazioni_ultimo_costo",

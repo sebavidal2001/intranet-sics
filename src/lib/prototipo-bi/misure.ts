@@ -62,14 +62,17 @@ const NOME_MAX = 80;
 const MAX_FILTRI_PER_OPERANDO = 6;
 const MAX_ADDENDI = 4;
 
-type Famiglia = "vendite" | "acquisti" | "visite" | "fatture_fornitore" | "pagamenti" | "scadenze";
+type Famiglia = string;
+
+/** I dataset che vengono dalle viste delle vendite: una sola famiglia, «vendite». */
+const DATASET_VENDITE = new Set<string>([
+  "ordinato", "fatturato", "consegnato", "portafoglio", "consegnato_futuro_per_mese", "preventivi_aperti", "controllo_banco",
+]);
 
 function famigliaDi(metrica: ChiaveMetrica): Famiglia {
   const dataset = CATALOGO[metrica].dataset;
-  if (dataset === "acquisti") return "acquisti";
-  if (dataset === "visite") return "visite";
-  if (dataset === "fatture_fornitore" || dataset === "pagamenti" || dataset === "scadenze") return dataset;
-  return "vendite";
+  // Ogni altro dataset e' una famiglia a se': si accostano solo valori della stessa.
+  return DATASET_VENDITE.has(dataset) ? "vendite" : dataset;
 }
 
 /** Aggregazioni che si possono sommare fra gruppi e dare per assenti = zero. */
@@ -92,6 +95,11 @@ const SIGNIFICATO_DATA: Record<string, string> = {
   fatture_fornitore: "data della fattura fornitore",
   pagamenti: "data del documento",
   scadenze: "data di scadenza",
+  documenti_utente: "data di creazione del documento",
+  clienti: "data di creazione dell'anagrafica",
+  articoli: "data del caricamento (fotografia)",
+  variazioni_costo: "data della variazione",
+  spedizioni: "data del documento di trasporto",
 };
 
 const ETICHETTA_DATASET: Record<string, string> = {
@@ -107,6 +115,11 @@ const ETICHETTA_DATASET: Record<string, string> = {
   fatture_fornitore: "fatture fornitore",
   pagamenti: "pagamenti",
   scadenze: "scadenzario",
+  documenti_utente: "carico di lavoro",
+  clienti: "clienti",
+  articoli: "magazzino",
+  variazioni_costo: "variazioni di costo",
+  spedizioni: "spedizioni",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

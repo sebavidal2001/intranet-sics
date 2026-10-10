@@ -137,7 +137,7 @@ describe("I rifiuti dicono cosa usare al posto di cosa", () => {
   it("un filtro su dimensione inesistente indirizza a elenca_valori", () => {
     const e = rifiuto({
       metrica: "fatturato",
-      filtri: [{ campo: "reparto", op: "eq", valore: "X" }],
+      filtri: [{ campo: "colore_inesistente" as never, op: "eq", valore: "X" }],
     });
     expect(e?.suggerimento).toContain("elenca_valori");
   });

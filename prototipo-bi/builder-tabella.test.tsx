@@ -177,14 +177,14 @@ describe("tabella: nessun asse, nessuna legenda, tutti i campi che si vogliono",
     expect(within(pannello()).getByRole("region", { name: "Asse" })).toBeInTheDocument();
 
     apriGruppo(/^Prodotti/);
-    spunta(/^Categoria/);
+    spunta(/^Categoria$/);
     await completaDebounce();
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(within(pannello()).getByRole("region", { name: "Campi" })).toBeInTheDocument();
     // Nella fila delle visualizzazioni resta la sola tabella: nessun grafico regge tre campi.
     expect(screen.queryByRole("button", { name: "Visualizzazione: Barre" })).not.toBeInTheDocument();
 
-    spunta(/^Categoria/);
+    spunta(/^Categoria$/);
     await completaDebounce();
     expect(within(pannello()).getByRole("region", { name: "Asse" })).toBeInTheDocument();
   });
@@ -276,10 +276,8 @@ describe("un valore e il suo periodo", () => {
     render(<EditorAnalisi />);
     await carica();
     apriGruppo(/^Ordinato/);
-    // La media sta fra le Misure, non dentro l'operazione.
-    const misure = screen.getByRole("region", { name: "Misure" });
-    fireEvent.click(within(misure).getAllByRole("button", { name: /^Ordinato/ })[0]);
-    fireEvent.click(within(misure).getByRole("checkbox", { name: /^Ordine medio/ }));
+    // La media sta dentro la voce «Ordinato», sotto «Misure».
+    fireEvent.click(within(pannello()).getByRole("checkbox", { name: /^Ordine medio/ }));
     await completaDebounce();
 
     fireEvent.click(within(pannello()).getByRole("button", { name: "Calcolo e periodo di Ordine medio" }));
@@ -356,9 +354,9 @@ describe("l'albero: operazioni, misure, documento", () => {
     return onCambia;
   }
 
-  it("tre sezioni: campi comuni, operazioni, misure", () => {
+  it("tre sezioni: campi comuni, dati (cartelle e voci), misure personalizzate", () => {
     monta();
-    for (const nome of [/Campi comuni/, /Operazioni/, /Misure/]) {
+    for (const nome of [/Campi comuni/, /^Dati/, /Misure personalizzate/]) {
       expect(screen.getByRole("region", { name: nome })).toBeInTheDocument();
     }
   });
@@ -373,8 +371,10 @@ describe("l'albero: operazioni, misure, documento", () => {
     // Nessun gruppo «Azienda» a parte.
     expect(screen.queryByRole("button", { name: /^Azienda/ })).not.toBeInTheDocument();
 
-    const operazioni = within(screen.getByRole("region", { name: /Operazioni/ }));
-    fireEvent.click(operazioni.getByRole("button", { name: /^Visite commerciali/ }));
+    const operazioni = within(screen.getByRole("region", { name: /^Dati/ }));
+    // Le visite stanno in Personale › Commerciale (visite).
+    fireEvent.click(operazioni.getByRole("button", { name: /^Personale/ }));
+    fireEvent.click(operazioni.getByRole("button", { name: /^Commerciale \(visite\)/ }));
     for (const campo of [/^Visite/, /^CAP/, /^Provincia/, /^Grado visita/, /^Tipo visita/]) {
       expect(operazioni.getAllByRole("checkbox", { name: campo }).length).toBeGreaterThan(0);
     }
@@ -384,7 +384,7 @@ describe("l'albero: operazioni, misure, documento", () => {
 
   it("il numero documento sta dentro ogni operazione, con il suo nome", () => {
     monta();
-    const operazioni = within(screen.getByRole("region", { name: /Operazioni/ }));
+    const operazioni = within(screen.getByRole("region", { name: /^Dati/ }));
     for (const [gruppo, nome] of [
       ["Ordinato", /^Numero ordine\/anno/],
       ["Fatturato", /^Numero fattura/],
@@ -398,7 +398,7 @@ describe("l'albero: operazioni, misure, documento", () => {
 
   it("con ordinato scelto, il numero documento delle fatture e' spento e dice perche'", () => {
     monta({ misure: ["ordinato"], suddivisioni: [] });
-    const operazioni = within(screen.getByRole("region", { name: /Operazioni/ }));
+    const operazioni = within(screen.getByRole("region", { name: /^Dati/ }));
     fireEvent.click(operazioni.getByRole("button", { name: /^Fatturato/ }));
     expect(operazioni.getByRole("checkbox", { name: /^Numero ordine\/anno$/ })).toBeEnabled();
     const fattura = operazioni.getByRole("checkbox", { name: /^Numero fattura/ });
@@ -408,7 +408,7 @@ describe("l'albero: operazioni, misure, documento", () => {
 
   it("un numero documento gia' scelto spegne le misure di un'altra operazione, col perche'", () => {
     monta({ misure: ["ordinato"], suddivisioni: ["documento"] });
-    const operazioni = within(screen.getByRole("region", { name: /Operazioni/ }));
+    const operazioni = within(screen.getByRole("region", { name: /^Dati/ }));
     fireEvent.click(operazioni.getByRole("button", { name: /^Fatturato/ }));
     expect(operazioni.getByRole("checkbox", { name: /^Fatturato/ })).toBeDisabled();
     expect(operazioni.getAllByText(/vale per una sola operazione/).length).toBeGreaterThan(0);
@@ -418,29 +418,28 @@ describe("l'albero: operazioni, misure, documento", () => {
 
   it("ogni valore dice se e' una somma o un conteggio", () => {
     monta();
-    const operazioni = within(screen.getByRole("region", { name: /Operazioni/ }));
+    const operazioni = within(screen.getByRole("region", { name: /^Dati/ }));
     const riga = (nome: RegExp) => operazioni.getByRole("checkbox", { name: nome }).closest("div") as HTMLElement;
     expect(within(riga(/^Ordinato/)).getByText("(Somma)")).toBeInTheDocument();
     expect(within(riga(/^Numero ordini/)).getByText("(Conteggio)")).toBeInTheDocument();
   });
 
-  it("le medie e i tassi stanno nelle Misure, non dentro l'operazione", () => {
+  it("le medie e i tassi stanno dentro la voce, sotto «Misure»; non c'e' piu' una sezione Misure a parte", () => {
     monta();
-    const operazioni = within(screen.getByRole("region", { name: /Operazioni/ }));
+    const operazioni = within(screen.getByRole("region", { name: /^Dati/ }));
     fireEvent.click(operazioni.getByRole("button", { name: /^Preventivi/ }));
-    expect(operazioni.queryByRole("checkbox", { name: /^Valore medio preventivo/ })).not.toBeInTheDocument();
-    expect(operazioni.queryByRole("checkbox", { name: /^Tasso di conversione/ })).not.toBeInTheDocument();
-
-    const misure = within(screen.getByRole("region", { name: /^Misure/ }));
-    fireEvent.click(misure.getByRole("button", { name: /^Preventivi/ }));
-    expect(misure.getByRole("checkbox", { name: /^Valore medio preventivo/ })).toBeInTheDocument();
-    expect(misure.getByRole("checkbox", { name: /^Tasso di conversione/ })).toBeInTheDocument();
+    expect(operazioni.getByRole("checkbox", { name: /^Valore medio preventivo/ })).toBeInTheDocument();
+    expect(operazioni.getByRole("checkbox", { name: /^Tasso di conversione/ })).toBeInTheDocument();
+    expect(operazioni.getAllByText("Misure").length).toBeGreaterThan(0);
+    // Anche le due anzianita' sono misure del preventivo.
+    expect(operazioni.getByRole("checkbox", { name: /^Giorni di apertura/ })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /^Misure$/ })).not.toBeInTheDocument();
   });
 
   it("ogni misura mostra come si calcola, e da li' si parte per farne una variante", () => {
     const onPartiDa = vi.fn();
     monta(SELEZIONE_VUOTA, onPartiDa);
-    const misure = within(screen.getByRole("region", { name: /^Misure/ }));
+    const misure = within(screen.getByRole("region", { name: /^Dati/ }));
     fireEvent.click(misure.getByRole("button", { name: /^Preventivi/ }));
     expect(misure.queryByText("Come si calcola")).not.toBeInTheDocument();
 
@@ -458,13 +457,13 @@ describe("l'albero: operazioni, misure, documento", () => {
       <AlberoCampi compatto vocabolario={VOCABOLARIO_ALBERO} selezione={selezione} onCambia={vi.fn()} />
     );
     fireEvent.click(within(screen.getByRole("region", { name: /Campi comuni/ })).getByRole("button", { name: /^Prodotti/ }));
-    expect(screen.getByRole("checkbox", { name: /^Categoria/ })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /^Categoria(?! (di|commerciale))/ })).toBeDisabled();
     unmount();
 
     render(
       <AlberoCampi compatto senzaLimiteSuddivisioni vocabolario={VOCABOLARIO_ALBERO} selezione={selezione} onCambia={vi.fn()} />
     );
     fireEvent.click(within(screen.getByRole("region", { name: /Campi comuni/ })).getByRole("button", { name: /^Prodotti/ }));
-    expect(screen.getByRole("checkbox", { name: /^Categoria/ })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: /^Categoria(?! (di|commerciale))/ })).toBeEnabled();
   });
 });

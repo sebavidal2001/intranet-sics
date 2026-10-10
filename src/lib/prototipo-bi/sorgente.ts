@@ -19,6 +19,19 @@ import type { ChiaveDataset, ChiaveDatasetVendite, RigaFatto, Snapshot } from ".
 import { comeFatti, daVista, type RigaAcquisto } from "./acquisti";
 import { comeFatti as visiteComeFatti, daVista as visitaDaVista } from "./visite";
 import { fatturaFornitoreComeFatto, pagamentoComeFatto, scadenzaComeFatto } from "./fornitori";
+import {
+  agganciaAnagrafica,
+  agganciaCondizioniAcquisti,
+  agganciaCondizioniVendite,
+  articoloComeFatto,
+  clienteComeFatto,
+  documentoUtenteComeFatto,
+  mappaAnagrafica,
+  mappaCondizioni,
+  spedizioneComeFatto,
+  variazioneCostoComeFatto,
+  type AnagraficaCliente,
+} from "./altri-dati";
 
 /** Viste di origine. `importoCampo` cambia solo per i preventivi. */
 const VISTE: Record<ChiaveDatasetVendite, { vista: string; importoCampo: string }> = {
@@ -249,22 +262,47 @@ async function caricaVisite(): Promise<RigaFatto[] | undefined> {
  * Come acquisti e visite: un guasto in una delle tre viste non deve fermare il
  * BI delle vendite. Il dataset resta assente e le sue metriche lo dichiarano.
  */
-async function caricaFornitori(): Promise<Pick<NonNullable<Snapshot["dataset"]>, "fatture_fornitore" | "pagamenti" | "scadenze">> {
-  const una = async (vista: string, comeFatto: (g: RigaGrezza) => RigaFatto): Promise<RigaFatto[] | undefined> => {
-    try {
-      const grezze = await scaricaPaginato<RigaGrezza>(vista);
-      return grezze.map(comeFatto);
-    } catch (e) {
-      console.warn(`[BI] ${vista} non caricata:`, e instanceof Error ? e.message : e);
-      return undefined;
-    }
-  };
+/** Legge una vista e la trasforma: se non e' raggiungibile, `undefined` e un avviso nel log. */
+async function leggiVistaOpzionale<T>(vista: string, trasforma: (grezze: RigaGrezza[]) => T): Promise<T | undefined> {
+  try {
+    return trasforma(await scaricaPaginato<RigaGrezza>(vista));
+  } catch (e) {
+    console.warn(`[BI] ${vista} non caricata:`, e instanceof Error ? e.message : e);
+    return undefined;
+  }
+}
+
+async function caricaFornitori() {
   const [fatture_fornitore, pagamenti, scadenze] = await Promise.all([
-    una("bi_fatture_fornitore", fatturaFornitoreComeFatto),
-    una("bi_documenti_pagamento", pagamentoComeFatto),
-    una("bi_scadenzario", scadenzaComeFatto),
+    leggiVistaOpzionale("bi_fatture_fornitore", (g) => g.map(fatturaFornitoreComeFatto)),
+    // Le condizioni di pagamento si usano anche per agganciarle a ordini, fatture e preventivi.
+    leggiVistaOpzionale("bi_documenti_pagamento", (g) => ({ righe: g.map(pagamentoComeFatto), condizioni: mappaCondizioni(g) })),
+    leggiVistaOpzionale("bi_scadenzario", (g) => g.map(scadenzaComeFatto)),
   ]);
-  return { fatture_fornitore, pagamenti, scadenze };
+  return { fatture_fornitore, pagamenti: pagamenti?.righe, scadenze, condizioni: pagamenti?.condizioni };
+}
+
+/**
+ * Carico di lavoro, anagrafica clienti, articoli, variazioni di costo e
+ * spedizioni (migration 151 e 152): tutto cio' che il database aveva e il
+ * builder non vedeva. Ognuno fallisce per conto suo.
+ */
+async function caricaAltriDati() {
+  const [documenti_utente, clienti, articoli, variazioni_costo, spedizioni] = await Promise.all([
+    leggiVistaOpzionale("bi_documenti_utente", (g) => g.map(documentoUtenteComeFatto)),
+    leggiVistaOpzionale("bi_clienti_anagrafica", (g) => ({ righe: g.map(clienteComeFatto), anagrafica: mappaAnagrafica(g) })),
+    leggiVistaOpzionale("bi_articoli_corrente", (g) => g.map(articoloComeFatto)),
+    leggiVistaOpzionale("bi_variazioni_costo", (g) => g.map(variazioneCostoComeFatto)),
+    leggiVistaOpzionale("bi_spedizioni", (g) => g.map(spedizioneComeFatto)),
+  ]);
+  return {
+    documenti_utente,
+    clienti: clienti?.righe,
+    articoli,
+    variazioni_costo,
+    spedizioni,
+    anagrafica: clienti?.anagrafica as Map<string, AnagraficaCliente> | undefined,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -478,6 +516,7 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
   const acquisti = await caricaAcquisti();
   const visite = await caricaVisite();
   const fornitori = await caricaFornitori();
+  const altri = await caricaAltriDati();
 
   // Il costo si aggancia a ogni riga che ha un articolo, prendendo la
   // variazione valida ALLA DATA DEL DOCUMENTO. Le righe senza corrispondenza
@@ -530,6 +569,32 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
       conteggi[chiave] = righe.length;
     }
   }
+
+  // Carico di lavoro, clienti, articoli, variazioni di costo, spedizioni: dataset a se'.
+  for (const chiave of ["documenti_utente", "clienti", "articoli", "variazioni_costo", "spedizioni"] as const) {
+    const righe = altri[chiave];
+    if (righe) {
+      dataset[chiave] = righe;
+      conteggi[chiave] = righe.length;
+    }
+  }
+
+  // La condizione di pagamento del documento e l'anagrafica del cliente si agganciano
+  // alle righe che c'erano gia': per analizzare ordinato, fatturato e preventivi
+  // per condizione, categoria di attivita', zona e tipo di cliente.
+  const DATASET_CON_CLIENTE: ChiaveDataset[] = [
+    "ordinato", "fatturato", "consegnato", "portafoglio", "preventivi_aperti", "controllo_banco",
+    "consegnato_futuro_per_mese", "visite", "pagamenti", "scadenze", "documenti_utente",
+  ];
+  for (const chiave of DATASET_CON_CLIENTE) {
+    const righe = dataset[chiave as keyof typeof dataset];
+    if (!righe) continue;
+    if (fornitori.condizioni && chiave !== "pagamenti" && chiave !== "scadenze" && chiave !== "visite" && chiave !== "documenti_utente") {
+      agganciaCondizioniVendite(righe, fornitori.condizioni);
+    }
+    if (altri.anagrafica) agganciaAnagrafica(righe, altri.anagrafica);
+  }
+  if (fornitori.condizioni && dataset.acquisti) agganciaCondizioniAcquisti(dataset.acquisti, fornitori.condizioni);
 
   // La data di riferimento ("oggi") deve venire SOLO dai dataset che guardano
   // al passato. `portafoglio` e `consegnato_futuro_per_mese` contengono
@@ -622,6 +687,10 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * 8 (10/10/2026): `profilo` (tipo documento) sulle vendite e sugli acquisti,
  * `esitoVisita` e `prossimaVisita` sulle visite: una cache vecchia non li ha.
  *
+ * 10 (10/10/2026): carico di lavoro, anagrafica clienti, articoli, variazioni di
+ * costo, spedizioni (dataset nuovi); condizione di pagamento e anagrafica del
+ * cliente agganciate alle righe di vendita e di acquisto.
+ *
  * 9 (10/10/2026): `dataset.fatture_fornitore`, `dataset.pagamenti`,
  * `dataset.scadenze` (migration 150), le nuove dimensioni e la causale sui
  * preventivi: una cache vecchia non ha i dataset e le metriche risponderebbero
@@ -630,7 +699,7 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * 6 (08/10/2026): `dataset.visite`, le visite dei commerciali (metrica
  * visite_numero; dimensioni cap, provincia, grado, tipo_visita).
  */
-const VERSIONE_FORMA = 9;
+const VERSIONE_FORMA = 10;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.

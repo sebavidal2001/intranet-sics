@@ -20,6 +20,11 @@ export type ChiaveTipologia =
   | "visite"
   | "pagamenti"
   | "scadenzario"
+  | "personale"
+  | "clienti"
+  | "articoli"
+  | "costi"
+  | "spedizioni"
   /** Le misure personalizzate salvate: non sta in `TIPOLOGIE`, la aggiunge il vocabolario. */
   | "misure";
 
@@ -125,13 +130,53 @@ export const TIPOLOGIE: Tipologia[] = [
     chiave: "pagamenti",
     etichetta: "Tempi di pagamento",
     descrizione: "Giorni medi di incasso dai clienti e di pagamento ai fornitori, dalle scadenze delle fatture.",
-    metriche: ["imponibile_documenti", "n_documenti_pagamento", "giorni_incasso", "giorni_pagamento"],
+    metriche: ["giorni_incasso", "giorni_pagamento"],
   },
   {
     chiave: "scadenzario",
     etichetta: "Scadenzario",
     descrizione: "Incassi attesi e pagamenti dovuti per data di scadenza: la base del calendario di cassa.",
     metriche: ["incassi_attesi", "saldo_cassa"],
+  },
+  {
+    chiave: "personale",
+    etichetta: "Carico di lavoro",
+    descrizione: "Documenti e righe creati da ogni utente: il lavoro vero di vendite e acquisti. Alcuni utenti sono condivisi (ruoli, non persone).",
+    metriche: ["documenti_vendita_creati", "righe_vendita_inserite", "documenti_acquisto_creati", "righe_acquisto_inserite"],
+  },
+  {
+    chiave: "clienti",
+    etichetta: "Clienti",
+    descrizione: "L'anagrafica dei clienti: quanti, di che categoria, in che zona, con quale agente.",
+    metriche: ["clienti_numero"],
+  },
+  {
+    chiave: "articoli",
+    etichetta: "Magazzino e articoli",
+    descrizione: "Giacenze, impegni e ordinato per articolo e magazzino: fotografia dell'ultimo caricamento.",
+    metriche: [
+      "articoli_numero",
+      "articoli_esistenza",
+      "articoli_disponibilita",
+      "articoli_qta_ord_clienti",
+      "articoli_qta_ord_fornitori",
+      "articoli_qta_imp_produzione",
+      "articoli_qta_ord_produzione",
+      "articoli_valore_giacenza",
+      "articoli_ultimo_costo",
+    ],
+  },
+  {
+    chiave: "costi",
+    etichetta: "Variazioni di costo",
+    descrizione: "Quando e di quanto cambia l'ultimo costo di acquisto degli articoli.",
+    metriche: ["variazioni_costo_numero", "variazioni_costo_pct_media"],
+  },
+  {
+    chiave: "spedizioni",
+    etichetta: "Spedizioni",
+    descrizione: "I documenti di trasporto: quanti, quanti colli e che peso, con quale vettore e verso dove.",
+    metriche: ["spedizioni_numero", "spedizioni_colli", "spedizioni_pallet", "spedizioni_peso_lordo", "spedizioni_volume", "spedizioni_spese"],
   },
 ];
 
@@ -144,6 +189,11 @@ const DIMENSIONI_COMUNI: Dimensione[] = [
   "articolo",
   "codice_cliente",
   "codice_agente",
+  "categoria_attivita",
+  "categoria_commerciale",
+  "zona_cliente",
+  "tipo_cliente",
+  "condizione_pagamento",
   "profilo",
   "data_consegna_richiesta",
   "data_consegna_confermata",
@@ -159,12 +209,12 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
   // Gli ordini a fornitore non hanno agente, cliente ne' business unit: le
   // loro dimensioni sono altre. La categoria e' il gruppo articoli.
   if (dataset === "acquisti") {
-    return (["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "profilo", "data_promessa", "documento"] as Dimensione[]).filter(
+    return (["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "profilo", "data_promessa", "condizione_pagamento", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
   }
   if (dataset === "visite") {
-    return (["agente", "cliente", "cap", "provincia", "grado", "tipo_visita", "esito_visita", "prossima_visita", "codice_cliente", "codice_agente", "documento"] as Dimensione[]).filter(
+    return (["agente", "cliente", "cap", "provincia", "grado", "tipo_visita", "esito_visita", "prossima_visita", "codice_cliente", "codice_agente", "categoria_attivita", "categoria_commerciale", "zona_cliente", "tipo_cliente", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
   }
@@ -177,9 +227,38 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
     );
   }
   if (dataset === "pagamenti") {
-    return (["soggetto", "profilo", "condizione_pagamento", "numero_fattura_fornitore", "documento"] as Dimensione[]).filter(
+    // I giorni di incasso sono dei clienti (con la loro anagrafica), quelli di pagamento dei fornitori.
+    const proprie: Dimensione[] =
+      metrica === "giorni_pagamento"
+        ? ["fornitore", "soggetto"]
+        : ["cliente", "codice_cliente", "categoria_attivita", "categoria_commerciale", "zona_cliente", "tipo_cliente", "soggetto"];
+    return ([...proprie, "profilo", "condizione_pagamento", "numero_fattura_fornitore", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
+  }
+  if (dataset === "documenti_utente") {
+    return (["creatore", "profilo", "ora_creazione", "soggetto", "documento"] as Dimensione[]).filter(
+      (dimensione) => dimensione in DIMENSIONI
+    );
+  }
+  if (dataset === "clienti") {
+    return (
+      ["cliente", "codice_cliente", "agente", "codice_agente", "categoria_attivita", "categoria_commerciale", "zona_cliente", "tipo_cliente", "cliente_attivo", "provincia", "cap"] as Dimensione[]
+    ).filter((dimensione) => dimensione in DIMENSIONI);
+  }
+  if (dataset === "articoli") {
+    // Non `documento`: e' il codice articolo, gia' fra i campi.
+    return (["bu", "categoria", "codice_articolo", "articolo", "fornitore", "magazzino", "reparto"] as Dimensione[]).filter(
+      (dimensione) => dimensione in DIMENSIONI
+    );
+  }
+  if (dataset === "variazioni_costo") {
+    return (["codice_articolo", "articolo"] as Dimensione[]).filter((dimensione) => dimensione in DIMENSIONI);
+  }
+  if (dataset === "spedizioni") {
+    return (
+      ["vettore", "tipo_trasporto", "causale_trasporto", "direzione_merce", "provincia_destinazione", "zona_spedizione", "mezzo_trasporto", "soggetto", "profilo", "documento"] as Dimensione[]
+    ).filter((dimensione) => dimensione in DIMENSIONI);
   }
   if (dataset === "scadenze") {
     // Gli incassi sono dei clienti e i pagamenti dei fornitori: ciascuno ha la
@@ -191,7 +270,7 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
       metrica === "pagamenti_dovuti"
         ? ["fornitore", "soggetto"]
         : metrica === "incassi_attesi"
-          ? ["cliente", "codice_cliente", "soggetto"]
+          ? ["cliente", "codice_cliente", "categoria_attivita", "categoria_commerciale", "zona_cliente", "tipo_cliente", "soggetto"]
           : ["tipo_scadenza", "soggetto"];
     return ([...proprie, "profilo", "condizione_pagamento", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI

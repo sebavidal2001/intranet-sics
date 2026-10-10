@@ -117,7 +117,9 @@ describe("fatture fornitore", () => {
 
   it("le dimensioni sono quelle dei fornitori, non agente o cliente", () => {
     expect(() => validaSpec({ metrica: "fatturato_fornitore", raggruppa: ["agente"] })).toThrow(SpecNonValida);
-    expect(() => validaSpec({ metrica: "fatturato", raggruppa: ["condizione_pagamento"] })).toThrow(SpecNonValida);
+    // La condizione di pagamento e' agganciata anche alle righe di vendita: vale per il fatturato.
+    expect(() => validaSpec({ metrica: "fatturato", raggruppa: ["condizione_pagamento"] })).not.toThrow();
+    expect(() => validaSpec({ metrica: "fatturato", raggruppa: ["vettore"] })).toThrow(SpecNonValida);
     expect(() => validaSpec({ metrica: "fatturato_fornitore", raggruppa: ["condizione_pagamento"] })).not.toThrow();
   });
 
@@ -155,8 +157,8 @@ describe("giorni medi di incasso e di pagamento", () => {
   });
 
   it("il soggetto e' il cliente per le fatture di vendita e il fornitore per quelle di acquisto", () => {
-    const r = esegui({ metrica: "imponibile_documenti", raggruppa: ["soggetto"] }, S);
-    expect(r.righe.map((x) => x.etichetta).sort()).toEqual(["I.L.C. srl", "ICA spa"]);
+    expect(esegui({ metrica: "giorni_incasso", raggruppa: ["soggetto"] }, S).righe.map((x) => x.etichetta)).toEqual(["ICA spa"]);
+    expect(esegui({ metrica: "giorni_pagamento", raggruppa: ["soggetto"] }, S).righe.map((x) => x.etichetta)).toEqual(["I.L.C. srl"]);
   });
 });
 
@@ -189,11 +191,13 @@ describe("scadenzario", () => {
 
   it("le tre operazioni nuove stanno nell'albero con i loro valori", () => {
     const chiavi = GRUPPI_OPERAZIONI.map((g) => g.chiave);
-    expect(chiavi).toEqual(expect.arrayContaining(["pagamenti", "scadenzario"]));
-    // Le fatture e i pagamenti dovuti stanno dentro gli Acquisti, non in un gruppo a parte.
+    // Niente gruppi a parte per fatture, pagamenti e scadenze: stanno nelle voci Fatturato di Vendite e Acquisti.
     expect(chiavi).not.toContain("fornitori");
-    expect(GRUPPI_OPERAZIONI.find((g) => g.chiave === "acquisti")?.valori).toEqual(expect.arrayContaining(["fatturato_fornitore", "n_fatture_fornitore", "pagamenti_dovuti"]));
-    const sc = GRUPPI_OPERAZIONI.find((g) => g.chiave === "scadenzario");
-    expect(sc?.valori).toEqual(["incassi_attesi", "saldo_cassa"]);
+    expect(chiavi).not.toContain("scadenzario");
+    expect(chiavi).not.toContain("pagamenti");
+    expect(GRUPPI_OPERAZIONI.find((g) => g.chiave === "acquisti_fatturato")?.valori).toEqual(
+      expect.arrayContaining(["fatturato_fornitore", "n_fatture_fornitore", "pagamenti_dovuti"])
+    );
+    expect(GRUPPI_OPERAZIONI.find((g) => g.chiave === "fatturato")?.valori).toEqual(expect.arrayContaining(["incassi_attesi", "saldo_cassa"]));
   });
 });

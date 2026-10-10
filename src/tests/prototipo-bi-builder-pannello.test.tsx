@@ -119,14 +119,14 @@ describe("builder a pannello laterale", () => {
     fireEvent.change(within(pannello).getByLabelText("Cerca un campo"), { target: { value: "zzz" } });
     expect(within(pannello).getByText(/Nessun campo corrisponde/)).toBeInTheDocument();
   });
-  it("CAP sta dentro «Visite commerciali», insieme al numero delle visite, e in nessun altro posto", async () => {
+  it("CAP sta dentro «Personale › Commerciale», insieme al numero delle visite, e in nessun altro posto", async () => {
     render(<EditorAnalisi />);
     await screen.findByRole("tab", { name: "Campi" });
 
     const pannello = screen.getByRole("tabpanel", { name: "Campi" });
     fireEvent.change(within(pannello).getByLabelText("Cerca un campo"), { target: { value: "visit" } });
 
-    const gruppo = within(pannello).getByText("Visite commerciali").closest("button")?.parentElement as HTMLElement;
+    const gruppo = within(pannello).getByText("Commerciale (visite)").closest("button")?.parentElement as HTMLElement;
     expect(within(gruppo).getByLabelText(/^Visite/)).toBeInTheDocument();
     expect(within(gruppo).getByLabelText(/^CAP/)).toBeInTheDocument();
     // Una sola casella CAP in tutto l'elenco, e nessun gruppo «Visite e territorio» a parte.

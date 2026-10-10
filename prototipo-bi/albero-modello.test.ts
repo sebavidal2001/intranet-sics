@@ -18,6 +18,7 @@ import {
   eMisuraCalcolata,
   famigliaDellaMetrica,
   FAMIGLIE_CALCOLO,
+  CARTELLE,
   GRUPPI_COMUNI,
   GRUPPI_MISURE,
   GRUPPI_OPERAZIONI,
@@ -35,9 +36,17 @@ describe("ogni metrica sta in un posto solo", () => {
   const nelleOperazioni = GRUPPI_OPERAZIONI.flatMap((g) => g.valori);
   const nelleMisure = GRUPPI_MISURE.flatMap((g) => g.misure.map((m) => m.chiave));
 
-  it("nessuna metrica del motore resta fuori dall'albero", () => {
+  it("nessuna metrica del motore resta fuori dall'albero, salvo quelle nascoste di proposito", () => {
     const presenti = new Set<ChiaveMetrica>([...nelleOperazioni, ...nelleMisure]);
-    expect(TUTTE.filter((m) => !presenti.has(m))).toEqual([]);
+    // `consegnato_futuro` e' il portafoglio sul mese di consegna: lo stesso dato, che il
+    // Cruscotto usa ancora. Nell'albero c'e' una voce sola, «Portafoglio», che ha le date.
+    const NASCOSTE: ChiaveMetrica[] = ["consegnato_futuro"];
+    expect(TUTTE.filter((m) => !presenti.has(m) && !NASCOSTE.includes(m))).toEqual([]);
+  });
+
+  it("le misure calcolate di ogni voce sono tutte e sole quelle che hanno un calcolo scritto", () => {
+    const nelleVoci = CARTELLE.flatMap((c) => c.voci.flatMap((v) => v.misure ?? []));
+    expect([...nelleVoci].sort()).toEqual([...nelleMisure].sort());
   });
 
   it("nessuna metrica compare due volte, ne' fra le operazioni ne' fra le misure", () => {
@@ -87,7 +96,7 @@ describe("ogni dimensione ha un posto", () => {
   });
 
   it("le visite stanno in un gruppo solo: il numero delle visite e i campi del territorio", () => {
-    const visite = GRUPPI_OPERAZIONI.filter((g) => g.valori.includes("visite_numero") || g.campi.some((c) => c.chiave === "cap"));
+    const visite = GRUPPI_OPERAZIONI.filter((g) => g.valori.includes("visite_numero"));
     expect(visite).toHaveLength(1);
     expect(visite[0].campi.map((c) => c.chiave)).toEqual(expect.arrayContaining(["cap", "provincia", "grado", "tipo_visita"]));
     expect(visite[0].valori).toEqual(["visite_numero"]);
@@ -96,7 +105,7 @@ describe("ogni dimensione ha un posto", () => {
   it("il numero del documento sta dentro ogni operazione che ne ha uno, con il suo nome", () => {
     const conDocumento = GRUPPI_OPERAZIONI.filter((g) => g.campi.some((c) => eDocumento(c.chiave)));
     expect(conDocumento.map((g) => g.chiave)).toEqual(
-      expect.arrayContaining(["ordinato", "fatturato", "consegnato", "preventivi", "acquisti"])
+      expect.arrayContaining(["ordinato", "fatturato", "consegnato", "preventivi", "acquisti_ordinato"])
     );
     // Nessun «Documento» generico fra i campi comuni.
     expect(GRUPPI_COMUNI.some((g) => g.dimensioni.includes("documento"))).toBe(false);
@@ -104,7 +113,7 @@ describe("ogni dimensione ha un posto", () => {
     // Con l'anno nel numero: il numero nudo riparte ogni anno e fonderebbe documenti diversi.
     expect(ordinato.campi.find((c) => eDocumento(c.chiave))).toEqual({ chiave: "documento_anno", etichetta: "Numero ordine/anno" });
     // Gli ordini a fornitore portano gia' l'anno: tengono il numero com'e'.
-    expect(GRUPPI_OPERAZIONI.find((g) => g.chiave === "acquisti")!.campi.some((c) => c.chiave === "documento")).toBe(true);
+    expect(GRUPPI_OPERAZIONI.find((g) => g.chiave === "acquisti_ordinato")!.campi.some((c) => c.chiave === "documento")).toBe(true);
   });
 
   it("il documento di un'operazione vale per le metriche di quell'operazione", () => {

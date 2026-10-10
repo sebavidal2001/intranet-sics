@@ -25,10 +25,23 @@ export type ChiaveDataset =
   /** Una riga per documento con condizione di pagamento e giorni medi (migration 150). */
   | "pagamenti"
   /** Scadenze aperte, incassi attesi e pagamenti dovuti (migration 150). */
-  | "scadenze";
+  | "scadenze"
+  /** Una riga per documento con l'utente che l'ha creato: il carico di lavoro (migration 151). */
+  | "documenti_utente"
+  /** Anagrafica dei clienti: categorie, zona, agente (migration 140). */
+  | "clienti"
+  /** Articoli per magazzino: esistenza, impegni, ordinato, ultimo costo (migration 152). */
+  | "articoli"
+  /** Variazioni dell'ultimo costo di acquisto (migration 152). */
+  | "variazioni_costo"
+  /** Documenti di trasporto: vettore, colli, peso, destinazione (migration 152). */
+  | "spedizioni";
 
 /** I dataset che vengono dalle viste delle vendite: tutti sempre presenti. */
-export type ChiaveDatasetVendite = Exclude<ChiaveDataset, "acquisti" | "visite" | "fatture_fornitore" | "pagamenti" | "scadenze">;
+export type ChiaveDatasetVendite = Exclude<
+  ChiaveDataset,
+  "acquisti" | "visite" | "fatture_fornitore" | "pagamenti" | "scadenze" | "documenti_utente" | "clienti" | "articoli" | "variazioni_costo" | "spedizioni"
+>;
 
 /** Riga normalizzata: le viste hanno tutte la stessa forma, salvo i preventivi. */
 export interface RigaFatto {
@@ -97,6 +110,43 @@ export interface RigaFatto {
   tipoScadenza?: "A" | "P";
   /** Scadenze: quanto resta da incassare o pagare, sempre positivo. */
   saldoAperto?: number;
+  // ── Anagrafica del cliente, agganciata a ogni riga che ha un codice cliente ──
+  catAttivita?: string;
+  catCommerciale?: string;
+  zonaCliente?: string;
+  tipoCliente?: string;
+  clienteAttivo?: string;
+  // ── Documenti per utente (carico di lavoro) ──────────────────────────────
+  /** Ora di creazione del documento, «09»: per vedere a che ora si lavora. */
+  oraCreazione?: string;
+  // ── Articoli (fotografia per magazzino) ──────────────────────────────────
+  magazzino?: string;
+  reparto?: string;
+  esistenza?: number;
+  disponibilita?: number;
+  qtaOrdClienti?: number;
+  qtaOrdFornitori?: number;
+  qtaImpProduzione?: number;
+  qtaOrdProduzione?: number;
+  ultimoCosto?: number | null;
+  /** Esistenza per ultimo costo, dove il costo e' noto. */
+  valoreGiacenza?: number;
+  // ── Variazioni di costo ──────────────────────────────────────────────────
+  variazionePct?: number | null;
+  // ── Spedizioni ───────────────────────────────────────────────────────────
+  vettore?: string;
+  tipoTrasporto?: string;
+  causaleTrasporto?: string;
+  /** Merce in entrata (acquisti) o in uscita (vendite). */
+  direzioneMerce?: string;
+  provinciaDestinazione?: string;
+  zonaSpedizione?: string;
+  mezzoTrasporto?: string;
+  colli?: number;
+  pallet?: number;
+  pesoLordo?: number;
+  volume?: number;
+  speseTrasporto?: number;
   /** Solo sulle visite: esito registrato e data della prossima visita. */
   esitoVisita?: string;
   prossimaVisita?: string;
@@ -184,6 +234,11 @@ export interface Snapshot {
     fatture_fornitore?: RigaFatto[];
     pagamenti?: RigaFatto[];
     scadenze?: RigaFatto[];
+    documenti_utente?: RigaFatto[];
+    clienti?: RigaFatto[];
+    articoli?: RigaFatto[];
+    variazioni_costo?: RigaFatto[];
+    spedizioni?: RigaFatto[];
   };
   conteggi: Record<string, number>;
   /**
@@ -382,8 +437,30 @@ export type ChiaveMetrica =
   | "n_fatture_fornitore"
   | "giorni_incasso"
   | "giorni_pagamento"
-  | "imponibile_documenti"
-  | "n_documenti_pagamento"
+  // ── Carico di lavoro: documenti creati dagli utenti (migration 151) ─────
+  | "documenti_vendita_creati"
+  | "righe_vendita_inserite"
+  | "documenti_acquisto_creati"
+  | "righe_acquisto_inserite"
+  // ── Clienti, articoli, spedizioni (migration 152) ───────────────────────
+  | "clienti_numero"
+  | "articoli_numero"
+  | "articoli_esistenza"
+  | "articoli_disponibilita"
+  | "articoli_qta_ord_clienti"
+  | "articoli_qta_ord_fornitori"
+  | "articoli_qta_imp_produzione"
+  | "articoli_qta_ord_produzione"
+  | "articoli_valore_giacenza"
+  | "articoli_ultimo_costo"
+  | "variazioni_costo_numero"
+  | "variazioni_costo_pct_media"
+  | "spedizioni_numero"
+  | "spedizioni_colli"
+  | "spedizioni_pallet"
+  | "spedizioni_peso_lordo"
+  | "spedizioni_volume"
+  | "spedizioni_spese"
   | "incassi_attesi"
   | "pagamenti_dovuti"
   | "saldo_cassa"
@@ -480,7 +557,27 @@ export type Dimensione =
   /** Numero della fattura come l'ha scritto il fornitore. */
   | "numero_fattura_fornitore"
   /** A cosa punta la fattura fornitore: ordine, reclamo, niente. */
-  | "profilo_ordine";
+  | "profilo_ordine"
+  // ── Anagrafica clienti ──────────────────────────────────────────────────
+  | "categoria_attivita"
+  | "categoria_commerciale"
+  | "zona_cliente"
+  | "tipo_cliente"
+  | "cliente_attivo"
+  // ── Carico di lavoro ────────────────────────────────────────────────────
+  /** L'ora del giorno in cui il documento e' stato creato. */
+  | "ora_creazione"
+  // ── Articoli ────────────────────────────────────────────────────────────
+  | "magazzino"
+  | "reparto"
+  // ── Spedizioni ──────────────────────────────────────────────────────────
+  | "vettore"
+  | "tipo_trasporto"
+  | "causale_trasporto"
+  | "direzione_merce"
+  | "provincia_destinazione"
+  | "zona_spedizione"
+  | "mezzo_trasporto";
 
 /** Separatore dei valori di `bu_categoria`: `${bu}${SEPARATORE_RAMO}${categoria}`. */
 export const SEPARATORE_RAMO = " › ";

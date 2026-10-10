@@ -23,7 +23,7 @@ export const TRACCIATI = {
     ],
   },
   documenti_pagamento: {
-    profili: new Set(["PC", "PCA", "OC", "OCB", "OCINT", "OCT", "FC", "FCA", "FCT", "OF", "OFT", "OFR", "FF", "FFCEE"]),
+    profili: new Set(["PC", "PCA", "OC", "OCB", "OCINT", "OCT", "BC", "FC", "FCA", "FCT", "FCPA", "NAC", "OF", "OFT", "OFR", "BF", "FF", "FFCEE"]),
     chiave: "id_documento",
     dataObbligatoria: "data_registrazione",
     colonne: [
