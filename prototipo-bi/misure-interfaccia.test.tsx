@@ -269,6 +269,7 @@ describe("una misura non resta attaccata a una domanda che non e' piu' la sua", 
     await carica();
     await completaDebounce();
 
+    fireEvent.click(screen.getByRole("tab", { name: "Confronti" }));
     fireEvent.click(screen.getByRole("button", { name: /Un’altra metrica/ }));
     fireEvent.change(screen.getByLabelText("Metrica di confronto"), { target: { value: "fatturato" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi confronto" }));
@@ -288,14 +289,21 @@ describe("una misura non resta attaccata a una domanda che non e' piu' la sua", 
     preparaFetch();
     const { unmount } = render(<EditorAnalisi specIniziale={{ metrica: "margine", misura: DEFINIZIONE }} />);
     await carica();
+    fireEvent.click(screen.getByRole("tab", { name: "Confronti" }));
     expect(screen.getByRole("button", { name: "Progressivo" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Progressivo" })).toHaveAttribute("title", expect.stringContaining("misure personalizzate"));
-    expect(screen.getByRole("option", { name: /cumulato/ })).toBeDisabled();
+    // Anche dal menu del valore, il periodo «progressivo» e' spento per una misura.
+    fireEvent.click(screen.getByRole("tab", { name: "Campi" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Calcolo e periodo di/ }));
+    const progressivi = within(screen.getByRole("group", { name: /^Calcolo e periodo di/ })).getAllByRole("button", { name: /progressivo/i });
+    expect(progressivi.length).toBeGreaterThan(0);
+    progressivi.forEach((bottone) => expect(bottone).toBeDisabled());
     unmount();
 
     preparaFetch();
     render(<EditorAnalisi specIniziale={{ metrica: "ordinato" }} />);
     await carica();
+    fireEvent.click(screen.getByRole("tab", { name: "Confronti" }));
     expect(screen.getByRole("button", { name: "Progressivo" })).toBeEnabled();
   });
 

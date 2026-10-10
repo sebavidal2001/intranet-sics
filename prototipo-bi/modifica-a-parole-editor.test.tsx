@@ -125,6 +125,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function apriAParole() {
+  const bottone = screen.getByRole("button", { name: "A parole" });
+  if (bottone.getAttribute("aria-expanded") !== "true") fireEvent.click(bottone);
+}
+
 async function carica() {
   await act(async () => Promise.resolve());
   await act(async () => Promise.resolve());
@@ -150,6 +155,7 @@ function monta(aspetto?: AspettoGrafico) {
 }
 
 async function proponiEApplica(testo = "aggiungi il confronto con l'anno scorso, togli il budget, filtra su Boni") {
+  apriAParole();
   fireEvent.change(screen.getByLabelText(/Cosa vuoi cambiare/), { target: { value: testo } });
   fireEvent.click(screen.getByRole("button", { name: "Proponi la modifica" }));
   await carica();
@@ -184,7 +190,10 @@ describe("modifica a parole dentro l'editor", () => {
     await carica();
     await completaDebounce();
     // Prima: c'e' il budget fra le serie aggiunte, non c'e' l'anno precedente.
+    fireEvent.click(screen.getByRole("tab", { name: "Confronti" }));
     expect(screen.getByRole("button", { name: "Rimuovi serie Budget" })).toBeInTheDocument();
+
+    apriAParole();
 
     fireEvent.change(screen.getByLabelText(/Cosa vuoi cambiare/), { target: { value: "togli il budget" } });
     fireEvent.click(screen.getByRole("button", { name: "Proponi la modifica" }));
@@ -192,11 +201,14 @@ describe("modifica a parole dentro l'editor", () => {
     await carica();
     // La proposta e' sullo schermo, ma il riquadro vero e' ancora quello di prima.
     expect(screen.getByRole("figure", { name: "Dopo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Confronti" }));
     expect(screen.getByRole("button", { name: "Rimuovi serie Budget" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Scarta" }));
     await completaDebounce();
+    fireEvent.click(screen.getByRole("tab", { name: "Confronti" }));
     expect(screen.getByRole("button", { name: "Rimuovi serie Budget" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Confronti" }));
     expect(screen.queryByRole("button", { name: /Rimuovi serie Anno precedente/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Annulla l’ultima modifica/ })).not.toBeInTheDocument();
   });

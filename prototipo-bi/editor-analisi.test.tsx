@@ -130,6 +130,7 @@ describe("EditorAnalisi", () => {
     render(<EditorAnalisi specIniziale={{ metrica: "ordinato", raggruppa: ["bu"] }} titoloIniziale="Ordinato per BU" />);
     await caricaVocabolario();
 
+    fireEvent.click(screen.getByRole("tab", { name: "Confronti" }));
     fireEvent.click(screen.getByRole("button", { name: "Budget" }));
     fireEvent.click(screen.getByRole("button", { name: "BEP" }));
     await completaDebounce();
@@ -215,6 +216,7 @@ describe("EditorAnalisi", () => {
     const corpoPrima = JSON.parse(String(prima?.[1]?.body)) as { spec: SpecQuery };
     expect(corpoPrima.spec).not.toHaveProperty("periodo");
 
+    fireEvent.click(screen.getByRole("tab", { name: "Filtri" }));
     fireEvent.click(screen.getByRole("radio", { name: /Fissa un periodo/i }));
     fireEvent.click(screen.getByRole("button", { name: "Salva il riquadro" }));
     await act(async () => Promise.resolve());

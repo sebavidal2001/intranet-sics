@@ -89,6 +89,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function apriAParole() {
+  const bottone = screen.getByRole("button", { name: "A parole" });
+  if (bottone.getAttribute("aria-expanded") !== "true") fireEvent.click(bottone);
+}
+
 async function carica() {
   await act(async () => Promise.resolve());
   await act(async () => Promise.resolve());
@@ -189,6 +194,8 @@ describe("pozzetti dentro l'editor", () => {
 
     rilascia("Filtri", { tipo: "dimensione", chiave: "cliente" });
 
+    // Il filtro appena nato porta alla scheda «Filtri»: i pozzetti stanno in «Campi».
+    fireEvent.click(screen.getByRole("tab", { name: "Campi" }));
     expect(within(screen.getByRole("region", { name: "Filtri" })).getByText("Cliente: da scegliere")).toBeInTheDocument();
     expect((screen.getByLabelText("Dimensione filtro 1") as HTMLSelectElement).value).toBe("cliente");
     expect(screen.getByRole("button", { name: "Vai ai filtri" })).toBeInTheDocument();
@@ -258,6 +265,8 @@ describe("pozzetti dentro l'editor", () => {
     render(<EditorAnalisi specIniziale={{ metrica: "ordinato" }} titoloIniziale="x" />);
     await carica();
     await completaDebounce();
+
+    apriAParole();
 
     fireEvent.change(screen.getByLabelText(/Cosa vuoi cambiare/), { target: { value: "filtra su Boni" } });
     fireEvent.click(screen.getByRole("button", { name: "Proponi la modifica" }));
