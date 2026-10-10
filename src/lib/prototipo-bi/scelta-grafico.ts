@@ -132,6 +132,31 @@ function haDueDimensioniPiccole(risultato: RisultatoQuery): boolean {
   );
 }
 
+/**
+ * Celle di un incrocio righe × colonne (due campi, o un campo e il tempo).
+ *
+ * La mappa di calore e la matrice disegnano TUTTE le celle, anche quelle
+ * vuote: codici articolo × fornitori fa migliaia di righe per decine di
+ * colonne, cioe' centinaia di migliaia di celle. Il browser non le regge
+ * (e `Math.min(...celle)` esaurisce lo stack: pagina in errore).
+ */
+export const MASSIMO_CELLE_INCROCIO = 1500;
+
+function celleIncrocio(risultato: RisultatoQuery): number {
+  const dimensioni = risultato.spec.raggruppa ?? [];
+  if (dimensioni.length >= 2) {
+    return categorieDistintePer(risultato, dimensioni[0]) * categorieDistintePer(risultato, dimensioni[1]);
+  }
+  if (dimensioni.length === 1 && risultato.spec.granularita !== undefined) {
+    return categorieDistintePer(risultato, dimensioni[0]) * periodiDistinti(risultato);
+  }
+  return 0;
+}
+
+function incrocioTroppoGrande(risultato: RisultatoQuery): boolean {
+  return celleIncrocio(risultato) > MASSIMO_CELLE_INCROCIO;
+}
+
 function haFlussoDecrescente(risultato: RisultatoQuery): boolean {
   return risultato.righe.length >= 2 && risultato.righe.every(
     (riga, indice, righe) => indice === 0 || riga.valore <= righe[indice - 1].valore
@@ -178,6 +203,12 @@ function determinaScelta(risultato: RisultatoQuery): SceltaBase {
     return {
       tipo: "linee",
       motivo: `${categorie} categorie nel tempo: mostro le prime 6 per valore; le altre ${categorie - 6} restano escluse per mantenere il confronto leggibile.`,
+    };
+  }
+  if (raggruppamenti.length === 2 && incrocioTroppoGrande(risultato)) {
+    return {
+      tipo: "tabella",
+      motivo: "Due campi con troppe combinazioni per una mappa o una matrice: la tabella le elenca tutte, una riga ciascuna.",
     };
   }
   if (raggruppamenti.length === 2) {
@@ -300,7 +331,10 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
   }
 
   possibili.push("tabella");
-  return [...new Set(possibili)];
+  const unici = [...new Set(possibili)];
+  if (!incrocioTroppoGrande(risultato)) return unici;
+  const daTogliere: TipoGrafico[] = raggruppamenti.length === 2 ? ["heatmap", "matrice", "barreImpilate"] : ["heatmap"];
+  return unici.filter((tipo) => !daTogliere.includes(tipo));
 }
 
 function determinaSceltaAnalisi(serie: SerieAnalisiEseguita[]): SceltaBase {

@@ -488,10 +488,17 @@ export function Heatmap({
 }) {
   const { palette, imp } = useImpostazioni();
   const { min, max, assoluto } = useMemo(() => {
-    const tutti: number[] = [];
-    for (const r of righe) for (const c of colonne) tutti.push(valori[r]?.[c] ?? 0);
-    const mn = Math.min(...tutti, 0);
-    const mx = Math.max(...tutti, 0);
+    // Ciclo e non `Math.min(...celle)`: lo spread di centinaia di migliaia di
+    // argomenti manda in errore la pagina.
+    let mn = 0;
+    let mx = 0;
+    for (const r of righe) {
+      for (const c of colonne) {
+        const v = valori[r]?.[c] ?? 0;
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+      }
+    }
     return { min: mn, max: mx, assoluto: Math.max(Math.abs(mn), Math.abs(mx)) };
   }, [righe, colonne, valori]);
 
