@@ -42,7 +42,7 @@ import {
   Pendenza,
   Posizioni,
 } from "./grafici-nuovi";
-import { AspettoLocale, useImpostazioni } from "./impostazioni";
+import { AspettoLocale, SelezioneLocale, useImpostazioni } from "./impostazioni";
 import { BarreImpilate, datiBarreImpilate } from "./barre-impilate";
 import { MappaVisite } from "./mappa-visite";
 import {
@@ -67,6 +67,8 @@ interface ProprietaGraficoDaAnalisi {
   /** Colori, legenda, assi e totali scelti per questo riquadro. */
   aspetto?: AspettoGrafico | null;
   onClickEtichetta?: (etichetta: string) => void;
+  /** La voce scelta con un clic: resta evidenziata, le altre si attenuano. */
+  selezionata?: string | null;
 }
 
 function totaleAutomatico(unita: UnitaMisura): ColonnaAnalitica["totale"] {
@@ -933,10 +935,12 @@ function TabellaComposita({
  * L'aspetto del riquadro avvolge tutto il sottoalbero: i grafici lo leggono
  * dal contesto come le impostazioni generali, senza doverlo ricevere a mano.
  */
-export function GraficoDaAnalisi({ aspetto, ...proprieta }: ProprietaGraficoDaAnalisi): JSX.Element {
+export function GraficoDaAnalisi({ aspetto, selezionata, ...proprieta }: ProprietaGraficoDaAnalisi): JSX.Element {
   return (
     <AspettoLocale aspetto={aspetto}>
-      <CorpoGraficoDaAnalisi {...proprieta} />
+      <SelezioneLocale valore={selezionata}>
+        <CorpoGraficoDaAnalisi {...proprieta} />
+      </SelezioneLocale>
     </AspettoLocale>
   );
 }

@@ -34,6 +34,7 @@ import {
   propsAsseValori,
   propsLegenda,
   useImpostazioni,
+  useSelezione,
 } from "./impostazioni";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -512,6 +513,8 @@ export function GraficoBarre({
   selezionata?: string | null;
 }) {
   const { imp, colore: coloreSerie, coloreFisso, aspetto, durata } = useImpostazioni();
+  const dalContesto = useSelezione();
+  selezionata = selezionata ?? dalContesto;
   if (!risultato) return <Scheletro altezza={altezza} />;
   const limite = massimo ?? imp.topN;
   const dati = risultato.righe.slice(0, limite).map((r) => ({
@@ -742,6 +745,8 @@ export function GraficoTorta({
   selezionata?: string | null;
 }) {
   const { imp, coloreNome, aspetto, durata } = useImpostazioni();
+  const dalContesto = useSelezione();
+  selezionata = selezionata ?? dalContesto;
   if (!risultato) return <Scheletro altezza={altezza} />;
   const righe = risultato.righe.slice(0, massimo ?? Math.min(8, imp.topN));
   if (righe.length === 0) return <Vuoto altezza={altezza} />;

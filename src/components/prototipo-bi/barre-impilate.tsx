@@ -11,7 +11,7 @@
 
 import { useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { propsAsseCategorie, propsAsseValori, propsLegenda, useImpostazioni } from "./impostazioni";
+import { propsAsseCategorie, propsAsseValori, propsLegenda, useImpostazioni, useSelezione } from "./impostazioni";
 import { valoreFmt } from "./primitivi";
 import type { RisultatoQuery } from "@/lib/prototipo-bi/tipi";
 
@@ -63,6 +63,7 @@ export function BarreImpilate({
   onClick?: (etichetta: string) => void;
 }) {
   const { coloreNome, imp, durata, aspetto, legenda } = useImpostazioni();
+  const selezionata = useSelezione();
   const dati = useMemo(() => datiBarreImpilate(risultato), [risultato]);
   if (!dati) return null;
   const fmt = (v: number) => valoreFmt(v, risultato.unita, imp.numeriCompatti);
@@ -81,6 +82,9 @@ export function BarreImpilate({
             dataKey={p}
             stackId="pila"
             fill={p === "Altri" ? "#cbd5e1" : coloreNome(p, i)}
+            // La pila scelta resta piena, le altre si attenuano.
+            fillOpacity={selezionata && selezionata !== p ? 0.28 : 1}
+            cursor={onClick ? "pointer" : undefined}
             animationDuration={durata}
             onClick={() => onClick?.(p)}
           />

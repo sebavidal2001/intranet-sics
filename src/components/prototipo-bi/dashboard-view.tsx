@@ -685,7 +685,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
             )}
 
             {incrociati.length > 0 && (
-              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm" role="status">
+              <div className="sticky top-2 z-30 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm shadow-sm backdrop-blur" role="status">
                 <span className="text-xs font-semibold uppercase tracking-wide text-primary">Filtro dal grafico</span>
                 {incrociati.map((f) => (
                   <button
@@ -713,6 +713,21 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                     (voce) => voce.id === riquadro.id || voce.id.startsWith(`${riquadro.id}:`)
                   );
                   const ignorati = [...new Set(batchRiquadro.flatMap((voce) => voce.ignorati))];
+                  // Cosa il filtro dal grafico fa a QUESTO riquadro: se e' il suo
+                  // stesso grafico, la voce resta evidenziata (e gli altri si
+                  // attenuano); se e' un altro, il riquadro si ricalcola e lo dice;
+                  // se la dimensione non lo riguarda, dice che non e' collegato.
+                  const dimensioniQui = riquadro.analisi.spec.raggruppa ?? [];
+                  const selezionataQui =
+                    dimensioniQui.length === 1
+                      ? String(incrociati.find((f) => f.campo === dimensioniQui[0])?.valore ?? "") || null
+                      : null;
+                  const filtratoDa = incrociati.filter(
+                    (f) => !dimensioniQui.includes(f.campo) && !ignorati.includes(f.campo)
+                  );
+                  const nonCollegato = incrociati.filter(
+                    (f) => !dimensioniQui.includes(f.campo) && ignorati.includes(f.campo)
+                  );
                   const serieEseguite = batchRiquadro.flatMap((voce): SerieAnalisiEseguita[] => {
                     const risultato = risultati[voce.id];
                     return risultato
@@ -725,7 +740,9 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                   return (
                     <article key={riquadro.id} onClickCapture={(e) => { clicPerDocumenti.current = e.ctrlKey || e.altKey || e.metaKey; }} className={`col-span-12 min-w-0 rounded-xl border border-border bg-bg ${COLONNE[riquadro.larghezza] ?? "lg:col-span-6"}`}>
                       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-                        <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} fissato dentro il riquadro</p>}</div>
+                        <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} fissato dentro il riquadro</p>}
+                          {filtratoDa.length > 0 && <p className="mt-1 inline-flex flex-wrap items-center gap-1 text-[11px] font-medium text-primary" data-testid="filtrato-da"><Filter className="h-3 w-3" aria-hidden />Filtrato da {filtratoDa.map((f) => `${DIMENSIONI[f.campo]?.etichetta ?? f.campo}: ${String(f.valore)}`).join(" · ")}</p>}
+                          {nonCollegato.length > 0 && <p className="mt-1 text-[11px] text-text-muted" data-testid="non-collegato">Non collegato a {nonCollegato.map((f) => DIMENSIONI[f.campo]?.etichetta ?? f.campo).join(", ")}</p>}</div>
                         {modificabile && <div className="flex items-center gap-1">
                           <button type="button" onClick={() => spostaRiquadro(indice, -1)} disabled={indice === 0} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta prima"><ChevronLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => spostaRiquadro(indice, 1)} disabled={indice === paginaAttiva.riquadri.length - 1} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta dopo"><ChevronRight className="h-4 w-4" /></button>
@@ -743,7 +760,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                         </div>}
                       </header>
                       <div className="min-h-48 p-4">
-                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} aspetto={riquadro.analisi.aspetto} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => cliccaEtichetta(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
+                        {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} selezionata={selezionataQui} aspetto={riquadro.analisi.aspetto} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => cliccaEtichetta(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
                       </div>
                     </article>
                   );

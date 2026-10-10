@@ -35,7 +35,7 @@ import {
   ZAxis,
 } from "recharts";
 import { euro, numero, PALETTE, Vuoto } from "./primitivi";
-import { useImpostazioni } from "./impostazioni";
+import { useImpostazioni, useSelezione } from "./impostazioni";
 
 const ASSE = { fontSize: 11, fill: "#64748b" };
 const GRIGLIA = "#e2e8f0";
@@ -258,6 +258,7 @@ export function Pareto({
   onClick?: (etichetta: string) => void;
 }) {
   const { palette, imp, durata } = useImpostazioni();
+  const selezionata = useSelezione();
   const elaborati = useMemo(() => {
     const ordinati = [...dati].sort((a, b) => b.valore - a.valore);
     const totale = ordinati.reduce((s, d) => s + d.valore, 0);
@@ -331,7 +332,11 @@ export function Pareto({
             }}
           >
             {elaborati.map((d, i) => (
-              <Cell key={i} fill={indice80 >= 0 && i <= indice80 ? palette.serie[0] : "#cbd5e1"} />
+              <Cell
+                key={i}
+                fill={indice80 >= 0 && i <= indice80 ? palette.serie[0] : "#cbd5e1"}
+                fillOpacity={selezionata && selezionata !== d.nomeCompleto ? 0.28 : 1}
+              />
             ))}
           </Bar>
           <Line

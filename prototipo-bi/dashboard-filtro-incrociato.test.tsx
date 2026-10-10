@@ -10,13 +10,18 @@ vi.mock("@/components/prototipo-bi/grafico-da-risultato", () => ({
   GraficoDaAnalisi: ({
     onClickEtichetta,
     serie,
+    selezionata,
   }: {
     onClickEtichetta?: (etichetta: string) => void;
     serie: Array<{ spec: { raggruppa?: string[] } }>;
+    selezionata?: string | null;
   }) => (
-    <button type="button" onClick={() => onClickEtichetta?.("IMA spa")}>
-      clic {serie[0]?.spec.raggruppa?.[0] ?? "totale"}
-    </button>
+    <div>
+      <button type="button" onClick={() => onClickEtichetta?.("IMA spa")}>
+        clic {serie[0]?.spec.raggruppa?.[0] ?? "totale"}
+      </button>
+      <span data-testid={`selezionata-${serie[0]?.spec.raggruppa?.[0] ?? "totale"}`}>{selezionata ?? "nessuna"}</span>
+    </div>
   ),
 }));
 
@@ -39,6 +44,8 @@ const DASHBOARD: DashboardCompleta = {
           analisi: analisi("a2", "Clienti", { metrica: "ordinato", raggruppa: ["cliente"] }) },
         { id: "r3", pagina_id: "p1", analisi_id: "a3", titolo: "Visite", posizione: 2, larghezza: 6, altezza: 4, grafico: "barre",
           analisi: analisi("a3", "Visite", { metrica: "visite_numero", raggruppa: ["agente"] }) },
+        { id: "r4", pagina_id: "p1", analisi_id: "a4", titolo: "Budget", posizione: 3, larghezza: 6, altezza: 4, grafico: "barre",
+          analisi: analisi("a4", "Budget", { metrica: "budget", raggruppa: ["bu"] }) },
       ],
     },
   ],
@@ -101,6 +108,51 @@ describe("filtro incrociato sulle dashboard", () => {
     await waitFor(() => expect(query()).toHaveLength(2));
     fireEvent.click(screen.getByRole("button", { name: "Togli tutti" }));
     await waitFor(() => expect(query()).toHaveLength(3));
+  });
+});
+
+describe("il filtro dal grafico si vede", () => {
+  async function dopoIlClic() {
+    const query = preparaFetch();
+    render(<DashboardView dashboardIniziale={DASHBOARD} />);
+    await waitFor(() => expect(query()).toHaveLength(1));
+    fireEvent.click(screen.getByText("clic cliente"));
+    await waitFor(() => expect(query()).toHaveLength(2));
+  }
+
+  it("nel riquadro cliccato la voce scelta resta evidenziata; negli altri non c'e' nessuna selezione", async () => {
+    await dopoIlClic();
+    expect(screen.getByTestId("selezionata-cliente")).toHaveTextContent("IMA spa");
+    expect(screen.getByTestId("selezionata-totale")).toHaveTextContent("nessuna");
+    expect(screen.getByTestId("selezionata-agente")).toHaveTextContent("nessuna");
+  });
+
+  it("gli altri riquadri dicono da cosa sono filtrati", async () => {
+    await dopoIlClic();
+    const filtrati = screen.getAllByTestId("filtrato-da").map((e) => e.textContent);
+    // Totale e Visite si ricalcolano; il riquadro cliccato e il budget no.
+    expect(filtrati).toHaveLength(2);
+    for (const testo of filtrati) expect(testo).toContain("Cliente: IMA spa");
+  });
+
+  it("un riquadro che la dimensione non riguarda dice di non essere collegato", async () => {
+    await dopoIlClic();
+    const nonCollegati = screen.getAllByTestId("non-collegato");
+    expect(nonCollegati).toHaveLength(1);
+    expect(nonCollegati[0]).toHaveTextContent("Non collegato a Cliente");
+  });
+
+  it("la fascia del filtro resta in vista mentre si scorre", async () => {
+    await dopoIlClic();
+    expect(screen.getByRole("status", { name: "" }).className).toContain("sticky");
+  });
+
+  it("togliendo il filtro spariscono evidenziazione e indicatori", async () => {
+    await dopoIlClic();
+    fireEvent.click(screen.getByRole("button", { name: "Togli tutti" }));
+    await waitFor(() => expect(screen.queryByTestId("filtrato-da")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("non-collegato")).not.toBeInTheDocument();
+    expect(screen.getByTestId("selezionata-cliente")).toHaveTextContent("nessuna");
   });
 });
 

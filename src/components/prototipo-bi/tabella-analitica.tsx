@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Search } from "lucide-react";
 import { euro, numero, valoreFmt } from "./primitivi";
 import { Sparkline } from "./grafici-avanzati";
-import { useImpostazioni } from "./impostazioni";
+import { useImpostazioni, useSelezione } from "./impostazioni";
 import type { AggregazioneTotale, RisultatoQuery, UnitaMisura } from "@/lib/prototipo-bi/tipi";
 
 /** Chiave di ordinamento riservata alla colonna delle voci. */
@@ -191,6 +191,7 @@ export function TabellaAnalitica({
   senzaColonnaVoce?: boolean;
 }) {
   const { aspetto } = useImpostazioni();
+  const selezionata = useSelezione();
   // «valore» e' la scelta generica del pannello Aspetto, che non conosce le
   // chiavi delle colonne: vuol dire la prima colonna numerica.
   const ordinamentoRiquadro =
@@ -535,14 +536,17 @@ export function TabellaAnalitica({
           </thead>
           <tbody>
             {visibili.map((r) => {
-              const evidenziata = rigaEvidenziata === r.chiave;
+              // La riga scelta con un clic nella dashboard: evidenziata, le altre
+              // si attenuano. Una riga evidenziata da fuori (`rigaEvidenziata`) vince.
+              const evidenziata = (rigaEvidenziata ?? selezionata) === r.chiave;
+              const attenuata = !rigaEvidenziata && selezionata !== null && selezionata !== r.chiave;
               return (
                 <tr
                   key={r.chiave}
                   onClick={() => onClickRiga?.(r.chiave)}
                   className={`border-b border-border/50 last:border-0 transition-colors ${
                     onClickRiga ? "cursor-pointer hover:bg-primary/5" : ""
-                  } ${evidenziata ? "bg-primary/10" : ""}`}
+                  } ${evidenziata ? "bg-primary/10 font-semibold" : ""} ${attenuata ? "opacity-45" : ""}`}
                 >
                   {!senzaColonnaVoce && (
                   <td

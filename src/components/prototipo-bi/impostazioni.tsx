@@ -17,6 +17,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -260,6 +261,25 @@ export function ImpostazioniProvider({ children }: { children: React.ReactNode }
   return (
     <ContestoImpostazioni.Provider value={valore}>{children}</ContestoImpostazioni.Provider>
   );
+}
+
+/**
+ * La voce che l'utente ha scelto cliccando un grafico della dashboard.
+ *
+ * Passa per un contesto e non per una proprieta': i grafici sono una trentina e
+ * quasi tutti nascono da un componente solo (`GraficoDaAnalisi`), e infilare una
+ * proprieta' in ognuno avrebbe spezzato quelli che non la usano. Chi sa
+ * attenuare il resto la legge con `useSelezione`; gli altri la ignorano.
+ */
+const ContestoSelezione = createContext<string | null>(null);
+
+export function SelezioneLocale({ valore, children }: { valore: string | null | undefined; children: ReactNode }) {
+  return <ContestoSelezione.Provider value={valore ?? null}>{children}</ContestoSelezione.Provider>;
+}
+
+/** La voce selezionata nel riquadro (null se nessuna): le altre si attenuano, questa resta piena. */
+export function useSelezione(): string | null {
+  return useContext(ContestoSelezione);
 }
 
 /**
