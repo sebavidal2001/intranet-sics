@@ -19,7 +19,7 @@
  *    di essere raccontato.
  */
 
-import { chiaveDocumento, esegui, quantitaOrientata } from "./semantico";
+import { chiaveDocumento, esegui, preventivoInCorso, quantitaOrientata } from "./semantico";
 import {
   budgetProgressivoAl,
   distribuisci,
@@ -527,7 +527,8 @@ function rilevaConcentrazione(ctx: ContestoRilevatori): Segnale[] {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function rilevaPipeline(ctx: ContestoRilevatori): Segnale[] {
-  const righe = righeScope(ctx, ctx.snapshot.dataset.preventivi_aperti);
+  // Aperti = in corso (PIC): i preventivi chiusi con un motivo non invecchiano, sono chiusi.
+  const righe = righeScope(ctx, ctx.snapshot.dataset.preventivi_aperti).filter(preventivoInCorso);
   if (righe.length === 0) return [];
 
   const vecchi = righe.filter(

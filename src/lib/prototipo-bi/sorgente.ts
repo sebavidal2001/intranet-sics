@@ -18,6 +18,7 @@ import { etichettaBusinessUnit, controllaTassonomia, ricollocaNonAssegnate } fro
 import type { ChiaveDataset, ChiaveDatasetVendite, RigaFatto, Snapshot } from "./tipi";
 import { comeFatti, daVista, type RigaAcquisto } from "./acquisti";
 import { comeFatti as visiteComeFatti, daVista as visitaDaVista } from "./visite";
+import { fatturaFornitoreComeFatto, pagamentoComeFatto, scadenzaComeFatto } from "./fornitori";
 
 /** Viste di origine. `importoCampo` cambia solo per i preventivi. */
 const VISTE: Record<ChiaveDatasetVendite, { vista: string; importoCampo: string }> = {
@@ -243,6 +244,29 @@ async function caricaVisite(): Promise<RigaFatto[] | undefined> {
   }
 }
 
+/**
+ * Fatture fornitore, condizioni di pagamento e scadenzario (migration 150).
+ * Come acquisti e visite: un guasto in una delle tre viste non deve fermare il
+ * BI delle vendite. Il dataset resta assente e le sue metriche lo dichiarano.
+ */
+async function caricaFornitori(): Promise<Pick<NonNullable<Snapshot["dataset"]>, "fatture_fornitore" | "pagamenti" | "scadenze">> {
+  const una = async (vista: string, comeFatto: (g: RigaGrezza) => RigaFatto): Promise<RigaFatto[] | undefined> => {
+    try {
+      const grezze = await scaricaPaginato<RigaGrezza>(vista);
+      return grezze.map(comeFatto);
+    } catch (e) {
+      console.warn(`[BI] ${vista} non caricata:`, e instanceof Error ? e.message : e);
+      return undefined;
+    }
+  };
+  const [fatture_fornitore, pagamenti, scadenze] = await Promise.all([
+    una("bi_fatture_fornitore", fatturaFornitoreComeFatto),
+    una("bi_documenti_pagamento", pagamentoComeFatto),
+    una("bi_scadenzario", scadenzaComeFatto),
+  ]);
+  return { fatture_fornitore, pagamenti, scadenze };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Costi di acquisto — il costo VALIDO ALLA DATA DI VENDITA
 //
@@ -453,6 +477,7 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
 
   const acquisti = await caricaAcquisti();
   const visite = await caricaVisite();
+  const fornitori = await caricaFornitori();
 
   // Il costo si aggancia a ogni riga che ha un articolo, prendendo la
   // variazione valida ALLA DATA DEL DOCUMENTO. Le righe senza corrispondenza
@@ -494,6 +519,16 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
   if (visite) {
     dataset.visite = visite;
     conteggi.visite = visite.length;
+  }
+
+  // Fatture fornitore, pagamenti e scadenze: stesso trattamento, fuori dalla
+  // tassonomia e dalla data di riferimento (le scadenze arrivano al 2028).
+  for (const chiave of ["fatture_fornitore", "pagamenti", "scadenze"] as const) {
+    const righe = fornitori[chiave];
+    if (righe) {
+      dataset[chiave] = righe;
+      conteggi[chiave] = righe.length;
+    }
   }
 
   // La data di riferimento ("oggi") deve venire SOLO dai dataset che guardano
@@ -587,10 +622,15 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * 8 (10/10/2026): `profilo` (tipo documento) sulle vendite e sugli acquisti,
  * `esitoVisita` e `prossimaVisita` sulle visite: una cache vecchia non li ha.
  *
+ * 9 (10/10/2026): `dataset.fatture_fornitore`, `dataset.pagamenti`,
+ * `dataset.scadenze` (migration 150), le nuove dimensioni e la causale sui
+ * preventivi: una cache vecchia non ha i dataset e le metriche risponderebbero
+ * zero. Cambia anche il significato di «preventivi aperti» (solo PIC).
+ *
  * 6 (08/10/2026): `dataset.visite`, le visite dei commerciali (metrica
  * visite_numero; dimensioni cap, provincia, grado, tipo_visita).
  */
-const VERSIONE_FORMA = 8;
+const VERSIONE_FORMA = 9;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.

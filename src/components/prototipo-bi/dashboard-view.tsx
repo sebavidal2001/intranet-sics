@@ -47,7 +47,7 @@ import {
 } from "./aggiungi-riquadro";
 import { GraficoDaAnalisi } from "./grafico-da-risultato";
 import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti";
-import { DATASET_DI_METRICA } from "@/lib/prototipo-bi/gruppi-campi";
+import { DATASET_DI_METRICA, METRICHE_SOLO_IN_CORSO } from "@/lib/prototipo-bi/gruppi-campi";
 import { preparaEsecuzioneAnalisi } from "@/lib/prototipo-bi/analisi-composita";
 import { applicaFiltriIncrociati, type FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
 import { DIMENSIONI } from "@/lib/prototipo-bi/semantico";
@@ -267,6 +267,10 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
               valore: String(filtro.valore),
             })),
           { campo: dimensione, op: "eq" as const, valore: etichetta },
+          // «Aperti» sono i preventivi in corso: l'elenco deve contare gli stessi del numero.
+          ...(METRICHE_SOLO_IN_CORSO.has(spec.metrica) && dimensione !== "causale_codice"
+            ? [{ campo: "causale_codice" as const, op: "eq" as const, valore: "PIC" }]
+            : []),
         ],
         periodo: spec.periodo ?? filtriPagina.periodo,
       });

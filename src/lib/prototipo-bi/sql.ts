@@ -9,7 +9,12 @@ COMMERCIALE — schema public, colonne con nomi tra virgolette:
   "Codice Cliente", "Numero Doc.", "Codice Articolo", "Descrizione articolo", "Quantità".
 - bi_preventivi_backoffice: le colonne precedenti più "Importo Inevaso",
   "Valore Totale Riga", "Convertito In Ordine", "Creato da", "Data Creazione",
-  "Data Richiesta Cliente", "Giorni Risposta", "Riga evasa".
+  "Data Richiesta Cliente", "Giorni Risposta", "Riga evasa", "Causale Magazzino Codice",
+  "Causale Magazzino Descrizione".
+  PREVENTIVO APERTO = "Causale Magazzino Codice" = 'PIC' (preventivo in corso) con "Importo Inevaso" > 0.
+  Le altre causali (PF4 cliente non prende il lavoro, PF1 prezzo, PF3 altre motivazioni, PF5 senza
+  motivazione, PF2 consegna, AA articolo alternativo, PA preventivo alternativo, PP prezzario, POR
+  preventivo ordinato) sono preventivi già chiusi dal commerciale, anche se la riga resta non evasa.
 
 ARTICOLI E ACQUISTI — schema powerbi:
 - bi_cruscotto_articoli_corrente: "Codice Articolo", "Descrizione", "UC", "Categoria",
@@ -40,6 +45,28 @@ ORDINI DI ACQUISTO A FORNITORE — schema public, colonne SENZA virgolette:
   Puntuale = primo_arrivo <= coalesce(data_confermata, data_prevista).
   Scaduta = not riga_evasa and not chiusa_forzata and qta_arrivata < quantita
   and coalesce(data_confermata, data_prevista) < current_date.
+
+FATTURE FORNITORE, CONDIZIONI DI PAGAMENTO E SCADENZARIO — schema public, colonne SENZA virgolette:
+- bi_fatture_fornitore: una riga per riga di fattura (FF, FFCEE) o nota di credito (NAF, NAFCEE)
+  fornitore dal 2024. id_riga, profilo, nota_credito, numero_registrazione, numero_fattura (quello
+  del fornitore), data_fattura, data_registrazione, codice_fornitore, fornitore, codice_articolo,
+  descrizione, gruppo_articoli, quantita_netta, valore (positivo), valore_netto (negativo per le note
+  di credito: USA QUESTO per i totali), id_riga_ordine, profilo_ordine (OF/OFT/OFR/RECLAVES; null = nessun
+  legame all'ordine), numero_ordine, data_ordine, condizione_codice, condizione_descrizione, id_documento.
+- bi_documenti_pagamento: una riga per DOCUMENTO (PC/PCA preventivi, OC/OCB/OCINT/OCT ordini cliente, FC/FCA/FCT
+  fatture cliente, OF/OFT/OFR ordini fornitore, FF/FFCEE fatture fornitore) dal 2024. id_documento, profilo,
+  numero_registrazione, numero_documento, data_documento, data_registrazione, codice_soggetto, soggetto
+  (cliente o fornitore), condizione_codice, condizione_descrizione, importo_documento (imponibile), n_scadenze,
+  prima_scadenza, ultima_scadenza, giorni_medi (giorni fra data documento e scadenze, pesati sull'importo
+  delle rate; null se il documento non ha scadenze: quasi tutti gli ordini), importo_scadenze (IVA compresa),
+  saldo_aperto, sconto_cassa.
+- bi_scadenzario: una riga per scadenza ancora aperta. id_scadenza, tipo ('A' = incasso atteso dal cliente,
+  'P' = pagamento dovuto al fornitore), data_scadenza, data_documento, importo (positivo), saldo (negativo
+  per le passive), profilo, numero_documento, id_documento, codice_soggetto, soggetto, condizione_codice,
+  esito_pagamento. Fotografia di oggi.
+  ATTENZIONE: nel gestionale NON esiste alcun legame fra ordine cliente e ordine fornitore. Non dire mai
+  che un acquisto "serve" un ordine cliente: la copertura incassi/pagamenti si legge a calendario
+  (bi_scadenzario per mese di data_scadenza), non per singolo ordine.
 
 COSA È CONSENTITO
 SELECT e WITH, inclusi CTE, join, subquery, CASE, HAVING, funzioni finestra,
@@ -102,6 +129,9 @@ const VISTE_AUTORIZZATE = new Set([
   "public.bi_controllo_banco",
   "public.bi_consegnato_futuro_per_mese",
   "public.bi_acquisti",
+  "public.bi_fatture_fornitore",
+  "public.bi_documenti_pagamento",
+  "public.bi_scadenzario",
   "powerbi.bi_cruscotto_articoli_corrente",
   "powerbi.bi_ultimo_costo_storico",
   "powerbi.bi_variazioni_ultimo_costo",

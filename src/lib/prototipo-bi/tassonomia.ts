@@ -18,6 +18,9 @@ export type ChiaveTipologia =
   | "margine"
   | "acquisti"
   | "visite"
+  | "fornitori"
+  | "pagamenti"
+  | "scadenzario"
   /** Le misure personalizzate salvate: non sta in `TIPOLOGIE`, la aggiunge il vocabolario. */
   | "misure";
 
@@ -58,6 +61,7 @@ export const TIPOLOGIE: Tipologia[] = [
       "valore_medio_preventivo",
       "n_preventivi",
       "preventivi_aperti",
+      "preventivi_inevaso",
     ],
   },
   {
@@ -114,6 +118,24 @@ export const TIPOLOGIE: Tipologia[] = [
     descrizione: "Visite dei commerciali ai clienti: quante, dove, con quale esito. Con la mappa si vede anche il giro di ogni giornata.",
     metriche: ["visite_numero"],
   },
+  {
+    chiave: "fornitori",
+    etichetta: "Fatture fornitore",
+    descrizione: "Le fatture e le note di credito dei fornitori: quanto fatturano, di che cosa, con quale condizione di pagamento.",
+    metriche: ["fatturato_fornitore", "n_fatture_fornitore"],
+  },
+  {
+    chiave: "pagamenti",
+    etichetta: "Tempi di pagamento",
+    descrizione: "Giorni medi di incasso dai clienti e di pagamento ai fornitori, dalle scadenze delle fatture.",
+    metriche: ["imponibile_documenti", "n_documenti_pagamento", "giorni_incasso", "giorni_pagamento"],
+  },
+  {
+    chiave: "scadenzario",
+    etichetta: "Scadenzario",
+    descrizione: "Incassi attesi e pagamenti dovuti per data di scadenza: la base del calendario di cassa.",
+    metriche: ["incassi_attesi", "pagamenti_dovuti", "saldo_cassa"],
+  },
 ];
 
 const DIMENSIONI_COMUNI: Dimensione[] = [
@@ -149,10 +171,28 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
       (dimensione) => dimensione in DIMENSIONI
     );
   }
+  // Fatture fornitore, pagamenti e scadenze: niente agente, cliente o business
+  // unit della vendita. Il fornitore e' sulle fatture e sulle scadenze passive;
+  // il soggetto (cliente o fornitore) su tutte e tre.
+  if (dataset === "fatture_fornitore") {
+    return (["fornitore", "categoria", "codice_articolo", "articolo", "profilo", "condizione_pagamento", "profilo_ordine", "numero_fattura_fornitore", "documento"] as Dimensione[]).filter(
+      (dimensione) => dimensione in DIMENSIONI
+    );
+  }
+  if (dataset === "pagamenti") {
+    return (["soggetto", "profilo", "condizione_pagamento", "numero_fattura_fornitore", "documento"] as Dimensione[]).filter(
+      (dimensione) => dimensione in DIMENSIONI
+    );
+  }
+  if (dataset === "scadenze") {
+    return (["tipo_scadenza", "soggetto", "profilo", "condizione_pagamento", "documento"] as Dimensione[]).filter(
+      (dimensione) => dimensione in DIMENSIONI
+    );
+  }
   const dimensioni = [...DIMENSIONI_COMUNI];
 
   if (dataset === "preventivi_aperti") {
-    dimensioni.push("creatore", "esito", "fascia_eta");
+    dimensioni.push("creatore", "esito", "fascia_eta", "causale", "causale_codice");
   }
 
   // Il dataset delle consegne e quello del banco sono gli unici che espongono

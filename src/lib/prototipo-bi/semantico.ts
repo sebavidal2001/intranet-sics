@@ -37,6 +37,7 @@ import { anniDelPeriodo, dataNelPeriodo, normalizzaPeriodo, spostaPeriodo } from
 import { SEPARATORE_RAMO } from "./tipi";
 import { dataDaIso, settimanaIso } from "./calendario";
 import { dimensioniPerMetrica, TIPOLOGIE } from "./tassonomia";
+import { PROFILI_FATTURA_CLIENTE, PROFILI_FATTURA_FORNITORE } from "./fornitori";
 import {
   controllaDimensioniMisura,
   eseguiMisura,
@@ -100,6 +101,23 @@ interface DefinizioneMetrica {
  * righe di un ordine possono avere date diverse. Per loro l'identita' e' il
  * numero com'e'. Le visite hanno come `documento` il proprio id, gia' unico.
  */
+/**
+ * Un preventivo APERTO e' un preventivo IN CORSO: causale `PIC`, con ancora
+ * dell'inevaso sulla riga.
+ *
+ * Nel gestionale una riga di preventivo resta «non evasa» anche quando il
+ * commerciale l'ha gia' chiusa a mano con un motivo («Cliente non prende il
+ * lavoro» PF4, «Prezzo» PF1, «Preventivo alternativo» PA…): la causale e'
+ * l'esito scritto dal commerciale, e non evade la riga. Contare come aperto
+ * tutto l'inevaso dava 4,45 M€ (881 documenti, 10/10/2026) contro 1,23 M€ di
+ * pipeline davvero viva. Deciso il 10/10/2026: aperti = PIC. L'inevaso di ogni
+ * causale resta leggibile con `preventivi_inevaso`.
+ */
+export const CAUSALE_IN_CORSO = "PIC";
+export function preventivoInCorso(r: RigaFatto): boolean {
+  return r.causaleCodice === CAUSALE_IN_CORSO && r.importo > 0.01;
+}
+
 export function chiaveDocumento(r: RigaFatto): string {
   if (r.fornitore !== undefined) return r.documento;
   return `${r.documento}|${r.data}|${r.codiceCliente ?? ""}`;
@@ -162,7 +180,18 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   preventivi_aperti: {
     chiave: "preventivi_aperti",
     etichetta: "Preventivi aperti",
-    descrizione: "Importo inevaso dei preventivi ancora aperti.",
+    descrizione:
+      "Importo inevaso dei preventivi in corso (causale PIC). Quelli chiusi dal commerciale con un motivo — cliente non prende il lavoro, prezzo, alternativo… — non sono aperti, anche se il gestionale li lascia non evasi.",
+    dataset: "preventivi_aperti",
+    aggregazione: "somma",
+    unita: "euro",
+    filtroImplicito: preventivoInCorso,
+  },
+  preventivi_inevaso: {
+    chiave: "preventivi_inevaso",
+    etichetta: "Inevaso, tutte le causali",
+    descrizione:
+      "Importo inevaso di TUTTE le righe di preventivo non evase, qualunque sia la causale: comprende i preventivi già chiusi dal commerciale (cliente non prende il lavoro, prezzo, alternativo…). Per la sola pipeline viva usa «Preventivi aperti».",
     dataset: "preventivi_aperti",
     aggregazione: "somma",
     unita: "euro",
@@ -194,10 +223,11 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   n_preventivi: {
     chiave: "n_preventivi",
     etichetta: "Numero preventivi",
-    descrizione: "Preventivi aperti distinti.",
+    descrizione: "Preventivi in corso (causale PIC) distinti.",
     dataset: "preventivi_aperti",
     aggregazione: "conta_documenti",
     unita: "numero",
+    filtroImplicito: preventivoInCorso,
   },
   // ── Documenti: quanti e di che valore medio ──────────────────────────────
   // Un documento = un valore distinto di `chiaveDocumento` (numero + data +
@@ -334,6 +364,7 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     aggregazione: "media",
     unita: "giorni",
     valore: (r) => r.giorniAperto ?? null,
+    filtroImplicito: preventivoInCorso,
   },
   eta_massima_apertura: {
     chiave: "eta_massima_apertura",
@@ -343,6 +374,7 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     aggregazione: "massimo",
     unita: "giorni",
     valore: (r) => r.giorniAperto ?? null,
+    filtroImplicito: preventivoInCorso,
   },
   preventivi_aperti_oltre_90: {
     chiave: "preventivi_aperti_oltre_90",
@@ -353,6 +385,7 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     aggregazione: "somma",
     unita: "euro",
     valore: (r) => ((r.giorniAperto ?? 0) > 90 ? r.importo : 0),
+    filtroImplicito: preventivoInCorso,
   },
 
   // ── Margine ────────────────────────────────────────────────────────────
@@ -506,6 +539,94 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     aggregazione: "conta_righe",
     unita: "numero",
   },
+  // ── Fatture fornitore, pagamenti e scadenze (migration 150) ───────────────
+  // Le fatture fornitore sono per data della FATTURA. Le scadenze per data di
+  // SCADENZA: «per mese» vuol dire quanto scade in quel mese, ed e' la base del
+  // calendario di cassa. Fra ordini cliente e ordini fornitore nel gestionale
+  // non c'e' alcun legame: la copertura si legge a calendario, non per ordine.
+  fatturato_fornitore: {
+    chiave: "fatturato_fornitore",
+    etichetta: "Fatturato fornitori",
+    descrizione:
+      "Valore delle fatture fornitore, per data della fattura. Le note di credito tolgono. Comprende anche spese e servizi senza articolo.",
+    dataset: "fatture_fornitore",
+    aggregazione: "somma",
+    unita: "euro",
+  },
+  n_fatture_fornitore: {
+    chiave: "n_fatture_fornitore",
+    etichetta: "Numero fatture fornitore",
+    descrizione: "Documenti di fatturazione fornitore distinti, note di credito comprese.",
+    dataset: "fatture_fornitore",
+    aggregazione: "conta_documenti",
+    unita: "numero",
+  },
+  giorni_incasso: {
+    chiave: "giorni_incasso",
+    etichetta: "Giorni medi di incasso",
+    descrizione:
+      "Giorni fra la data della fattura cliente e le sue scadenze (media pesata sull'importo delle rate dentro ogni fattura, poi media fra le fatture). Dalle scadenze vere, non dalla condizione scritta.",
+    dataset: "pagamenti",
+    aggregazione: "media",
+    unita: "giorni",
+    valore: (r) => r.giorniMedi ?? null,
+    filtroImplicito: (r) => PROFILI_FATTURA_CLIENTE.has(r.profilo ?? ""),
+  },
+  giorni_pagamento: {
+    chiave: "giorni_pagamento",
+    etichetta: "Giorni medi di pagamento",
+    descrizione:
+      "Giorni fra la data della fattura fornitore e le sue scadenze (media pesata sull'importo delle rate dentro ogni fattura, poi media fra le fatture). Dalle scadenze vere, non dalla condizione scritta.",
+    dataset: "pagamenti",
+    aggregazione: "media",
+    unita: "giorni",
+    valore: (r) => r.giorniMedi ?? null,
+    filtroImplicito: (r) => PROFILI_FATTURA_FORNITORE.has(r.profilo ?? ""),
+  },
+  incassi_attesi: {
+    chiave: "incassi_attesi",
+    etichetta: "Incassi attesi",
+    descrizione: "Quanto resta da incassare dai clienti, per data di scadenza. Fotografia di oggi.",
+    dataset: "scadenze",
+    aggregazione: "somma",
+    unita: "euro",
+    valore: (r) => (r.tipoScadenza === "A" ? (r.saldoAperto ?? 0) : 0),
+  },
+  pagamenti_dovuti: {
+    chiave: "pagamenti_dovuti",
+    etichetta: "Pagamenti dovuti",
+    descrizione: "Quanto resta da pagare ai fornitori, per data di scadenza, in positivo. Fotografia di oggi.",
+    dataset: "scadenze",
+    aggregazione: "somma",
+    unita: "euro",
+    valore: (r) => (r.tipoScadenza === "P" ? (r.saldoAperto ?? 0) : 0),
+  },
+  saldo_cassa: {
+    chiave: "saldo_cassa",
+    etichetta: "Saldo incassi − pagamenti",
+    descrizione:
+      "Incassi attesi meno pagamenti dovuti, per data di scadenza: negativo dove escono più soldi di quanti ne entrano.",
+    dataset: "scadenze",
+    aggregazione: "somma",
+    unita: "euro",
+  },
+  imponibile_documenti: {
+    chiave: "imponibile_documenti",
+    etichetta: "Imponibile dei documenti",
+    descrizione:
+      "Imponibile di preventivi, ordini e fatture, di clienti e fornitori, per data del documento. Mescola tipi diversi: separali con «Tipo documento».",
+    dataset: "pagamenti",
+    aggregazione: "somma",
+    unita: "euro",
+  },
+  n_documenti_pagamento: {
+    chiave: "n_documenti_pagamento",
+    etichetta: "Numero documenti",
+    descrizione: "Documenti con condizione di pagamento. Mescola tipi diversi: separali con «Tipo documento».",
+    dataset: "pagamenti",
+    aggregazione: "conta_righe",
+    unita: "numero",
+  },
   // ── Quantita' ───────────────────────────────────────────────────────────
   // I pezzi, non gli euro: sono nelle stesse viste dell'importo e prima non
   // erano interrogabili. Con il segno del documento, come l'importo: una nota di
@@ -567,14 +688,16 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
 
 const SOLO_ACQUISTI = new Set<Dimensione>(["fornitore", "buyer"]);
 const SOLO_VISITE = new Set<Dimensione>(["cap", "provincia", "grado", "tipo_visita", "esito_visita", "prossima_visita"]);
+const SOLO_PAGAMENTI = new Set<Dimensione>(["soggetto", "condizione_pagamento", "tipo_scadenza", "numero_fattura_fornitore", "profilo_ordine"]);
+const DATASET_PAGAMENTI = new Set<string>(["fatture_fornitore", "pagamenti", "scadenze"]);
 
 /** Vero se la dimensione appartiene a un altro dominio (acquisti, visite, vendite). */
 export function dimensioneFuoriDominio(metrica: ChiaveMetrica, dimensione: Dimensione): boolean {
   const dataset = CATALOGO[metrica]?.dataset;
-  if (dataset === "acquisti" || dataset === "visite") {
+  if (dataset === "acquisti" || dataset === "visite" || DATASET_PAGAMENTI.has(dataset)) {
     return !dimensioniPerMetrica(metrica).includes(dimensione);
   }
-  return SOLO_ACQUISTI.has(dimensione) || SOLO_VISITE.has(dimensione);
+  return SOLO_ACQUISTI.has(dimensione) || SOLO_VISITE.has(dimensione) || SOLO_PAGAMENTI.has(dimensione);
 }
 
 export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: RigaFatto) => string }> = {
@@ -596,6 +719,21 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
     etichetta: "Causale magazzino",
     estrai: (r) => r.causaleDescrizione || r.causaleCodice || "(nessuna)",
   },
+  causale_codice: { etichetta: "Codice causale", estrai: (r) => r.causaleCodice || "(nessuna)" },
+  soggetto: { etichetta: "Cliente / fornitore", estrai: (r) => r.soggetto || "(non indicato)" },
+  condizione_pagamento: { etichetta: "Condizione di pagamento", estrai: (r) => r.condizione || "(non indicata)" },
+  tipo_scadenza: {
+    etichetta: "Incasso / pagamento",
+    estrai: (r) => (r.tipoScadenza === "P" ? "Pagamenti (fornitori)" : "Incassi (clienti)"),
+  },
+  numero_fattura_fornitore: {
+    etichetta: "Numero fattura del fornitore",
+    estrai: (r) => r.numeroDocumentoOrigine || "(non indicato)",
+  },
+  profilo_ordine: {
+    etichetta: "Collegata a",
+    estrai: (r) => r.profiloOrdine || "(nessun ordine)",
+  },
   // La chiave `articolo` resta com'e': le analisi e i filtri gia' salvati
   // portano le descrizioni, e cambiarne il significato li svuoterebbe in
   // silenzio. Il codice e' una dimensione a parte.
@@ -606,7 +744,7 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
   // fondono. Gli ordini a fornitore l'anno lo portano gia' nel numero.
   documento_anno: {
     etichetta: "Documento e anno",
-    estrai: (r) => (r.fornitore !== undefined || !r.data ? r.documento : `${r.documento}/${r.data.slice(0, 4)}`),
+    estrai: (r) => (r.fornitore !== undefined || r.soggetto !== undefined || !r.data ? r.documento : `${r.documento}/${r.data.slice(0, 4)}`),
   },
   profilo: { etichetta: "Tipo documento", estrai: (r) => r.profilo || "(non indicato)" },
   codice_cliente: { etichetta: "Codice cliente", estrai: (r) => r.codiceCliente || "(senza codice)" },

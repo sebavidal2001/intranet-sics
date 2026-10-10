@@ -532,7 +532,7 @@ export function CruscottoView({
         ordina: "valore_desc",
       },
       preventiviCausale: {
-        metrica: "preventivi_aperti",
+        metrica: "preventivi_inevaso",
         raggruppa: ["causale"],
         filtri: filtriSpec,
         ordina: "valore_desc",
@@ -545,7 +545,7 @@ export function CruscottoView({
         limite: 200,
       },
       preventiviCausaleMese: {
-        metrica: "preventivi_aperti",
+        metrica: "preventivi_inevaso",
         granularita: "mese",
         raggruppa: ["causale"],
         filtri: filtriSpec,
@@ -1670,14 +1670,13 @@ export function CruscottoView({
               />
             </Scheda>
 
-            <Scheda titolo="Per causale magazzino" className="lg:col-span-2">
+            <Scheda titolo="Inevaso per causale (aperti sono solo i PIC)" className="lg:col-span-2">
               <BarreScostamento
                 dati={(r("preventiviCausale")?.righe ?? []).slice(0, 12).map((x) => ({
                   etichetta: x.etichetta,
                   valore: x.valore,
                 }))}
                 altezza={320}
-                onClick={(c) => alternaFiltro("causale", c)}
               />
             </Scheda>
           </div>

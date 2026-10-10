@@ -43,7 +43,9 @@ describe("Esito preventivi e back office", () => {
 
   it("il valore totale e l'inevaso coincidono con il database", () => {
     const valore = esegui({ metrica: "preventivi_valore" }, snapshot);
-    const inevaso = esegui({ metrica: "preventivi_aperti" }, snapshot);
+    // L'inevaso della vista e' quello di TUTTE le causali; «preventivi_aperti» conta dal
+    // 10/10/2026 i soli in corso (PIC).
+    const inevaso = esegui({ metrica: "preventivi_inevaso" }, snapshot);
     const convertito = esegui({ metrica: "preventivi_convertito" }, snapshot);
 
     // I nomi delle colonne sono quelli VERI della vista, letti da PostgREST.

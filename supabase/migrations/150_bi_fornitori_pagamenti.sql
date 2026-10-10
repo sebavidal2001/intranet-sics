@@ -258,7 +258,9 @@ select r.id_riga, r.profilo,
        nullif(r.numero_ordine, 0) as numero_ordine,
        r.data_ordine,
        r.condizione_codice, r.condizione_descrizione, r.id_documento, r.aggiornato_il
-  from bi.fatture_fornitore_righe r;
+  from bi.fatture_fornitore_righe r
+ -- Ordine stabile: PostgREST legge a pagine da 1.000 e senza un ordine totale una riga puo' saltare o ripetersi.
+ order by r.id_riga;
 comment on view public.bi_fatture_fornitore is
   'Righe di fattura fornitore per il BI. valore_netto ha il segno (negativo per le note di credito). Lo schema bi non e'' esposto da PostgREST: questa vista e'' la via di lettura.';
 
@@ -268,7 +270,8 @@ select d.id_documento, d.profilo, d.numero_registrazione, d.numero_documento,
        d.condizione_codice, d.condizione_descrizione, d.importo_documento,
        d.n_scadenze, d.prima_scadenza, d.ultima_scadenza, d.giorni_medi,
        d.importo_scadenze, d.saldo_aperto, d.sconto_cassa, d.aggiornato_il
-  from bi.documenti_pagamento d;
+  from bi.documenti_pagamento d
+ order by d.id_documento;
 comment on view public.bi_documenti_pagamento is
   'Condizione di pagamento e giorni medi effettivi per documento (clienti e fornitori).';
 
@@ -276,7 +279,8 @@ create or replace view public.bi_scadenzario as
 select s.id_scadenza, s.tipo, s.data_scadenza, s.data_documento, s.importo, s.saldo,
        s.profilo, s.numero_documento, s.id_documento, s.codice_soggetto, s.soggetto,
        s.condizione_codice, s.esito_pagamento, s.aggiornato_il
-  from bi.scadenzario s;
+  from bi.scadenzario s
+ order by s.id_scadenza;
 comment on view public.bi_scadenzario is
   'Scadenze aperte: tipo A = incassi attesi, tipo P = pagamenti dovuti (saldo negativo).';
 

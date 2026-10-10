@@ -5,7 +5,7 @@
  * I valori attesi vengono da query SQL sulla vista bi_preventivi_backoffice.
  */
 import { describe, expect, it, beforeAll } from "vitest";
-import { esegui } from "@/lib/prototipo-bi/semantico";
+import { esegui, preventivoInCorso } from "@/lib/prototipo-bi/semantico";
 import { costruisciSnapshot } from "@/lib/prototipo-bi/sorgente";
 import { dettaglioDocumenti } from "@/lib/prototipo-bi/dettaglio";
 import { CacheRisultati, chiaveStabile } from "@/lib/prototipo-bi/cache";
@@ -87,13 +87,15 @@ describe("Anzianità e dettaglio, sui dati reali", () => {
 
   it("l'età media e l'inevaso coincidono con il database", () => {
     const eta = esegui({ metrica: "giorni_apertura" }, snapshot);
-    const inevaso = esegui({ metrica: "preventivi_aperti" }, snapshot);
+    // Tutte le causali: e' il numero che la vista riproduce euro per euro.
+    const inevaso = esegui({ metrica: "preventivi_inevaso" }, snapshot);
 
     // L'inevaso deve riprodurre la vista euro per euro; l'eta' media deve
     // essere la media delle righe APERTE, non di tutte — che e' l'errore che
     // questo test presidia.
     const attesoInevaso = vista.reduce((s, r) => s + numero(r["Importo Inevaso"]), 0);
-    const aperte = snapshot.dataset.preventivi_aperti.filter((r) => r.giorniAperto !== null);
+    // «Aperti» = in corso (PIC): l'eta' media si calcola solo su quelli.
+    const aperte = snapshot.dataset.preventivi_aperti.filter((r) => r.giorniAperto !== null && preventivoInCorso(r));
     const attesaEta =
       aperte.reduce((s, r) => s + (r.giorniAperto ?? 0), 0) / (aperte.length || 1);
 
@@ -117,7 +119,7 @@ describe("Anzianità e dettaglio, sui dati reali", () => {
     // finisce in una fascia e in una sola, nessuna si perde, nessun euro si
     // perde, e le etichette sono quelle previste. Non duplica e non invecchia.
     const res = esegui(
-      { metrica: "preventivi_aperti", raggruppa: ["fascia_eta"] },
+      { metrica: "preventivi_inevaso", raggruppa: ["fascia_eta"] },
       snapshot
     );
 
@@ -165,7 +167,7 @@ describe("Anzianità e dettaglio, sui dati reali", () => {
     // Le righe aperte da piu' di 90 giorni, sommate dallo snapshot stesso:
     // il numero cambia ogni notte, la definizione no.
     const attesoOltre = snapshot.dataset.preventivi_aperti
-      .filter((r) => (r.giorniAperto ?? 0) > 90)
+      .filter((r) => preventivoInCorso(r) && (r.giorniAperto ?? 0) > 90)
       .reduce((s, r) => s + r.importo, 0);
     expect(Math.round(oltre.totale)).toBe(Math.round(attesoOltre));
     expect(massima.totale).toBeGreaterThan(365);
@@ -174,7 +176,10 @@ describe("Anzianità e dettaglio, sui dati reali", () => {
     console.log(
       `   Oltre 90 giorni: ${M(oltre.totale)} € (${quota.toFixed(0)}% dell'inevaso) · il più vecchio ${massima.totale} giorni`
     );
-    expect(quota).toBeGreaterThan(80);
+    // Prima del 10/10/2026 «aperto» era tutto l'inevaso e la quota oltre 90 giorni superava
+    // l'80%; ora il denominatore sono i soli preventivi in corso, e il numero e' un altro.
+    expect(quota).toBeGreaterThan(0);
+    expect(quota).toBeLessThanOrEqual(100);
   });
 
   it("il confronto YTD ferma entrambi gli anni allo stesso giorno", () => {

@@ -19,10 +19,16 @@ export type ChiaveDataset =
   /** Righe d'ordine a fornitore (migration 118), viste come fatti del motore. */
   | "acquisti"
   /** Visite dei commerciali (migration 145), una riga per visita. */
-  | "visite";
+  | "visite"
+  /** Righe di fattura e nota di credito fornitore (migration 150). */
+  | "fatture_fornitore"
+  /** Una riga per documento con condizione di pagamento e giorni medi (migration 150). */
+  | "pagamenti"
+  /** Scadenze aperte, incassi attesi e pagamenti dovuti (migration 150). */
+  | "scadenze";
 
 /** I dataset che vengono dalle viste delle vendite: tutti sempre presenti. */
-export type ChiaveDatasetVendite = Exclude<ChiaveDataset, "acquisti" | "visite">;
+export type ChiaveDatasetVendite = Exclude<ChiaveDataset, "acquisti" | "visite" | "fatture_fornitore" | "pagamenti" | "scadenze">;
 
 /** Riga normalizzata: le viste hanno tutte la stessa forma, salvo i preventivi. */
 export interface RigaFatto {
@@ -74,6 +80,23 @@ export interface RigaFatto {
   tipoVisita?: string;
   /** Profilo del documento nel gestionale (OC ordine cliente, FC fattura, BC bolla…). */
   profilo?: string;
+  // ── Solo su fatture fornitore, pagamenti e scadenze (migration 150) ──────
+  /** Soggetto del documento: il cliente per le fatture di vendita, il fornitore per quelle di acquisto. */
+  soggetto?: string;
+  /** Condizione di pagamento scritta sul documento, per esteso («RB 60 ggfm»). */
+  condizione?: string;
+  /** Numero della fattura com'e' scritto dal fornitore. */
+  numeroDocumentoOrigine?: string;
+  /** A cosa punta la riga di fattura fornitore: OF, OFT, OFR, RECLAVES… vuoto = nessun legame. */
+  profiloOrdine?: string;
+  /** Pagamenti: giorni medi fra documento e scadenze, pesati sull'importo di ciascuna rata. */
+  giorniMedi?: number | null;
+  /** Pagamenti: importo delle scadenze (peso dei giorni medi). */
+  importoScadenze?: number;
+  /** Scadenze: A = incasso atteso dal cliente, P = pagamento dovuto al fornitore. */
+  tipoScadenza?: "A" | "P";
+  /** Scadenze: quanto resta da incassare o pagare, sempre positivo. */
+  saldoAperto?: number;
   /** Solo sulle visite: esito registrato e data della prossima visita. */
   esitoVisita?: string;
   prossimaVisita?: string;
@@ -157,6 +180,10 @@ export interface Snapshot {
     acquisti?: RigaFatto[];
     /** Assente se la vista bi_visite non e' raggiungibile. */
     visite?: RigaFatto[];
+    /** Assenti se le viste della migration 150 non sono raggiungibili. */
+    fatture_fornitore?: RigaFatto[];
+    pagamenti?: RigaFatto[];
+    scadenze?: RigaFatto[];
   };
   conteggi: Record<string, number>;
   /**
@@ -350,6 +377,18 @@ export type ChiaveMetrica =
   | "acquisti_valore_da_sollecitare"
   // ── Visite dei commerciali ──────────────────────────────────────────────
   | "visite_numero"
+  // ── Fatture fornitore, pagamenti e scadenze (migration 150) ─────────────
+  | "fatturato_fornitore"
+  | "n_fatture_fornitore"
+  | "giorni_incasso"
+  | "giorni_pagamento"
+  | "imponibile_documenti"
+  | "n_documenti_pagamento"
+  | "incassi_attesi"
+  | "pagamenti_dovuti"
+  | "saldo_cassa"
+  /** Inevaso dei preventivi di ogni causale: non solo quelli in corso. */
+  | "preventivi_inevaso"
   // ── Quantita' (pezzi) ───────────────────────────────────────────────────
   | "quantita_ordinata"
   | "quantita_fatturata"
@@ -370,6 +409,8 @@ export type Dimensione =
   | "cliente"
   | "categoria"
   | "causale"
+  /** Il codice della causale (PIC, POR, PF4…), come lo scrive il gestionale. */
+  | "causale_codice"
   /**
    * Il codice dell'articolo, com'e' nel gestionale: e' quello che si cerca,
    * si incolla in un foglio, si confronta con il listino.
@@ -428,7 +469,18 @@ export type Dimensione =
   | "tipo_visita"
   /** Esito della visita e data della prossima visita, come registrati. */
   | "esito_visita"
-  | "prossima_visita";
+  | "prossima_visita"
+  // ── Fatture fornitore, pagamenti e scadenze ─────────────────────────────
+  /** Cliente o fornitore del documento. */
+  | "soggetto"
+  /** Condizione di pagamento del documento. */
+  | "condizione_pagamento"
+  /** Incasso atteso (cliente) o pagamento dovuto (fornitore). */
+  | "tipo_scadenza"
+  /** Numero della fattura come l'ha scritto il fornitore. */
+  | "numero_fattura_fornitore"
+  /** A cosa punta la fattura fornitore: ordine, reclamo, niente. */
+  | "profilo_ordine";
 
 /** Separatore dei valori di `bu_categoria`: `${bu}${SEPARATORE_RAMO}${categoria}`. */
 export const SEPARATORE_RAMO = " › ";

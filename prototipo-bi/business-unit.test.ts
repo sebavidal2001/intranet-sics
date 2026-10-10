@@ -151,7 +151,8 @@ describe("Riconciliazione fatta dalla vista, sui dati reali", () => {
   it("i totali restano quelli del database", () => {
     const totale = esegui({ metrica: "preventivi_valore" }, snapshot);
     const convertito = esegui({ metrica: "preventivi_convertito" }, snapshot);
-    const inevaso = esegui({ metrica: "preventivi_aperti" }, snapshot);
+    // L'inevaso del database e' di tutte le causali: «preventivi_aperti» conta i soli PIC.
+    const inevaso = esegui({ metrica: "preventivi_inevaso" }, snapshot);
     const perBu = esegui({ metrica: "preventivi_valore", raggruppa: ["bu"] }, snapshot);
 
     const attesoTotale = vistaPreventivi.reduce((s, r) => s + numero(r["Valore Totale Riga"]), 0);

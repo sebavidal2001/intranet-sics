@@ -203,12 +203,15 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
       "preventivi_aperti",
       "preventivi_aperti_oltre_90",
       "n_preventivi",
+      "preventivi_inevaso",
       "preventivi_creati",
       "righe_preventivo",
     ],
     campi: [
       { chiave: "documento_anno", etichetta: "Numero preventivo/anno" },
       { chiave: "profilo" },
+      { chiave: "causale_codice", etichetta: "Codice causale (PIC, POR…)" },
+      { chiave: "causale", etichetta: "Causale (descrizione)" },
       { chiave: "creatore" },
       { chiave: "esito" },
       { chiave: "fascia_eta" },
@@ -237,6 +240,54 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
       { chiave: "data_promessa" },
     ],
     famiglieDocumento: ["acquisti"],
+  },
+  {
+    chiave: "fornitori",
+    etichetta: "Fatture fornitore",
+    descrizione:
+      "Le fatture e le note di credito dei fornitori (le note tolgono). Il legame con l'ordine fornitore c'è quando la fattura passa da un DDT d'acquisto.",
+    valori: ["fatturato_fornitore", "n_fatture_fornitore"],
+    // Il numero di registrazione porta gia' profilo e anno («FF 22/2024»): il
+    // numero scritto dal fornitore da solo non identifica una fattura.
+    campi: [
+      { chiave: "fornitore" },
+      { chiave: "documento", etichetta: "Fattura (registrazione/anno)" },
+      { chiave: "numero_fattura_fornitore" },
+      { chiave: "profilo", etichetta: "Tipo documento" },
+      { chiave: "condizione_pagamento" },
+      { chiave: "profilo_ordine" },
+    ],
+    famiglieDocumento: ["fatture_fornitore"],
+  },
+  {
+    chiave: "pagamenti",
+    etichetta: "Condizioni di pagamento",
+    descrizione:
+      "Un documento per riga (preventivi, ordini e fatture, di clienti e fornitori) con la condizione scritta sul documento. Per separare clienti e fornitori usa il tipo documento. I giorni medi di incasso e di pagamento stanno nelle Misure.",
+    valori: ["imponibile_documenti", "n_documenti_pagamento"],
+    campi: [
+      { chiave: "soggetto" },
+      { chiave: "profilo", etichetta: "Tipo documento" },
+      { chiave: "condizione_pagamento" },
+      { chiave: "documento", etichetta: "Documento (registrazione/anno)" },
+      { chiave: "numero_fattura_fornitore", etichetta: "Numero del documento di origine" },
+    ],
+    famiglieDocumento: ["pagamenti"],
+  },
+  {
+    chiave: "scadenzario",
+    etichetta: "Scadenzario",
+    descrizione:
+      "Le scadenze ancora aperte, per data di scadenza: incassi attesi dai clienti e pagamenti dovuti ai fornitori. Il tempo del grafico è la data di scadenza.",
+    valori: ["incassi_attesi", "pagamenti_dovuti", "saldo_cassa"],
+    campi: [
+      { chiave: "tipo_scadenza" },
+      { chiave: "soggetto" },
+      { chiave: "profilo", etichetta: "Origine (tipo documento)" },
+      { chiave: "condizione_pagamento" },
+      { chiave: "documento" },
+    ],
+    famiglieDocumento: ["scadenze"],
   },
   {
     chiave: "visite",
@@ -296,6 +347,8 @@ export function avvisoNumeroDocumento(
   // separati: l'avviso vale solo per il numero nudo.
   const senzaAnno = dimensioni.includes("documento");
   if (!dimensioni.some(eDocumento) || famiglia === "acquisti" || famiglia === "visite") return null;
+  // Fatture fornitore, pagamenti e scadenze: il numero di registrazione porta gia' profilo e anno.
+  if (famiglia === "fatture_fornitore" || famiglia === "pagamenti" || famiglia === "scadenze") return null;
   const parti: string[] = [];
   if (senzaAnno && !spec.granularita && !periodoDiUnAnno(periodo)) {
     parti.push(
@@ -441,6 +494,22 @@ export const GRUPPI_MISURE: GruppoMisure[] = [
       {
         chiave: "eta_massima_apertura",
         calcolo: "Il valore più alto dei giorni di apertura: la riga aperta da più tempo.",
+      },
+    ],
+  },
+  {
+    chiave: "pagamenti",
+    etichetta: "Tempi di pagamento",
+    misure: [
+      {
+        chiave: "giorni_incasso",
+        calcolo:
+          "Per ogni fattura cliente, i giorni fra la data della fattura e ciascuna scadenza, mediati sull'importo delle rate; poi la media fra le fatture. Dalle scadenze vere.",
+      },
+      {
+        chiave: "giorni_pagamento",
+        calcolo:
+          "Per ogni fattura fornitore, i giorni fra la data della fattura e ciascuna scadenza, mediati sull'importo delle rate; poi la media fra le fatture. Dalle scadenze vere.",
       },
     ],
   },

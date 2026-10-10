@@ -46,7 +46,14 @@ export function motivoDimensioneNonAmmessa(dimensione: Dimensione): string {
     case "fascia_eta":
       return "Solo per i preventivi";
     case "causale":
-      return "Solo per consegnato e banco";
+    case "causale_codice":
+      return "Solo per consegnato, banco e preventivi";
+    case "soggetto":
+    case "condizione_pagamento":
+    case "tipo_scadenza":
+    case "numero_fattura_fornitore":
+    case "profilo_ordine":
+      return "Solo per fatture fornitore, condizioni di pagamento e scadenzario";
     case "cap":
     case "provincia":
     case "grado":
@@ -111,4 +118,18 @@ export const DATASET_DI_METRICA: Partial<Record<string, string>> = {
   giorni_apertura: "preventivi_aperti",
   eta_massima_apertura: "preventivi_aperti",
   preventivi_aperti_oltre_90: "preventivi_aperti",
+  preventivi_inevaso: "preventivi_aperti",
 };
+
+/**
+ * Le metriche che contano solo i preventivi IN CORSO (causale PIC): il dettaglio
+ * dei documenti deve elencare gli stessi, non tutto l'inevaso. Copia di quel che
+ * `CATALOGO` sa (`filtroImplicito: preventivoInCorso`), confrontata dal test.
+ */
+export const METRICHE_SOLO_IN_CORSO: ReadonlySet<string> = new Set([
+  "preventivi_aperti",
+  "n_preventivi",
+  "preventivi_aperti_oltre_90",
+  "giorni_apertura",
+  "eta_massima_apertura",
+]);

@@ -62,12 +62,13 @@ const NOME_MAX = 80;
 const MAX_FILTRI_PER_OPERANDO = 6;
 const MAX_ADDENDI = 4;
 
-type Famiglia = "vendite" | "acquisti" | "visite";
+type Famiglia = "vendite" | "acquisti" | "visite" | "fatture_fornitore" | "pagamenti" | "scadenze";
 
 function famigliaDi(metrica: ChiaveMetrica): Famiglia {
   const dataset = CATALOGO[metrica].dataset;
   if (dataset === "acquisti") return "acquisti";
   if (dataset === "visite") return "visite";
+  if (dataset === "fatture_fornitore" || dataset === "pagamenti" || dataset === "scadenze") return dataset;
   return "vendite";
 }
 
@@ -88,6 +89,9 @@ const SIGNIFICATO_DATA: Record<string, string> = {
   controllo_banco: "data del movimento al banco",
   acquisti: "data dell'ordine al fornitore",
   visite: "data della visita",
+  fatture_fornitore: "data della fattura fornitore",
+  pagamenti: "data del documento",
+  scadenze: "data di scadenza",
 };
 
 const ETICHETTA_DATASET: Record<string, string> = {
@@ -100,6 +104,9 @@ const ETICHETTA_DATASET: Record<string, string> = {
   controllo_banco: "banco",
   acquisti: "acquisti",
   visite: "visite",
+  fatture_fornitore: "fatture fornitore",
+  pagamenti: "pagamenti",
+  scadenze: "scadenzario",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -290,7 +297,7 @@ export function validaMisura(grezza: unknown): MisuraDefinita {
   if (famiglie.size > 1) {
     throw new SpecNonValida(
       `Una misura non può mescolare ${[...famiglie].join(" e ")}: non hanno dimensioni in comune.`,
-      "Usa operandi della stessa famiglia (vendite, acquisti oppure visite)."
+      "Usa operandi della stessa famiglia (vendite, acquisti, visite, fatture fornitore, pagamenti oppure scadenzario)."
     );
   }
 
