@@ -74,6 +74,30 @@
                         "HeaderPattern":  "^id_riga$"
                     },
                     {
+                        "SqlFile":  "FATTURE_FORNITORE.sql",
+                        "OutputFile":  "fatture_fornitore.csv",
+                        "Dataset":  "fatture_fornitore",
+                        "ExpectedColumns":  20,
+                        "Profilo":  "acquisti",
+                        "HeaderPattern":  "^id_riga$"
+                    },
+                    {
+                        "SqlFile":  "DOCUMENTI_PAGAMENTO.sql",
+                        "OutputFile":  "documenti_pagamento.csv",
+                        "Dataset":  "documenti_pagamento",
+                        "ExpectedColumns":  18,
+                        "Profilo":  "acquisti",
+                        "HeaderPattern":  "^id_documento$"
+                    },
+                    {
+                        "SqlFile":  "SCADENZARIO.sql",
+                        "OutputFile":  "scadenzario.csv",
+                        "Dataset":  "scadenzario",
+                        "ExpectedColumns":  13,
+                        "Profilo":  "acquisti",
+                        "HeaderPattern":  "^id_scadenza$"
+                    },
+                    {
                         "SqlFile":  "CLIENTI_ANAGRAFICA.sql",
                         "OutputFile":  "clienti_anagrafica.csv",
                         "Dataset":  "clienti_anagrafica",

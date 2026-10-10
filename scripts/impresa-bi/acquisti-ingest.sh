@@ -14,6 +14,9 @@ READY_ROOT="${BI_ACQUISTI_READY:-/var/lib/impresa-bi/ready-acquisti}"
 PROCESSED_ROOT="${BI_ACQUISTI_PROCESSED:-/var/lib/impresa-bi/processed-acquisti}"
 FAILED_ROOT="${BI_ACQUISTI_FAILED:-/var/lib/impresa-bi/failed-acquisti}"
 INGEST_SCRIPT="${BI_ACQUISTI_SCRIPT:-/opt/intranet-sics/scripts/bi-ingest-acquisti.mjs}"
+# Fatture fornitore, condizioni di pagamento e scadenzario (migration 150): stesso
+# profilo, stessi run, un solo script che conosce i tre tracciati.
+FORNITORI_SCRIPT="${BI_FORNITORI_SCRIPT:-/opt/intranet-sics/scripts/bi-ingest-fornitori.mjs}"
 LOCK_FILE="${BI_ACQUISTI_LOCK:-/var/lib/impresa-bi/acquisti-ingest.lock}"
 
 log() { printf '%s %s\n' "$(date -Is)" "$*"; }
@@ -52,7 +55,21 @@ for run_dir in "$READY_ROOT"/*/; do
   log "[$run_id] ingest in corso"
 
   # La finestra di ricarico esce dal file (data d'ordine minima): nessun parametro.
-  if node "$INGEST_SCRIPT" --file="$csv" --run-id="$run_id"; then
+  esito_run=0
+  node "$INGEST_SCRIPT" --file="$csv" --run-id="$run_id" || esito_run=1
+
+  # I tre dataset fornitori/pagamenti: dopo gli ordini, e il loro esito pesa sul
+  # run come quello degli ordini. Un run senza uno di questi file (pipeline non
+  # ancora aggiornata su SRVWOA) resta valido: niente da caricare, nessun errore.
+  for dataset in fatture_fornitore documenti_pagamento scadenzario; do
+    extra_csv="$run_dir/$dataset.csv"
+    if [[ -f "$extra_csv" ]]; then
+      log "[$run_id] ingest $dataset"
+      node "$FORNITORI_SCRIPT" --dataset="$dataset" --file="$extra_csv" --run-id="$run_id" || esito_run=1
+    fi
+  done
+
+  if (( esito_run == 0 )); then
     rm -rf "${PROCESSED_ROOT:?}/$run_id"
     mv "$run_dir" "$PROCESSED_ROOT/$run_id"
     log "[$run_id] caricato, archiviato in processed-acquisti/"
