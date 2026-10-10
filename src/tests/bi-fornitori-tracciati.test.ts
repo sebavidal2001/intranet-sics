@@ -6,6 +6,21 @@ const FATTURA = ["2942339", "FF", "22", "110/01", "2024-01-12", "2024-01-31", "1
 const DOCUMENTO = ["491756", "OC", "2", "1445/MO", "2023-12-27", "2024-01-02", "05003576", "SALUMIFICI GRANTERRE spa", "23", "BB 90 ggfm  ", "81,4000", "0", "", "", "", "0,0000", "0,0000", "0,00"];
 const SCADENZA = ["43443", "A", "2008-05-31", "2008-02-20", "3101,9500", "3101,9500", "FC", "204", "142075", "05002556", "I.M.E.C. GROUP srl", "23", "P"];
 
+const DOCUMENTO_UTENTE = ["491755", "OC", "1", "2024-01-02", "2024-01-02 15:08:44", "erikalivreri", "Erika Livreri", "1", "519,8000", "05002652", "QUICK LOAD srl"];
+
+describe("documenti per utente", () => {
+  it("la riga si converte, con data e ora di creazione intatte", () => {
+    const r = convertiRiga(TRACCIATI.documenti_utente, DOCUMENTO_UTENTE, 1);
+    expect(r).toMatchObject({ id_documento: 491755, profilo: "OC", n_righe: 1, importo_documento: 519.8, utente: "Erika Livreri" });
+    expect(r.data_creazione).toBe("2024-01-02 15:08:44");
+  });
+
+  it("un profilo non estratto si rifiuta", () => {
+    const r = [...DOCUMENTO_UTENTE]; r[1] = "ZZ";
+    expect(() => convertiRiga(TRACCIATI.documenti_utente, r, 1)).toThrow(/profilo inatteso/);
+  });
+});
+
 describe("tracciati fornitori/pagamenti", () => {
   it("la fattura fornitore si converte: numeri italiani, data, articolo maiuscolo, condizione ripulita", () => {
     const r = convertiRiga(TRACCIATI.fatture_fornitore, FATTURA, 1);

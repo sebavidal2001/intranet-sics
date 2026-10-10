@@ -34,6 +34,17 @@ export const TRACCIATI = {
       ["importo_scadenze", "n"], ["saldo_aperto", "n"], ["sconto_cassa", "n"],
     ],
   },
+  documenti_utente: {
+    profili: new Set(["PC", "PCA", "OC", "OCB", "OCINT", "OCT", "BC", "FC", "FCA", "FCT", "NAC", "OF", "OFT", "OFR", "BF", "FF", "FFCEE", "NAF", "NAFCEE"]),
+    chiave: "id_documento",
+    dataObbligatoria: "data_registrazione",
+    colonne: [
+      ["id_documento", "i"], ["profilo", "t"], ["numero_registrazione", "i"], ["data_registrazione", "d"],
+      // La data E ORA di creazione: resta testo («2024-01-02 15:08:44»), il database la legge come timestamp.
+      ["data_creazione", "t"], ["codice_utente", "t"], ["utente", "t"], ["n_righe", "i"],
+      ["importo_documento", "n"], ["codice_soggetto", "t"], ["soggetto", "t"],
+    ],
+  },
   scadenzario: {
     tipi: new Set(["A", "P"]),
     chiave: "id_scadenza",

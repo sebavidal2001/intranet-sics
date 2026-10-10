@@ -98,6 +98,14 @@
                         "HeaderPattern":  "^id_scadenza$"
                     },
                     {
+                        "SqlFile":  "DOCUMENTI_UTENTE.sql",
+                        "OutputFile":  "documenti_utente.csv",
+                        "Dataset":  "documenti_utente",
+                        "ExpectedColumns":  11,
+                        "Profilo":  "acquisti",
+                        "HeaderPattern":  "^id_documento$"
+                    },
+                    {
                         "SqlFile":  "CLIENTI_ANAGRAFICA.sql",
                         "OutputFile":  "clienti_anagrafica.csv",
                         "Dataset":  "clienti_anagrafica",

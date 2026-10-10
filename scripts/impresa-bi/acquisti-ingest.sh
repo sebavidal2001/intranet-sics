@@ -61,7 +61,7 @@ for run_dir in "$READY_ROOT"/*/; do
   # I tre dataset fornitori/pagamenti: dopo gli ordini, e il loro esito pesa sul
   # run come quello degli ordini. Un run senza uno di questi file (pipeline non
   # ancora aggiornata su SRVWOA) resta valido: niente da caricare, nessun errore.
-  for dataset in fatture_fornitore documenti_pagamento scadenzario; do
+  for dataset in fatture_fornitore documenti_pagamento scadenzario documenti_utente; do
     extra_csv="$run_dir/$dataset.csv"
     if [[ -f "$extra_csv" ]]; then
       log "[$run_id] ingest $dataset"
