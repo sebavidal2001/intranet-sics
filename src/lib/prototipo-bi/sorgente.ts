@@ -146,6 +146,7 @@ function normalizza(riga: RigaGrezza, importoCampo: string): RigaFatto {
     cliente: testo(riga["Nome Cliente"]) || "(senza cliente)",
     codiceCliente: testo(riga["Codice Cliente"]),
     documento: testo(riga["Numero Doc."]),
+    profilo: testo(riga["Profilo Documento"]) || undefined,
     articolo: testo(riga["Codice Articolo"]),
     descrizioneArticolo: testo(riga["Descrizione articolo"]),
     quantita: numero(riga["Quantità"]),
@@ -583,10 +584,13 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * 7 (09/10/2026): le righe senza gruppo prendono la business unit del
  * documento (`buDedotta`): cambia il valore di `bu` su migliaia di righe.
  *
+ * 8 (10/10/2026): `profilo` (tipo documento) sulle vendite e sugli acquisti,
+ * `esitoVisita` e `prossimaVisita` sulle visite: una cache vecchia non li ha.
+ *
  * 6 (08/10/2026): `dataset.visite`, le visite dei commerciali (metrica
  * visite_numero; dimensioni cap, provincia, grado, tipo_visita).
  */
-const VERSIONE_FORMA = 7;
+const VERSIONE_FORMA = 8;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.

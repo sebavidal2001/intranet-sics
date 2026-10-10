@@ -70,6 +70,7 @@ import {
   GRUPPI_OPERAZIONI,
   NATURE,
   alternativeDiCalcolo,
+  eDocumento,
   etichettaDocumento,
   naturaDellaVoce,
 } from "@/lib/prototipo-bi/albero-modello";
@@ -514,7 +515,12 @@ export const Pozzetti = forwardRef<ManigliaPozzetti, ProprietaPozzetti>(function
   // se i valori scelti sono di una sola.
   const famiglieScelte = famiglieDelleMisure(selezione.misure, vocabolario.famiglie);
   const nomeCampo = (chiave: Dimensione) =>
-    (chiave === "documento" && famiglieScelte.length === 1 ? etichettaDocumento(famiglieScelte[0]) : undefined) ??
+    (eDocumento(chiave) && famiglieScelte.length === 1
+      ? (() => {
+          const proprio = etichettaDocumento(famiglieScelte[0]);
+          return chiave === "documento_anno" ? proprio : proprio?.replace(/\/anno$/, "");
+        })()
+      : undefined) ??
     etichettaDimensione(chiave);
 
   const contesto = useMemo<ContestoPozzetti>(

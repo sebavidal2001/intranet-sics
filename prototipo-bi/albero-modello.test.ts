@@ -12,6 +12,7 @@ import {
   ammetteProgressivo,
   alternativeDiCalcolo,
   avvisoNumeroDocumento,
+  eDocumento,
   etichettaDocumento,
   calcoloDellaMetrica,
   eMisuraCalcolata,
@@ -93,14 +94,17 @@ describe("ogni dimensione ha un posto", () => {
   });
 
   it("il numero del documento sta dentro ogni operazione che ne ha uno, con il suo nome", () => {
-    const conDocumento = GRUPPI_OPERAZIONI.filter((g) => g.campi.some((c) => c.chiave === "documento"));
+    const conDocumento = GRUPPI_OPERAZIONI.filter((g) => g.campi.some((c) => eDocumento(c.chiave)));
     expect(conDocumento.map((g) => g.chiave)).toEqual(
       expect.arrayContaining(["ordinato", "fatturato", "consegnato", "preventivi", "acquisti"])
     );
     // Nessun «Documento» generico fra i campi comuni.
     expect(GRUPPI_COMUNI.some((g) => g.dimensioni.includes("documento"))).toBe(false);
     const ordinato = GRUPPI_OPERAZIONI.find((g) => g.chiave === "ordinato")!;
-    expect(ordinato.campi.find((c) => c.chiave === "documento")?.etichetta).toBe("Numero ordine");
+    // Con l'anno nel numero: il numero nudo riparte ogni anno e fonderebbe documenti diversi.
+    expect(ordinato.campi.find((c) => eDocumento(c.chiave))).toEqual({ chiave: "documento_anno", etichetta: "Numero ordine/anno" });
+    // Gli ordini a fornitore portano gia' l'anno: tengono il numero com'e'.
+    expect(GRUPPI_OPERAZIONI.find((g) => g.chiave === "acquisti")!.campi.some((c) => c.chiave === "documento")).toBe(true);
   });
 
   it("il documento di un'operazione vale per le metriche di quell'operazione", () => {
@@ -242,9 +246,56 @@ describe("il numero del documento riparte ogni anno", () => {
   });
 
   it("il numero ha il nome della sua operazione", () => {
-    expect(etichettaDocumento("ordinato")).toBe("Numero ordine");
-    expect(etichettaDocumento("fatturato")).toBe("Numero fattura");
-    expect(etichettaDocumento("preventivi_aperti")).toBe("Numero preventivo");
+    expect(etichettaDocumento("ordinato")).toBe("Numero ordine/anno");
+    expect(etichettaDocumento("fatturato")).toBe("Numero fattura/anno");
+    expect(etichettaDocumento("preventivi_aperti")).toBe("Numero preventivo/anno");
     expect(etichettaDocumento("visite")).toBeUndefined();
+  });
+});
+
+describe("il numero con l'anno e gli altri dati del gestionale", () => {
+  const riga = (parziale: object) =>
+    ({ data: "2026-03-31", documento: "997", profilo: "OC", codiceCliente: "05001624", codiceAgente: "AG000010", ...parziale }) as Parameters<(typeof DIMENSIONI)["documento"]["estrai"]>[0];
+
+  it("documento_anno separa i documenti di anni diversi con lo stesso numero", () => {
+    expect(DIMENSIONI.documento_anno.estrai(riga({}))).toBe("997/2026");
+    expect(DIMENSIONI.documento_anno.estrai(riga({ data: "2025-03-31" }))).toBe("997/2025");
+    // Il solo numero li fonderebbe.
+    expect(DIMENSIONI.documento.estrai(riga({}))).toBe(DIMENSIONI.documento.estrai(riga({ data: "2025-03-31" })));
+  });
+
+  it("gli ordini a fornitore portano gia' l'anno: documento_anno non lo raddoppia", () => {
+    expect(DIMENSIONI.documento_anno.estrai(riga({ fornitore: "X", documento: "OF 12/2026" }))).toBe("OF 12/2026");
+  });
+
+  it("con l'anno nel numero non serve l'avviso, e nelle consegne resta quello sul cliente", () => {
+    expect(avvisoNumeroDocumento({ raggruppa: ["documento_anno"] }, "ordinato", undefined)).toBeNull();
+    expect(avvisoNumeroDocumento({ raggruppa: ["documento_anno"] }, "consegnato", undefined)).toMatch(/Cliente/);
+  });
+
+  it("tipo documento, codici e date di consegna sono dimensioni", () => {
+    expect(DIMENSIONI.profilo.estrai(riga({}))).toBe("OC");
+    expect(DIMENSIONI.profilo.estrai(riga({ profilo: undefined }))).toBe("(non indicato)");
+    expect(DIMENSIONI.codice_cliente.estrai(riga({}))).toBe("05001624");
+    expect(DIMENSIONI.codice_agente.estrai(riga({}))).toBe("AG000010");
+    expect(DIMENSIONI.data_consegna_richiesta.estrai(riga({ dataConsegnaRichiesta: "2026-04-17" }))).toBe("2026-04-17");
+  });
+
+  it("ogni quantita' e' una somma, con la sua operazione", () => {
+    for (const [metrica, famiglia] of [
+      ["quantita_ordinata", "ordinato"],
+      ["quantita_fatturata", "fatturato"],
+      ["quantita_consegnata", "consegnato"],
+      ["acquisti_quantita", "acquisti"],
+    ] as const) {
+      expect(naturaDellaMetrica(metrica)).toBe("somma");
+      expect(famigliaDellaMetrica(metrica)).toBe(famiglia);
+    }
+  });
+
+  it("la quantita' fatturata ha il segno del documento: una nota di credito toglie pezzi", () => {
+    const valore = CATALOGO.quantita_fatturata.valore!;
+    expect(valore({ importo: 100, quantita: 3 } as never)).toBe(3);
+    expect(valore({ importo: -100, quantita: 3 } as never)).toBe(-3);
   });
 });

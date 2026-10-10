@@ -323,7 +323,7 @@ export function dimensioniDellaMisura(misura: MisuraDefinita): Dimensione[] {
   const multiDataset =
     new Set(operandiDellaMisura(misura.espressione).map((o) => CATALOGO[o.metrica].dataset)).size > 1;
   return (Object.keys(DIMENSIONI) as Dimensione[]).filter(
-    (d) => dimensioneAmmessaDallaMisura(misura, d) && !(multiDataset && d === "documento")
+    (d) => dimensioneAmmessaDallaMisura(misura, d) && !(multiDataset && (d === "documento" || d === "documento_anno"))
   );
 }
 
@@ -345,7 +345,7 @@ export function controllaDimensioniMisura(
       }
     }
   }
-  if (datasetDistinti.size > 1 && raggruppa.includes("documento")) {
+  if (datasetDistinti.size > 1 && (raggruppa.includes("documento") || raggruppa.includes("documento_anno"))) {
     throw new SpecNonValida(
       `Una misura che combina dataset diversi non si raggruppa per documento: il numero del documento è di un altro dataset in ciascun operando.`
     );

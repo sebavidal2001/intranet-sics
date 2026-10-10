@@ -81,9 +81,10 @@ function totaleAutomatico(unita: UnitaMisura): ColonnaAnalitica["totale"] {
  * sua operazione («Numero ordine», «Numero fattura»): «Documento» non dice quale.
  */
 function nomeColonnaCampo(dimensione: keyof typeof DIMENSIONI, metrica: keyof typeof CATALOGO): string {
-  if (dimensione === "documento") {
+  if (dimensione === "documento" || dimensione === "documento_anno") {
     const proprio = etichettaDocumento(famigliaDellaMetrica(metrica));
-    if (proprio) return proprio;
+    // «Numero ordine/anno» per il numero con l'anno, «Numero ordine» per quello nudo.
+    if (proprio) return dimensione === "documento_anno" ? proprio : proprio.replace(/\/anno$/, "");
   }
   return DIMENSIONI[dimensione]?.etichetta ?? dimensione;
 }

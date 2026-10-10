@@ -374,6 +374,7 @@ export function comeFatti(righe: RigaAcquisto[], oggi: string): RigaFatto[] {
       cliente: "",
       codiceCliente: "",
       documento: `${r.profilo} ${r.numeroOrdine ?? "?"}/${r.dataOrdine.slice(0, 4)}`,
+      profilo: r.profilo || undefined,
       articolo: r.articolo,
       descrizioneArticolo: r.descrizione,
       quantita: r.quantita,

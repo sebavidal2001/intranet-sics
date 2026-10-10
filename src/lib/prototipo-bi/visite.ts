@@ -30,6 +30,8 @@ export interface RigaVisita {
   cap: string;
   localita: string;
   provincia: string;
+  esito: string;
+  prossimaVisita: string;
 }
 
 type Grezza = Record<string, unknown>;
@@ -50,6 +52,8 @@ export function daVista(g: Grezza): RigaVisita {
     cap: testo(g["cap"]),
     localita: testo(g["localita"]),
     provincia: testo(g["provincia"]).toUpperCase(),
+    esito: testo(g["esito"]),
+    prossimaVisita: testo(g["data_prox_visita"]).slice(0, 10),
   };
 }
 
@@ -79,5 +83,7 @@ export function comeFatti(righe: RigaVisita[]): RigaFatto[] {
     provincia: r.provincia,
     grado: r.grado,
     tipoVisita: r.tipo,
+    esitoVisita: r.esito || undefined,
+    prossimaVisita: r.prossimaVisita || undefined,
   }));
 }

@@ -52,7 +52,7 @@ describe("acquisti nel motore semantico", () => {
   });
 
   it("le dimensioni degli acquisti sono fornitore e buyer, non agente o cliente", () => {
-    expect(dimensioniPerMetrica("acquisti_righe")).toEqual(["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "documento"]);
+    expect(dimensioniPerMetrica("acquisti_righe")).toEqual(["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "profilo", "data_promessa", "documento"]);
     expect(() => validaSpec({ metrica: "acquisti_righe", raggruppa: ["agente"] })).toThrow(SpecNonValida);
     expect(() => validaSpec({ metrica: "ordinato", raggruppa: ["buyer"] })).toThrow(SpecNonValida);
   });

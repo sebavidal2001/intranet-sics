@@ -210,24 +210,19 @@ describe("tabella: nessun asse, nessuna legenda, tutti i campi che si vogliono",
 });
 
 describe("il numero del documento in una tabella", () => {
-  it("avvisa che riparte ogni anno, e l'avviso sparisce aggiungendo il tempo", async () => {
-    preparaFetch();
+  it("il numero porta l'anno: i documenti di anni diversi non si fondono e non serve nessun avviso", async () => {
+    const spia = preparaFetch();
     render(<EditorAnalisi />);
     await carica();
     spunta(/^Ordinato/);
-    spunta(/^Numero ordine(?!i| fornitore)/);
+    spunta(/^Numero ordine\/anno/);
     await completaDebounce();
     await scegliTabella();
 
-    // Le colonne dicono di quale documento si tratta.
+    expect(ultimeSpec(spia)[0].raggruppa).toEqual(["documento_anno"]);
+    // La colonna dice di quale documento si tratta.
     const intestazioni = within(screen.getByRole("table")).getAllByRole("columnheader").map((th) => th.textContent?.trim());
-    expect(intestazioni[0]).toBe("Numero ordine");
-    const avvisi = screen.getByLabelText("Avvisi del risultato");
-    expect(avvisi).toHaveTextContent(/riparte ogni anno/);
-
-    apriGruppo(/^Calendario/);
-    spunta(/^Anno/);
-    await completaDebounce();
+    expect(intestazioni[0]).toBe("Numero ordine/anno");
     expect(screen.queryByLabelText("Avvisi del risultato")).not.toBeInTheDocument();
   });
 });
@@ -391,7 +386,7 @@ describe("l'albero: operazioni, misure, documento", () => {
     monta();
     const operazioni = within(screen.getByRole("region", { name: /Operazioni/ }));
     for (const [gruppo, nome] of [
-      ["Ordinato", /^Numero ordine(?!i| fornitore)/],
+      ["Ordinato", /^Numero ordine\/anno/],
       ["Fatturato", /^Numero fattura/],
       ["Preventivi", /^Numero preventivo/],
     ] as const) {
@@ -405,7 +400,7 @@ describe("l'albero: operazioni, misure, documento", () => {
     monta({ misure: ["ordinato"], suddivisioni: [] });
     const operazioni = within(screen.getByRole("region", { name: /Operazioni/ }));
     fireEvent.click(operazioni.getByRole("button", { name: /^Fatturato/ }));
-    expect(operazioni.getByRole("checkbox", { name: /^Numero ordine$/ })).toBeEnabled();
+    expect(operazioni.getByRole("checkbox", { name: /^Numero ordine\/anno$/ })).toBeEnabled();
     const fattura = operazioni.getByRole("checkbox", { name: /^Numero fattura/ });
     expect(fattura).toBeDisabled();
     expect(operazioni.getAllByText(/non è il documento delle misure scelte/i).length).toBeGreaterThan(0);

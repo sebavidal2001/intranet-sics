@@ -83,6 +83,9 @@ export function motivoDimensioneNonAmmessa(dimensione: Dimensione): string {
 export const DATASET_DI_METRICA: Partial<Record<string, string>> = {
   ordinato: "ordinato",
   n_ordini: "ordinato",
+  quantita_ordinata: "ordinato",
+  quantita_fatturata: "fatturato",
+  quantita_consegnata: "consegnato",
   ordine_medio: "ordinato",
   fatturato: "fatturato",
   costo_venduto: "fatturato",

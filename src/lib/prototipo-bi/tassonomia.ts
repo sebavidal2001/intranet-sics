@@ -33,19 +33,19 @@ export const TIPOLOGIE: Tipologia[] = [
     chiave: "ordinato",
     etichetta: "Ordinato",
     descrizione: "Ordini ricevuti e valore medio degli ordini.",
-    metriche: ["ordinato", "n_ordini", "ordine_medio"],
+    metriche: ["ordinato", "n_ordini", "ordine_medio", "quantita_ordinata"],
   },
   {
     chiave: "fatturato",
     etichetta: "Fatturato",
     descrizione: "Valore delle fatture emesse.",
-    metriche: ["fatturato", "n_fatture", "fattura_media"],
+    metriche: ["fatturato", "n_fatture", "fattura_media", "quantita_fatturata"],
   },
   {
     chiave: "consegnato",
     etichetta: "Consegnato",
     descrizione: "Merce consegnata, portafoglio e consegne future.",
-    metriche: ["consegnato", "n_consegne", "consegna_media", "portafoglio", "consegnato_futuro"],
+    metriche: ["consegnato", "n_consegne", "consegna_media", "quantita_consegnata", "portafoglio", "consegnato_futuro"],
   },
   {
     chiave: "preventivi",
@@ -99,6 +99,7 @@ export const TIPOLOGIE: Tipologia[] = [
     descrizione: "Ordini a fornitore: volume, puntualità dei fornitori, carico dei buyer, righe da sollecitare.",
     metriche: [
       "acquisti_valore",
+      "acquisti_quantita",
       "acquisti_righe",
       "acquisti_ordini",
       "puntualita_fornitori",
@@ -122,6 +123,12 @@ const DIMENSIONI_COMUNI: Dimensione[] = [
   "categoria",
   "codice_articolo",
   "articolo",
+  "codice_cliente",
+  "codice_agente",
+  "profilo",
+  "data_consegna_richiesta",
+  "data_consegna_confermata",
+  "documento_anno",
   // Ultima di proposito: e' la piu' fine, e negli elenchi conviene che stia in
   // coda alle dimensioni con cui si comincia a guardare.
   "documento",
@@ -133,12 +140,12 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
   // Gli ordini a fornitore non hanno agente, cliente ne' business unit: le
   // loro dimensioni sono altre. La categoria e' il gruppo articoli.
   if (dataset === "acquisti") {
-    return (["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "documento"] as Dimensione[]).filter(
+    return (["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "profilo", "data_promessa", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
   }
   if (dataset === "visite") {
-    return (["agente", "cliente", "cap", "provincia", "grado", "tipo_visita", "documento"] as Dimensione[]).filter(
+    return (["agente", "cliente", "cap", "provincia", "grado", "tipo_visita", "esito_visita", "prossima_visita", "codice_cliente", "codice_agente", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
   }

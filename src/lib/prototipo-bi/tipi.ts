@@ -72,6 +72,11 @@ export interface RigaFatto {
   grado?: string;
   /** Tipo di visita (es. "presentazione preventivo"). */
   tipoVisita?: string;
+  /** Profilo del documento nel gestionale (OC ordine cliente, FC fattura, BC bolla…). */
+  profilo?: string;
+  /** Solo sulle visite: esito registrato e data della prossima visita. */
+  esitoVisita?: string;
+  prossimaVisita?: string;
   /** Solo sull'ordinato: data di consegna chiesta dal cliente. */
   dataConsegnaRichiesta?: string;
   /** Solo sull'ordinato: data di consegna confermata al cliente. */
@@ -344,7 +349,12 @@ export type ChiaveMetrica =
   | "acquisti_da_sollecitare"
   | "acquisti_valore_da_sollecitare"
   // ── Visite dei commerciali ──────────────────────────────────────────────
-  | "visite_numero";
+  | "visite_numero"
+  // ── Quantita' (pezzi) ───────────────────────────────────────────────────
+  | "quantita_ordinata"
+  | "quantita_fatturata"
+  | "quantita_consegnata"
+  | "acquisti_quantita";
 
 export type Modificatore =
   | "corrente"
@@ -377,6 +387,22 @@ export type Dimensione =
    * male.
    */
   | "documento"
+  /**
+   * Numero del documento con l'anno («1264/2026»). Il numero riparte ogni anno:
+   * il solo numero fonde documenti di anni diversi, questo no. Per gli ordini a
+   * fornitore coincide con `documento`, che l'anno lo porta gia'.
+   */
+  | "documento_anno"
+  /** Profilo del documento nel gestionale (OC, FC, BC…): il tipo di documento. */
+  | "profilo"
+  /** Codice del cliente nel gestionale, e il codice dell'agente. */
+  | "codice_cliente"
+  | "codice_agente"
+  /** Date di consegna chiesta e confermata al cliente (vendite). */
+  | "data_consegna_richiesta"
+  | "data_consegna_confermata"
+  /** Data promessa dal fornitore (acquisti). */
+  | "data_promessa"
   /** Addetto back office che ha creato il preventivo. */
   | "creatore"
   /** Esito del preventivo: convertito, parziale, aperto. */
@@ -399,7 +425,10 @@ export type Dimensione =
   | "provincia"
   /** Grado della visita. */
   | "grado"
-  | "tipo_visita";
+  | "tipo_visita"
+  /** Esito della visita e data della prossima visita, come registrati. */
+  | "esito_visita"
+  | "prossima_visita";
 
 /** Separatore dei valori di `bu_categoria`: `${bu}${SEPARATORE_RAMO}${categoria}`. */
 export const SEPARATORE_RAMO = " › ";

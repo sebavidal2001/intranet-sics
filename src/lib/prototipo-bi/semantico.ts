@@ -506,6 +506,46 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     aggregazione: "conta_righe",
     unita: "numero",
   },
+  // ── Quantita' ───────────────────────────────────────────────────────────
+  // I pezzi, non gli euro: sono nelle stesse viste dell'importo e prima non
+  // erano interrogabili. Con il segno del documento, come l'importo: una nota di
+  // credito toglie pezzi invece di aggiungerli.
+  quantita_ordinata: {
+    chiave: "quantita_ordinata",
+    etichetta: "Quantità ordinata",
+    descrizione: "Pezzi ordinati, per data documento.",
+    dataset: "ordinato",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.quantita,
+  },
+  quantita_fatturata: {
+    chiave: "quantita_fatturata",
+    etichetta: "Quantità fatturata",
+    descrizione: "Pezzi fatturati, col segno del documento (le note di credito li tolgono).",
+    dataset: "fatturato",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => quantitaOrientata(r),
+  },
+  quantita_consegnata: {
+    chiave: "quantita_consegnata",
+    etichetta: "Quantità consegnata",
+    descrizione: "Pezzi consegnati.",
+    dataset: "consegnato",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.quantita,
+  },
+  acquisti_quantita: {
+    chiave: "acquisti_quantita",
+    etichetta: "Quantità ordinata a fornitore",
+    descrizione: "Pezzi delle righe d'ordine a fornitore, per data dell'ordine.",
+    dataset: "acquisti",
+    aggregazione: "somma",
+    unita: "numero",
+    valore: (r) => r.quantita,
+  },
   // Budget e BEP non vengono dallo snapshot: sono iniettati dal motore budget.
   budget: {
     chiave: "budget",
@@ -526,7 +566,7 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
 };
 
 const SOLO_ACQUISTI = new Set<Dimensione>(["fornitore", "buyer"]);
-const SOLO_VISITE = new Set<Dimensione>(["cap", "provincia", "grado", "tipo_visita"]);
+const SOLO_VISITE = new Set<Dimensione>(["cap", "provincia", "grado", "tipo_visita", "esito_visita", "prossima_visita"]);
 
 /** Vero se la dimensione appartiene a un altro dominio (acquisti, visite, vendite). */
 export function dimensioneFuoriDominio(metrica: ChiaveMetrica, dimensione: Dimensione): boolean {
@@ -562,6 +602,26 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
   codice_articolo: { etichetta: "Codice articolo", estrai: (r) => r.articolo || "(senza codice)" },
   articolo: { etichetta: "Descrizione articolo", estrai: (r) => r.descrizioneArticolo || r.articolo },
   documento: { etichetta: "Documento", estrai: (r) => r.documento },
+  // Il numero riparte ogni anno: con l'anno due documenti di anni diversi non si
+  // fondono. Gli ordini a fornitore l'anno lo portano gia' nel numero.
+  documento_anno: {
+    etichetta: "Documento e anno",
+    estrai: (r) => (r.fornitore !== undefined || !r.data ? r.documento : `${r.documento}/${r.data.slice(0, 4)}`),
+  },
+  profilo: { etichetta: "Tipo documento", estrai: (r) => r.profilo || "(non indicato)" },
+  codice_cliente: { etichetta: "Codice cliente", estrai: (r) => r.codiceCliente || "(senza codice)" },
+  codice_agente: { etichetta: "Codice agente", estrai: (r) => r.codiceAgente || "(senza codice)" },
+  data_consegna_richiesta: {
+    etichetta: "Consegna richiesta",
+    estrai: (r) => r.dataConsegnaRichiesta || "(non indicata)",
+  },
+  data_consegna_confermata: {
+    etichetta: "Consegna confermata",
+    estrai: (r) => r.dataConsegnaConfermata || "(non indicata)",
+  },
+  data_promessa: { etichetta: "Data promessa", estrai: (r) => r.promessa || "(non indicata)" },
+  esito_visita: { etichetta: "Esito visita", estrai: (r) => r.esitoVisita || "(non indicato)" },
+  prossima_visita: { etichetta: "Prossima visita", estrai: (r) => r.prossimaVisita || "(non indicata)" },
   creatore: {
     etichetta: "Addetto back office",
     estrai: (r) => r.creatore || "(non indicato)",

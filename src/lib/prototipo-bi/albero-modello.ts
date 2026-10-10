@@ -118,6 +118,11 @@ export const MOTIVO_MISURA_ALTRA_OPERAZIONE = "Il numero documento vale per una 
 // Le operazioni
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Il numero del documento, con o senza l'anno: stesso concetto, stessa regola. */
+export function eDocumento(dimensione: string): boolean {
+  return dimensione === "documento" || dimensione === "documento_anno";
+}
+
 export interface CampoSuddivisione {
   chiave: Dimensione;
   /** Il nome in questo contesto («Numero ordine» invece di «Documento»), se diverso. */
@@ -145,24 +150,39 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
     chiave: "ordinato",
     etichetta: "Ordinato",
     descrizione: "Gli ordini ricevuti dai clienti.",
-    valori: ["ordinato", "n_ordini"],
-    campi: [{ chiave: "documento", etichetta: "Numero ordine" }],
+    valori: ["ordinato", "n_ordini", "quantita_ordinata"],
+    campi: [
+      { chiave: "documento_anno", etichetta: "Numero ordine/anno" },
+      { chiave: "profilo" },
+      { chiave: "data_consegna_richiesta" },
+      { chiave: "data_consegna_confermata" },
+    ],
     famiglieDocumento: ["ordinato"],
   },
   {
     chiave: "fatturato",
     etichetta: "Fatturato",
     descrizione: "Le fatture emesse, con costo e margine.",
-    valori: ["fatturato", "n_fatture", "costo_venduto", "margine"],
-    campi: [{ chiave: "documento", etichetta: "Numero fattura" }],
+    valori: ["fatturato", "n_fatture", "quantita_fatturata", "costo_venduto", "margine"],
+    campi: [
+      { chiave: "documento_anno", etichetta: "Numero fattura/anno" },
+      { chiave: "profilo" },
+      { chiave: "data_consegna_richiesta" },
+      { chiave: "data_consegna_confermata" },
+    ],
     famiglieDocumento: ["fatturato"],
   },
   {
     chiave: "consegnato",
     etichetta: "Consegnato",
     descrizione: "La merce uscita con i documenti di consegna.",
-    valori: ["consegnato", "n_consegne"],
-    campi: [{ chiave: "documento", etichetta: "Numero consegna" }],
+    valori: ["consegnato", "n_consegne", "quantita_consegnata"],
+    campi: [
+      { chiave: "documento_anno", etichetta: "Numero consegna/anno" },
+      { chiave: "profilo" },
+      { chiave: "data_consegna_richiesta" },
+      { chiave: "data_consegna_confermata" },
+    ],
     famiglieDocumento: ["consegnato"],
   },
   {
@@ -170,7 +190,7 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
     etichetta: "Portafoglio",
     descrizione: "Ordini acquisiti non ancora consegnati.",
     valori: ["portafoglio", "consegnato_futuro"],
-    campi: [{ chiave: "documento", etichetta: "Numero ordine" }],
+    campi: [{ chiave: "documento_anno", etichetta: "Numero ordine/anno" }, { chiave: "profilo" }],
     famiglieDocumento: ["portafoglio"],
   },
   {
@@ -187,7 +207,8 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
       "righe_preventivo",
     ],
     campi: [
-      { chiave: "documento", etichetta: "Numero preventivo" },
+      { chiave: "documento_anno", etichetta: "Numero preventivo/anno" },
+      { chiave: "profilo" },
       { chiave: "creatore" },
       { chiave: "esito" },
       { chiave: "fascia_eta" },
@@ -199,15 +220,22 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
     etichetta: "Banco",
     descrizione: "Vendite e movimenti gestiti al banco.",
     valori: ["banco"],
-    campi: [{ chiave: "documento", etichetta: "Numero documento" }],
+    campi: [{ chiave: "documento_anno", etichetta: "Numero documento/anno" }, { chiave: "profilo" }],
     famiglieDocumento: ["controllo_banco"],
   },
   {
     chiave: "acquisti",
     etichetta: "Acquisti",
     descrizione: "Gli ordini a fornitore.",
-    valori: ["acquisti_valore", "acquisti_ordini", "acquisti_righe", "acquisti_da_sollecitare", "acquisti_valore_da_sollecitare"],
-    campi: [{ chiave: "fornitore" }, { chiave: "buyer" }, { chiave: "documento", etichetta: "Numero ordine fornitore" }],
+    valori: ["acquisti_valore", "acquisti_quantita", "acquisti_ordini", "acquisti_righe", "acquisti_da_sollecitare", "acquisti_valore_da_sollecitare"],
+    // Il numero dell'ordine a fornitore porta gia' profilo e anno («OF 12/2026»).
+    campi: [
+      { chiave: "fornitore" },
+      { chiave: "buyer" },
+      { chiave: "documento", etichetta: "Numero ordine fornitore" },
+      { chiave: "profilo", etichetta: "Tipo ordine" },
+      { chiave: "data_promessa" },
+    ],
     famiglieDocumento: ["acquisti"],
   },
   {
@@ -215,7 +243,14 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
     etichetta: "Visite commerciali",
     descrizione: "Le visite dei commerciali ai clienti: quante, dove, con quale esito. CAP o provincia attivano la mappa.",
     valori: ["visite_numero"],
-    campi: [{ chiave: "cap" }, { chiave: "provincia" }, { chiave: "grado" }, { chiave: "tipo_visita" }],
+    campi: [
+      { chiave: "cap" },
+      { chiave: "provincia" },
+      { chiave: "grado" },
+      { chiave: "tipo_visita" },
+      { chiave: "esito_visita" },
+      { chiave: "prossima_visita" },
+    ],
   },
   {
     chiave: "budget",
@@ -257,9 +292,12 @@ export function avvisoNumeroDocumento(
   periodo: Periodo | undefined
 ): string | null {
   const dimensioni = spec.raggruppa ?? [];
-  if (!dimensioni.includes("documento") || famiglia === "acquisti" || famiglia === "visite") return null;
+  // Con l'anno nel numero (`documento_anno`) i documenti di anni diversi restano
+  // separati: l'avviso vale solo per il numero nudo.
+  const senzaAnno = dimensioni.includes("documento");
+  if (!dimensioni.some(eDocumento) || famiglia === "acquisti" || famiglia === "visite") return null;
   const parti: string[] = [];
-  if (!spec.granularita && !periodoDiUnAnno(periodo)) {
+  if (senzaAnno && !spec.granularita && !periodoDiUnAnno(periodo)) {
     parti.push(
       "Il numero del documento riparte ogni anno: con più anni nel periodo, due documenti con lo stesso numero finiscono sulla stessa riga. " +
         "Aggiungi il Calendario (Giorno o Anno) alle colonne, oppure limita il periodo a un anno."
@@ -279,7 +317,7 @@ export function avvisoNumeroDocumento(
 export function etichettaDocumento(famiglia: string): string | undefined {
   for (const gruppo of GRUPPI_OPERAZIONI) {
     if (!gruppo.famiglieDocumento?.includes(famiglia)) continue;
-    const campo = gruppo.campi.find((c) => c.chiave === "documento");
+    const campo = gruppo.campi.find((c) => eDocumento(c.chiave));
     if (campo?.etichetta) return campo.etichetta;
   }
   return undefined;
@@ -305,7 +343,7 @@ export const GRUPPI_COMUNI: GruppoComune[] = [
     chiave: "commerciale",
     etichetta: "Clienti e agenti",
     descrizione: "Chi compra e chi vende.",
-    dimensioni: ["cliente", "agente"],
+    dimensioni: ["cliente", "codice_cliente", "agente", "codice_agente"],
   },
   {
     chiave: "prodotti",

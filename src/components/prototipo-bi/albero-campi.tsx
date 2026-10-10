@@ -43,6 +43,7 @@ import {
   GRUPPI_MISURE,
   GRUPPI_OPERAZIONI,
   MOTIVO_DOCUMENTO_MISTO,
+  eDocumento,
   MOTIVO_MISURA_ALTRA_OPERAZIONE,
   NATURE,
   famigliaDellaMetrica,
@@ -235,7 +236,7 @@ export function dimensioniAmmesse(
     (restanti, valore) => restanti.filter((d) => (perMetrica[chiaveBase(valore)] ?? []).includes(d)),
     [...(perMetrica[chiaveBase(misure[0])] ?? [])]
   );
-  return famiglieDelleMisure(misure, famiglie).length > 1 ? comuni.filter((d) => d !== "documento") : comuni;
+  return famiglieDelleMisure(misure, famiglie).length > 1 ? comuni.filter((d) => !eDocumento(d)) : comuni;
 }
 
 /**
@@ -266,7 +267,7 @@ export function motivoMisuraNonSelezionabile(
     return `Questa misura non si può suddividere per ${fuori.join(" e ")}.`;
   }
 
-  if (selezione.suddivisioni.includes("documento")) {
+  if (selezione.suddivisioni.some(eDocumento)) {
     const insieme = famiglieDelleMisure([...selezione.misure, valore], famiglie);
     if (insieme.length > 1) return MOTIVO_MISURA_ALTRA_OPERAZIONE;
   }
@@ -279,7 +280,7 @@ export function motivoDimensioneFuoriDalleMisure(
   misure: readonly string[],
   famiglie?: Record<string, string[]>
 ): string {
-  return dimensione === "documento" && famiglieDelleMisure(misure, famiglie).length > 1
+  return eDocumento(dimensione) && famiglieDelleMisure(misure, famiglie).length > 1
     ? MOTIVO_DOCUMENTO_MISTO
     : motivoDimensioneNonAmmessa(dimensione);
 }
@@ -340,7 +341,7 @@ export function riconciliaMisure(
     if (metrica === "budget" || metrica === "bep") {
       if (!ammetteConfrontoBudget({ metrica, raggruppa: suddivisioni })) return false;
     }
-    if (suddivisioni.includes("documento")) {
+    if (suddivisioni.some(eDocumento)) {
       const sue = famiglieDelleMisure([valore], famiglie);
       if (new Set([...famigliaPrincipale, ...sue]).size > 1) return false;
     }
@@ -712,7 +713,7 @@ export function AlberoCampi({
   function rigaDimensione(dimensione: Dimensione, etichettaLocale?: string, famiglieGruppo?: string[]) {
     // Il numero del documento e' di UNA operazione: sotto le altre non si accende.
     const dellaOperazione =
-      dimensione !== "documento" ||
+      !eDocumento(dimensione) ||
       !famiglieGruppo ||
       famiglieScelte.length === 0 ||
       famiglieScelte.every((f) => famiglieGruppo.includes(f));
@@ -912,7 +913,7 @@ export function AlberoCampi({
               gruppo.campi.filter(
                 (c) =>
                   selezione.suddivisioni.includes(c.chiave) &&
-                  (c.chiave !== "documento" ||
+                  (!eDocumento(c.chiave) ||
                     (famiglieScelte.length > 0 && famiglieScelte.every((f) => gruppo.famiglieDocumento?.includes(f))))
               ).length;
             return (
