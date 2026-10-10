@@ -115,6 +115,11 @@ const apriGruppo = (nome: RegExp) => {
   const bottone = within(pannello()).getAllByRole("button", { name: nome })[0];
   if (bottone.getAttribute("aria-expanded") === "false") fireEvent.click(bottone);
 };
+/** Sceglie «Tabella» dalla fila delle visualizzazioni (serve un risultato: si propone da sola quando i campi sono piu' di due). */
+async function scegliTabella() {
+  fireEvent.click(screen.getByRole("button", { name: "Visualizzazione: Tabella" }));
+  await completaDebounce();
+}
 const spunta = (nome: RegExp | string) => fireEvent.click(within(pannello()).getByRole("checkbox", { name: nome }));
 
 describe("tabella: nessun asse, nessuna legenda, tutti i campi che si vogliono", () => {
@@ -126,22 +131,23 @@ describe("tabella: nessun asse, nessuna legenda, tutti i campi che si vogliono",
     // Prima, grafico: Asse, Legenda, Valori, Filtri.
     expect(within(pannello()).getByRole("region", { name: "Asse" })).toBeInTheDocument();
     expect(within(pannello()).getByRole("region", { name: "Legenda" })).toBeInTheDocument();
+    // Non c'e' nessun interruttore Grafico/Tabella: il tipo si sceglie dalla fila delle visualizzazioni.
+    expect(screen.queryByRole("button", { name: "Tabella" })).not.toBeInTheDocument();
 
-    fireEvent.click(within(pannello()).getByRole("button", { name: "Tabella" }));
+    spunta(/^Ordinato/);
+    await completaDebounce();
+    await scegliTabella();
     expect(within(pannello()).queryByRole("region", { name: "Asse" })).not.toBeInTheDocument();
     expect(within(pannello()).queryByRole("region", { name: "Legenda" })).not.toBeInTheDocument();
     for (const nome of ["Campi", "Valori", "Filtri"]) {
       expect(within(pannello()).getByRole("region", { name: nome })).toBeInTheDocument();
     }
-    // La scelta vale anche prima di avere un dato: il segnaposto la rispetta.
-    expect(screen.getByText("La tabella comparirà qui")).toBeInTheDocument();
   });
 
   it("quattro campi e due valori: ognuno e' una colonna, nessuno e' costretto in un asse", async () => {
     const spia = preparaFetch();
     render(<EditorAnalisi />);
     await carica();
-    fireEvent.click(within(pannello()).getByRole("button", { name: "Tabella" }));
 
     spunta(/^Ordinato/);
     apriGruppo(/^Prodotti/);
@@ -161,22 +167,25 @@ describe("tabella: nessun asse, nessuna legenda, tutti i campi che si vogliono",
     expect(within(tabella).getAllByText("codice_articolo-0").length).toBeGreaterThan(0);
   });
 
-  it("tornando al grafico restano due suddivisioni, e lo dice", async () => {
-    const spia = preparaFetch();
+  it("con piu' di due campi il sistema propone la tabella da solo, e con due torna a un grafico", async () => {
+    preparaFetch();
     render(<EditorAnalisi />);
     await carica();
-    fireEvent.click(within(pannello()).getByRole("button", { name: "Tabella" }));
     spunta(/^Ordinato/);
     for (const campo of [/^Cliente/, /^Agente/]) spunta(campo);
+    await completaDebounce();
+    expect(within(pannello()).getByRole("region", { name: "Asse" })).toBeInTheDocument();
+
     apriGruppo(/^Prodotti/);
     spunta(/^Categoria/);
     await completaDebounce();
-    expect(ultimeSpec(spia)[0].raggruppa).toHaveLength(3);
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(within(pannello()).getByRole("region", { name: "Campi" })).toBeInTheDocument();
+    // Nella fila delle visualizzazioni resta la sola tabella: nessun grafico regge tre campi.
+    expect(screen.queryByRole("button", { name: "Visualizzazione: Barre" })).not.toBeInTheDocument();
 
-    fireEvent.click(within(pannello()).getByRole("button", { name: "Grafico" }));
+    spunta(/^Categoria/);
     await completaDebounce();
-    expect(ultimeSpec(spia)[0].raggruppa).toEqual(["cliente", "agente"]);
-    expect(screen.getByText(/al massimo due suddivisioni: ho tenuto Cliente e Agente/)).toBeInTheDocument();
     expect(within(pannello()).getByRole("region", { name: "Asse" })).toBeInTheDocument();
   });
 
@@ -184,10 +193,10 @@ describe("tabella: nessun asse, nessuna legenda, tutti i campi che si vogliono",
     const spia = preparaFetch();
     render(<EditorAnalisi />);
     await carica();
-    fireEvent.click(within(pannello()).getByRole("button", { name: "Tabella" }));
     spunta(/^Ordinato/);
     spunta(/^Cliente/);
     await completaDebounce();
+    await scegliTabella();
     expect(screen.getByRole("table")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Titolo del riquadro"), { target: { value: "Ordinato per cliente" } });
@@ -205,10 +214,10 @@ describe("il numero del documento in una tabella", () => {
     preparaFetch();
     render(<EditorAnalisi />);
     await carica();
-    fireEvent.click(within(pannello()).getByRole("button", { name: "Tabella" }));
     spunta(/^Ordinato/);
     spunta(/^Numero ordine(?!i| fornitore)/);
     await completaDebounce();
+    await scegliTabella();
 
     // Le colonne dicono di quale documento si tratta.
     const intestazioni = within(screen.getByRole("table")).getAllByRole("columnheader").map((th) => th.textContent?.trim());
@@ -228,10 +237,10 @@ describe("un valore e il suo periodo", () => {
     const spia = preparaFetch();
     render(<EditorAnalisi />);
     await carica();
-    fireEvent.click(within(pannello()).getByRole("button", { name: "Tabella" }));
     spunta(/^Ordinato/);
     spunta(/^Cliente/);
     await completaDebounce();
+    await scegliTabella();
 
     fireEvent.click(within(pannello()).getByRole("button", { name: "Calcolo e periodo di Ordinato" }));
     fireEvent.click(within(pannello()).getByRole("button", { name: /Aggiungi anche l’anno precedente/ }));

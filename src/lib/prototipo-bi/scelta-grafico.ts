@@ -143,6 +143,9 @@ function determinaScelta(risultato: RisultatoQuery): SceltaBase {
   const raggruppamenti = risultato.spec.raggruppa ?? [];
   const temporale = risultato.spec.granularita !== undefined;
 
+  if (raggruppamenti.length + (temporale ? 1 : 0) > 2) {
+    return { tipo: "tabella", motivo: "Più di due campi: nessun grafico li disegna tutti, la tabella ne fa una colonna ciascuno." };
+  }
   if (numeroRighe === 0) {
     return { tipo: "tabella", motivo: "Nessun dato disponibile: la tabella mostra chiaramente lo stato vuoto." };
   }
@@ -229,6 +232,9 @@ function graficiApplicabili(risultato: RisultatoQuery): TipoGrafico[] {
   if (numeroRighe === 0) return ["tabella"];
 
   const raggruppamenti = risultato.spec.raggruppa ?? [];
+  // Oltre due suddivisioni (il tempo conta come una) nessun grafico le disegna:
+  // resta la tabella, dove ogni campo e' una colonna.
+  if (raggruppamenti.length + (risultato.spec.granularita ? 1 : 0) > 2) return ["tabella"];
   const temporale = risultato.spec.granularita !== undefined;
   const tuttiNonNegativi = risultato.righe.every((riga) => riga.valore >= 0);
   const possibili: TipoGrafico[] = [];
@@ -303,6 +309,9 @@ function determinaSceltaAnalisi(serie: SerieAnalisiEseguita[]): SceltaBase {
     return { tipo: "tabella", motivo: "Nessuna serie disponibile: la tabella rende esplicito lo stato vuoto." };
   }
   const risultato = principale.risultato;
+  if ((risultato.spec.raggruppa?.length ?? 0) + (risultato.spec.granularita ? 1 : 0) > 2) {
+    return { tipo: "tabella", motivo: "Più di due campi: nessun grafico li disegna tutti, la tabella ne fa una colonna ciascuno." };
+  }
   const haObiettivo = serie.some((voce) => voce.ruolo === "obiettivo");
   const haConfronto = serie.some((voce) => voce.ruolo === "confronto");
   const temporale = serie.some((voce) => voce.risultato.spec.granularita !== undefined);
@@ -339,6 +348,7 @@ function graficiApplicabiliAnalisi(serie: SerieAnalisiEseguita[]): TipoGrafico[]
   const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
   if (!principale) return ["tabella"];
   const risultato = principale.risultato;
+  if ((risultato.spec.raggruppa?.length ?? 0) + (risultato.spec.granularita ? 1 : 0) > 2) return ["tabella"];
   const temporale = serie.some((voce) => voce.risultato.spec.granularita !== undefined);
   const haObiettivo = serie.some((voce) => voce.ruolo === "obiettivo");
   const haConfronto = serie.some((voce) => voce.ruolo === "confronto");

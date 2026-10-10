@@ -10,7 +10,6 @@
  * cosa serve per sbloccarne altri.
  */
 
-import { BarChart3, Table2 } from "lucide-react";
 import { NOMI_GRAFICI, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import { AnteprimaGrafico } from "./scelta-grafico";
 
@@ -49,44 +48,5 @@ export function TipoGraficoCompatto({
         ))}
       </div>
     </section>
-  );
-}
-
-/**
- * Grafico o tabella: la prima scelta, prima ancora dei campi.
- *
- * Una tabella non e' un grafico che ripiega: ha pozzetti suoi (nessun asse ne'
- * legenda, tutti i campi che si vogliono) e per questo si sceglie all'inizio,
- * come in Power BI quando si sceglie la visualizzazione «Tabella». Resta
- * disponibile anche quando ancora non c'e' nessun dato.
- */
-export function ModoVisualizzazione({
-  modalita,
-  onCambia,
-}: {
-  modalita: "grafico" | "tabella";
-  onCambia: (modalita: "grafico" | "tabella") => void;
-}) {
-  const voci = [
-    { chiave: "grafico", etichetta: "Grafico", Icona: BarChart3 },
-    { chiave: "tabella", etichetta: "Tabella", Icona: Table2 },
-  ] as const;
-  return (
-    <div role="group" aria-label="Come vuoi vedere i dati" className="grid shrink-0 grid-cols-2 gap-1 rounded-lg bg-bg-page p-0.5">
-      {voci.map(({ chiave, etichetta, Icona }) => (
-        <button
-          key={chiave}
-          type="button"
-          aria-pressed={modalita === chiave}
-          onClick={() => onCambia(chiave)}
-          className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
-            modalita === chiave ? "bg-bg text-primary shadow-sm" : "text-text-muted hover:text-text"
-          }`}
-        >
-          <Icona className="h-3.5 w-3.5" aria-hidden />
-          {etichetta}
-        </button>
-      ))}
-    </div>
   );
 }

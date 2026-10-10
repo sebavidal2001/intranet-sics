@@ -171,15 +171,15 @@ describe("EditorAnalisi", () => {
     expect(screen.getByRole("checkbox", { name: "Valore consegnato" })).toBeChecked();
   });
 
-  it("alla terza dimensione il limite è scritto invece che subìto", async () => {
+  it("alla terza dimensione non c'e' un divieto: si aggiunge e la visualizzazione diventa la tabella", async () => {
     preparaFetch();
     render(<EditorAnalisi specIniziale={{ metrica: "ordinato", raggruppa: ["bu", "agente"] }} />);
     await caricaVocabolario();
 
     expect(screen.getByRole("checkbox", { name: "Business unit" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Agente" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /^Cliente/ })).toBeDisabled();
-    expect(screen.getAllByText(/Al massimo due/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("checkbox", { name: /^Cliente/ })).toBeEnabled();
+    expect(screen.queryByText(/Al massimo due/)).not.toBeInTheDocument();
   });
 
   it("aggiorna l'analisi riaperta senza crearne una nuova", async () => {

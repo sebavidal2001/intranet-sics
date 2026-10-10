@@ -19,7 +19,7 @@
  */
 
 import { SelettoreValori } from "./selettore-valori";
-import { ModoVisualizzazione, TipoGraficoCompatto } from "./tipo-grafico-compatto";
+import { TipoGraficoCompatto } from "./tipo-grafico-compatto";
 import { TelaRilascio } from "./tela-rilascio";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -662,8 +662,10 @@ export function EditorAnalisi({
       }
     : SELEZIONE_VUOTA;
 
-  // In una tabella non c'e' asse ne' legenda: ogni campo e' una colonna.
-  const modalitaTabella = graficoScelto === "tabella";
+  // I pozzetti seguono la visualizzazione, come in Tableau: se e' una tabella
+  // (proposta perche' i campi sono piu' di due, o scelta dalla fila delle
+  // anteprime) non c'e' asse ne' legenda, ogni campo e' una colonna.
+  const modalitaTabella = graficoScelto === "tabella" || tipoGrafico === "tabella";
 
   // Il numero del documento riparte ogni anno: chi lo mette fra i campi, con piu'
   // anni nel periodo, deve saperlo.
@@ -779,25 +781,6 @@ export function EditorAnalisi({
     // La tabella resta tabella: e' una scelta, non qualcosa che un campo in piu'
     // deve far dimenticare.
     setGraficoScelto((scelto) => (scelto === "tabella" ? scelto : undefined));
-    setSalvataggio("pronto");
-    setMessaggioSalvataggio("");
-  }
-
-  /** Dal grafico alla tabella e ritorno. Tornando, il grafico regge solo due suddivisioni. */
-  function cambiaModo(modo: "grafico" | "tabella") {
-    if (modo === "tabella") {
-      setGraficoScelto("tabella");
-    } else {
-      if (selezioneCampi.suddivisioni.length > 2) {
-        const tenute = selezioneCampi.suddivisioni.slice(0, 2);
-        const nomi = tenute
-          .map((chiave) => vocabolario?.dimensioni.find((voce) => voce.chiave === chiave)?.etichetta ?? chiave)
-          .join(" e ");
-        applicaSelezione({ ...selezioneCampi, suddivisioni: tenute });
-        setAvvisoTela({ tipo: "avviso", testo: `Un grafico regge al massimo due suddivisioni: ho tenuto ${nomi}.` });
-      }
-      setGraficoScelto(undefined);
-    }
     setSalvataggio("pronto");
     setMessaggioSalvataggio("");
   }
@@ -1304,16 +1287,11 @@ export function EditorAnalisi({
           >
             {vocabolario && vocabolarioAlbero && (
               <>
-                <ModoVisualizzazione modalita={modalitaTabella ? "tabella" : "grafico"} onCambia={cambiaModo} />
-                {!modalitaTabella && risultato && proposta && tipoGrafico && (
+                {risultato && proposta && tipoGrafico && (
                   <TipoGraficoCompatto
                     valore={tipoGrafico}
                     opzioni={grafici}
                     onChange={(tipo) => {
-                      if (tipo === "tabella") {
-                        cambiaModo("tabella");
-                        return;
-                      }
                       setGraficoScelto(tipo);
                       setSalvataggio("pronto");
                       setMessaggioSalvataggio("");
@@ -1347,7 +1325,7 @@ export function EditorAnalisi({
                 />
                 <AlberoCampi
                   compatto
-                  senzaLimiteSuddivisioni={modalitaTabella}
+                  senzaLimiteSuddivisioni
                   vocabolario={vocabolarioAlbero}
                   selezione={selezioneCampi}
                   onCambia={(nuova) => applicaSelezione(nuova)}
