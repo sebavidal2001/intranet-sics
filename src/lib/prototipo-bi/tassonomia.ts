@@ -115,6 +115,7 @@ export const TIPOLOGIE: Tipologia[] = [
       "giorni_consegna_fornitori",
       "ritardo_medio_fornitori",
       "acquisti_da_sollecitare",
+      "ritardo_da_sollecitare",
       "acquisti_valore_da_sollecitare",
       "fatturato_fornitore",
       "n_fatture_fornitore",

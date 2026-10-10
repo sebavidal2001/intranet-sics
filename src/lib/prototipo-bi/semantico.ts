@@ -529,6 +529,16 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     unita: "numero",
     valore: (r) => (r.scaduta ? 1 : 0),
   },
+  ritardo_da_sollecitare: {
+    chiave: "ritardo_da_sollecitare",
+    etichetta: "Giorni di ritardo (righe da sollecitare)",
+    descrizione:
+      "Giorni dalla data promessa a oggi, sulle righe ancora aperte con la promessa passata. Per gruppo vale il ritardo maggiore: suddividendo per ordine e articolo è quello della singola riga, come nella tabella «Da sollecitare» del Cruscotto.",
+    dataset: "acquisti",
+    aggregazione: "massimo",
+    unita: "giorni",
+    valore: (r) => (r.giorniRitardoAperto === null || r.giorniRitardoAperto === undefined ? null : r.giorniRitardoAperto),
+  },
   acquisti_valore_da_sollecitare: {
     chiave: "acquisti_valore_da_sollecitare",
     etichetta: "Valore da sollecitare",

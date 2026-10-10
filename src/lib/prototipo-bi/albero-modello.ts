@@ -297,7 +297,7 @@ export const CARTELLE: Cartella[] = [
         chiave: "acquisti_consegnato",
         etichetta: "Consegnato",
         descrizione: "Gli arrivi della merce (DDT del fornitore): puntualità, tempi di consegna, righe da sollecitare.",
-        valori: ["acquisti_da_sollecitare", "acquisti_valore_da_sollecitare"],
+        valori: ["acquisti_da_sollecitare", "ritardo_da_sollecitare", "acquisti_valore_da_sollecitare"],
         misure: ["puntualita_fornitori", "ritardo_medio_fornitori", "giorni_consegna_fornitori"],
         campi: [
           { chiave: "fornitore" },

@@ -78,6 +78,8 @@ export interface RigaFatto {
   giorniConsegna?: number | null;
   /** Giorni oltre la promessa, per le righe arrivate in ritardo (non puntuali); null altrimenti. */
   giorniRitardo?: number | null;
+  /** Giorni di ritardo (promessa → giorno dell'estrazione) delle righe ancora aperte e scadute; null altrimenti. */
+  giorniRitardoAperto?: number | null;
   /**
    * Vero se la business unit non e' quella del gestionale (la riga non aveva
    * gruppo) ma quella del documento a cui appartiene. Vedi
@@ -432,6 +434,7 @@ export type ChiaveMetrica =
   | "giorni_consegna_fornitori"
   | "ritardo_medio_fornitori"
   | "acquisti_da_sollecitare"
+  | "ritardo_da_sollecitare"
   | "acquisti_valore_da_sollecitare"
   // ── Visite dei commerciali ──────────────────────────────────────────────
   | "visite_numero"

@@ -26,4 +26,21 @@ describe("ritardo medio degli acquisti", () => {
     } as unknown as Snapshot;
     expect(esegui({ metrica: "ritardo_medio_fornitori" }, S).totale).toBe(7);
   });
+
+  it("giorni di ritardo delle righe aperte e scadute, fino a oggi", () => {
+    const S = {
+      generatoIl: "", runCorrente: null, runRicevutoIl: null, dataMassima: "2026-09-24", dataMinima: "2026-01-01", conteggi: {},
+      dataset: {
+        ordinato: [], fatturato: [], consegnato: [], portafoglio: [], preventivi_aperti: [], controllo_banco: [], consegnato_futuro_per_mese: [],
+        acquisti: comeFatti([
+          riga({ dataOrdine: "2026-07-01", numeroOrdine: 1, rigaEvasa: false, qtaArrivata: 0, primoArrivo: null, dataConfermata: "2026-09-15" }), // 10 gg
+          riga({ dataOrdine: "2026-07-02", numeroOrdine: 2, rigaEvasa: false, qtaArrivata: 0, primoArrivo: null, dataConfermata: "2026-09-05" }), // 20 gg
+          riga({ dataOrdine: "2026-07-03", numeroOrdine: 3 }), // arrivata: non conta
+        ], "2026-09-25"),
+      },
+    } as unknown as Snapshot;
+    expect(esegui({ metrica: "ritardo_da_sollecitare" }, S).totale).toBe(20);
+    const per = esegui({ metrica: "ritardo_da_sollecitare", raggruppa: ["documento"] }, S);
+    expect(per.righe.find((x) => x.etichetta.includes(" 1/"))?.valore).toBe(10);
+  });
 });
