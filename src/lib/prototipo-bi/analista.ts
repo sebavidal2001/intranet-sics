@@ -426,7 +426,7 @@ const STRUMENTI_TUTTI = [
             type: "array",
             items: {
               type: "string",
-              enum: ["bu", "agente", "cliente", "categoria", "causale", "articolo", "documento", "creatore", "esito", "fascia_eta"],
+              enum: ["bu", "agente", "cliente", "categoria", "causale", "codice_articolo", "articolo", "documento", "creatore", "esito", "fascia_eta"],
             },
           },
           filtri: {
@@ -470,7 +470,7 @@ const STRUMENTI_TUTTI = [
         properties: {
           dimensione: {
             type: "string",
-            enum: ["bu", "agente", "cliente", "categoria", "causale", "articolo", "documento", "creatore", "esito", "fascia_eta"],
+            enum: ["bu", "agente", "cliente", "categoria", "causale", "codice_articolo", "articolo", "documento", "creatore", "esito", "fascia_eta"],
           },
           contiene: {
             type: "string",

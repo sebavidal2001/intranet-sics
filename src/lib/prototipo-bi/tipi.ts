@@ -360,6 +360,12 @@ export type Dimensione =
   | "cliente"
   | "categoria"
   | "causale"
+  /**
+   * Il codice dell'articolo, com'e' nel gestionale: e' quello che si cerca,
+   * si incolla in un foglio, si confronta con il listino.
+   */
+  | "codice_articolo"
+  /** La descrizione dell'articolo (o il codice, se la descrizione manca). */
   | "articolo"
   /**
    * Il singolo documento: fattura, ordine, preventivo.

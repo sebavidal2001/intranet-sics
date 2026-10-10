@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { formattaPeriodo } from "@/lib/prototipo-bi/formato-periodo";
 import { GraficoDaAnalisi } from "@/components/prototipo-bi/grafico-da-risultato";
-import { GRUPPI_DIMENSIONI } from "@/lib/prototipo-bi/gruppi-campi";
+import { GRUPPI_COMUNI, GRUPPI_OPERAZIONI } from "@/lib/prototipo-bi/albero-modello";
 import { CATALOGO } from "@/lib/prototipo-bi/semantico";
 import { dimensioniPerMetrica } from "@/lib/prototipo-bi/tassonomia";
 import { graficiPossibili } from "@/lib/prototipo-bi/scelta-grafico";
@@ -57,7 +57,10 @@ describe("tabella di un risultato", () => {
 
 describe("albero dei campi", () => {
   it("elenca ogni dimensione che almeno una misura ammette (CAP e provincia compresi)", () => {
-    const nellAlbero = new Set(GRUPPI_DIMENSIONI.flatMap((gruppo) => gruppo.dimensioni));
+    const nellAlbero = new Set([
+      ...GRUPPI_COMUNI.flatMap((gruppo) => gruppo.dimensioni),
+      ...GRUPPI_OPERAZIONI.flatMap((gruppo) => gruppo.campi.map((campo) => campo.chiave)),
+    ]);
     const ammesse = new Set(
       (Object.keys(CATALOGO) as ChiaveMetrica[]).flatMap((metrica) => dimensioniPerMetrica(metrica))
     );

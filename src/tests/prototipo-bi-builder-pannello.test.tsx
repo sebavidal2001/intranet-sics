@@ -15,12 +15,18 @@ const VOCABOLARIO = {
   metriche: [
     { chiave: "ordinato", etichetta: "Ordinato", descrizione: "", unita: "euro" },
     { chiave: "fatturato", etichetta: "Fatturato", descrizione: "", unita: "euro" },
+    { chiave: "visite_numero", etichetta: "Visite", descrizione: "", unita: "numero" },
   ],
   dimensioni: [
     { chiave: "bu", etichetta: "Business unit" },
     { chiave: "agente", etichetta: "Agente" },
+    { chiave: "cap", etichetta: "CAP" },
   ],
-  dimensioniPerMetrica: { ordinato: ["bu", "agente"], fatturato: ["bu", "agente"] },
+  dimensioniPerMetrica: {
+    ordinato: ["bu", "agente"],
+    fatturato: ["bu", "agente"],
+    visite_numero: ["agente", "cap"],
+  },
   modificatori: [{ chiave: "corrente", descrizione: "Periodo corrente" }],
   granularita: ["mese"],
 };
@@ -112,5 +118,50 @@ describe("builder a pannello laterale", () => {
 
     fireEvent.change(within(pannello).getByLabelText("Cerca un campo"), { target: { value: "zzz" } });
     expect(within(pannello).getByText(/Nessun campo corrisponde/)).toBeInTheDocument();
+  });
+  it("CAP sta dentro «Visite commerciali», insieme al numero delle visite, e in nessun altro posto", async () => {
+    render(<EditorAnalisi />);
+    await screen.findByRole("tab", { name: "Campi" });
+
+    const pannello = screen.getByRole("tabpanel", { name: "Campi" });
+    fireEvent.change(within(pannello).getByLabelText("Cerca un campo"), { target: { value: "visit" } });
+
+    const gruppo = within(pannello).getByText("Visite commerciali").closest("button")?.parentElement as HTMLElement;
+    expect(within(gruppo).getByLabelText(/^Visite/)).toBeInTheDocument();
+    expect(within(gruppo).getByLabelText(/^CAP/)).toBeInTheDocument();
+    // Una sola casella CAP in tutto l'elenco, e nessun gruppo «Visite e territorio» a parte.
+    expect(within(pannello).getAllByLabelText(/^CAP/)).toHaveLength(1);
+    expect(within(pannello).queryByText("Visite e territorio")).not.toBeInTheDocument();
+  });
+
+  it("si puo' svuotare del tutto il riquadro; l'errore c'e' solo al salvataggio", async () => {
+    render(<EditorAnalisi />);
+    await screen.findByRole("tab", { name: "Campi" });
+    const pannello = screen.getByRole("tabpanel", { name: "Campi" });
+
+    fireEvent.click(within(pannello).getByLabelText(/^Ordinato/));
+    await waitFor(() => expect(screen.queryByText("Il grafico comparirà qui")).not.toBeInTheDocument());
+
+    // Tolta l'ultima misura il riquadro e' vuoto, senza rifiuti né errori.
+    fireEvent.click(within(pannello).getByLabelText(/^Ordinato/));
+    await screen.findByText("Il grafico comparirà qui");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Serve almeno una misura/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Salva il riquadro/ }));
+    expect(await screen.findByText(/Il riquadro è vuoto/)).toBeInTheDocument();
+  });
+
+  it("togliere l'ultima misura dai Valori svuota il riquadro", async () => {
+    render(<EditorAnalisi />);
+    await screen.findByRole("tab", { name: "Campi" });
+    fireEvent.click(within(screen.getByRole("tabpanel", { name: "Campi" })).getByLabelText(/^Ordinato/));
+    await waitFor(() => expect(screen.queryByText("Il grafico comparirà qui")).not.toBeInTheDocument());
+
+    const valori = screen.getByRole("region", { name: "Valori" });
+    fireEvent.click(within(valori).getByRole("button", { name: /Togli Ordinato dai valori/ }));
+
+    await screen.findByText("Il grafico comparirà qui");
+    expect(within(screen.getByRole("region", { name: "Valori" })).queryByRole("button", { name: /Togli/ })).not.toBeInTheDocument();
   });
 });

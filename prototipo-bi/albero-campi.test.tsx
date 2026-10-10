@@ -209,8 +209,8 @@ describe("L'albero sullo schermo", () => {
   });
 
   it("alla terza suddivisione il limite è scritto, non subìto", () => {
+    // «Prodotti» e' gia' aperto: contiene la business unit scelta.
     monta(sel({ misure: ["ordinato"], suddivisioni: ["bu", "agente"] }));
-    fireEvent.click(screen.getByRole("button", { name: /Prodotti/ }));
     const categoria = screen.getByRole("checkbox", { name: /Categoria/ });
     expect(categoria).toBeDisabled();
     expect(screen.getAllByText(/Al massimo due/).length).toBeGreaterThan(0);
@@ -235,10 +235,9 @@ describe("L'albero sullo schermo", () => {
 
   it("togliendo una misura cadono le suddivisioni che solo lei ammetteva", () => {
     const onCambia = monta(sel({ misure: ["preventivi_valore", "ordinato"], suddivisioni: ["bu"] }));
-    // «Preventivi» e' sia una tipologia sia un gruppo di dimensioni: la ricerca
-    // va ristretta alla colonna giusta. Il gruppo e' gia' aperto perche'
-    // contiene una misura spuntata.
-    const misure = within(screen.getByRole("region", { name: /Che cosa vuoi misurare/ }));
+    // I valori stanno nella sezione «Operazioni», nel gruppo «Preventivi», gia'
+    // aperto perche' contiene una misura spuntata.
+    const misure = within(screen.getByRole("region", { name: /Operazioni/ }));
     fireEvent.click(misure.getByRole("checkbox", { name: /Valore preventivi/ }));
     expect(onCambia).toHaveBeenCalledWith(
       expect.objectContaining({ misure: ["ordinato"], suddivisioni: ["bu"] })

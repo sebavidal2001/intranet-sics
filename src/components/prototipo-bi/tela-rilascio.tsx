@@ -35,10 +35,13 @@ const ZONA = {
   asse: { pozzetto: "asse", titolo: "Asse", sotto: "Le categorie o il tempo" },
   legenda: { pozzetto: "legenda", titolo: "Legenda", sotto: "Suddividi per colore" },
   filtri: { pozzetto: "filtri", titolo: "Filtri", sotto: "Quali righe tenere" },
+  campi: { pozzetto: "campi", titolo: "Campi", sotto: "Una colonna per campo" },
 } satisfies Record<string, Zona>;
 
-function zonePer(voce: VoceCampo): Zona[] {
+function zonePer(voce: VoceCampo, inTabella: boolean): Zona[] {
   if (voce.tipo === "misura") return [ZONA.valori];
+  // In una tabella non c'e' asse ne' legenda: un campo e' una colonna.
+  if (inTabella) return voce.tipo === "calendario" ? [ZONA.campi] : [ZONA.campi, ZONA.filtri];
   if (voce.tipo === "calendario") return [ZONA.asse];
   return [ZONA.asse, ZONA.legenda, ZONA.filtri];
 }
@@ -48,7 +51,10 @@ export function TelaRilascio({
   onRilascia,
   avviso,
   onChiudiAvviso,
+  inTabella = false,
 }: {
+  /** Nelle tabelle le zone sono Campi, Valori, Filtri. */
+  inTabella?: boolean;
   children: ReactNode;
   onRilascia: (pozzetto: NomePozzetto, voce: VoceCampo) => void;
   /** L'esito dell'ultimo gesto, dove si sta guardando: un rifiuto senza motivo sembrerebbe un guasto. */
@@ -85,7 +91,7 @@ export function TelaRilascio({
 
       {inTrascinamento && (
         <div className="absolute inset-0 z-20 flex gap-3 rounded-xl bg-bg/80 p-3 backdrop-blur-[1px]" aria-hidden>
-          {zonePer(inTrascinamento).map((zona) => (
+          {zonePer(inTrascinamento, inTabella).map((zona) => (
             <div
               key={zona.pozzetto}
               onDragEnter={() => setSopra(zona.pozzetto)}

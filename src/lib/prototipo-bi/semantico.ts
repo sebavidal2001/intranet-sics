@@ -556,7 +556,11 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
     etichetta: "Causale magazzino",
     estrai: (r) => r.causaleDescrizione || r.causaleCodice || "(nessuna)",
   },
-  articolo: { etichetta: "Articolo", estrai: (r) => r.descrizioneArticolo || r.articolo },
+  // La chiave `articolo` resta com'e': le analisi e i filtri gia' salvati
+  // portano le descrizioni, e cambiarne il significato li svuoterebbe in
+  // silenzio. Il codice e' una dimensione a parte.
+  codice_articolo: { etichetta: "Codice articolo", estrai: (r) => r.articolo || "(senza codice)" },
+  articolo: { etichetta: "Descrizione articolo", estrai: (r) => r.descrizioneArticolo || r.articolo },
   documento: { etichetta: "Documento", estrai: (r) => r.documento },
   creatore: {
     etichetta: "Addetto back office",

@@ -43,13 +43,16 @@ type Fase = "scrivi" | "attesa" | "proposta" | "salvataggio";
 export function CreaMisura({
   onChiudi,
   onSalvata,
+  testoIniziale = "",
 }: {
+  /** Per partire da una misura che c'e' gia': il testo e' una variante da completare. */
+  testoIniziale?: string;
   onChiudi: () => void;
   /** La misura e' gia' nel catalogo: chi apre la finestra decide come usarla. */
   onSalvata: (misura: MisuraSalvata) => void;
 }) {
   const [fase, setFase] = useState<Fase>("scrivi");
-  const [testo, setTesto] = useState("");
+  const [testo, setTesto] = useState(testoIniziale);
   const [risposta, setRisposta] = useState("");
   const [proposta, setProposta] = useState<EsitoProposta | null>(null);
   const [nome, setNome] = useState("");
@@ -57,7 +60,12 @@ export function CreaMisura({
   const campo = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    campo.current?.focus();
+    const area = campo.current;
+    area?.focus();
+    // Partendo da una misura esistente il cursore va in fondo: il resto della frase e' da scrivere.
+    if (area && testoIniziale) area.setSelectionRange(testoIniziale.length, testoIniziale.length);
+    // Solo all'apertura.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

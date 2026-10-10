@@ -13,7 +13,7 @@
  */
 
 import { dimensioniDellaMisura, descriviMisura, unitaDellaMisura } from "./misure";
-import type { ChiaveMetrica, Dimensione, MisuraDefinita, SpecQuery } from "./tipi";
+import type { ChiaveMetrica, Dimensione, MisuraDefinita, Modificatore, SpecQuery } from "./tipi";
 import type { ChiaveTipologia } from "./tassonomia";
 
 export const PREFISSO_MISURA = "misura:";
@@ -35,6 +35,70 @@ export function chiaveDellaSpec(spec: SpecQuery): ChiaveCampo {
   return spec.misura ? chiaveMisura(spec.misura) : spec.metrica;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Valori: una voce dell'albero + il periodo a cui si riferisce
+//
+// «Ordinato dell'anno corrente» e «Ordinato dell'anno precedente» sono due
+// colonne diverse della stessa tabella, e nei valori devono poter convivere.
+// Una chiave di metrica da sola non basta (sarebbe la stessa due volte): il
+// valore porta con se' il suo periodo, scritto come `ordinato@anno_precedente`.
+// Senza suffisso e' il periodo corrente. Resta una stringa: cosi' le liste di
+// valori, le chiavi React e i confronti per uguaglianza continuano a funzionare.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Il periodo di un valore, oltre al corrente. Coincide coi modificatori del motore. */
+export type VarianteValore = Exclude<Modificatore, "corrente">;
+
+/** Un valore nei pozzetti: una voce dell'albero, con eventuale periodo diverso dal corrente. */
+export type ChiaveValore = ChiaveCampo | `${ChiaveCampo}@${VarianteValore}`;
+
+const VARIANTI: VarianteValore[] = ["anno_precedente", "progressivo", "progressivo_ap"];
+
+export const NOMI_VARIANTE: Record<Modificatore, string> = {
+  corrente: "Periodo scelto",
+  anno_precedente: "Anno precedente",
+  progressivo: "Progressivo",
+  progressivo_ap: "Progressivo anno prec.",
+};
+
+/** Le stesse diciture, abbreviate: per i chip dei valori, dove lo spazio e' poco. */
+export const NOMI_VARIANTE_BREVI: Record<Modificatore, string> = {
+  corrente: "",
+  anno_precedente: "anno prec.",
+  progressivo: "progressivo",
+  progressivo_ap: "progr. anno prec.",
+};
+
+/** Separa la voce dell'albero dal suo periodo. */
+export function scomponiValore(valore: string): { chiave: ChiaveCampo; variante?: VarianteValore } {
+  const posizione = valore.lastIndexOf("@");
+  if (posizione > 0) {
+    const coda = valore.slice(posizione + 1) as VarianteValore;
+    if (VARIANTI.includes(coda)) return { chiave: valore.slice(0, posizione) as ChiaveCampo, variante: coda };
+  }
+  return { chiave: valore as ChiaveCampo };
+}
+
+export function componiValore(chiave: ChiaveCampo, variante?: VarianteValore): ChiaveValore {
+  return variante ? (`${chiave}@${variante}` as ChiaveValore) : chiave;
+}
+
+/** Solo la voce dell'albero, senza il periodo. */
+export function chiaveBase(valore: string): ChiaveCampo {
+  return scomponiValore(valore).chiave;
+}
+
+export function modificatoreDelValore(valore: string): Modificatore {
+  return scomponiValore(valore).variante ?? "corrente";
+}
+
+/** Il valore a cui corrisponde una spec: voce e periodo insieme. */
+export function valoreDellaSpec(spec: SpecQuery): ChiaveValore {
+  const variante =
+    spec.modificatore && spec.modificatore !== "corrente" ? (spec.modificatore as VarianteValore) : undefined;
+  return componiValore(chiaveDellaSpec(spec), variante);
+}
+
 /**
  * La spec per una voce dell'albero, partendo da una base (suddivisioni,
  * granularita', periodo...). Per una metrica toglie un'eventuale misura
@@ -43,10 +107,13 @@ export function chiaveDellaSpec(spec: SpecQuery): ChiaveCampo {
  */
 export function specPerChiave(
   base: SpecQuery,
-  chiave: ChiaveCampo,
+  chiaveOValore: ChiaveValore,
   definizioni: Record<string, MisuraDefinita>
 ): SpecQuery | null {
-  const senza: SpecQuery = { ...base };
+  // Un valore con periodo ("ordinato@anno_precedente") imposta il modificatore;
+  // senza, resta quello della base (chi costruisce la base lo sceglie).
+  const { chiave, variante } = scomponiValore(chiaveOValore);
+  const senza: SpecQuery = { ...base, ...(variante ? { modificatore: variante } : {}) };
   delete senza.misura;
   if (!eChiaveMisura(chiave)) return { ...senza, metrica: chiave };
   const definizione = definizioni[chiave];

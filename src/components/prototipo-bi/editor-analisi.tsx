@@ -19,7 +19,7 @@
  */
 
 import { SelettoreValori } from "./selettore-valori";
-import { TipoGraficoCompatto } from "./tipo-grafico-compatto";
+import { ModoVisualizzazione, TipoGraficoCompatto } from "./tipo-grafico-compatto";
 import { TelaRilascio } from "./tela-rilascio";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -40,9 +40,12 @@ import {
 import {
   AlberoCampi,
   SELEZIONE_VUOTA,
+  nomeConPeriodo,
   type SelezioneCampi,
   type VocabolarioAlbero,
 } from "@/components/prototipo-bi/albero-campi";
+import { avvisoNumeroDocumento, famiglieDellaMisura, famigliaDellaMetrica } from "@/lib/prototipo-bi/albero-modello";
+import { dimensioniDellaMisura } from "@/lib/prototipo-bi/misure";
 import { Pozzetti, type ManigliaPozzetti } from "@/components/prototipo-bi/pozzetti";
 import type { NomePozzetto, VoceCampo } from "@/components/prototipo-bi/pozzetti-regole";
 import {
@@ -74,12 +77,16 @@ import type {
 } from "@/lib/prototipo-bi/tipi";
 import type { ChiaveTipologia } from "@/lib/prototipo-bi/tassonomia";
 import {
+  chiaveBase,
   chiaveDellaSpec,
   chiaveMisura,
   estendiVocabolario,
   misureNelleSpec,
+  scomponiValore,
   specPerChiave,
+  valoreDellaSpec,
   type ChiaveCampo,
+  type ChiaveValore,
 } from "@/lib/prototipo-bi/misure-vocabolario";
 import type { MisuraSalvata } from "@/lib/prototipo-bi/misure-catalogo";
 
@@ -203,6 +210,35 @@ type ScorciatoiaConfronto ="anno_precedente" | "budget" | "bep" | "progressivo";
 
 interface SerieEditor extends SerieAnalisi {
   scorciatoia?: ScorciatoiaConfronto;
+  /**
+   * Vero (o assente) se la serie segue i filtri della principale; falso se ne ha
+   * di propri e vanno lasciati stare (un confronto fra due clienti, per
+   * esempio). Non si salva: all'apertura si deduce da come sono i filtri.
+   */
+  eredita?: boolean;
+}
+
+const stessiFiltri = (a: SpecQuery | undefined, b: SpecQuery | undefined) =>
+  JSON.stringify(a?.filtri ?? []) === JSON.stringify(b?.filtri ?? []);
+
+/**
+ * I filtri della principale, nella forma che vale per un'altra serie: solo
+ * quelli che la sua metrica ammette. Senza, una misura in piu' (o lo stesso
+ * valore a un altro periodo) ignorerebbe i filtri e mostrerebbe numeri di un
+ * perimetro diverso accanto a quelli filtrati.
+ */
+function filtriPerSerie(
+  filtri: Filtro[] | undefined,
+  serie: SpecQuery,
+  perMetrica: Record<string, Dimensione[]> | undefined
+): Filtro[] | undefined {
+  if (!filtri || filtri.length === 0) return undefined;
+  const ammesse = serie.misura ? dimensioniDellaMisura(serie.misura) : perMetrica?.[serie.metrica];
+  const copia = (f: Filtro): Filtro => ({ ...f, valore: Array.isArray(f.valore) ? [...f.valore] : f.valore });
+  if (!ammesse) return filtri.map(copia);
+  const ok = new Set<string>(ammesse);
+  const tenuti = filtri.filter((f) => ok.has(f.campo) || (f.campo === "bu_categoria" && ok.has("bu")));
+  return tenuti.length > 0 ? tenuti.map(copia) : undefined;
 }
 
 /** Il riquadro com'era prima di una modifica a parole, per poterla annullare. */
@@ -235,6 +271,11 @@ function specDaScorciatoia(spec: SpecQuery, scorciatoia: ScorciatoiaConfronto): 
   const senzaMisura: SpecQuery = { ...spec };
   delete senzaMisura.misura;
   return { ...senzaMisura, metrica: scorciatoia };
+}
+
+/** L'operazione (dataset) di una spec: quella della sua metrica, o del primo operando di una misura. */
+function famigliaDellaSpec(spec: SpecQuery): string {
+  return famigliaDellaMetrica(spec.metrica);
 }
 
 function eOggetto(valore: unknown): valore is Record<string, unknown> {
@@ -328,9 +369,13 @@ export function EditorAnalisi({
 }): JSX.Element {
   const [vocabolario, setVocabolario] = useState<Vocabolario | null>(null);
   const [spec, setSpec] = useState<SpecQuery | null>(specIniziale ?? null);
-  const [serieAggiuntive, setSerieAggiuntive] = useState<SerieEditor[]>(
-    () => serieIniziali?.filter((voce) => voce.ruolo !== "principale") ?? []
-  );
+  const [serieAggiuntive, setSerieAggiuntive] = useState<SerieEditor[]>(() => {
+    const principaleIniziale = specIniziale ?? serieIniziali?.find((voce) => voce.ruolo === "principale")?.spec;
+    return (serieIniziali?.filter((voce) => voce.ruolo !== "principale") ?? []).map((voce) => ({
+      ...voce,
+      eredita: stessiFiltri(voce.spec, principaleIniziale),
+    }));
+  });
   const [tipologiaScelta, setTipologiaScelta] = useState<ChiaveTipologia | null>(null);
   const [risultato, setRisultato] = useState<RisultatoQuery | null>(null);
   const [serieEseguite, setSerieEseguite] = useState<SerieAnalisiEseguita[]>([]);
@@ -346,6 +391,9 @@ export function EditorAnalisi({
   const [misureSalvate, setMisureSalvate] = useState<MisuraSalvata[]>([]);
   const [chiGestisceMisure, setChiGestisceMisure] = useState<{ utenteId: string; tutte: boolean }>({ utenteId: "", tutte: false });
   const [creaMisuraAperta, setCreaMisuraAperta] = useState(false);
+  // Il testo con cui si apre «Nuova misura a parole»: vuoto, o quello per
+  // partire da una misura che c'e' gia'.
+  const [testoNuovaMisura, setTestoNuovaMisura] = useState("");
   // Modifica a parole: il nome della principale scelto da una modifica (altrimenti
   // si deriva) e i punti di ripristino per «Annulla l'ultima modifica».
   const [nomePrincipaleScelto, setNomePrincipaleScelto] = useState<string | null>(null);
@@ -455,9 +503,12 @@ export function EditorAnalisi({
     if (!spec) return [];
     const nomePrincipale = nomePrincipaleScelto
       ?? serieIniziali?.find((voce) => voce.ruolo === "principale")?.nome
-      ?? spec.misura?.nome
-      ?? vocabolario?.metriche.find((voce) => voce.chiave === spec.metrica)?.etichetta
-      ?? spec.metrica;
+      ?? nomeConPeriodo(
+        spec.misura?.nome
+          ?? vocabolario?.metriche.find((voce) => voce.chiave === spec.metrica)?.etichetta
+          ?? spec.metrica,
+        valoreDellaSpec(spec)
+      );
     return [{ ruolo: "principale", nome: nomePrincipale, spec }, ...serieAggiuntive];
   }, [nomePrincipaleScelto, serieAggiuntive, serieIniziali, spec, vocabolario]);
   const seriePersistita = serieAggiuntive.length > 0 ? serieAnalisi : null;
@@ -481,18 +532,25 @@ export function EditorAnalisi({
       // Anche il periodo fissato: senza, il budget spuntato nell'albero
       // arrivava per tutti gli anni mentre l'ordinato era fermo al 2026, e la
       // tabella si riempiva di mesi con il solo budget.
-      const { periodo: _periodoVecchio, ...restoSpec } = voce.spec;
+      const { periodo: _periodoVecchio, filtri: filtriVoce, ...restoSpec } = voce.spec;
+      // I filtri seguono la principale, salvo per le serie che ne hanno di
+      // propri: senza questo, una misura in piu' ignorava il filtro.
+      const filtri =
+        voce.eredita === false
+          ? filtriVoce
+          : filtriPerSerie(spec.filtri, voce.spec, vocabolario?.dimensioniPerMetrica);
       return {
         ...voce,
         spec: {
           ...restoSpec,
+          ...(filtri ? { filtri } : {}),
           raggruppa: spec.raggruppa ? [...spec.raggruppa] : undefined,
           granularita: spec.granularita,
           ...(spec.periodo ? { periodo: { ...spec.periodo } } : {}),
         },
       };
     }));
-  }, [spec]);
+  }, [spec, vocabolario]);
 
   useEffect(() => {
     if (!vocabolario || !spec) return;
@@ -573,7 +631,13 @@ export function EditorAnalisi({
       spec,
       ...serieAggiuntive.map((voce) => voce.spec),
     ]);
-    return estendiVocabolario(vocabolario, [...dalCatalogo, ...dalleSpec]);
+    const risultato = estendiVocabolario(vocabolario, [...dalCatalogo, ...dalleSpec]);
+    // Quali operazioni (dataset) coinvolge ogni misura personalizzata: serve alla
+    // regola sul numero del documento, che vale per una operazione alla volta.
+    const famiglie = Object.fromEntries(
+      Object.entries(risultato.definizioni).map(([chiave, misura]) => [chiave, famiglieDellaMisura(misura)])
+    );
+    return { ...risultato, famiglie };
   }, [misureSalvate, serieAggiuntive, serieIniziali, spec, specIniziale, vocabolario]);
 
   const vocabolarioAlbero: VocabolarioAlbero | null = vocabolario
@@ -582,33 +646,87 @@ export function EditorAnalisi({
         metriche: esteso?.vocabolario.metriche ?? vocabolario.metriche,
         dimensioni: vocabolario.dimensioni,
         dimensioniPerMetrica: esteso?.vocabolario.dimensioniPerMetrica ?? vocabolario.dimensioniPerMetrica,
+        famiglie: esteso?.famiglie,
+        definizioni: esteso?.definizioni,
       }
     : null;
 
+  // Tutte le serie sono valori, ciascuna col suo periodo: «ordinato» e «ordinato
+  // dell'anno precedente» sono due valori diversi. Senza doppioni: una serie
+  // generata dal pannello Confronti puo' coincidere con una scelta dai campi.
   const selezioneCampi: SelezioneCampi = spec
     ? {
-        misure: [
-          chiaveDellaSpec(spec),
-          ...serieAggiuntive.filter((voce) => !voce.scorciatoia).map((voce) => chiaveDellaSpec(voce.spec)),
-        ],
+        misure: [...new Set<ChiaveValore>([valoreDellaSpec(spec), ...serieAggiuntive.map((voce) => valoreDellaSpec(voce.spec))])],
         suddivisioni: spec.raggruppa ?? [],
         granularita: spec.granularita,
       }
     : SELEZIONE_VUOTA;
 
+  // In una tabella non c'e' asse ne' legenda: ogni campo e' una colonna.
+  const modalitaTabella = graficoScelto === "tabella";
+
+  // Il numero del documento riparte ogni anno: chi lo mette fra i campi, con piu'
+  // anni nel periodo, deve saperlo.
+  const avvisoDocumento = spec
+    ? avvisoNumeroDocumento(
+        spec,
+        famigliaDellaSpec(spec),
+        periodoPresente(spec.periodo) ? spec.periodo : periodoEreditato
+      )
+    : null;
+
+  /**
+   * Il riquadro torna vuoto.
+   *
+   * E' uno stato lecito: chi vuole ricominciare non deve aggirare l'editor. Non
+   * c'e' errore finche' non si prova a salvare (`salva`). Il titolo scelto a
+   * mano resta; quello automatico si cancella insieme alla domanda; la tabella
+   * resta tabella, perche' e' una scelta di come vedere i dati.
+   */
+  function svuotaRiquadro() {
+    setSpec(null);
+    setSerieAggiuntive([]);
+    setRisultato(null);
+    setSerieEseguite([]);
+    setErrore("");
+    setCaricamento(false);
+    setGraficoScelto((scelto) => (scelto === "tabella" ? scelto : undefined));
+    setAspetto(null);
+    setNomePrincipaleScelto(null);
+    setCronologia([]);
+    if (!titoloModificato.current) setTitolo("");
+    setSalvataggio("pronto");
+    setMessaggioSalvataggio("");
+  }
+
   function applicaSelezione(nuova: SelezioneCampi, definizioniExtra: Record<string, MisuraDefinita> = {}) {
     const [principale, ...altre] = nuova.misure;
-    if (!principale) return;
+    if (!principale) {
+      svuotaRiquadro();
+      return;
+    }
     const definizioni = { ...(esteso?.definizioni ?? {}), ...definizioniExtra };
 
-    const tipologia = esteso?.vocabolario.tipologie.find((voce) => voce.metriche.includes(principale));
+    const tipologia = esteso?.vocabolario.tipologie.find((voce) => voce.metriche.includes(chiaveBase(principale)));
     // Il gruppo delle misure personalizzate non esiste nel pannello «Un'altra
     // metrica»: non va scelto come tipologia di partenza.
     if (tipologia && tipologia.chiave !== "misure") setTipologiaScelta(tipologia.chiave);
 
+    /** Il nome di un valore: l'etichetta della misura, col periodo se non e' il corrente. */
+    const nomeDi = (valore: ChiaveValore) => {
+      const chiave = chiaveBase(valore);
+      return nomeConPeriodo(
+        esteso?.vocabolario.metriche.find((voce) => voce.chiave === chiave)?.etichetta ?? definizioni[chiave]?.nome ?? chiave,
+        valore
+      );
+    };
+
     const principaleSpec = specPerChiave(
       {
-        ...(spec ?? { metrica: "ordinato" as const, modificatore: "corrente" as const }),
+        ...(spec ?? { metrica: "ordinato" as const }),
+        // Il periodo lo decide il valore (`ordinato@anno_precedente`), non
+        // quello che la spec aveva prima.
+        modificatore: "corrente",
         raggruppa: nuova.suddivisioni.length > 0 ? [...nuova.suddivisioni] : undefined,
         granularita: nuova.granularita,
       },
@@ -618,20 +736,22 @@ export function EditorAnalisi({
     // Senza definizione non c'e' domanda: si lascia com'era invece di calcolare altro.
     if (!principaleSpec) return;
     setSpec(principaleSpec);
+    // Se la principale cambia (un'altra misura, o lo stesso valore a un altro
+    // periodo) il nome la segue; un nome scelto a mano resta finche' non cambia.
+    if (!spec || valoreDellaSpec(spec) !== valoreDellaSpec(principaleSpec)) setNomePrincipaleScelto(nomeDi(principale));
 
-    setSerieAggiuntive((correnti) => {
-      const scorciatoie = correnti.filter((voce) => voce.scorciatoia);
-      const misureExtra = altre.flatMap((chiave) => {
-        const gia = correnti.find((voce) => !voce.scorciatoia && chiaveDellaSpec(voce.spec) === chiave);
-        const nome =
-          gia?.nome ??
-          esteso?.vocabolario.metriche.find((voce) => voce.chiave === chiave)?.etichetta ??
-          definizioni[chiave]?.nome ??
-          chiave;
-        // La misura in piu' deve condividere suddivisione e granularita'
-        // della principale: e' la stessa domanda su un altro numero. Senza,
-        // la serie si riduce a un solo valore e compare sull'asse come una
-        // categoria di troppo chiamata «totale», accanto ai mesi.
+    setSerieAggiuntive((correnti) =>
+      altre.flatMap((valore) => {
+        const chiave = chiaveBase(valore);
+        const gia = correnti.find((voce) => valoreDellaSpec(voce.spec) === valore);
+        // Le serie nate dal pannello Confronti si chiamano «Anno precedente»: in
+        // una tabella con piu' misure non dice di quale. Il nome scelto a mano,
+        // invece, sopravvive.
+        const nome = gia && !gia.scorciatoia ? gia.nome : nomeDi(valore);
+        // La misura in piu' deve condividere suddivisione, granularita', periodo
+        // e filtri della principale: e' la stessa domanda su un altro numero.
+        // Senza, la serie si riduce a un solo valore e compare sull'asse come
+        // una categoria di troppo chiamata «totale», accanto ai mesi.
         const specExtra = specPerChiave(
           {
             metrica: "ordinato",
@@ -640,29 +760,44 @@ export function EditorAnalisi({
             ...(nuova.granularita ? { granularita: nuova.granularita } : {}),
             ...(spec?.periodo ? { periodo: { ...spec.periodo } } : {}),
           },
-          chiave,
+          valore,
           definizioni
         );
         if (!specExtra) return [];
-        return [
-          {
-            ruolo:
-              chiave === "budget"
-                ? ("obiettivo" as const)
-                : chiave === "bep"
-                  ? ("soglia" as const)
-                  : ("confronto" as const),
-            nome,
-            // Il colore scelto a mano sopravvive a una rispuntata.
-            ...(gia?.colore ? { colore: gia.colore } : {}),
-            spec: specExtra,
-          },
-        ];
-      });
-      return [...scorciatoie, ...misureExtra];
-    });
+        const filtri = filtriPerSerie(spec?.filtri, specExtra, vocabolario?.dimensioniPerMetrica);
+        const serie: SerieEditor = {
+          ruolo: chiave === "budget" ? "obiettivo" : chiave === "bep" ? "soglia" : "confronto",
+          nome,
+          // Il colore scelto a mano sopravvive a una rispuntata.
+          ...(gia?.colore ? { colore: gia.colore } : {}),
+          spec: filtri ? { ...specExtra, filtri } : specExtra,
+        };
+        return [serie];
+      })
+    );
 
-    setGraficoScelto(undefined);
+    // La tabella resta tabella: e' una scelta, non qualcosa che un campo in piu'
+    // deve far dimenticare.
+    setGraficoScelto((scelto) => (scelto === "tabella" ? scelto : undefined));
+    setSalvataggio("pronto");
+    setMessaggioSalvataggio("");
+  }
+
+  /** Dal grafico alla tabella e ritorno. Tornando, il grafico regge solo due suddivisioni. */
+  function cambiaModo(modo: "grafico" | "tabella") {
+    if (modo === "tabella") {
+      setGraficoScelto("tabella");
+    } else {
+      if (selezioneCampi.suddivisioni.length > 2) {
+        const tenute = selezioneCampi.suddivisioni.slice(0, 2);
+        const nomi = tenute
+          .map((chiave) => vocabolario?.dimensioni.find((voce) => voce.chiave === chiave)?.etichetta ?? chiave)
+          .join(" e ");
+        applicaSelezione({ ...selezioneCampi, suddivisioni: tenute });
+        setAvvisoTela({ tipo: "avviso", testo: `Un grafico regge al massimo due suddivisioni: ho tenuto ${nomi}.` });
+      }
+      setGraficoScelto(undefined);
+    }
     setSalvataggio("pronto");
     setMessaggioSalvataggio("");
   }
@@ -853,12 +988,17 @@ export function EditorAnalisi({
   }
 
   async function salva() {
+    // Svuotare e' lecito; salvare un riquadro vuoto no.
+    if (!spec) {
+      setMessaggioSalvataggio("Il riquadro è vuoto: scegli almeno una misura prima di salvarlo.");
+      return;
+    }
     const titoloPulito = titolo.trim();
     if (!titoloPulito) {
       setMessaggioSalvataggio("Il titolo è obbligatorio.");
       return;
     }
-    if (!spec || salvataggio === "in_corso") return;
+    if (salvataggio === "in_corso") return;
 
     setSalvataggio("in_corso");
     setMessaggioSalvataggio("");
@@ -939,6 +1079,7 @@ export function EditorAnalisi({
 
       {creaMisuraAperta && (
         <CreaMisura
+          testoIniziale={testoNuovaMisura}
           onChiudi={() => setCreaMisuraAperta(false)}
           onSalvata={(salvata) => {
             setCreaMisuraAperta(false);
@@ -969,7 +1110,6 @@ export function EditorAnalisi({
                 aria-label="Titolo del riquadro"
                 placeholder="Titolo del riquadro"
                 required
-                disabled={!spec}
                 value={titolo}
                 onChange={(evento) => {
                   titoloModificato.current = true;
@@ -994,7 +1134,7 @@ export function EditorAnalisi({
               <button
                 type="button"
                 onClick={() => void salva()}
-                disabled={!spec || salvataggio === "in_corso" || salvataggio === "salvata"}
+                disabled={salvataggio === "in_corso" || salvataggio === "salvata"}
                 className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-bg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Save className="h-4 w-4" aria-hidden />
@@ -1022,11 +1162,15 @@ export function EditorAnalisi({
           </div>
 
           {!spec ? (
-            <TelaRilascio onRilascia={rilasciaSullaTela} avviso={avvisoTela} onChiudiAvviso={() => setAvvisoTela(null)}>
+            <TelaRilascio inTabella={modalitaTabella} onRilascia={rilasciaSullaTela} avviso={avvisoTela} onChiudiAvviso={() => setAvvisoTela(null)}>
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-6 text-center" style={{ minHeight: altezzaGrafico + 80 }}>
-              <p className="font-tenorite text-lg font-semibold">Il grafico comparirà qui</p>
+              <p className="font-tenorite text-lg font-semibold">
+                {modalitaTabella ? "La tabella comparirà qui" : "Il grafico comparirà qui"}
+              </p>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-text-muted">
-                Trascina qui una misura dall’elenco a destra, oppure spuntala. Poi trascina una dimensione per suddividerla: il grafico si ricalcola a ogni scelta.
+                {modalitaTabella
+                  ? "Trascina qui un valore dall’elenco a destra, oppure spuntalo. Poi aggiungi quanti campi vuoi: ognuno è una colonna, e la tabella si ricalcola a ogni scelta."
+                  : "Trascina qui una misura dall’elenco a destra, oppure spuntala. Poi trascina una dimensione per suddividerla: il grafico si ricalcola a ogni scelta."}
               </p>
             </div>
             </TelaRilascio>
@@ -1065,7 +1209,7 @@ export function EditorAnalisi({
               </p>
             )}
 
-            <TelaRilascio onRilascia={rilasciaSullaTela} avviso={avvisoTela} onChiudiAvviso={() => setAvvisoTela(null)}>
+            <TelaRilascio inTabella={modalitaTabella} onRilascia={rilasciaSullaTela} avviso={avvisoTela} onChiudiAvviso={() => setAvvisoTela(null)}>
             <div className="relative" style={{ minHeight: altezzaGrafico }} aria-busy={caricamento}>
               {risultato && tipoGrafico && serieEseguite.length > 0 ? (
                 <div className={caricamento ? "opacity-50" : undefined}>
@@ -1088,13 +1232,16 @@ export function EditorAnalisi({
               </p>
             )}
 
-            {risultato && proposta && tipoGrafico && (
+            {risultato && proposta && tipoGrafico && (!modalitaTabella || risultato.avvisi.length > 0 || avvisoDocumento) && (
               <div className="mt-4 border-t border-border pt-3">
-                <p className="text-xs text-text-muted">
-                  <span className="font-medium text-text">Grafico proposto: {NOMI_GRAFICI[proposta.tipo]}.</span>{" "}
-                  {proposta.motivo}
-                </p>
-                {sbloccaGrafici.length > 0 && (
+                {/* Chi ha scelto la tabella non vuole sapere quale grafico gli si proporrebbe. */}
+                {!modalitaTabella && (
+                  <p className="text-xs text-text-muted">
+                    <span className="font-medium text-text">Grafico proposto: {NOMI_GRAFICI[proposta.tipo]}.</span>{" "}
+                    {proposta.motivo}
+                  </p>
+                )}
+                {!modalitaTabella && sbloccaGrafici.length > 0 && (
                   <ul className="mt-3 space-y-1 border-t border-border pt-3 text-xs leading-relaxed text-text-muted">
                     {sbloccaGrafici.map((suggerimento) => (
                       <li key={suggerimento}>{suggerimento}</li>
@@ -1102,9 +1249,9 @@ export function EditorAnalisi({
                   </ul>
                 )}
 
-                {risultato.avvisi.length > 0 && (
+                {(risultato.avvisi.length > 0 || avvisoDocumento) && (
                   <div className="mt-4 space-y-2" aria-label="Avvisi del risultato">
-                    {risultato.avvisi.map((avviso) => (
+                    {[...(avvisoDocumento ? [avvisoDocumento] : []), ...risultato.avvisi].map((avviso) => (
                       <p key={avviso} className="rounded-lg border border-border bg-bg-page p-3 text-xs leading-relaxed text-warning">
                         {avviso}
                       </p>
@@ -1157,11 +1304,16 @@ export function EditorAnalisi({
           >
             {vocabolario && vocabolarioAlbero && (
               <>
-                {risultato && proposta && tipoGrafico && (
+                <ModoVisualizzazione modalita={modalitaTabella ? "tabella" : "grafico"} onCambia={cambiaModo} />
+                {!modalitaTabella && risultato && proposta && tipoGrafico && (
                   <TipoGraficoCompatto
                     valore={tipoGrafico}
                     opzioni={grafici}
                     onChange={(tipo) => {
+                      if (tipo === "tabella") {
+                        cambiaModo("tabella");
+                        return;
+                      }
                       setGraficoScelto(tipo);
                       setSalvataggio("pronto");
                       setMessaggioSalvataggio("");
@@ -1170,6 +1322,7 @@ export function EditorAnalisi({
                 )}
                 <Pozzetti
                   ref={pozzettiRef}
+                  modalita={modalitaTabella ? "tabella" : "grafico"}
                   compatto
                   onMessaggio={setAvvisoTela}
                   vocabolario={vocabolarioAlbero}
@@ -1194,13 +1347,21 @@ export function EditorAnalisi({
                 />
                 <AlberoCampi
                   compatto
+                  senzaLimiteSuddivisioni={modalitaTabella}
                   vocabolario={vocabolarioAlbero}
                   selezione={selezioneCampi}
                   onCambia={(nuova) => applicaSelezione(nuova)}
+                  onPartiDa={(testo) => {
+                    setTestoNuovaMisura(testo);
+                    setCreaMisuraAperta(true);
+                  }}
                   azioneMisure={
                     <button
                       type="button"
-                      onClick={() => setCreaMisuraAperta(true)}
+                      onClick={() => {
+                        setTestoNuovaMisura("");
+                        setCreaMisuraAperta(true);
+                      }}
                       className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-primary bg-bg-page px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary"
                     >
                       <Plus className="h-3.5 w-3.5" aria-hidden />

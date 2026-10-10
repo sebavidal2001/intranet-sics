@@ -28,15 +28,28 @@
 
 import {
   dimensioniAmmesse,
+  motivoDimensioneFuoriDalleMisure,
   motivoMisuraNonSelezionabile,
   riconciliaMisure,
   selezioneConMisura,
   selezioneConSuddivisione,
   type SelezioneCampi,
 } from "@/components/prototipo-bi/albero-campi";
-import { VOCI_CALENDARIO, motivoDimensioneNonAmmessa } from "@/lib/prototipo-bi/gruppi-campi";
-import type { ChiaveCampo } from "@/lib/prototipo-bi/misure-vocabolario";
-import type { Dimensione, Granularita } from "@/lib/prototipo-bi/tipi";
+import { VOCI_CALENDARIO } from "@/lib/prototipo-bi/gruppi-campi";
+import {
+  alternativeDiCalcolo,
+  ammetteProgressivo,
+} from "@/lib/prototipo-bi/albero-modello";
+import {
+  NOMI_VARIANTE,
+  chiaveBase,
+  componiValore,
+  scomponiValore,
+  type ChiaveCampo,
+  type ChiaveValore,
+  type VarianteValore,
+} from "@/lib/prototipo-bi/misure-vocabolario";
+import type { Dimensione, Granularita, MisuraDefinita } from "@/lib/prototipo-bi/tipi";
 import { sonoUguali, type VoceCampo } from "./pozzetti-trascinamento";
 
 // Chi usa le regole trova qui anche il tipo e il trascinamento.
@@ -50,10 +63,19 @@ export {
   type VoceCampo,
 } from "./pozzetti-trascinamento";
 
-export type NomePozzetto = "asse" | "legenda" | "valori" | "filtri";
+/**
+ * Nei grafici i pozzetti sono Asse, Legenda, Valori, Filtri. Nelle tabelle non
+ * c'e' un asse ne' una legenda: ogni campo e' una colonna, e ne servono quanti
+ * se ne vuole. Li' i pozzetti sono Campi, Valori, Filtri.
+ */
+export type NomePozzetto = "asse" | "legenda" | "valori" | "filtri" | "campi";
 
 export interface ContestoPozzetti {
   perMetrica: Record<string, Dimensione[]>;
+  /** Le operazioni coinvolte da ogni misura personalizzata (vedi `VocabolarioAlbero.famiglie`). */
+  famiglie?: Record<string, string[]>;
+  /** Le definizioni delle misure personalizzate: dicono se ammettono il progressivo. */
+  definizioni?: Record<string, MisuraDefinita>;
   /** Il nome da mostrare per una voce (etichetta di mestiere, non la chiave). */
   etichetta: (voce: VoceCampo) => string;
 }
@@ -76,7 +98,7 @@ export function contenutoPozzetti(selezione: SelezioneCampi): {
   asse: VoceCampo | null;
   /** Normalmente una; di piu' solo se la selezione ne ha oltre il limite (si vedono per poterle togliere). */
   legenda: VoceCampo[];
-  valori: ChiaveCampo[];
+  valori: ChiaveValore[];
 } {
   const dims = selezione.suddivisioni;
   const tempo = selezione.granularita;
@@ -89,6 +111,22 @@ export function contenutoPozzetti(selezione: SelezioneCampi): {
   return {
     asse,
     legenda: perLegenda.map((d): VoceCampo => ({ tipo: "dimensione", chiave: d })),
+    valori: selezione.misure,
+  };
+}
+
+/**
+ * Cosa c'e' nei pozzetti di una tabella.
+ *
+ * Il tempo, se c'e', e' la prima colonna; poi i campi nell'ordine scelto. L'ordine
+ * conta: e' quello delle colonne e quello del raggruppamento delle righe.
+ */
+export function contenutoTabella(selezione: SelezioneCampi): { campi: VoceCampo[]; valori: ChiaveValore[] } {
+  return {
+    campi: [
+      ...(selezione.granularita ? [{ tipo: "calendario", chiave: selezione.granularita } as VoceCampo] : []),
+      ...selezione.suddivisioni.map((d): VoceCampo => ({ tipo: "dimensione", chiave: d })),
+    ],
     valori: selezione.misure,
   };
 }
@@ -107,7 +145,7 @@ function conSuddivisioni(
   contesto: ContestoPozzetti,
   avvisi: string[]
 ): EsitoDeposito {
-  const { misure, tolte } = riconciliaMisure(selezione, suddivisioni, contesto.perMetrica);
+  const { misure, tolte } = riconciliaMisure(selezione, suddivisioni, contesto.perMetrica, contesto.famiglie);
   for (const t of tolte) {
     avvisi.push(`Ho tolto «${contesto.etichetta({ tipo: "misura", chiave: t })}»: non esiste per questa suddivisione.`);
   }
@@ -132,9 +170,9 @@ export function deponi(
   if (pozzetto === "valori") {
     if (voce.tipo !== "misura") return no("Nei valori vanno le misure: trascina qui una misura, per esempio «Ordinato».");
     if (selezione.misure.includes(voce.chiave)) return no(`«${nome}» è già nei valori.`);
-    const motivo = motivoMisuraNonSelezionabile(voce.chiave, selezione, contesto.perMetrica);
+    const motivo = motivoMisuraNonSelezionabile(voce.chiave, selezione, contesto.perMetrica, contesto.famiglie);
     if (motivo) return no(motivo);
-    return { ok: true, selezione: selezioneConMisura(selezione, voce.chiave, true, contesto.perMetrica) };
+    return { ok: true, selezione: selezioneConMisura(selezione, voce.chiave, true, contesto.perMetrica, contesto.famiglie) };
   }
 
   // ── Filtri: solo dimensioni, e la selezione non cambia ────────────────────
@@ -148,8 +186,27 @@ export function deponi(
     }
     if (selezione.misure.length === 0) return no("Scegli prima una misura.");
     const ammesse = contesto.perMetrica[selezione.misure[0]] ?? [];
-    if (!ammesse.includes(voce.chiave) && voce.chiave !== "bu_categoria") return no(motivoDimensioneNonAmmessa(voce.chiave));
+    if (!ammesse.includes(voce.chiave) && voce.chiave !== "bu_categoria") {
+      return no(motivoDimensioneFuoriDalleMisure(voce.chiave, selezione.misure, contesto.famiglie));
+    }
     return { ok: true, selezione, aggiungiFiltroSu: voce.chiave };
+  }
+
+  // ── Campi di una tabella: tutti quelli che si vuole, ciascuno una colonna ──
+  if (pozzetto === "campi") {
+    if (voce.tipo === "misura") return no("Le misure vanno nei valori: trascinala lì.");
+    if (selezione.misure.length === 0) return no("Scegli prima una misura.");
+    if (voce.tipo === "calendario") {
+      if (selezione.granularita === voce.chiave) return { ok: true, selezione };
+      return { ok: true, selezione: { ...selezione, granularita: voce.chiave } };
+    }
+    if (!dimensioniAmmesse(selezione.misure, contesto.perMetrica, contesto.famiglie).includes(voce.chiave)) {
+      return no(motivoDimensioneFuoriDalleMisure(voce.chiave, selezione.misure, contesto.famiglie));
+    }
+    if (selezione.suddivisioni.includes(voce.chiave)) return no(`«${nome}» è già nelle colonne.`);
+    // Senza limite di due: in una tabella ogni campo e' una colonna.
+    const avvisi: string[] = [];
+    return conSuddivisioni(selezione, [...selezione.suddivisioni, voce.chiave], selezione.granularita, contesto, avvisi);
   }
 
   // ── Asse e legenda ────────────────────────────────────────────────────────
@@ -158,8 +215,11 @@ export function deponi(
     return no("Il tempo va sull'asse: l'andamento nel tempo è l'asse del grafico, la legenda suddivide.");
   }
   if (selezione.misure.length === 0) return no("Scegli prima una misura.");
-  if (voce.tipo === "dimensione" && !dimensioniAmmesse(selezione.misure, contesto.perMetrica).includes(voce.chiave)) {
-    return no(motivoDimensioneNonAmmessa(voce.chiave));
+  if (
+    voce.tipo === "dimensione" &&
+    !dimensioniAmmesse(selezione.misure, contesto.perMetrica, contesto.famiglie).includes(voce.chiave)
+  ) {
+    return no(motivoDimensioneFuoriDalleMisure(voce.chiave, selezione.misure, contesto.famiglie));
   }
 
   const dims = selezione.suddivisioni;
@@ -203,18 +263,25 @@ export function deponi(
   return conSuddivisioni(selezione, [dims[0], voce.chiave], undefined, contesto, avvisi);
 }
 
-/** Toglie una voce da un pozzetto. Dall'ultimo valore non si toglie: senza misure non c'e' domanda. */
-export function togliVoce(selezione: SelezioneCampi, voce: VoceCampo, contesto: ContestoPozzetti): EsitoDeposito {
+/**
+ * Toglie una voce da un pozzetto. Anche l'ultima misura si puo' togliere: il
+ * riquadro resta vuoto e l'errore c'e' solo se poi si prova a salvarlo.
+ */
+export function togliVoce(
+  selezione: SelezioneCampi,
+  voce: VoceCampo,
+  contesto: ContestoPozzetti,
+  /** In una tabella non c'e' una legenda che scala sull'asse: niente avviso. */
+  inTabella = false
+): EsitoDeposito {
   if (voce.tipo === "misura") {
-    if (selezione.misure.length <= 1) {
-      return no("Serve almeno una misura: aggiungine un'altra prima di togliere questa.");
-    }
-    return { ok: true, selezione: selezioneConMisura(selezione, voce.chiave, false, contesto.perMetrica) };
+    return { ok: true, selezione: selezioneConMisura(selezione, voce.chiave, false, contesto.perMetrica, contesto.famiglie) };
   }
   if (voce.tipo === "calendario") return { ok: true, selezione: senzaGranularita(selezione) };
-  const dopo = selezioneConSuddivisione(selezione, voce.chiave, false, contesto.perMetrica);
+  const dopo = selezioneConSuddivisione(selezione, voce.chiave, false, contesto.perMetrica, contesto.famiglie);
   // Togliendo l'asse la legenda scala al suo posto: dirlo.
-  const eraAsse = !selezione.granularita && selezione.suddivisioni[0] === voce.chiave && selezione.suddivisioni.length > 1;
+  const eraAsse =
+    !inTabella && !selezione.granularita && selezione.suddivisioni[0] === voce.chiave && selezione.suddivisioni.length > 1;
   return {
     ok: true,
     selezione: dopo,
@@ -248,15 +315,134 @@ export function vociDisponibili(
     pozzetto === "valori"
       ? campi.misure.map((chiave): VoceCampo => ({ tipo: "misura", chiave }))
       : [
-          ...(pozzetto === "asse" ? VOCI_CALENDARIO.map((v): VoceCampo => ({ tipo: "calendario", chiave: v.chiave })) : []),
+          ...(pozzetto === "asse" || pozzetto === "campi"
+            ? VOCI_CALENDARIO.map((v): VoceCampo => ({ tipo: "calendario", chiave: v.chiave }))
+            : []),
           ...campi.dimensioni.map((chiave): VoceCampo => ({ tipo: "dimensione", chiave })),
         ];
   const { asse, legenda } = contenutoPozzetti(selezione);
-  const gia = pozzetto === "asse" ? [asse] : pozzetto === "legenda" ? legenda : [];
+  const gia =
+    pozzetto === "asse" ? [asse] : pozzetto === "legenda" ? legenda : pozzetto === "campi" ? contenutoTabella(selezione).campi : [];
   return candidate.filter((voce) => {
     if (gia.some((g) => g && sonoUguali(g, voce))) return false;
     const esito = deponi(selezione, pozzetto, voce, contesto);
     // Un deposito che non cambia niente non e' un'offerta.
     return esito.ok && !(!esito.aggiungiFiltroSu && esito.selezione === selezione);
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Il periodo e il calcolo di un valore
+//
+// Un valore non e' solo «Ordinato»: e' «Ordinato dell'anno corrente», o «del
+// precedente», o «cumulato». E «Ordinato» si puo' leggere come somma degli
+// importi, come numero di ordini, come valore medio. Sono le scelte che in Power
+// BI si fanno sul campo; qui si fanno sul valore, dal suo menu.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Perche' un valore non puo' avere questo periodo, o `null` se puo'. */
+export function motivoPeriodoNonAmmesso(
+  valore: ChiaveValore,
+  variante: VarianteValore | undefined,
+  definizioni: Record<string, MisuraDefinita> = {}
+): string | null {
+  if (variante !== "progressivo" && variante !== "progressivo_ap") return null;
+  return ammetteProgressivo(chiaveBase(valore), definizioni)
+    ? null
+    : "Il progressivo cumula: ha senso per somme e conteggi, non per medie, percentuali o misure personalizzate.";
+}
+
+/**
+ * Cambia il periodo del valore in posizione `indice`.
+ *
+ * Se lo stesso valore, con quel periodo, c'e' gia', il gesto e' rifiutato: due
+ * colonne identiche non dicono niente di piu'.
+ */
+export function cambiaPeriodoValore(
+  selezione: SelezioneCampi,
+  indice: number,
+  variante: VarianteValore | undefined,
+  contesto: ContestoPozzetti
+): EsitoDeposito {
+  const attuale = selezione.misure[indice];
+  if (attuale === undefined) return no("Valore non trovato.");
+  const { chiave, variante: prima } = scomponiValore(attuale);
+  if (prima === variante) return { ok: true, selezione };
+  const motivo = motivoPeriodoNonAmmesso(chiave, variante, contesto.definizioni);
+  if (motivo) return no(motivo);
+  const nuovo = componiValore(chiave, variante);
+  if (selezione.misure.includes(nuovo)) {
+    return no(`«${contesto.etichetta({ tipo: "misura", chiave })}» con questo periodo è già nei valori.`);
+  }
+  const misure = [...selezione.misure];
+  misure[indice] = nuovo;
+  return { ok: true, selezione: { ...selezione, misure } };
+}
+
+/**
+ * Aggiunge, accanto al valore in posizione `indice`, lo stesso valore con un
+ * altro periodo: e' il modo di avere «ordinato di quest'anno» e «ordinato
+ * dell'anno scorso» come due colonne.
+ */
+export function aggiungiPeriodoAlValore(
+  selezione: SelezioneCampi,
+  indice: number,
+  variante: VarianteValore,
+  contesto: ContestoPozzetti
+): EsitoDeposito {
+  const attuale = selezione.misure[indice];
+  if (attuale === undefined) return no("Valore non trovato.");
+  const { chiave } = scomponiValore(attuale);
+  const motivo = motivoPeriodoNonAmmesso(chiave, variante, contesto.definizioni);
+  if (motivo) return no(motivo);
+  const nuovo = componiValore(chiave, variante);
+  if (selezione.misure.includes(nuovo)) {
+    return no(`«${contesto.etichetta({ tipo: "misura", chiave })}» · ${NOMI_VARIANTE[variante].toLocaleLowerCase("it")} è già nei valori.`);
+  }
+  const misure = [...selezione.misure];
+  misure.splice(indice + 1, 0, nuovo);
+  return { ok: true, selezione: { ...selezione, misure } };
+}
+
+/**
+ * Cambia il calcolo di un valore (somma, numero di documenti, valore medio)
+ * tenendo il suo periodo e il suo posto.
+ */
+export function cambiaCalcoloValore(
+  selezione: SelezioneCampi,
+  indice: number,
+  nuova: ChiaveCampo,
+  contesto: ContestoPozzetti
+): EsitoDeposito {
+  const attuale = selezione.misure[indice];
+  if (attuale === undefined) return no("Valore non trovato.");
+  const { chiave, variante } = scomponiValore(attuale);
+  if (chiave === nuova) return { ok: true, selezione };
+  if (!alternativeDiCalcolo(chiave).some((a) => a.chiave === nuova)) return no("Questo valore non si legge in questo modo.");
+  // Il progressivo non si applica a una media: si perde, e va detto.
+  const nuovaVariante =
+    motivoPeriodoNonAmmesso(nuova, variante, contesto.definizioni) !== null ? undefined : variante;
+  const valore = componiValore(nuova, nuovaVariante);
+  if (selezione.misure.includes(valore) && valore !== attuale) {
+    return no(`«${contesto.etichetta({ tipo: "misura", chiave: nuova })}» è già nei valori.`);
+  }
+  const misure = [...selezione.misure];
+  misure[indice] = valore;
+  return {
+    ok: true,
+    selezione: { ...selezione, misure },
+    ...(nuovaVariante !== variante
+      ? { avviso: "Il progressivo non si applica a una media: ho tenuto il periodo scelto." }
+      : {}),
+  };
+}
+
+/** Sposta un campo (dimensione) di una tabella: cambia l'ordine delle colonne e del raggruppamento. */
+export function spostaCampo(selezione: SelezioneCampi, da: number, a: number): SelezioneCampi {
+  const dims = selezione.suddivisioni;
+  if (da === a || da < 0 || a < 0 || da >= dims.length || a >= dims.length) return selezione;
+  const suddivisioni = [...dims];
+  const [mossa] = suddivisioni.splice(da, 1);
+  suddivisioni.splice(a, 0, mossa);
+  return { ...selezione, suddivisioni };
 }

@@ -307,7 +307,8 @@ describe("una misura non resta attaccata a una domanda che non e' piu' la sua", 
 
     // Si toglie la misura e si spunta una metrica semplice.
     fireEvent.click(screen.getByRole("checkbox", { name: /^Margine componenti sul fatturato/ }));
-    // Il gruppo «Ordinato» e' il primo, quindi gia' aperto.
+    // C'e' gia' una misura scelta: si apre il gruppo «Ordinato», dove sta il valore.
+    fireEvent.click(screen.getByRole("button", { name: /^Ordinato/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Valore ordinato" }));
     await completaDebounce();
 

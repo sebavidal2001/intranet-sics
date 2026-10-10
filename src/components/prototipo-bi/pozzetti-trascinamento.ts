@@ -11,12 +11,12 @@
  */
 
 import { VOCI_CALENDARIO } from "@/lib/prototipo-bi/gruppi-campi";
-import type { ChiaveCampo } from "@/lib/prototipo-bi/misure-vocabolario";
+import type { ChiaveValore } from "@/lib/prototipo-bi/misure-vocabolario";
 import type { Dimensione, Granularita } from "@/lib/prototipo-bi/tipi";
 
 /** Quello che si trascina: una voce dell'albero. */
 export type VoceCampo =
-  | { tipo: "misura"; chiave: ChiaveCampo }
+  | { tipo: "misura"; chiave: ChiaveValore }
   | { tipo: "dimensione"; chiave: Dimensione }
   | { tipo: "calendario"; chiave: Granularita };
 

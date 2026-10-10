@@ -207,8 +207,13 @@ export function TabellaAnalitica({
     COLONNA_VOCE;
   const [ordinaPer, setOrdinaPer] = useState<string>(colonnaIniziale);
   const [discendente, setDiscendente] = useState(
-    (versoIniziale ?? aspetto?.tabella?.verso ?? (colonnaIniziale === COLONNA_VOCE ? "asc" : "desc")) ===
-      "desc"
+    (versoIniziale ??
+      aspetto?.tabella?.verso ??
+      // Le voci e le colonne di testo (il tempo, i campi) partono dall'inizio:
+      // un mese si legge in ordine cronologico. I numeri partono dal piu' grande.
+      (colonnaIniziale === COLONNA_VOCE || colonne.find((c) => c.chiave === colonnaIniziale)?.tipo === "testo"
+        ? "asc"
+        : "desc")) === "desc"
   );
   const [aggregazione, setAggregazione] = useState<AggregazioneTotale>(
     aggregazioneIniziale ?? aspetto?.tabella?.totale ?? "automatico"

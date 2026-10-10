@@ -266,10 +266,12 @@ describe("Filtri", () => {
 });
 
 describe("togliere", () => {
-  it("dall'ultima misura non si toglie: senza misure non c'e' domanda", () => {
-    const e = togliVoce(sel(), misura("ordinato"), CONTESTO);
-    expect(e.ok).toBe(false);
-    if (!e.ok) expect(e.motivo).toContain("Serve almeno una misura");
+  it("anche l'ultima misura si toglie: il riquadro resta vuoto, l'errore c'e' solo al salvataggio", () => {
+    const e = accetta(togliVoce(sel({ misure: ["ordinato"], suddivisioni: ["bu"], granularita: "mese" }), misura("ordinato"), CONTESTO));
+    // Non resta niente da suddividere: ne' dimensioni ne' tempo.
+    expect(e.selezione.misure).toEqual([]);
+    expect(e.selezione.suddivisioni).toEqual([]);
+    expect(e.selezione.granularita).toBeUndefined();
   });
 
   it("una misura fra piu' si toglie", () => {

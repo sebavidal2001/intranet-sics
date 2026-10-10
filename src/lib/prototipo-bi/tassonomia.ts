@@ -120,6 +120,7 @@ const DIMENSIONI_COMUNI: Dimensione[] = [
   "agente",
   "cliente",
   "categoria",
+  "codice_articolo",
   "articolo",
   // Ultima di proposito: e' la piu' fine, e negli elenchi conviene che stia in
   // coda alle dimensioni con cui si comincia a guardare.
@@ -132,7 +133,7 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
   // Gli ordini a fornitore non hanno agente, cliente ne' business unit: le
   // loro dimensioni sono altre. La categoria e' il gruppo articoli.
   if (dataset === "acquisti") {
-    return (["fornitore", "buyer", "categoria", "articolo", "documento"] as Dimensione[]).filter(
+    return (["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
   }

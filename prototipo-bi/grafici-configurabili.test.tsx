@@ -215,9 +215,10 @@ describe("tabella con più misure nel tempo", () => {
   it("tiene i mesi sulle righe e una colonna per misura", () => {
     render(<GraficoDaAnalisi serie={serie} tipo="tabella" />);
     const tabella = screen.getByRole("table");
-    expect(within(tabella).getByRole("button", { name: /Ordina per Periodo/ })).toBeInTheDocument();
-    expect(within(tabella).getByText("2026-01")).toBeInTheDocument();
-    expect(within(tabella).getByText("2026-02")).toBeInTheDocument();
+    // Il tempo ha la sua colonna, come ogni altro campo, con le date scritte gg/mm/aaaa.
+    expect(within(tabella).getByRole("button", { name: /Ordina per Mese/ })).toBeInTheDocument();
+    expect(within(tabella).getByText("01/2026")).toBeInTheDocument();
+    expect(within(tabella).getByText("02/2026")).toBeInTheDocument();
     expect(within(tabella).getByRole("button", { name: "Ordina per Ordinato" })).toBeInTheDocument();
     expect(within(tabella).getByRole("button", { name: "Ordina per Budget" })).toBeInTheDocument();
     // Raggiungimento del totale: 400 / 400.
@@ -228,8 +229,8 @@ describe("tabella con più misure nel tempo", () => {
   it("l'ordine di partenza è quello del tempo", () => {
     render(<GraficoDaAnalisi serie={serie} tipo="tabella" />);
     const righe = screen.getAllByRole("row").slice(1, 3).map((r) => r.textContent ?? "");
-    expect(righe[0]).toContain("2026-01");
-    expect(righe[1]).toContain("2026-02");
+    expect(righe[0]).toContain("01/2026");
+    expect(righe[1]).toContain("02/2026");
   });
 });
 
@@ -264,7 +265,7 @@ describe("totali e ordinamento delle tabelle", () => {
     expect(prima()).toContain("Gamma");
   });
 
-  it("la tabella di un risultato per mese e business unit diventa un incrocio", () => {
+  it("la tabella di un risultato per mese e business unit ha una colonna per campo, non un incrocio", () => {
     const perMeseEBu: RisultatoQuery = {
       spec: { metrica: "ordinato", granularita: "mese", raggruppa: ["bu"] },
       metrica: "ordinato",
@@ -280,8 +281,10 @@ describe("totali e ordinamento delle tabelle", () => {
     };
     render(<GraficoDaRisultato risultato={perMeseEBu} tipo="tabella" />);
     const tabella = screen.getByRole("table");
-    expect(within(tabella).getByRole("button", { name: "Ordina per COMPONENTI" })).toBeInTheDocument();
-    expect(within(tabella).getByRole("button", { name: "Ordina per IMPIANTI" })).toBeInTheDocument();
-    expect(within(tabella).getAllByRole("row")).toHaveLength(1 + 2 + 1); // intestazione, due mesi, totali
+    // Il tempo e la business unit sono due colonne; ogni combinazione e' una riga.
+    for (const campo of ["Mese", "Business unit", "Ordinato"]) {
+      expect(within(tabella).getByRole("button", { name: `Ordina per ${campo}` })).toBeInTheDocument();
+    }
+    expect(within(tabella).getAllByRole("row")).toHaveLength(1 + 3 + 1); // intestazione, tre combinazioni, totali
   });
 });

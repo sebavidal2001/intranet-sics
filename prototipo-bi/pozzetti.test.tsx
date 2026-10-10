@@ -313,11 +313,12 @@ describe("Pozzetti: togliere e riordinare", () => {
     expect(selezioneCorrente().granularita).toBeUndefined();
   });
 
-  it("dall'ultima misura non si toglie, e dice cosa fare", () => {
-    render(<Banco iniziale={{ misure: ["ordinato"], suddivisioni: [] }} />);
+  it("anche l'ultima misura si toglie: il riquadro si svuota, senza rifiuti", () => {
+    render(<Banco iniziale={{ misure: ["ordinato"], suddivisioni: ["bu"] }} />);
     fireEvent.click(screen.getByRole("button", { name: "Togli Valore ordinato dai valori" }));
-    expect(messaggio()).toHaveTextContent("Serve almeno una misura");
-    expect(selezioneCorrente().misure).toEqual(["ordinato"]);
+    expect(messaggio()).not.toHaveTextContent("Serve almeno una misura");
+    expect(selezioneCorrente().misure).toEqual([]);
+    expect(selezioneCorrente().suddivisioni).toEqual([]);
   });
 
   it("una misura fra piu' si toglie", () => {

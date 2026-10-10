@@ -1,79 +1,19 @@
 /**
- * COME SI RAGGRUPPANO I CAMPI NELL'ALBERO.
+ * IL CALENDARIO E LE REGOLE DELLE DIMENSIONI NELL'ALBERO.
  *
- * Le misure sono già raggruppate da `TIPOLOGIE` in `tassonomia.ts`, che le
- * descrive nel modo in cui in azienda si parla dei dati. Le dimensioni no:
- * `DIMENSIONI` è un elenco piatto di nove voci, e nove caselle una sotto
- * l'altra non dicono a chi guarda che «Agente» e «Cliente» sono la stessa
- * specie di cosa mentre «Mese» è un'altra.
+ * Come i campi si raggruppano nell'albero — per operazione, per campi comuni,
+ * per misure — sta in `albero-modello.ts`. Qui restano le due cose che non sono
+ * un raggruppamento: la scala del tempo e i motivi per cui una dimensione non e'
+ * disponibile.
  *
- * Qui i gruppi vengono dichiarati. Sono deliberatamente pochi e con nomi di
- * mestiere: chi apre il pannello deve riconoscere il proprio lavoro, non il
- * modello dati. In Power BI le stesse cose si chiamano `Dim_clienti_agenti` e
- * `Dim_prodotti` — sono i nomi di chi ha costruito il modello, e non aiutano
- * chi lo usa.
- *
- * Il Calendario è a parte, e non per estetica: non è una dimensione come le
- * altre. Giorno, settimana, mese e anno sono la **granularità** di una sola
+ * Il Calendario e' a parte, e non per estetica: non e' una dimensione come le
+ * altre. Giorno, settimana, mese e anno sono la **granularita'** di una sola
  * cosa — il tempo — e si escludono a vicenda, mentre due dimensioni vere
  * convivono. Tenerlo mescolato agli altri farebbe spuntare «mese» e «anno»
  * insieme, che non significa niente.
  */
 
 import type { Dimensione, Granularita } from "./tipi";
-
-export interface GruppoDimensioni {
-  chiave: string;
-  etichetta: string;
-  /** Una riga che dice a cosa serve, per chi non lo deduce dal nome. */
-  descrizione: string;
-  dimensioni: Dimensione[];
-}
-
-export const GRUPPI_DIMENSIONI: GruppoDimensioni[] = [
-  {
-    chiave: "commerciale",
-    etichetta: "Clienti e agenti",
-    descrizione: "Chi compra e chi vende.",
-    dimensioni: ["cliente", "agente"],
-  },
-  {
-    chiave: "azienda",
-    etichetta: "Azienda",
-    descrizione: "Le divisioni interne.",
-    dimensioni: ["bu"],
-  },
-  {
-    chiave: "prodotti",
-    etichetta: "Prodotti",
-    descrizione: "Che cosa è stato venduto o movimentato.",
-    dimensioni: ["categoria", "articolo", "causale"],
-  },
-  {
-    chiave: "operazioni",
-    etichetta: "Operazioni",
-    descrizione: "La singola fattura, ordine o preventivo.",
-    dimensioni: ["documento"],
-  },
-  {
-    chiave: "preventivi",
-    etichetta: "Preventivi",
-    descrizione: "Disponibili solo sulle metriche dei preventivi.",
-    dimensioni: ["creatore", "esito", "fascia_eta"],
-  },
-  {
-    chiave: "visite",
-    etichetta: "Visite e territorio",
-    descrizione: "Dove e come si fanno le visite: CAP o provincia attivano la mappa.",
-    dimensioni: ["cap", "provincia", "grado", "tipo_visita"],
-  },
-  {
-    chiave: "acquisti",
-    etichetta: "Acquisti",
-    descrizione: "Disponibili solo sugli ordini a fornitore.",
-    dimensioni: ["fornitore", "buyer"],
-  },
-];
 
 export interface VoceCalendario {
   chiave: Granularita;
@@ -118,11 +58,6 @@ export function motivoDimensioneNonAmmessa(dimensione: Dimensione): string {
     default:
       return "Non disponibile per questa misura";
   }
-}
-
-/** Il gruppo a cui appartiene una dimensione, se dichiarato. */
-export function gruppoDi(dimensione: Dimensione): GruppoDimensioni | undefined {
-  return GRUPPI_DIMENSIONI.find((gruppo) => gruppo.dimensioni.includes(dimensione));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

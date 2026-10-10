@@ -1,6 +1,7 @@
 "use client";
 
 import { CATALOGO, DIMENSIONI } from "@/lib/prototipo-bi/semantico";
+import { etichettaDocumento, famigliaDellaMetrica } from "@/lib/prototipo-bi/albero-modello";
 import { formattaPeriodo } from "@/lib/prototipo-bi/formato-periodo";
 import type {
   AspettoGrafico,
@@ -75,6 +76,18 @@ function totaleAutomatico(unita: UnitaMisura): ColonnaAnalitica["totale"] {
   return unita === "percentuale" || unita === "giorni" ? { tipo: "nessuno" } : { tipo: "somma" };
 }
 
+/**
+ * Il nome di una colonna di campo. Il numero del documento prende il nome della
+ * sua operazione («Numero ordine», «Numero fattura»): «Documento» non dice quale.
+ */
+function nomeColonnaCampo(dimensione: keyof typeof DIMENSIONI, metrica: keyof typeof CATALOGO): string {
+  if (dimensione === "documento") {
+    const proprio = etichettaDocumento(famigliaDellaMetrica(metrica));
+    if (proprio) return proprio;
+  }
+  return DIMENSIONI[dimensione]?.etichetta ?? dimensione;
+}
+
 /** Il nome della colonna del tempo, secondo la granularita' scelta. */
 const NOME_COLONNA_TEMPO: Record<string, string> = {
   giorno: "Data",
@@ -142,7 +155,7 @@ function datiTabellaRisultato(risultato: RisultatoQuery): {
       : []),
     ...dimensioni.map((dimensione) => ({
       chiave: `d_${dimensione}`,
-      etichetta: DIMENSIONI[dimensione]?.etichetta ?? dimensione,
+      etichetta: nomeColonnaCampo(dimensione, risultato.metrica),
       tipo: "testo" as const,
       formatta: formattaPeriodo,
     })),
@@ -377,7 +390,11 @@ function differenzeEffettive(
 ): { elenco: DifferenzaTabella[]; storico: boolean } {
   if (scelte !== undefined) return { elenco: scelte, storico: false };
   const iPrincipale = serie.indexOf(principale);
-  const iConfronto = serie.findIndex((voce) => voce.ruolo === "confronto");
+  // Solo se il confronto e' nella stessa unita': la differenza fra «Ordinato» e
+  // «Numero ordini» mescolerebbe euro e ordini, e comparirebbe da sola ogni
+  // volta che si aggiunge una misura in una tabella.
+  const stessaUnita = (voce: SerieAnalisiEseguita) => voce.risultato.unita === principale.risultato.unita;
+  const iConfronto = serie.findIndex((voce) => voce.ruolo === "confronto" && stessaUnita(voce));
   return {
     elenco:
       iConfronto >= 0 && iConfronto !== iPrincipale
@@ -457,6 +474,54 @@ function chiaveCategoria(serie: SerieAnalisiEseguita, riga: RigaRisultato): stri
 }
 
 /**
+ * Cio' che identifica una riga della tabella, uguale per tutte le misure.
+ *
+ * Con una dimensione e' il suo valore. Con due o piu' servono tutte: la sola
+ * prima fondeva righe diverse (due agenti dello stesso cliente) in una, e le
+ * misure si sovrascrivevano a vicenda.
+ */
+function chiaveRiga(serie: SerieAnalisiEseguita, riga: RigaRisultato): string {
+  const dimensioni = serie.spec.raggruppa ?? [];
+  if (dimensioni.length <= 1) return chiaveCategoria(serie, riga);
+  return dimensioni.map((dimensione) => riga.chiavi[dimensione] ?? "").join(" · ");
+}
+
+/** Le colonne di testo della tabella: il tempo (se c'e') e un campo per ogni dimensione. */
+function colonneDeiCampi(principale: SerieAnalisiEseguita): ColonnaAnalitica[] {
+  const dimensioni = principale.spec.raggruppa ?? [];
+  const granularita = principale.spec.granularita;
+  return [
+    ...(granularita !== undefined
+      ? [
+          {
+            chiave: "d_periodo",
+            etichetta: NOME_COLONNA_TEMPO[granularita] ?? "Periodo",
+            tipo: "testo" as const,
+            formatta: formattaPeriodo,
+          },
+        ]
+      : []),
+    ...dimensioni.map((dimensione) => ({
+      chiave: `d_${dimensione}`,
+      etichetta: nomeColonnaCampo(dimensione, principale.risultato.metrica),
+      tipo: "testo" as const,
+      formatta: formattaPeriodo,
+    })),
+  ];
+}
+
+/** I valori dei campi di una riga, nelle colonne di `colonneDeiCampi`. */
+function celleDeiCampi(
+  principale: SerieAnalisiEseguita,
+  chiavi: RigaRisultato["chiavi"] | undefined
+): RigaAnalitica["celle"] {
+  const celle: RigaAnalitica["celle"] = {};
+  if (principale.spec.granularita !== undefined) celle.d_periodo = chiavi?.periodo ?? "";
+  for (const dimensione of principale.spec.raggruppa ?? []) celle[`d_${dimensione}`] = chiavi?.[dimensione] ?? "";
+  return celle;
+}
+
+/**
  * La tabella di più misure insieme (ordinato, budget, BEP, anno precedente…).
  *
  * Con misure nel tempo le righe sono i periodi — o periodo e categoria — e
@@ -469,16 +534,27 @@ function tabellaComposita(serie: SerieAnalisiEseguita[], scelte?: DifferenzaTabe
   colonne: ColonnaAnalitica[];
   righe: RigaAnalitica[];
   temporale: boolean;
+  /** Vero se ogni campo ha la sua colonna e non c'e' la «Voce» concatenata. */
+  senzaVoce: boolean;
 } {
   const principale = serie.find((voce) => voce.ruolo === "principale") ?? serie[0];
-  if (!principale) return { colonne: [], righe: [], temporale: false };
+  if (!principale) return { colonne: [], righe: [], temporale: false, senzaVoce: false };
   if (principale.spec.granularita !== undefined) return tabellaCompositaNelTempo(serie, principale, scelte);
   const nonTemporali = serie.filter((voce) => voce.spec.granularita === undefined);
   const fontiRighe = nonTemporali.length > 0 ? nonTemporali : [principale];
   const chiavi = new Set<string>();
+  // I valori dei campi di ogni riga, per le colonne di testo.
+  const campiDellaRiga = new Map<string, RigaRisultato["chiavi"]>();
   for (const voce of fontiRighe) {
-    for (const riga of voce.risultato.righe) chiavi.add(chiaveCategoria(voce, riga));
+    for (const riga of voce.risultato.righe) {
+      const chiave = chiaveRiga(voce, riga);
+      chiavi.add(chiave);
+      if (!campiDellaRiga.has(chiave)) campiDellaRiga.set(chiave, riga.chiavi);
+    }
   }
+  // Una colonna per ogni campo, come nella tabella di un risultato solo.
+  const senzaVoce = (principale.spec.raggruppa?.length ?? 0) > 0;
+  const colonneCampi = senzaVoce ? colonneDeiCampi(principale) : [];
 
   const colonne: ColonnaAnalitica[] = nonTemporali.map((voce, indice) => ({
     chiave: `serie_${indice}`,
@@ -513,11 +589,11 @@ function tabellaComposita(serie: SerieAnalisiEseguita[], scelte?: DifferenzaTabe
   for (const voce of nonTemporali) {
     mappe.set(
       voce,
-      new Map(voce.risultato.righe.map((riga) => [chiaveCategoria(voce, riga), riga.valore]))
+      new Map(voce.risultato.righe.map((riga) => [chiaveRiga(voce, riga), riga.valore]))
     );
   }
   const righe: RigaAnalitica[] = [...chiavi].map((chiave) => {
-    const celle: RigaAnalitica["celle"] = {};
+    const celle: RigaAnalitica["celle"] = senzaVoce ? celleDeiCampi(principale, campiDellaRiga.get(chiave)) : {};
     nonTemporali.forEach((voce, indice) => {
       celle[`serie_${indice}`] = mappe.get(voce)?.get(chiave) ?? 0;
     });
@@ -532,30 +608,33 @@ function tabellaComposita(serie: SerieAnalisiEseguita[], scelte?: DifferenzaTabe
     }
     if (temporale) {
       celle.andamento = temporale.risultato.righe
-        .filter((riga) => chiaveCategoria(temporale, riga) === chiave)
+        .filter((riga) => chiaveRiga(temporale, riga) === chiave)
         .sort((a, b) => (a.chiavi.periodo ?? "").localeCompare(b.chiavi.periodo ?? ""))
         .map((riga) => riga.valore);
     }
     return { chiave, celle };
   });
-  return { colonne, righe, temporale: false };
+  return { colonne: [...colonneCampi, ...colonne], righe, temporale: false, senzaVoce };
 }
 
 function tabellaCompositaNelTempo(
   serie: SerieAnalisiEseguita[],
   principale: SerieAnalisiEseguita,
   scelte?: DifferenzaTabella[]
-): { colonne: ColonnaAnalitica[]; righe: RigaAnalitica[]; temporale: true } {
+): { colonne: ColonnaAnalitica[]; righe: RigaAnalitica[]; temporale: true; senzaVoce: true } {
   // La principale per prima: e' la colonna con la barra e il termine di
   // paragone di delta e raggiungimento.
   const ordinate = [principale, ...serie.filter((voce) => voce !== principale)];
   // L'anno precedente va riportato sui periodi di quest'anno, altrimenti
   // «2025-03» e «2026-03» finirebbero su due righe diverse.
-  const mappe = ordinate.map(
-    (voce) =>
-      new Map(risultatoAllineatoNelTempo(voce).righe.map((riga) => [riga.etichetta, riga.valore]))
-  );
+  const allineate = ordinate.map((voce) => risultatoAllineatoNelTempo(voce));
+  const mappe = allineate.map((risultato) => new Map(risultato.righe.map((riga) => [riga.etichetta, riga.valore])));
   const chiavi = [...new Set(mappe.flatMap((mappa) => [...mappa.keys()]))];
+  // Periodo e campi di ogni riga, per le colonne di testo.
+  const campiDellaRiga = new Map<string, RigaRisultato["chiavi"]>();
+  for (const risultato of allineate) {
+    for (const riga of risultato.righe) if (!campiDellaRiga.has(riga.etichetta)) campiDellaRiga.set(riga.etichetta, riga.chiavi);
+  }
 
   const indiceObiettivo = ordinate.findIndex((voce) => voce.ruolo === "obiettivo");
   const unitaPrincipale = principale.risultato.unita;
@@ -585,7 +664,7 @@ function tabellaCompositaNelTempo(
   }
 
   const righe: RigaAnalitica[] = chiavi.map((chiave) => {
-    const celle: RigaAnalitica["celle"] = {};
+    const celle: RigaAnalitica["celle"] = celleDeiCampi(principale, campiDellaRiga.get(chiave));
     mappe.forEach((mappa, indice) => {
       celle[`serie_${indice}`] = mappa.get(chiave) ?? null;
     });
@@ -597,7 +676,7 @@ function tabellaCompositaNelTempo(
     }
     return { chiave, celle };
   });
-  return { colonne, righe, temporale: true };
+  return { colonne: [...colonneDeiCampi(principale), ...colonne], righe, temporale: true, senzaVoce: true };
 }
 
 function matriceScostamento(serie: SerieAnalisiEseguita[]) {
@@ -832,13 +911,14 @@ function TabellaComposita({
   onClickRiga?: (etichetta: string) => void;
 }) {
   const { aspetto } = useImpostazioni();
-  const { temporale, ...dati } = tabellaComposita(serie, aspetto?.tabella?.differenze);
+  const { temporale, senzaVoce, ...dati } = tabellaComposita(serie, aspetto?.tabella?.differenze);
   return (
     <TabellaAnalitica
       {...dati}
+      senzaColonnaVoce={senzaVoce}
       colonnaDimensione={temporale ? "Periodo" : "Voce"}
       colonnaOrdinamentoIniziale={
-        aspetto?.tabella?.ordinaPer ? undefined : temporale ? COLONNA_VOCE : undefined
+        aspetto?.tabella?.ordinaPer ? undefined : temporale ? (senzaVoce ? "d_periodo" : COLONNA_VOCE) : undefined
       }
       massimoIniziale={temporale ? 15 : 12}
       onClickRiga={onClickRiga}
