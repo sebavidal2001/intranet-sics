@@ -144,6 +144,8 @@ function coloreDelta(n: number, altoBuono = true): string {
   return positivo ? "text-success" : "text-danger";
 }
 
+const BLOCCO_RIGHE = 200;
+
 export function TabellaAnalitica({
   colonne,
   righe,
@@ -152,7 +154,6 @@ export function TabellaAnalitica({
   versoIniziale,
   aggregazioneIniziale,
   mostraTotali = true,
-  massimoIniziale = 12,
   onClickRiga,
   rigaEvidenziata,
   ricercabile = true,
@@ -172,6 +173,7 @@ export function TabellaAnalitica({
    */
   aggregazioneIniziale?: AggregazioneTotale;
   mostraTotali?: boolean;
+  /** Non più usato: la tabella scorre con intestazione ferma. */
   massimoIniziale?: number;
   onClickRiga?: (chiave: string) => void;
   rigaEvidenziata?: string | null;
@@ -219,7 +221,9 @@ export function TabellaAnalitica({
   const [aggregazione, setAggregazione] = useState<AggregazioneTotale>(
     aggregazioneIniziale ?? aspetto?.tabella?.totale ?? "automatico"
   );
-  const [tutte, setTutte] = useState(false);
+  // Le righe si caricano a blocchi mentre si scorre: la tabella ha altezza fissa
+  // e intestazione ferma, niente «mostra altre righe».
+  const [mostrate, setMostrate] = useState(BLOCCO_RIGHE);
   const [cerca, setCerca] = useState("");
 
   const massimoBarra = useMemo(() => {
@@ -271,7 +275,7 @@ export function TabellaAnalitica({
     });
   }, [filtrate, ordinaPer, discendente, colonne]);
 
-  const visibili = tutte ? ordinate : ordinate.slice(0, massimoIniziale);
+  const visibili = ordinate.slice(0, mostrate);
   // Senza colonna «Voce», le colonne di testo in testa stanno sotto l'etichetta dei totali.
   const testoIniziali = senzaColonnaVoce
     ? colonne.findIndex((c) => c.tipo !== "testo") === -1
@@ -512,9 +516,17 @@ export function TabellaAnalitica({
         </div>
       )}
 
-      <div className="overflow-x-auto -mx-1">
+      <div
+        className="overflow-auto -mx-1 max-h-[28rem]"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          if (el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
+            setMostrate((m) => (m < ordinate.length ? m + BLOCCO_RIGHE : m));
+          }
+        }}
+      >
         <table className="w-full text-sm min-w-[640px]">
-          <thead>
+          <thead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-bg">
             <tr className="border-b border-border">
               {!senzaColonnaVoce && (
               <th className="py-2 px-2 text-left font-tenorite text-[11px] uppercase tracking-wide">
@@ -574,7 +586,7 @@ export function TabellaAnalitica({
           </tbody>
 
           {totali && visibili.length > 0 && (
-            <tfoot>
+            <tfoot className="[&_td]:sticky [&_td]:bottom-0 [&_td]:z-10 [&_td]:bg-bg">
               <tr className="border-t-2 border-border font-semibold bg-bg-page/60">
                 <td className="py-2 px-2" colSpan={Math.max(1, testoIniziali)}>
                   {ETICHETTA_RIGA[aggregazione]} ({filtrate.length})
@@ -607,19 +619,9 @@ export function TabellaAnalitica({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        {ordinate.length > massimoIniziale ? (
-          <button
-            type="button"
-            onClick={() => setTutte((t) => !t)}
-            className="text-xs text-primary hover:underline"
-          >
-            {tutte
-              ? `Mostra solo le prime ${massimoIniziale}`
-              : `Mostra tutte le ${ordinate.length} righe`}
-          </button>
-        ) : (
-          <span />
-        )}
+        <span className="text-xs text-text-muted">
+          {ordinate.length === 1 ? "1 riga" : `${ordinate.length} righe`}
+        </span>
         {mostraTotali && righe.length > 0 && (
           <label className="flex items-center gap-1.5 text-[11px] text-text-muted">
             Riga dei totali
