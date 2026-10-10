@@ -23,7 +23,8 @@ import { TipoGraficoCompatto } from "./tipo-grafico-compatto";
 import { TelaRilascio } from "./tela-rilascio";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { preparaEsportazione, scriviExcelRiquadro } from "@/lib/prototipo-bi/esporta-riquadro";
 import { GraficoDaAnalisi } from "@/components/prototipo-bi/grafico-da-risultato";
 import { Scheda, Scheletro, euro, numero } from "@/components/prototipo-bi/primitivi";
 import { useImpostazioni } from "@/components/prototipo-bi/impostazioni";
@@ -1177,11 +1178,27 @@ export function EditorAnalisi({
             titolo="Risultato in tempo reale"
             azione={
               risultato ? (
-                <div className="text-right">
-                  <p className="text-xs text-text-muted">Totale</p>
-                  <p className="font-tenorite text-xl font-semibold text-primary tabular-nums">
-                    {formattaTotale(risultato)}
-                  </p>
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void scriviExcelRiquadro(preparaEsportazione(titolo || "Analisi", serieEseguite)).catch((e: unknown) =>
+                        setErrore(e instanceof Error ? `Esportazione non riuscita: ${e.message}` : "Esportazione non riuscita")
+                      );
+                    }}
+                    disabled={serieEseguite.length === 0 || caricamento}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-bg px-2.5 text-xs font-semibold text-text hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                    title="Esporta in Excel il risultato che vedi"
+                  >
+                    <Download className="h-3.5 w-3.5" aria-hidden />
+                    Excel
+                  </button>
+                  <div className="text-right">
+                    <p className="text-xs text-text-muted">Totale</p>
+                    <p className="font-tenorite text-xl font-semibold text-primary tabular-nums">
+                      {formattaTotale(risultato)}
+                    </p>
+                  </div>
                 </div>
               ) : null
             }

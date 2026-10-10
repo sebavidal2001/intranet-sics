@@ -32,6 +32,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   Filter,
   LoaderCircle,
   Pencil,
@@ -51,6 +52,7 @@ import { DATASET_DI_METRICA, METRICHE_SOLO_IN_CORSO } from "@/lib/prototipo-bi/g
 import { preparaEsecuzioneAnalisi } from "@/lib/prototipo-bi/analisi-composita";
 import { applicaFiltriIncrociati, type FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
 import { DIMENSIONI } from "@/lib/prototipo-bi/semantico";
+import { preparaEsportazione, scriviExcelRiquadro } from "@/lib/prototipo-bi/esporta-riquadro";
 import { TIPI_GRAFICO, type TipoGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type {
   AspettoGrafico,
@@ -243,6 +245,14 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
    * suo valore. Se il riquadro non raggruppa niente, l'etichetta e' un periodo
    * o un totale e non c'e' niente su cui scendere.
    */
+  const esportaRiquadro = useCallback(async (titolo: string, serie: SerieAnalisiEseguita[]) => {
+    try {
+      await scriviExcelRiquadro(preparaEsportazione(titolo, serie));
+    } catch (e) {
+      setErrore(e instanceof Error ? `Esportazione non riuscita: ${e.message}` : "Esportazione non riuscita");
+    }
+  }, []);
+
   const apriDocumenti = useCallback(
     (riquadro: RiquadroDashboard, etichetta: string) => {
       const spec = riquadro.analisi.spec;
@@ -747,7 +757,10 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                         <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} fissato dentro il riquadro</p>}
                           {filtratoDa.length > 0 && <p className="mt-1 inline-flex flex-wrap items-center gap-1 text-[11px] font-medium text-primary" data-testid="filtrato-da"><Filter className="h-3 w-3" aria-hidden />Filtrato da {filtratoDa.map((f) => `${DIMENSIONI[f.campo]?.etichetta ?? f.campo}: ${String(f.valore)}`).join(" · ")}</p>}
                           {nonCollegato.length > 0 && <p className="mt-1 text-[11px] text-text-muted" data-testid="non-collegato">Non collegato a {nonCollegato.map((f) => DIMENSIONI[f.campo]?.etichetta ?? f.campo).join(", ")}</p>}</div>
-                        {modificabile && <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1">
+                          {/* Come «Esporta dati» di Power BI: il risultato del riquadro com'e' ora, con i filtri della pagina, in un foglio Excel. */}
+                          <button type="button" onClick={() => void esportaRiquadro(riquadro.titolo || riquadro.analisi.titolo, serieEseguite)} disabled={Boolean(erroreRiquadro) || serieEseguite.length !== batchRiquadro.length} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-30" aria-label={`Esporta ${riquadro.titolo || riquadro.analisi.titolo} in Excel`} title="Esporta in Excel"><Download className="h-4 w-4" aria-hidden /></button>
+                        {modificabile && <>
                           <button type="button" onClick={() => spostaRiquadro(indice, -1)} disabled={indice === 0} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta prima"><ChevronLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => spostaRiquadro(indice, 1)} disabled={indice === paginaAttiva.riquadri.length - 1} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-text disabled:opacity-30" aria-label="Sposta dopo"><ChevronRight className="h-4 w-4" /></button>
                           <select aria-label={`Larghezza di ${riquadro.analisi.titolo}`} value={riquadro.larghezza} onChange={(e) => { const larghezza = Number(e.target.value); const aggiornato = { ...riquadro, larghezza }; void aggiornaRiquadri(paginaAttiva.riquadri.map((r) => r.id === riquadro.id ? aggiornato : r), [{ id: riquadro.id, larghezza }]); }} className="h-8 rounded-md border border-border bg-bg-page px-1.5 text-xs outline-none focus:ring-2 focus:ring-primary"><option value={3}>3/12</option><option value={4}>4/12</option><option value={6}>6/12</option><option value={8}>8/12</option><option value={9}>9/12</option><option value={12}>12/12</option></select>
@@ -761,7 +774,8 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                           */}
                           <Link href={`/bi/esplora?analisi=${encodeURIComponent(riquadro.analisi_id)}`} className="rounded-md p-1.5 text-text-muted hover:bg-bg-page hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={`Modifica ${riquadro.analisi.titolo}`} title="Apri nel builder"><Pencil className="h-4 w-4" /></Link>
                           <button type="button" onClick={() => void togliRiquadro(riquadro.id)} className="rounded-md p-1.5 text-text-muted hover:bg-danger/10 hover:text-danger" aria-label="Togli riquadro"><Trash2 className="h-4 w-4" /></button>
-                        </div>}
+                        </>}
+                        </div>
                       </header>
                       <div className="min-h-48 p-4">
                         {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} selezionata={selezionataQui} aspetto={riquadro.analisi.aspetto} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => cliccaEtichetta(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
