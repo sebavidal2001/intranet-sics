@@ -287,7 +287,7 @@ export const CARTELLE: Cartella[] = [
           { chiave: "fornitore" },
           { chiave: "buyer" },
           { chiave: "documento", etichetta: "Numero ordine fornitore" },
-          { chiave: "profilo", etichetta: "Tipo ordine" },
+          { chiave: "profilo", etichetta: "Profilo documento (tipo ordine)" },
           { chiave: "data_promessa" },
           { chiave: "condizione_pagamento" },
         ],
@@ -298,12 +298,12 @@ export const CARTELLE: Cartella[] = [
         etichetta: "Consegnato",
         descrizione: "Gli arrivi della merce (DDT del fornitore): puntualità, tempi di consegna, righe da sollecitare.",
         valori: ["acquisti_da_sollecitare", "acquisti_valore_da_sollecitare"],
-        misure: ["puntualita_fornitori", "giorni_consegna_fornitori"],
+        misure: ["puntualita_fornitori", "ritardo_medio_fornitori", "giorni_consegna_fornitori"],
         campi: [
           { chiave: "fornitore" },
           { chiave: "buyer" },
           { chiave: "documento", etichetta: "Numero ordine fornitore" },
-          { chiave: "profilo", etichetta: "Tipo ordine" },
+          { chiave: "profilo", etichetta: "Profilo documento (tipo ordine)" },
           { chiave: "data_promessa" },
         ],
         famiglieDocumento: ["acquisti"],
@@ -702,6 +702,10 @@ export const GRUPPI_MISURE: GruppoMisure[] = [
         chiave: "puntualita_fornitori",
         calcolo:
           "Righe arrivate entro la data promessa ÷ righe già arrivate × 100. Le righe non ancora arrivate non contano.",
+      },
+      {
+        chiave: "ritardo_medio_fornitori",
+        calcolo: "Media dei giorni di ritardo sulla data promessa, sulle sole righe arrivate in ritardo.",
       },
       {
         chiave: "giorni_consegna_fornitori",

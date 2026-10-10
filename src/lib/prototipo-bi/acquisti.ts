@@ -386,6 +386,7 @@ export function comeFatti(righe: RigaAcquisto[], oggi: string): RigaFatto[] {
       scaduta: scaduta(r, oggi),
       valoreResiduo: valoreResiduo(r),
       giorniConsegna: r.primoArrivo ? giorniFra(r.dataOrdine, r.primoArrivo) : null,
+      giorniRitardo: p && r.primoArrivo && puntuale(r) === false ? giorniFra(p, r.primoArrivo) : null,
     };
   });
 }

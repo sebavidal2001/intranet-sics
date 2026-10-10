@@ -76,6 +76,8 @@ export interface RigaFatto {
   valoreResiduo?: number;
   /** Giorni dall'ordine al primo arrivo. */
   giorniConsegna?: number | null;
+  /** Giorni oltre la promessa, per le righe arrivate in ritardo (non puntuali); null altrimenti. */
+  giorniRitardo?: number | null;
   /**
    * Vero se la business unit non e' quella del gestionale (la riga non aveva
    * gruppo) ma quella del documento a cui appartiene. Vedi
@@ -428,6 +430,7 @@ export type ChiaveMetrica =
   | "acquisti_ordini"
   | "puntualita_fornitori"
   | "giorni_consegna_fornitori"
+  | "ritardo_medio_fornitori"
   | "acquisti_da_sollecitare"
   | "acquisti_valore_da_sollecitare"
   // ── Visite dei commerciali ──────────────────────────────────────────────

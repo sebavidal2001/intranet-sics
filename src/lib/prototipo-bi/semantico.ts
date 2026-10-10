@@ -484,7 +484,7 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   },
   acquisti_ordini: {
     chiave: "acquisti_ordini",
-    etichetta: "Ordini a fornitore",
+    etichetta: "Numero documenti (ordini a fornitore)",
     descrizione: "Numero di ordini a fornitore distinti.",
     dataset: "acquisti",
     aggregazione: "conta_documenti",
@@ -500,6 +500,16 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     unita: "percentuale",
     numeratore: (r) => (r.puntuale === true ? 1 : 0),
     denominatore: (r) => (r.puntuale === null || r.puntuale === undefined ? 0 : 1),
+  },
+  ritardo_medio_fornitori: {
+    chiave: "ritardo_medio_fornitori",
+    etichetta: "Ritardo medio",
+    descrizione:
+      "Giorni medi di ritardo rispetto alla data promessa, sulle sole righe arrivate in ritardo (le puntuali non contano).",
+    dataset: "acquisti",
+    aggregazione: "media",
+    unita: "giorni",
+    valore: (r) => (r.giorniRitardo === null || r.giorniRitardo === undefined ? null : r.giorniRitardo),
   },
   giorni_consegna_fornitori: {
     chiave: "giorni_consegna_fornitori",

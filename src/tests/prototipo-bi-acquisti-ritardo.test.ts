@@ -1,0 +1,29 @@
+import { describe, expect, it } from "vitest";
+import { comeFatti, type RigaAcquisto } from "@/lib/prototipo-bi/acquisti";
+import { esegui } from "@/lib/prototipo-bi/semantico";
+import type { Snapshot } from "@/lib/prototipo-bi/tipi";
+
+function riga(p: Partial<RigaAcquisto> & { dataOrdine: string }): RigaAcquisto {
+  return {
+    idRiga: 1, profilo: "OF", numeroOrdine: 1, codiceFornitore: "F", fornitore: "COLUMBUS", buyerUtente: "x", buyer: "X",
+    articolo: "A", descrizione: "", gruppoArticoli: "S", quantita: 10, qtaArrivata: 10, valore: 100, dataPrevista: null,
+    dataConfermata: "2026-08-10", rigaEvasa: true, chiusaForzata: false, primoArrivo: "2026-08-05", ...p,
+  };
+}
+
+describe("ritardo medio degli acquisti", () => {
+  it("media i giorni oltre la promessa sulle sole righe in ritardo", () => {
+    const S = {
+      generatoIl: "", runCorrente: null, runRicevutoIl: null, dataMassima: "2026-09-24", dataMinima: "2026-01-01", conteggi: {},
+      dataset: {
+        ordinato: [], fatturato: [], consegnato: [], portafoglio: [], preventivi_aperti: [], controllo_banco: [], consegnato_futuro_per_mese: [],
+        acquisti: comeFatti([
+          riga({ dataOrdine: "2026-07-01" }), // puntuale
+          riga({ dataOrdine: "2026-07-02", primoArrivo: "2026-08-20" }), // 10 giorni
+          riga({ dataOrdine: "2026-07-03", primoArrivo: "2026-08-14" }), // 4 giorni
+        ], "2026-09-25"),
+      },
+    } as unknown as Snapshot;
+    expect(esegui({ metrica: "ritardo_medio_fornitori" }, S).totale).toBe(7);
+  });
+});
