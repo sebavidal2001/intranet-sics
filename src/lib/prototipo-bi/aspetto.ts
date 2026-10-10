@@ -42,6 +42,42 @@ export const COLORI_BU: Record<string, string> = {
 };
 
 const COLORE_VALIDO = /^#[0-9a-f]{6}$/iu;
+
+/** Sfondi proposti per un riquadro (chiari, tranne il turchese SICS). */
+export const SFONDI_RIQUADRO: { nome: string; colore: string }[] = [
+  { nome: "Azzurro chiaro", colore: "#e6f6f9" },
+  { nome: "Verde chiaro", colore: "#eef7da" },
+  { nome: "Giallo chiaro", colore: "#fff4de" },
+  { nome: "Rosso chiaro", colore: "#fdeaea" },
+  { nome: "Grigio chiaro", colore: "#f1f5f9" },
+  { nome: "Turchese SICS", colore: "#00a1be" },
+];
+
+/**
+ * Con un colore del testo scelto, anche i testi che hanno una classe colore
+ * propria (numeri delle KPI, etichette) lo seguono.
+ */
+export function classiTestoRiquadro(aspetto?: AspettoGrafico | null): string {
+  const colorato = Boolean(aspetto?.sfondo || aspetto?.coloreTesto);
+  const centrato = aspetto?.testoCentrato ? "text-center " : "";
+  return `${centrato}${colorato ? "[&_.text-text]:!text-[color:inherit] [&_.text-text-muted]:!text-[color:inherit] [&_.text-text-muted]:opacity-80" : ""}`.trim();
+}
+
+/** Stile del riquadro: sfondo e colore del testo scelti, se ce ne sono. */
+export function stileRiquadro(aspetto?: AspettoGrafico | null): { backgroundColor?: string; color?: string } | undefined {
+  if (!aspetto?.sfondo && !aspetto?.coloreTesto) return undefined;
+  return {
+    ...(aspetto.sfondo ? { backgroundColor: aspetto.sfondo } : {}),
+    color: aspetto.coloreTesto ?? coloreTestoSu(aspetto.sfondo ?? "#ffffff"),
+  };
+}
+
+/** Testo leggibile sopra uno sfondo: bianco sui scuri, nero-blu sui chiari. */
+export function coloreTestoSu(sfondo: string): string {
+  const n = Number.parseInt(sfondo.slice(1), 16);
+  const luminanza = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return luminanza < 0.6 ? "#ffffff" : "#1a202c";
+}
 const LEGENDE: PosizioneLegenda[] = ["sotto", "sopra", "destra", "nascosta"];
 export const AGGREGAZIONI_TOTALE: AggregazioneTotale[] = [
   "automatico",
@@ -133,6 +169,21 @@ export function validaAspetto(valore: unknown): AspettoGrafico | null {
     }
     aspetto.legenda = valore.legenda as PosizioneLegenda;
   }
+
+  if (valore.sfondo !== undefined && valore.sfondo !== null) {
+    if (typeof valore.sfondo !== "string" || !COLORE_VALIDO.test(valore.sfondo)) {
+      throw new AspettoNonValido("Sfondo non valido: usare #rrggbb.");
+    }
+    aspetto.sfondo = valore.sfondo.toLowerCase();
+  }
+  if (valore.coloreTesto !== undefined && valore.coloreTesto !== null) {
+    if (typeof valore.coloreTesto !== "string" || !COLORE_VALIDO.test(valore.coloreTesto)) {
+      throw new AspettoNonValido("Colore del testo non valido: usare #rrggbb.");
+    }
+    aspetto.coloreTesto = valore.coloreTesto.toLowerCase();
+  }
+  const centrato = booleano(valore.testoCentrato, "Testo centrato");
+  if (centrato) aspetto.testoCentrato = true;
 
   const griglia = booleano(valore.griglia, "Griglia");
   if (griglia !== undefined) aspetto.griglia = griglia;

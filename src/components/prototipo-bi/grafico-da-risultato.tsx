@@ -43,6 +43,7 @@ import {
   Posizioni,
 } from "./grafici-nuovi";
 import { AspettoLocale, SelezioneLocale, useImpostazioni } from "./impostazioni";
+import { classiTestoRiquadro, stileRiquadro } from "@/lib/prototipo-bi/aspetto";
 import { BarreImpilate, datiBarreImpilate } from "./barre-impilate";
 import { MappaVisite } from "./mappa-visite";
 import {
@@ -939,7 +940,12 @@ export function GraficoDaAnalisi({ aspetto, selezionata, ...proprieta }: Proprie
   return (
     <AspettoLocale aspetto={aspetto}>
       <SelezioneLocale valore={selezionata}>
-        <CorpoGraficoDaAnalisi {...proprieta} />
+        <div
+          className={classiTestoRiquadro(aspetto) || undefined}
+          style={stileRiquadro(aspetto)}
+        >
+          <CorpoGraficoDaAnalisi {...proprieta} />
+        </div>
       </SelezioneLocale>
     </AspettoLocale>
   );

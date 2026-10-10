@@ -714,6 +714,12 @@ export interface AspettoGrafico {
    */
   colori?: Record<string, string>;
   legenda?: PosizioneLegenda;
+  /** Sfondo del riquadro, `#rrggbb`. Il colore del testo si adegua da solo. */
+  sfondo?: string;
+  /** Colore del testo, `#rrggbb`. Senza, segue lo sfondo (bianco sui scuri). */
+  coloreTesto?: string;
+  /** Titolo e numeri (le KPI) centrati nel riquadro. */
+  testoCentrato?: boolean;
   griglia?: boolean;
   etichetteValori?: boolean;
   /** Asse delle categorie o del tempo. */

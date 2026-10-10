@@ -48,6 +48,7 @@ import {
 } from "./aggiungi-riquadro";
 import { GraficoDaAnalisi } from "./grafico-da-risultato";
 import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti";
+import { classiTestoRiquadro, stileRiquadro } from "@/lib/prototipo-bi/aspetto";
 import { DATASET_DI_METRICA, METRICHE_SOLO_IN_CORSO } from "@/lib/prototipo-bi/gruppi-campi";
 import { preparaEsecuzioneAnalisi } from "@/lib/prototipo-bi/analisi-composita";
 import { applicaFiltriIncrociati, type FiltriPagina } from "@/lib/prototipo-bi/filtri-pagina";
@@ -759,13 +760,21 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                       ? [{ ruolo: voce.ruolo, nome: voce.nome, spec: voce.spec, risultato }]
                       : [];
                   });
+                  // Un solo numero (KPI): il corpo non ha altezza minima, altrimenti la scheda resta mezza vuota.
+                  const tipoRiquadro = riquadro.grafico ?? riquadro.analisi.grafico ?? undefined;
+                  const eKpi =
+                    serieEseguite.length === 1 &&
+                    serieEseguite[0].risultato.righe.length === 1 &&
+                    (serieEseguite[0].spec.raggruppa?.length ?? 0) === 0 &&
+                    (tipoRiquadro === undefined || tipoRiquadro === "kpi");
+                  const aspettoRiquadro = riquadro.analisi.aspetto;
                   const erroreRiquadro = batchRiquadro
                     .map((voce) => erroriRiquadri[voce.id])
                     .find(Boolean);
                   return (
-                    <article key={riquadro.id} onClickCapture={(e) => { clicPerDocumenti.current = e.ctrlKey || e.altKey || e.metaKey; }} className={`col-span-12 min-w-0 rounded-xl border border-border bg-bg ${COLONNE[riquadro.larghezza] ?? "lg:col-span-6"}`}>
+                    <article key={riquadro.id} style={stileRiquadro(aspettoRiquadro)} onClickCapture={(e) => { clicPerDocumenti.current = e.ctrlKey || e.altKey || e.metaKey; }} className={`col-span-12 min-w-0 rounded-xl border border-border bg-bg ${classiTestoRiquadro(aspettoRiquadro).replace("text-center", "")} ${COLONNE[riquadro.larghezza] ?? "lg:col-span-6"}`}>
                       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-                        <div className="min-w-0"><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} fissato dentro il riquadro</p>}
+                        <div className={`min-w-0 ${aspettoRiquadro?.testoCentrato ? "flex-1 text-center" : ""}`}><h2 className="truncate font-tenorite text-base font-bold">{riquadro.titolo || riquadro.analisi.titolo}</h2>{ignorati.length > 0 && <p className="mt-1 text-[11px] text-text-muted">Filtro {ignorati.map((v) => v === "bu" ? "business unit" : v).join(", ")} fissato dentro il riquadro</p>}
                           {filtratoDa.length > 0 && <p className="mt-1 inline-flex flex-wrap items-center gap-1 text-[11px] font-medium text-primary" data-testid="filtrato-da"><Filter className="h-3 w-3" aria-hidden />Filtrato da {filtratoDa.map((f) => `${DIMENSIONI[f.campo]?.etichetta ?? f.campo}: ${String(f.valore)}`).join(" · ")}</p>}
                           {nonCollegato.length > 0 && <p className="mt-1 text-[11px] text-text-muted" data-testid="non-collegato">Non collegato a {nonCollegato.map((f) => DIMENSIONI[f.campo]?.etichetta ?? f.campo).join(", ")}</p>}</div>
                         <div className="flex items-center gap-1">
@@ -788,7 +797,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
                         </>}
                         </div>
                       </header>
-                      <div className="min-h-48 p-4">
+                      <div className={`${eKpi ? "" : "min-h-48"} p-4`}>
                         {erroreRiquadro ? <div className="flex min-h-40 items-center justify-center text-center text-sm text-danger">{erroreRiquadro}</div> : serieEseguite.length === batchRiquadro.length ? <GraficoDaAnalisi serie={serieEseguite} selezionata={selezionataQui} aspetto={riquadro.analisi.aspetto} tipo={riquadro.grafico ?? riquadro.analisi.grafico ?? undefined} altezza={Math.max(180, Math.min(480, riquadro.altezza * 60))} onClickEtichetta={(etichetta) => cliccaEtichetta(riquadro, etichetta)} /> : <div className="flex min-h-40 items-center justify-center text-sm text-text-muted"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden />Calcolo in corso…</div>}
                       </div>
                     </article>

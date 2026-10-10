@@ -14,7 +14,7 @@
 
 import { useState } from "react";
 import { ChevronDown, Palette, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { COLORI_BU, COLORI_SICS, coloreFissato } from "@/lib/prototipo-bi/aspetto";
+import { COLORI_BU, COLORI_SICS, SFONDI_RIQUADRO, coloreFissato } from "@/lib/prototipo-bi/aspetto";
 import type {
   AggregazioneTotale,
   AspettoAsse,
@@ -275,7 +275,7 @@ export function PannelloAspetto({
               Aspetto del grafico
             </span>
             <span className="block text-xs text-text-muted">
-              Facoltativo: colori, legenda, assi e totali della tabella
+              Facoltativo: sfondo, colori, legenda, assi e totali della tabella
               {aspetto ? " · personalizzato" : ""}
             </span>
           </span>
@@ -309,6 +309,66 @@ export function PannelloAspetto({
                 ))}
               </div>
             )}
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">Riquadro</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-text-muted">Sfondo</span>
+              <button
+                type="button"
+                aria-label="Nessuno sfondo"
+                aria-pressed={corrente.sfondo === undefined}
+                onClick={() => aggiorna({ sfondo: undefined })}
+                className={`h-7 rounded-md border px-2 text-xs ${corrente.sfondo === undefined ? "border-primary text-primary" : "border-border text-text-muted"}`}
+              >
+                Nessuno
+              </button>
+              {SFONDI_RIQUADRO.map((s) => (
+                <button
+                  key={s.colore}
+                  type="button"
+                  title={s.nome}
+                  aria-label={`Sfondo ${s.nome}`}
+                  aria-pressed={corrente.sfondo === s.colore}
+                  onClick={() => aggiorna({ sfondo: s.colore })}
+                  className={`h-7 w-7 rounded-md border-2 ${corrente.sfondo === s.colore ? "border-primary" : "border-border"}`}
+                  style={{ backgroundColor: s.colore }}
+                />
+              ))}
+              <input
+                type="color"
+                aria-label="Sfondo personalizzato"
+                value={corrente.sfondo ?? "#ffffff"}
+                onChange={(e) => aggiorna({ sfondo: e.target.value.toLowerCase() })}
+                className="h-7 w-9 cursor-pointer rounded-md border border-border bg-bg p-0.5"
+              />
+              <span className="ml-2 text-xs text-text-muted">Testo</span>
+              <input
+                type="color"
+                aria-label="Colore del testo"
+                value={corrente.coloreTesto ?? "#1a202c"}
+                onChange={(e) => aggiorna({ coloreTesto: e.target.value.toLowerCase() })}
+                className="h-7 w-9 cursor-pointer rounded-md border border-border bg-bg p-0.5"
+              />
+              {corrente.coloreTesto !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => aggiorna({ coloreTesto: undefined })}
+                  className="h-7 rounded-md border border-border px-2 text-xs text-text-muted hover:text-text"
+                >
+                  Automatico
+                </button>
+              )}
+              <label className="ml-2 flex items-center gap-1.5 text-xs text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={corrente.testoCentrato === true}
+                  onChange={(e) => aggiorna({ testoCentrato: e.target.checked ? true : undefined })}
+                />
+                Testo centrato
+              </label>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
