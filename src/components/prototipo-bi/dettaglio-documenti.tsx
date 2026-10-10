@@ -47,6 +47,9 @@ interface RigaDettaglio {
   bu: string;
   causale?: string;
   evasa?: boolean;
+  promessa?: string | null;
+  arrivo?: string | null;
+  ritardo?: number | null;
 }
 
 export interface RichiestaPannello {
@@ -62,6 +65,7 @@ const NOMI_DATASET: Record<string, string> = {
   fatturato: "Fatture",
   consegnato: "Consegne",
   portafoglio: "Portafoglio",
+  acquisti: "Ordini a fornitore",
 };
 
 function badgeEta(giorni: number | null | undefined) {
@@ -149,6 +153,8 @@ export function PannelloDettaglio({
 
   const doc = documenti.find((d) => d.numero === selezionato);
   const preventivi = richiesta?.dataset === "preventivi_aperti";
+  // Ordini a fornitore: niente costo né margine; contano promessa, arrivo e ritardo.
+  const acquisti = richiesta?.dataset === "acquisti";
 
   return (
     <AnimatePresence>
@@ -269,7 +275,7 @@ export function PannelloDettaglio({
                           {euro(doc.valoreTotale ?? doc.importo, false)}
                         </div>
                       </div>
-                      {!preventivi && doc.margine !== null && doc.margine !== undefined && (
+                      {!preventivi && !acquisti && doc.margine !== null && doc.margine !== undefined && (
                         <>
                           <div>
                             <div className="text-[11px] text-text-muted">Margine</div>
@@ -324,7 +330,14 @@ export function PannelloDettaglio({
                         {preventivi && (
                           <th className="py-2 pl-2 text-right font-tenorite">Inevaso</th>
                         )}
-                        {!preventivi && (
+                        {acquisti && (
+                          <>
+                            <th className="py-2 px-2 text-right font-tenorite">Promessa</th>
+                            <th className="py-2 px-2 text-right font-tenorite">Arrivo</th>
+                            <th className="py-2 pl-2 text-right font-tenorite">Ritardo</th>
+                          </>
+                        )}
+                        {!preventivi && !acquisti && (
                           <>
                             <th className="py-2 px-2 text-right font-tenorite">Costo un.</th>
                             <th className="py-2 pl-2 text-right font-tenorite">Margine</th>
@@ -373,7 +386,16 @@ export function PannelloDettaglio({
                               {euro(r.importo, false)}
                             </td>
                           )}
-                          {!preventivi && (
+                          {acquisti && (
+                            <>
+                              <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap text-text-muted">{r.promessa ?? "—"}</td>
+                              <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap text-text-muted">{r.arrivo ?? "—"}</td>
+                              <td className={`py-2 pl-2 text-right tabular-nums whitespace-nowrap font-medium ${r.ritardo ? "text-danger" : "text-text-muted"}`}>
+                                {r.ritardo ? `${r.ritardo} gg` : "—"}
+                              </td>
+                            </>
+                          )}
+                          {!preventivi && !acquisti && (
                             <>
                               <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap text-text-muted">
                                 {/* Trattino e non zero: il costo sconosciuto e
@@ -428,7 +450,7 @@ export function PannelloDettaglio({
                         </div>
                         <div className="text-sm truncate">{d.cliente}</div>
                         <div className="text-[11px] text-text-muted">
-                          {d.righe} righe · {d.bu} · {d.agente}
+                          {d.righe} righe{d.bu ? ` · ${d.bu}` : ""} · {d.agente}
                           {d.creatore && ` · ${d.creatore}`}
                         </div>
                       </div>

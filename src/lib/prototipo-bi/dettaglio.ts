@@ -23,6 +23,8 @@ export const DATASET_DETTAGLIO: ChiaveDataset[] = [
   "fatturato",
   "consegnato",
   "portafoglio",
+  // Righe d'ordine a fornitore: il «cliente» del documento è il fornitore, l'«agente» il buyer.
+  "acquisti",
 ];
 
 export interface RigaDettaglio {
@@ -45,6 +47,10 @@ export interface RigaDettaglio {
    */
   costoUnitario?: number | null;
   margine?: number | null;
+  /** Solo acquisti: data promessa, primo arrivo, giorni di ritardo (arrivata in ritardo, o ancora aperta e scaduta). */
+  promessa?: string | null;
+  arrivo?: string | null;
+  ritardo?: number | null;
 }
 
 export interface DocumentoSintesi {
@@ -185,8 +191,8 @@ export function dettaglioDocumenti(
       numero,
       // Un documento può avere righe con date diverse: si mostra la prima.
       data: rr.map((r) => r.data).sort()[0] ?? "",
-      cliente: rr[0].cliente,
-      agente: rr[0].agente,
+      cliente: rr[0].fornitore ?? rr[0].cliente,
+      agente: rr[0].buyer ?? rr[0].agente,
       bu: rr[0].bu,
       creatore: rr[0].creatore,
       righe: rr.length,
@@ -245,6 +251,9 @@ export function dettaglioDocumenti(
           bu: r.bu,
           causale: r.causaleDescrizione ?? r.causaleCodice,
           evasa: r.evasa,
+          ...(r.fornitore !== undefined
+            ? { promessa: r.promessa ?? null, arrivo: r.dataArrivo ?? null, ritardo: r.giorniRitardoAperto ?? r.giorniRitardo ?? null }
+            : {}),
         }))
         .sort((a, b) => (b.valoreTotale ?? b.importo) - (a.valoreTotale ?? a.importo));
     }

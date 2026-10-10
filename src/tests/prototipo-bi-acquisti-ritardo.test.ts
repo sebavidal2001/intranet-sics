@@ -44,3 +44,23 @@ describe("ritardo medio degli acquisti", () => {
     expect(per.righe.find((x) => x.etichetta.includes(" 1/"))?.valore).toBe(10);
   });
 });
+
+describe("dettaglio documenti degli acquisti", () => {
+  it("elenca gli ordini del fornitore e le righe con promessa, arrivo e ritardo", async () => {
+    const { dettaglioDocumenti } = await import("@/lib/prototipo-bi/dettaglio");
+    const S = {
+      generatoIl: "", runCorrente: null, runRicevutoIl: null, dataMassima: "2026-09-24", dataMinima: "2026-01-01", conteggi: {},
+      dataset: {
+        ordinato: [], fatturato: [], consegnato: [], portafoglio: [], preventivi_aperti: [], controllo_banco: [], consegnato_futuro_per_mese: [],
+        acquisti: comeFatti([
+          riga({ dataOrdine: "2026-07-01", numeroOrdine: 7, fornitore: "COLUMBUS", rigaEvasa: false, qtaArrivata: 0, primoArrivo: null, dataConfermata: "2026-09-05" }),
+          riga({ dataOrdine: "2026-07-02", numeroOrdine: 8, fornitore: "AIGNEP" }),
+        ], "2026-09-25"),
+      },
+    } as unknown as Snapshot;
+    const e = dettaglioDocumenti({ dataset: "acquisti", filtri: [{ campo: "fornitore", op: "eq", valore: "COLUMBUS" }], documento: "OF 7/2026" }, S);
+    expect(e.totaleDocumenti).toBe(1);
+    expect(e.documenti[0].cliente).toBe("COLUMBUS");
+    expect(e.righe?.[0]).toMatchObject({ promessa: "2026-09-05", arrivo: null, ritardo: 20 });
+  });
+});

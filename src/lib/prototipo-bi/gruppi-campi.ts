@@ -119,6 +119,16 @@ export const DATASET_DI_METRICA: Partial<Record<string, string>> = {
   eta_massima_apertura: "preventivi_aperti",
   preventivi_aperti_oltre_90: "preventivi_aperti",
   preventivi_inevaso: "preventivi_aperti",
+  acquisti_valore: "acquisti",
+  acquisti_quantita: "acquisti",
+  acquisti_ordini: "acquisti",
+  acquisti_righe: "acquisti",
+  puntualita_fornitori: "acquisti",
+  ritardo_medio_fornitori: "acquisti",
+  giorni_consegna_fornitori: "acquisti",
+  acquisti_da_sollecitare: "acquisti",
+  ritardo_da_sollecitare: "acquisti",
+  acquisti_valore_da_sollecitare: "acquisti",
 };
 
 /**
