@@ -184,8 +184,11 @@ export function deponi(
           : "Il tempo non si filtra da qui: il periodo si sceglie nel riquadro «Quando»."
       );
     }
-    if (selezione.misure.length === 0) return no("Scegli prima una misura.");
-    const ammesse = contesto.perMetrica[selezione.misure[0]] ?? [];
+    // Senza misure vale qualunque dimensione che qualche misura sappia usare.
+    const ammesse =
+      selezione.misure.length === 0
+        ? dimensioniAmmesse([], contesto.perMetrica, contesto.famiglie, selezione.suddivisioni)
+        : (contesto.perMetrica[selezione.misure[0]] ?? []);
     if (!ammesse.includes(voce.chiave) && voce.chiave !== "bu_categoria") {
       return no(motivoDimensioneFuoriDalleMisure(voce.chiave, selezione.misure, contesto.famiglie));
     }
@@ -195,12 +198,11 @@ export function deponi(
   // ── Campi di una tabella: tutti quelli che si vuole, ciascuno una colonna ──
   if (pozzetto === "campi") {
     if (voce.tipo === "misura") return no("Le misure vanno nei valori: trascinala lì.");
-    if (selezione.misure.length === 0) return no("Scegli prima una misura.");
     if (voce.tipo === "calendario") {
       if (selezione.granularita === voce.chiave) return { ok: true, selezione };
       return { ok: true, selezione: { ...selezione, granularita: voce.chiave } };
     }
-    if (!dimensioniAmmesse(selezione.misure, contesto.perMetrica, contesto.famiglie).includes(voce.chiave)) {
+    if (!dimensioniAmmesse(selezione.misure, contesto.perMetrica, contesto.famiglie, selezione.suddivisioni).includes(voce.chiave)) {
       return no(motivoDimensioneFuoriDalleMisure(voce.chiave, selezione.misure, contesto.famiglie));
     }
     if (selezione.suddivisioni.includes(voce.chiave)) return no(`«${nome}» è già nelle colonne.`);
@@ -214,10 +216,9 @@ export function deponi(
   if (voce.tipo === "calendario" && pozzetto === "legenda") {
     return no("Il tempo va sull'asse: l'andamento nel tempo è l'asse del grafico, la legenda suddivide.");
   }
-  if (selezione.misure.length === 0) return no("Scegli prima una misura.");
   if (
     voce.tipo === "dimensione" &&
-    !dimensioniAmmesse(selezione.misure, contesto.perMetrica, contesto.famiglie).includes(voce.chiave)
+    !dimensioniAmmesse(selezione.misure, contesto.perMetrica, contesto.famiglie, selezione.suddivisioni).includes(voce.chiave)
   ) {
     return no(motivoDimensioneFuoriDalleMisure(voce.chiave, selezione.misure, contesto.famiglie));
   }

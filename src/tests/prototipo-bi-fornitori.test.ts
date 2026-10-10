@@ -189,8 +189,11 @@ describe("scadenzario", () => {
 
   it("le tre operazioni nuove stanno nell'albero con i loro valori", () => {
     const chiavi = GRUPPI_OPERAZIONI.map((g) => g.chiave);
-    expect(chiavi).toEqual(expect.arrayContaining(["fornitori", "pagamenti", "scadenzario"]));
+    expect(chiavi).toEqual(expect.arrayContaining(["pagamenti", "scadenzario"]));
+    // Le fatture e i pagamenti dovuti stanno dentro gli Acquisti, non in un gruppo a parte.
+    expect(chiavi).not.toContain("fornitori");
+    expect(GRUPPI_OPERAZIONI.find((g) => g.chiave === "acquisti")?.valori).toEqual(expect.arrayContaining(["fatturato_fornitore", "n_fatture_fornitore", "pagamenti_dovuti"]));
     const sc = GRUPPI_OPERAZIONI.find((g) => g.chiave === "scadenzario");
-    expect(sc?.valori).toEqual(["incassi_attesi", "pagamenti_dovuti", "saldo_cassa"]);
+    expect(sc?.valori).toEqual(["incassi_attesi", "saldo_cassa"]);
   });
 });

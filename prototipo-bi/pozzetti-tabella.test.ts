@@ -179,9 +179,9 @@ describe("tabella: i campi sono quanti se ne vogliono", () => {
     expect(s.granularita).toBe("anno");
   });
 
-  it("senza una misura non c'e' niente da suddividere, e una misura non e' un campo", () => {
+  it("senza una misura il campo entra lo stesso (si parte dal divisore), e una misura non e' un campo", () => {
     const vuota = deponi(SELEZIONE_VUOTA, "campi", { tipo: "dimensione", chiave: "cliente" }, CONTESTO);
-    expect(vuota.ok).toBe(false);
+    expect(vuota.ok).toBe(true);
     const misura = deponi(base, "campi", { tipo: "misura", chiave: "fatturato" }, CONTESTO);
     expect(!misura.ok && misura.motivo).toMatch(/valori/);
   });

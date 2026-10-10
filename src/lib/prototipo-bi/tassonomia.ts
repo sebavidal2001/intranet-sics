@@ -18,7 +18,6 @@ export type ChiaveTipologia =
   | "margine"
   | "acquisti"
   | "visite"
-  | "fornitori"
   | "pagamenti"
   | "scadenzario"
   /** Le misure personalizzate salvate: non sta in `TIPOLOGIE`, la aggiunge il vocabolario. */
@@ -100,7 +99,8 @@ export const TIPOLOGIE: Tipologia[] = [
   {
     chiave: "acquisti",
     etichetta: "Acquisti",
-    descrizione: "Ordini a fornitore: volume, puntualità dei fornitori, carico dei buyer, righe da sollecitare.",
+    descrizione:
+      "Tutto sui fornitori: ordini (volume, puntualità, carico dei buyer, righe da sollecitare), fatture e note di credito, pagamenti dovuti.",
     metriche: [
       "acquisti_valore",
       "acquisti_quantita",
@@ -110,6 +110,9 @@ export const TIPOLOGIE: Tipologia[] = [
       "giorni_consegna_fornitori",
       "acquisti_da_sollecitare",
       "acquisti_valore_da_sollecitare",
+      "fatturato_fornitore",
+      "n_fatture_fornitore",
+      "pagamenti_dovuti",
     ],
   },
   {
@@ -117,12 +120,6 @@ export const TIPOLOGIE: Tipologia[] = [
     etichetta: "Visite commerciali",
     descrizione: "Visite dei commerciali ai clienti: quante, dove, con quale esito. Con la mappa si vede anche il giro di ogni giornata.",
     metriche: ["visite_numero"],
-  },
-  {
-    chiave: "fornitori",
-    etichetta: "Fatture fornitore",
-    descrizione: "Le fatture e le note di credito dei fornitori: quanto fatturano, di che cosa, con quale condizione di pagamento.",
-    metriche: ["fatturato_fornitore", "n_fatture_fornitore"],
   },
   {
     chiave: "pagamenti",
@@ -134,7 +131,7 @@ export const TIPOLOGIE: Tipologia[] = [
     chiave: "scadenzario",
     etichetta: "Scadenzario",
     descrizione: "Incassi attesi e pagamenti dovuti per data di scadenza: la base del calendario di cassa.",
-    metriche: ["incassi_attesi", "pagamenti_dovuti", "saldo_cassa"],
+    metriche: ["incassi_attesi", "saldo_cassa"],
   },
 ];
 
@@ -185,7 +182,18 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
     );
   }
   if (dataset === "scadenze") {
-    return (["tipo_scadenza", "soggetto", "profilo", "condizione_pagamento", "documento"] as Dimensione[]).filter(
+    // Gli incassi sono dei clienti e i pagamenti dei fornitori: ciascuno ha la
+    // propria classificazione, cosi' «pagamenti dovuti» si puo' mettere accanto
+    // all'ordinato e al fatturato di un fornitore, e «incassi attesi» accanto a
+    // quelli di un cliente. Il saldo (incassi − pagamenti) li mescola: li divide
+    // solo per soggetto.
+    const proprie: Dimensione[] =
+      metrica === "pagamenti_dovuti"
+        ? ["fornitore", "soggetto"]
+        : metrica === "incassi_attesi"
+          ? ["cliente", "codice_cliente", "soggetto"]
+          : ["tipo_scadenza", "soggetto"];
+    return ([...proprie, "profilo", "condizione_pagamento", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
   }

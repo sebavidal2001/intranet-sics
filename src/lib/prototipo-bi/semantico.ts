@@ -590,7 +590,8 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     dataset: "scadenze",
     aggregazione: "somma",
     unita: "euro",
-    valore: (r) => (r.tipoScadenza === "A" ? (r.saldoAperto ?? 0) : 0),
+    valore: (r) => r.saldoAperto ?? 0,
+    filtroImplicito: (r) => r.tipoScadenza === "A",
   },
   pagamenti_dovuti: {
     chiave: "pagamenti_dovuti",
@@ -599,7 +600,8 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     dataset: "scadenze",
     aggregazione: "somma",
     unita: "euro",
-    valore: (r) => (r.tipoScadenza === "P" ? (r.saldoAperto ?? 0) : 0),
+    valore: (r) => r.saldoAperto ?? 0,
+    filtroImplicito: (r) => r.tipoScadenza === "P",
   },
   saldo_cassa: {
     chiave: "saldo_cassa",

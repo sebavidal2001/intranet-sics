@@ -187,11 +187,11 @@ describe("Pozzetti: trascinare", () => {
     expect(selezioneCorrente().granularita).toBe("mese");
   });
 
-  it("senza misura niente si suddivide: lo dice", () => {
+  it("senza misura si parte dal divisore: la dimensione entra", () => {
     render(<Banco />);
     rilascia("Asse", dim("cliente"));
-    expect(messaggio()).toHaveTextContent("Scegli prima una misura.");
-    expect(selezioneCorrente().suddivisioni).toEqual([]);
+    expect(messaggio()).not.toHaveTextContent("Scegli prima una misura");
+    expect(selezioneCorrente().suddivisioni).toEqual(["cliente"]);
   });
 
   it("una dimensione che la misura non ha e' rifiutata col suo motivo", () => {
@@ -313,12 +313,12 @@ describe("Pozzetti: togliere e riordinare", () => {
     expect(selezioneCorrente().granularita).toBeUndefined();
   });
 
-  it("anche l'ultima misura si toglie: il riquadro si svuota, senza rifiuti", () => {
+  it("anche l'ultima misura si toglie: i campi restano per ripartire dal divisore, senza rifiuti", () => {
     render(<Banco iniziale={{ misure: ["ordinato"], suddivisioni: ["bu"] }} />);
     fireEvent.click(screen.getByRole("button", { name: "Togli Valore ordinato dai valori" }));
     expect(messaggio()).not.toHaveTextContent("Serve almeno una misura");
     expect(selezioneCorrente().misure).toEqual([]);
-    expect(selezioneCorrente().suddivisioni).toEqual([]);
+    expect(selezioneCorrente().suddivisioni).toEqual(["bu"]);
   });
 
   it("una misura fra piu' si toglie", () => {
@@ -381,10 +381,10 @@ describe("Pozzetti: il menu, l'alternativa al trascinamento", () => {
     expect(within(menu).getByRole("option", { name: "Niente da aggiungere" })).toBeInTheDocument();
   });
 
-  it("senza misura nessun menu di suddivisione offre niente", () => {
+  it("senza misura i menu di suddivisione offrono i divisori: si parte da li'", () => {
     render(<Banco />);
-    expect(within(pozzetto("Asse")).getByLabelText("Aggiungi a Asse")).toBeDisabled();
-    expect(within(pozzetto("Filtri")).getByLabelText("Aggiungi a Filtri")).toBeDisabled();
+    expect(within(pozzetto("Asse")).getByLabelText("Aggiungi a Asse")).toBeEnabled();
+    expect(within(pozzetto("Filtri")).getByLabelText("Aggiungi a Filtri")).toBeEnabled();
     expect(within(pozzetto("Valori")).getByLabelText("Aggiungi a Valori")).toBeEnabled();
   });
 });

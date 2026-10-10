@@ -229,9 +229,18 @@ export function famiglieDelleMisure(misure: readonly string[], famiglie: Record<
 export function dimensioniAmmesse(
   misure: ChiaveValore[],
   perMetrica: Record<string, Dimensione[]>,
-  famiglie?: Record<string, string[]>
+  famiglie?: Record<string, string[]>,
+  /** Le suddivisioni gia' scelte: servono solo quando non c'e' ancora nessuna misura. */
+  suddivisioniScelte: readonly Dimensione[] = []
 ): Dimensione[] {
-  if (misure.length === 0) return [];
+  // Si puo' partire dal divisore, come in una tabella pivot: senza misure sono
+  // ammesse le dimensioni che almeno una misura sa affiancare a quelle gia'
+  // scelte. Poi sono le misure a restringersi (`motivoMisuraNonSelezionabile`):
+  // il classificatore sceglie quali valori ha senso mettergli accanto.
+  if (misure.length === 0) {
+    const compatibili = Object.values(perMetrica).filter((ammesse) => suddivisioniScelte.every((d) => ammesse.includes(d)));
+    return [...new Set(compatibili.flat())];
+  }
   const comuni = misure.reduce<Dimensione[]>(
     (restanti, valore) => restanti.filter((d) => (perMetrica[chiaveBase(valore)] ?? []).includes(d)),
     [...(perMetrica[chiaveBase(misure[0])] ?? [])]
@@ -299,9 +308,10 @@ export function motivoDimensioneNonSelezionabile(
   senzaLimite = false
 ): string | null {
   if (selezione.suddivisioni.includes(dimensione)) return null;
-  if (selezione.misure.length === 0) return "Scegli prima una misura";
-  if (!dimensioniAmmesse(selezione.misure, perMetrica, famiglie).includes(dimensione)) {
-    return motivoDimensioneFuoriDalleMisure(dimensione, selezione.misure, famiglie);
+  if (!dimensioniAmmesse(selezione.misure, perMetrica, famiglie, selezione.suddivisioni).includes(dimensione)) {
+    return selezione.misure.length === 0
+      ? "Nessuna misura si può suddividere insieme ai campi già scelti"
+      : motivoDimensioneFuoriDalleMisure(dimensione, selezione.misure, famiglie);
   }
   if (!senzaLimite && selezione.suddivisioni.length >= MASSIME_SUDDIVISIONI) return "Al massimo due: togline una";
   return null;
@@ -359,9 +369,10 @@ export function selezioneConMisura(
   famiglie?: Record<string, string[]>
 ): SelezioneCampi {
   const misure = spuntata ? [...selezione.misure, valore] : selezione.misure.filter((m) => m !== valore);
-  // Tolta l'ultima misura il riquadro e' vuoto: non resta niente da suddividere.
-  // Svuotare del tutto e' lecito; l'errore c'e' solo se poi si prova a salvare.
-  if (misure.length === 0) return { misure: [], suddivisioni: [] };
+  // Tolta l'ultima misura i campi scelti restano: si puo' partire dal divisore
+  // (il fornitore, il cliente) e scegliere i valori dopo. Il riquadro e' vuoto
+  // finche' non c'e' un valore; l'errore c'e' solo se si prova a salvare.
+  if (misure.length === 0) return { ...selezione, misure: [] };
   // Togliendo una misura, le suddivisioni che solo lei ammetteva vanno via con
   // lei: lasciarle darebbe una spec che il motore non sa eseguire.
   const restano = dimensioniAmmesse(misure, perMetrica, famiglie);
@@ -878,7 +889,7 @@ export function AlberoCampi({
                   etichetta={voce.etichetta}
                   voce={{ tipo: "calendario", chiave: voce.chiave }}
                   spuntata={selezione.granularita === voce.chiave}
-                  motivoBloccata={selezione.misure.length === 0 ? "Scegli prima una misura" : null}
+                  motivoBloccata={null}
                   segno={<SegnoCampo tempo />}
                   onCambia={(spuntata) =>
                     onCambia({

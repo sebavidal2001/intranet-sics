@@ -139,8 +139,18 @@ describe("Quali dimensioni restano ammesse", () => {
     expect(ammesse).not.toContain("esito");
   });
 
-  it("senza misure non si offre niente", () => {
-    expect(dimensioniAmmesse([], VOCABOLARIO.dimensioniPerMetrica)).toEqual([]);
+  it("senza misure si puo' partire dal divisore: e' ammesso cio' che qualche misura sa suddividere", () => {
+    const ammesse = dimensioniAmmesse([], VOCABOLARIO.dimensioniPerMetrica);
+    expect(ammesse).toContain("cliente");
+    expect(ammesse).toContain("esito");
+  });
+
+  it("scelto un divisore, restano ammessi solo i campi che qualche misura sa affiancargli", () => {
+    // «esito» esiste solo sui preventivi: i campi dei soli preventivi restano, quelli di altre operazioni no.
+    const ammesse = dimensioniAmmesse([], { ...VOCABOLARIO.dimensioniPerMetrica, solo_altrove: ["agente"] } as never, undefined, ["esito"]);
+    expect(ammesse).toContain("creatore");
+    expect(ammesse).toContain("agente");
+    expect(dimensioniAmmesse([], { solo_altrove: ["agente"] } as never, undefined, ["esito"])).toEqual([]);
   });
 });
 
@@ -199,13 +209,18 @@ describe("L'albero sullo schermo", () => {
     expect(onCambia).toHaveBeenCalledWith(expect.objectContaining({ misure: ["ordinato"] }));
   });
 
-  it("senza misure le suddivisioni sono spente e dicono perché", () => {
+  it("senza misure le suddivisioni sono spuntabili: si puo' partire dal divisore", () => {
     monta(SELEZIONE_VUOTA);
     // «Clienti e agenti» e' il primo gruppo ed e' gia' aperto: cliccarlo lo
     // chiuderebbe.
     const cliente = screen.getByRole("checkbox", { name: /Cliente/ });
-    expect(cliente).toBeDisabled();
-    expect(screen.getAllByText(/Scegli prima una misura/).length).toBeGreaterThan(0);
+    expect(cliente).toBeEnabled();
+    expect(screen.queryByText(/Scegli prima una misura/)).not.toBeInTheDocument();
+  });
+
+  it("scelto un divisore senza misure, le misure che non lo sanno suddividere dicono perche'", () => {
+    monta(sel({ suddivisioni: ["creatore"] as Dimensione[] }));
+    expect(screen.getAllByText(/non si può suddividere per creatore/).length).toBeGreaterThan(0);
   });
 
   it("alla terza suddivisione il limite è scritto, non subìto", () => {

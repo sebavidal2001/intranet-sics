@@ -380,6 +380,7 @@ export function EditorAnalisi({
   const [tipologiaScelta, setTipologiaScelta] = useState<ChiaveTipologia | null>(null);
   const [risultato, setRisultato] = useState<RisultatoQuery | null>(null);
   const [serieEseguite, setSerieEseguite] = useState<SerieAnalisiEseguita[]>([]);
+  const [inAttesa, setInAttesa] = useState<{ suddivisioni: Dimensione[]; granularita?: Granularita }>({ suddivisioni: [] });
   const [altraMetricaAperta, setAltraMetricaAperta] = useState(false);
   const [tipologiaConfronto, setTipologiaConfronto] = useState<ChiaveTipologia | null>(null);
   const [metricaConfronto, setMetricaConfronto] = useState<ChiaveMetrica | null>(null);
@@ -661,7 +662,11 @@ export function EditorAnalisi({
         suddivisioni: spec.raggruppa ?? [],
         granularita: spec.granularita,
       }
-    : SELEZIONE_VUOTA;
+    : // Si parte anche dal divisore (il fornitore, il cliente): i campi scelti prima
+      // di qualunque misura aspettano qui, perche' una spec senza misura non esiste.
+      inAttesa.suddivisioni.length > 0 || inAttesa.granularita
+      ? { misure: [], suddivisioni: inAttesa.suddivisioni, granularita: inAttesa.granularita }
+      : SELEZIONE_VUOTA;
 
   // I pozzetti seguono la visualizzazione, come in Tableau: se e' una tabella
   // (proposta perche' i campi sono piu' di due, o scelta dalla fila delle
@@ -687,6 +692,7 @@ export function EditorAnalisi({
    * resta tabella, perche' e' una scelta di come vedere i dati.
    */
   function svuotaRiquadro() {
+    setInAttesa({ suddivisioni: [] });
     setSpec(null);
     setSerieAggiuntive([]);
     setRisultato(null);
@@ -706,8 +712,11 @@ export function EditorAnalisi({
     const [principale, ...altre] = nuova.misure;
     if (!principale) {
       svuotaRiquadro();
+      // Senza misure non c'e' domanda, ma i campi scelti restano: si puo' partire dal divisore.
+      setInAttesa({ suddivisioni: nuova.suddivisioni, granularita: nuova.granularita });
       return;
     }
+    setInAttesa({ suddivisioni: [] });
     const definizioni = { ...(esteso?.definizioni ?? {}), ...definizioniExtra };
 
     const tipologia = esteso?.vocabolario.tipologie.find((voce) => voce.metriche.includes(chiaveBase(principale)));

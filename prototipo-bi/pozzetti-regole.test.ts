@@ -124,8 +124,8 @@ describe("Asse", () => {
     expect(accetta(deponi(sel(), "asse", dim("cliente"), CONTESTO)).selezione.suddivisioni).toEqual(["cliente"]);
   });
 
-  it("senza misura non c'e' niente da suddividere", () => {
-    expect(rifiuto(deponi(sel({ misure: [] }), "asse", dim("cliente"), CONTESTO))).toBe("Scegli prima una misura.");
+  it("senza misura si puo' partire dal divisore: la dimensione entra e le misure si scelgono dopo", () => {
+    expect(accetta(deponi(sel({ misure: [] }), "asse", dim("cliente"), CONTESTO)).selezione.suddivisioni).toEqual(["cliente"]);
   });
 
   it("una dimensione nuova SOSTITUISCE quella dell'asse, tiene la legenda, e lo dice", () => {
@@ -259,19 +259,18 @@ describe("Filtri", () => {
     expect(rifiuto(deponi(sel(), "filtri", tempo("mese"), CONTESTO))).toContain("riquadro «Quando»");
   });
 
-  it("senza misura, o con una dimensione che la misura non ha, rifiuta", () => {
-    expect(rifiuto(deponi(sel({ misure: [] }), "filtri", dim("cliente"), CONTESTO))).toBe("Scegli prima una misura.");
+  it("con una dimensione che la misura non ha, rifiuta; senza misura vale cio' che qualche misura sa usare", () => {
+    expect(accetta(deponi(sel({ misure: [] }), "filtri", dim("cliente"), CONTESTO)).aggiungiFiltroSu).toBe("cliente");
     expect(rifiuto(deponi(sel(), "filtri", dim("esito"), CONTESTO))).toBe("Solo per i preventivi");
   });
 });
 
 describe("togliere", () => {
-  it("anche l'ultima misura si toglie: il riquadro resta vuoto, l'errore c'e' solo al salvataggio", () => {
+  it("anche l'ultima misura si toglie: i campi restano, si puo' ripartire dal divisore; l'errore c'e' solo al salvataggio", () => {
     const e = accetta(togliVoce(sel({ misure: ["ordinato"], suddivisioni: ["bu"], granularita: "mese" }), misura("ordinato"), CONTESTO));
-    // Non resta niente da suddividere: ne' dimensioni ne' tempo.
     expect(e.selezione.misure).toEqual([]);
-    expect(e.selezione.suddivisioni).toEqual([]);
-    expect(e.selezione.granularita).toBeUndefined();
+    expect(e.selezione.suddivisioni).toEqual(["bu"]);
+    expect(e.selezione.granularita).toBe("mese");
   });
 
   it("una misura fra piu' si toglie", () => {

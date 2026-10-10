@@ -229,35 +229,34 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
   {
     chiave: "acquisti",
     etichetta: "Acquisti",
-    descrizione: "Gli ordini a fornitore.",
-    valori: ["acquisti_valore", "acquisti_quantita", "acquisti_ordini", "acquisti_righe", "acquisti_da_sollecitare", "acquisti_valore_da_sollecitare"],
-    // Il numero dell'ordine a fornitore porta gia' profilo e anno («OF 12/2026»).
+    descrizione:
+      "Tutto sui fornitori: gli ordini, le fatture e le note di credito, i pagamenti dovuti. Metti il fornitore fra i campi e scegli quanti valori vuoi: ordinato, fatturato, pagamenti.",
+    valori: [
+      "acquisti_valore",
+      "acquisti_quantita",
+      "acquisti_ordini",
+      "acquisti_righe",
+      "acquisti_da_sollecitare",
+      "acquisti_valore_da_sollecitare",
+      "fatturato_fornitore",
+      "n_fatture_fornitore",
+      "pagamenti_dovuti",
+    ],
+    // Il numero dell'ordine a fornitore porta gia' profilo e anno («OF 12/2026»),
+    // quello di registrazione della fattura pure («FF 22/2024»). Ordini, fatture
+    // e scadenze hanno numerazioni diverse: il numero si puo' scegliere solo con
+    // valori di una sola di queste (lo dice la regola generale sul documento).
     campi: [
       { chiave: "fornitore" },
       { chiave: "buyer" },
-      { chiave: "documento", etichetta: "Numero ordine fornitore" },
-      { chiave: "profilo", etichetta: "Tipo ordine" },
-      { chiave: "data_promessa" },
-    ],
-    famiglieDocumento: ["acquisti"],
-  },
-  {
-    chiave: "fornitori",
-    etichetta: "Fatture fornitore",
-    descrizione:
-      "Le fatture e le note di credito dei fornitori (le note tolgono). Il legame con l'ordine fornitore c'è quando la fattura passa da un DDT d'acquisto.",
-    valori: ["fatturato_fornitore", "n_fatture_fornitore"],
-    // Il numero di registrazione porta gia' profilo e anno («FF 22/2024»): il
-    // numero scritto dal fornitore da solo non identifica una fattura.
-    campi: [
-      { chiave: "fornitore" },
-      { chiave: "documento", etichetta: "Fattura (registrazione/anno)" },
+      { chiave: "documento", etichetta: "Numero documento (ordine o fattura)" },
       { chiave: "numero_fattura_fornitore" },
       { chiave: "profilo", etichetta: "Tipo documento" },
       { chiave: "condizione_pagamento" },
       { chiave: "profilo_ordine" },
+      { chiave: "data_promessa" },
     ],
-    famiglieDocumento: ["fatture_fornitore"],
+    famiglieDocumento: ["acquisti", "fatture_fornitore", "scadenze"],
   },
   {
     chiave: "pagamenti",
@@ -278,11 +277,12 @@ export const GRUPPI_OPERAZIONI: GruppoOperazione[] = [
     chiave: "scadenzario",
     etichetta: "Scadenzario",
     descrizione:
-      "Le scadenze ancora aperte, per data di scadenza: incassi attesi dai clienti e pagamenti dovuti ai fornitori. Il tempo del grafico è la data di scadenza.",
-    valori: ["incassi_attesi", "pagamenti_dovuti", "saldo_cassa"],
+      "Le scadenze ancora aperte, per data di scadenza: incassi attesi dai clienti e saldo con i pagamenti. I pagamenti dovuti ai fornitori stanno negli Acquisti. Il tempo del grafico è la data di scadenza.",
+    valori: ["incassi_attesi", "saldo_cassa"],
     campi: [
       { chiave: "tipo_scadenza" },
       { chiave: "soggetto" },
+      { chiave: "fornitore" },
       { chiave: "profilo", etichetta: "Origine (tipo documento)" },
       { chiave: "condizione_pagamento" },
       { chiave: "documento" },
