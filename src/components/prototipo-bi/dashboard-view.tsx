@@ -265,18 +265,29 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
       if (!dataset || !dimensione) return;
 
       const filtriPagina = filtriPuliti(paginaAttiva?.filtri ?? {});
+      // Con più suddivisioni l'etichetta è una coppia («OF 1946/2026 · OF»): si
+      // ritrova la riga del risultato e si filtra su ognuno dei suoi campi.
+      const dimensioniRiquadro = spec.raggruppa ?? [];
+      const rigaCliccata = Object.values(risultati)
+        .filter((r) => r.metrica === spec.metrica && JSON.stringify(r.spec.raggruppa ?? []) === JSON.stringify(spec.raggruppa ?? []))
+        .flatMap((r) => r.righe)
+        .find((r) => r.etichetta === etichetta);
+      const filtriDellaRiga: Filtro[] =
+        dimensioniRiquadro.length > 1 && rigaCliccata
+          ? dimensioniRiquadro.map((campo) => ({ campo, op: "eq" as const, valore: String(rigaCliccata.chiavi[campo] ?? "") }))
+          : [{ campo: dimensione, op: "eq" as const, valore: etichetta }];
       setDettaglio({
         dataset: dataset as RichiestaPannello["dataset"],
         titolo: `${riquadro.titolo || riquadro.analisi.titolo} — ${etichetta}`,
         filtri: [
           ...(spec.filtri ?? [])
-            .filter((filtro: Filtro) => filtro.op === "eq" && filtro.campo !== dimensione)
+            .filter((filtro: Filtro) => filtro.op === "eq" && !filtriDellaRiga.some((f) => f.campo === filtro.campo))
             .map((filtro: Filtro) => ({
               campo: filtro.campo,
               op: "eq" as const,
               valore: String(filtro.valore),
             })),
-          { campo: dimensione, op: "eq" as const, valore: etichetta },
+          ...filtriDellaRiga,
           // «Aperti» sono i preventivi in corso: l'elenco deve contare gli stessi del numero.
           ...(METRICHE_SOLO_IN_CORSO.has(spec.metrica) && dimensione !== "causale_codice"
             ? [{ campo: "causale_codice" as const, op: "eq" as const, valore: "PIC" }]
@@ -285,7 +296,7 @@ export function DashboardView({ dashboardId, dashboardIniziale }: ProprietaDashb
         periodo: spec.periodo ?? filtriPagina.periodo,
       });
     },
-    [paginaAttiva]
+    [paginaAttiva, risultati]
   );
 
   /**

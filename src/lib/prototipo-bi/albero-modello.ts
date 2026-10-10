@@ -297,8 +297,8 @@ export const CARTELLE: Cartella[] = [
         chiave: "acquisti_consegnato",
         etichetta: "Consegnato",
         descrizione: "Gli arrivi della merce (DDT del fornitore): puntualità, tempi di consegna, righe da sollecitare.",
-        valori: ["acquisti_da_sollecitare", "ritardo_da_sollecitare", "acquisti_valore_da_sollecitare"],
-        misure: ["puntualita_fornitori", "ritardo_medio_fornitori", "giorni_consegna_fornitori"],
+        valori: ["acquisti_da_sollecitare", "acquisti_valore_da_sollecitare"],
+        misure: ["puntualita_fornitori", "ritardo_medio_fornitori", "ritardo_da_sollecitare", "giorni_consegna_fornitori"],
         campi: [
           { chiave: "fornitore" },
           { chiave: "buyer" },
@@ -706,6 +706,11 @@ export const GRUPPI_MISURE: GruppoMisure[] = [
       {
         chiave: "ritardo_medio_fornitori",
         calcolo: "Media dei giorni di ritardo sulla data promessa, sulle sole righe arrivate in ritardo.",
+      },
+      {
+        chiave: "ritardo_da_sollecitare",
+        calcolo:
+          "Giorni dalla data promessa a oggi sulle righe ancora aperte e scadute; per gruppo vale il ritardo maggiore (per ordine e articolo è quello della singola riga).",
       },
       {
         chiave: "giorni_consegna_fornitori",
