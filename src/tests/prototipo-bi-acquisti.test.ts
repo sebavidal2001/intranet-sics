@@ -27,6 +27,8 @@ function riga(p: Partial<RigaAcquisto> & { dataOrdine: string }): RigaAcquisto {
     articolo: "ART",
     descrizione: "Articolo",
     gruppoArticoli: "SISTEMI",
+    categoria: "STRUTTURE",
+    businessUnit: "STRUTTURE",
     quantita: 10,
     qtaArrivata: 10,
     valore: 100,

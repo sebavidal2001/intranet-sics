@@ -21,6 +21,7 @@
  * un OC, quindi "ordine urgente per un cliente" non si ricava da qui.
  */
 
+import { etichettaBusinessUnit } from "./business-unit";
 import type { RigaFatto, Snapshot } from "./tipi";
 
 export interface RigaAcquisto {
@@ -35,6 +36,10 @@ export interface RigaAcquisto {
   articolo: string;
   descrizione: string;
   gruppoArticoli: string;
+  /** Categoria dell'articolo in anagrafica ('-' se manca). */
+  categoria: string;
+  /** Business unit dell'articolo, con la regola delle vendite (SISTEMI si spezza per categoria). */
+  businessUnit: string;
   quantita: number;
   qtaArrivata: number;
   valore: number;
@@ -109,6 +114,18 @@ function dataOpz(v: unknown): string | null {
   return t ? t.slice(0, 10) : null;
 }
 
+/**
+ * Business unit di una riga d'ordine. La vista la porta gia' calcolata
+ * (migration 153); se manca (database non aggiornato) si ripiega sul solo
+ * gruppo, con SISTEMI in COSTRUITO come nelle viste di vendita.
+ */
+function businessUnitDaVista(g: Grezza): string {
+  const dichiarata = testo(g.business_unit);
+  if (dichiarata) return etichettaBusinessUnit(dichiarata);
+  const gruppo = testo(g.gruppo_articoli);
+  return etichettaBusinessUnit(gruppo === "SISTEMI" ? "COSTRUITO" : gruppo);
+}
+
 export function daVista(g: Grezza): RigaAcquisto {
   return {
     idRiga: num(g.id_riga),
@@ -122,6 +139,8 @@ export function daVista(g: Grezza): RigaAcquisto {
     articolo: testo(g.codice_articolo),
     descrizione: testo(g.descrizione),
     gruppoArticoli: testo(g.gruppo_articoli),
+    categoria: testo(g.categoria) || testo(g.gruppo_articoli) || "-",
+    businessUnit: businessUnitDaVista(g),
     quantita: num(g.quantita),
     qtaArrivata: num(g.qta_arrivata),
     valore: num(g.valore),
@@ -358,8 +377,9 @@ export function righeAcquisti(snapshot: Snapshot): RigaAcquisto[] {
 /**
  * Le righe d'ordine viste come fatti del motore semantico: cosi' gli acquisti
  * entrano nelle analisi, nelle dashboard e nell'analista con le stesse regole
- * delle vendite. Agente, cliente e business unit restano vuoti — non esistono
- * sugli ordini a fornitore — e un perimetro per agente li esclude tutti.
+ * delle vendite. Agente e cliente restano vuoti — non esistono sugli ordini a
+ * fornitore — e un perimetro ristretto li esclude tutti. La business unit e' quella
+ * dell'articolo: e' cio' che fa agire il filtro BU delle dashboard.
  */
 export function comeFatti(righe: RigaAcquisto[], oggi: string): RigaFatto[] {
   return righe.map((r) => {
@@ -367,8 +387,8 @@ export function comeFatti(righe: RigaAcquisto[], oggi: string): RigaFatto[] {
     return {
       data: r.dataOrdine,
       importo: r.valore,
-      bu: "",
-      categoria: r.gruppoArticoli || "-",
+      bu: r.businessUnit,
+      categoria: r.categoria || "-",
       agente: "",
       codiceAgente: "",
       cliente: "",

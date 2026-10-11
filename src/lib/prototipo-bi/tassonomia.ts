@@ -208,10 +208,10 @@ const DIMENSIONI_COMUNI: Dimensione[] = [
 /** Le dimensioni che hanno senso per questa metrica. */
 export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
   const dataset = CATALOGO[metrica].dataset;
-  // Gli ordini a fornitore non hanno agente, cliente ne' business unit: le
-  // loro dimensioni sono altre. La categoria e' il gruppo articoli.
+  // Gli ordini a fornitore non hanno agente ne' cliente. La business unit e la
+  // categoria sono quelle dell'articolo (lo stesso che si vende).
   if (dataset === "acquisti") {
-    return (["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "profilo", "data_promessa", "condizione_pagamento", "documento"] as Dimensione[]).filter(
+    return (["fornitore", "buyer", "bu", "categoria", "bu_categoria", "codice_articolo", "articolo", "profilo", "data_promessa", "condizione_pagamento", "documento"] as Dimensione[]).filter(
       (dimensione) => dimensione in DIMENSIONI
     );
   }

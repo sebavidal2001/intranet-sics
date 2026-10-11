@@ -7,7 +7,7 @@ function riga(p: Partial<RigaAcquisto> & { dataOrdine: string }): RigaAcquisto {
   return {
     idRiga: 1, profilo: "OF", numeroOrdine: 12, codiceFornitore: "F1", fornitore: "COLUMBUS McKINNON",
     buyerUtente: "claudiodalsass", buyer: "Claudio Dalsass", articolo: "ART-1", descrizione: "Colonna",
-    gruppoArticoli: "SISTEMI", quantita: 10, qtaArrivata: 10, valore: 1000, dataPrevista: null,
+    gruppoArticoli: "SISTEMI", categoria: "STRUTTURE", businessUnit: "STRUTTURE", quantita: 10, qtaArrivata: 10, valore: 1000, dataPrevista: null,
     dataConfermata: null, rigaEvasa: true, chiusaForzata: false, primoArrivo: null, ...p,
   };
 }

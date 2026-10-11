@@ -12,7 +12,7 @@ function riga(p: Partial<RigaAcquisto> & { dataOrdine: string }): RigaAcquisto {
   return {
     idRiga: 1, profilo: "OF", numeroOrdine: 1, codiceFornitore: "F", fornitore: "COLUMBUS",
     buyerUtente: "claudiodalsass", buyer: "Claudio Dalsass", articolo: "A", descrizione: "",
-    gruppoArticoli: "SISTEMI", quantita: 10, qtaArrivata: 10, valore: 100, dataPrevista: null,
+    gruppoArticoli: "SISTEMI", categoria: "STRUTTURE", businessUnit: "STRUTTURE", quantita: 10, qtaArrivata: 10, valore: 100, dataPrevista: null,
     dataConfermata: "2026-08-10", rigaEvasa: true, chiusaForzata: false, primoArrivo: "2026-08-05", ...p,
   };
 }
@@ -52,15 +52,26 @@ describe("acquisti nel motore semantico", () => {
   });
 
   it("le dimensioni degli acquisti sono fornitore e buyer, non agente o cliente", () => {
-    expect(dimensioniPerMetrica("acquisti_righe")).toEqual(["fornitore", "buyer", "categoria", "codice_articolo", "articolo", "profilo", "data_promessa", "condizione_pagamento", "documento"]);
+    expect(dimensioniPerMetrica("acquisti_righe")).toEqual(["fornitore", "buyer", "bu", "categoria", "bu_categoria", "codice_articolo", "articolo", "profilo", "data_promessa", "condizione_pagamento", "documento"]);
     expect(() => validaSpec({ metrica: "acquisti_righe", raggruppa: ["agente"] })).toThrow(SpecNonValida);
     expect(() => validaSpec({ metrica: "ordinato", raggruppa: ["buyer"] })).toThrow(SpecNonValida);
   });
 
-  it("i filtri di pagina di vendita si saltano sui riquadri acquisti, e lo si dice", () => {
+  it("il filtro BU di pagina vale sugli acquisti, quello per agente si salta e lo si dice", () => {
     const esito = fondiFiltriPaginaConEsito({ metrica: "acquisti_righe" }, { bu: "COMPONENTI", agente: "AIRFLUID" });
-    expect(esito.spec.filtri ?? []).toEqual([]);
-    expect(esito.filtriPaginaIgnorati).toEqual(["bu", "agente"]);
+    expect(esito.spec.filtri ?? []).toEqual([{ campo: "bu", op: "eq", valore: "COMPONENTI" }]);
+    expect(esito.filtriPaginaIgnorati).toEqual(["agente"]);
+  });
+
+  it("filtrando per business unit i numeri cambiano", () => {
+    const misto = snapshot([
+      riga({ dataOrdine: "2026-07-01", valore: 100, businessUnit: "STRUTTURE" }),
+      riga({ dataOrdine: "2026-07-02", valore: 40, businessUnit: "COMPONENTI", categoria: "FLUIDI" }),
+    ]);
+    expect(esegui({ metrica: "acquisti_valore" }, misto).totale).toBe(140);
+    expect(esegui({ metrica: "acquisti_valore", filtri: [{ campo: "bu", op: "eq", valore: "COMPONENTI" }] }, misto).totale).toBe(40);
+    const perBu = esegui({ metrica: "acquisti_valore", raggruppa: ["bu"], ordina: "valore_desc" }, misto);
+    expect(perBu.righe.map((r) => [r.etichetta, r.valore])).toEqual([["STRUTTURE", 100], ["COMPONENTI", 40]]);
   });
 
   it("un perimetro per agente esclude tutti gli acquisti", () => {

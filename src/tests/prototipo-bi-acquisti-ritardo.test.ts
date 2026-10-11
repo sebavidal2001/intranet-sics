@@ -6,7 +6,7 @@ import type { Snapshot } from "@/lib/prototipo-bi/tipi";
 function riga(p: Partial<RigaAcquisto> & { dataOrdine: string }): RigaAcquisto {
   return {
     idRiga: 1, profilo: "OF", numeroOrdine: 1, codiceFornitore: "F", fornitore: "COLUMBUS", buyerUtente: "x", buyer: "X",
-    articolo: "A", descrizione: "", gruppoArticoli: "S", quantita: 10, qtaArrivata: 10, valore: 100, dataPrevista: null,
+    articolo: "A", descrizione: "", gruppoArticoli: "S", categoria: "-", businessUnit: "-", quantita: 10, qtaArrivata: 10, valore: 100, dataPrevista: null,
     dataConfermata: "2026-08-10", rigaEvasa: true, chiusaForzata: false, primoArrivo: "2026-08-05", ...p,
   };
 }

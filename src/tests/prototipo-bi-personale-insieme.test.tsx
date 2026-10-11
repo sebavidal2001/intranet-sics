@@ -54,7 +54,7 @@ describe("caricoMensile degli acquisti", () => {
   it("conta le righe ordinate per mese e buyer nel periodo", () => {
     const r = (dataOrdine: string, buyerNome: string): RigaAcquisto => ({
       idRiga: 1, profilo: "OF", numeroOrdine: 1, dataOrdine, codiceFornitore: "F", fornitore: "F",
-      buyerUtente: buyerNome, buyer: buyerNome, articolo: "A", descrizione: "", gruppoArticoli: "",
+      buyerUtente: buyerNome, buyer: buyerNome, articolo: "A", descrizione: "", gruppoArticoli: "", categoria: "-", businessUnit: "-",
       quantita: 1, qtaArrivata: 1, valore: 1, dataPrevista: null, dataConfermata: null,
       rigaEvasa: true, chiusaForzata: false, primoArrivo: null,
     });
