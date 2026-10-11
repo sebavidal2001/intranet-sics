@@ -5,7 +5,8 @@
  */
 
 import type { TipoGrafico } from "./scelta-grafico";
-import type { SerieAnalisi, SpecQuery } from "./tipi";
+import { COLORI_SICS } from "./aspetto";
+import type { AspettoGrafico, SerieAnalisi, SpecQuery } from "./tipi";
 
 export interface AnalisiPredefinita {
   chiave: string;
@@ -15,6 +16,8 @@ export interface AnalisiPredefinita {
   serie?: SerieAnalisi[];
   grafico?: TipoGrafico;
   larghezza?: number;
+  /** Resa del riquadro (sfondo, colore del testo...). Come il resto, la riscrive la semina. */
+  aspetto?: AspettoGrafico;
 }
 
 export interface PaginaPredefinita {
@@ -23,6 +26,23 @@ export interface PaginaPredefinita {
   ordine: number;
   analisi: AnalisiPredefinita[];
 }
+
+/**
+ * Riquadri che le versioni precedenti seminavano e questa non piu': la semina
+ * toglie il riquadro dalla pagina (l'analisi resta), altrimenti rimarrebbe a
+ * occupare un posto che non gli spetta piu'.
+ */
+export const RIQUADRI_RIMOSSI: { pagina: string; chiave: string }[] = [
+  { pagina: "acquisti", chiave: "acquisti.righe" },
+  { pagina: "acquisti", chiave: "acquisti.valore" },
+];
+
+/** Le KPI della prima riga di Acquisti: turchese SICS, numeri e titolo bianchi e centrati. */
+const ASPETTO_KPI_ACQUISTI: AspettoGrafico = {
+  sfondo: COLORI_SICS.turchese.toLowerCase(),
+  coloreTesto: "#ffffff",
+  testoCentrato: true,
+};
 
 /** Nessun pannello migrato deve restare fermo su un periodo proprio. */
 export const CHIAVI_CON_PERIODO_FISSO = new Set<string>();
@@ -580,19 +600,26 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
     titolo: "Acquisti",
     ordine: 7,
     analisi: [
+      // Prima riga: le quattro domande di un buyer, in ordine di urgenza.
+      // Quanto e' in ritardo adesso, quanto vale, se i fornitori tengono la
+      // parola, quanto ci mettono.
       {
-        chiave: "acquisti.valore",
-        titolo: "Ordinato a fornitore",
-        spec: { metrica: "acquisti_valore" },
+        chiave: "acquisti.da-sollecitare",
+        titolo: "Righe da sollecitare",
+        descrizione: "Righe degli ordini del periodo ancora aperte con la data promessa passata.",
+        spec: { metrica: "acquisti_da_sollecitare" },
         grafico: "kpi",
         larghezza: 3,
+        aspetto: ASPETTO_KPI_ACQUISTI,
       },
       {
-        chiave: "acquisti.righe",
-        titolo: "Righe d'ordine",
-        spec: { metrica: "acquisti_righe" },
+        chiave: "acquisti.valore-da-sollecitare",
+        titolo: "Valore da sollecitare",
+        descrizione: "Valore ancora da ricevere sulle righe scadute: quanto pesa il ritardo.",
+        spec: { metrica: "acquisti_valore_da_sollecitare" },
         grafico: "kpi",
         larghezza: 3,
+        aspetto: ASPETTO_KPI_ACQUISTI,
       },
       {
         chiave: "acquisti.puntualita",
@@ -601,14 +628,16 @@ export const CRUSCOTTO_PREDEFINITO: PaginaPredefinita[] = [
         spec: { metrica: "puntualita_fornitori" },
         grafico: "kpi",
         larghezza: 3,
+        aspetto: ASPETTO_KPI_ACQUISTI,
       },
       {
-        chiave: "acquisti.da-sollecitare",
-        titolo: "Righe da sollecitare",
-        descrizione: "Righe degli ordini del periodo ancora aperte con la data promessa passata.",
-        spec: { metrica: "acquisti_da_sollecitare" },
+        chiave: "acquisti.giorni-consegna",
+        titolo: "Giorni ordine → arrivo",
+        descrizione: "Tempo medio fra l'ordine e il primo arrivo, sulle righe già arrivate.",
+        spec: { metrica: "giorni_consegna_fornitori" },
         grafico: "kpi",
         larghezza: 3,
+        aspetto: ASPETTO_KPI_ACQUISTI,
       },
       {
         chiave: "acquisti.puntualita-mese",

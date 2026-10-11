@@ -5,7 +5,7 @@
  */
 
 import { verificaAccesso } from "@/lib/prototipo-bi/accesso";
-import { CRUSCOTTO_PREDEFINITO } from "@/lib/prototipo-bi/cruscotto-predefinito";
+import { CRUSCOTTO_PREDEFINITO, RIQUADRI_RIMOSSI } from "@/lib/prototipo-bi/cruscotto-predefinito";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const CHIAVE_CRUSCOTTO = "cruscotto";
@@ -98,6 +98,7 @@ export async function assicuraCruscottoDiSistema(): Promise<string> {
           spec: analisiPredefinita.spec,
           serie: analisiPredefinita.serie ?? null,
           grafico: analisiPredefinita.grafico ?? null,
+          aspetto: analisiPredefinita.aspetto ?? null,
           autore_id: accesso.userId,
           visibilita: "condivisa",
         },
@@ -124,6 +125,7 @@ export async function assicuraCruscottoDiSistema(): Promise<string> {
           spec: analisiPredefinita.spec,
           serie: analisiPredefinita.serie ?? null,
           grafico: analisiPredefinita.grafico ?? null,
+          aspetto: analisiPredefinita.aspetto ?? null,
           visibilita: "condivisa",
           aggiornato_il: new Date().toISOString(),
         })
@@ -164,6 +166,22 @@ export async function assicuraCruscottoDiSistema(): Promise<string> {
         interrompi("Impossibile aggiornare un riquadro del Cruscotto", erroreAggiornamentoRiquadro.message);
       }
     }
+  }
+
+  for (const { pagina: chiavePagina, chiave } of RIQUADRI_RIMOSSI) {
+    const { data: pagina } = await database
+      .from("dashboard_pagine")
+      .select("id")
+      .eq("dashboard_id", dashboard.id)
+      .eq("chiave", chiavePagina)
+      .maybeSingle();
+    if (!pagina) continue;
+    const { error: erroreRimozione } = await database
+      .from("dashboard_riquadri")
+      .delete()
+      .eq("pagina_id", pagina.id)
+      .eq("chiave", chiave);
+    if (erroreRimozione) interrompi("Impossibile togliere un riquadro obsoleto del Cruscotto", erroreRimozione.message);
   }
 
   return dashboard.id;
