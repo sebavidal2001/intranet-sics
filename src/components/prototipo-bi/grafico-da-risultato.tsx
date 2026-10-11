@@ -43,7 +43,7 @@ import {
   Posizioni,
 } from "./grafici-nuovi";
 import { AspettoLocale, SelezioneLocale, useImpostazioni } from "./impostazioni";
-import { classiTestoRiquadro, stileRiquadro } from "@/lib/prototipo-bi/aspetto";
+import { classiTestoRiquadro, coloreContenutoKpi, stileRiquadro } from "@/lib/prototipo-bi/aspetto";
 import { BarreImpilate, datiBarreImpilate } from "./barre-impilate";
 import { MappaVisite } from "./mappa-visite";
 import {
@@ -726,7 +726,7 @@ export function GraficoDaRisultato({
   coloreSerie,
   onClickEtichetta,
 }: ProprietaGraficoDaRisultato): JSX.Element {
-  const { colore, coloreNome } = useImpostazioni();
+  const { colore, coloreNome, aspetto } = useImpostazioni();
   const tipoScelto = tipo ?? scegliGrafico(risultato).tipo;
   const applicabili = graficiPossibili(risultato);
   const colorePrincipale = coloreSerie ?? (colore(0) || PALETTE[0]);
@@ -772,7 +772,7 @@ export function GraficoDaRisultato({
       );
     case "kpi": {
       const riga = risultato.righe[0];
-      return <KpiEroe etichetta={riga.etichetta} valore={riga.valore} unita={risultato.unita} />;
+      return <KpiEroe etichetta={riga.etichetta} valore={riga.valore} unita={risultato.unita} colore={coloreContenutoKpi(aspetto)} />;
     }
     case "tabella":
       return <TabellaRisultato risultato={risultato} onClickRiga={onClickEtichetta} />;
@@ -1044,6 +1044,7 @@ function CorpoGraficoDaAnalisi({
           unita={principale.risultato.unita}
           confronto={confronto ? { valore: confronto.risultato.totale, etichetta: confronto.nome } : null}
           nota={obiettivo ? `Obiettivo: ${obiettivo.nome}` : undefined}
+          colore={coloreContenutoKpi(aspetto)}
         />
       );
     }

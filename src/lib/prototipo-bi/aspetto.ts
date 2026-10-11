@@ -72,6 +72,19 @@ export function stileRiquadro(aspetto?: AspettoGrafico | null): { backgroundColo
   };
 }
 
+/**
+ * Colore di etichetta, numero e nota di una KPI, o `undefined` se il riquadro
+ * non ha un aspetto proprio. E' uno stile in linea e non una classe: le classi
+ * di questo file non le vede Tailwind (non scansionava src/lib), ed e' cosi' che
+ * il numero restava nero su sfondo turchese.
+ */
+export function coloreContenutoKpi(aspetto?: AspettoGrafico | null): string | undefined {
+  if (!aspetto) return undefined;
+  if (aspetto.coloreContenuto) return aspetto.coloreContenuto;
+  if (aspetto.coloreTesto) return aspetto.coloreTesto;
+  return aspetto.sfondo ? coloreTestoSu(aspetto.sfondo) : undefined;
+}
+
 /** Testo leggibile sopra uno sfondo: bianco sui scuri, nero-blu sui chiari. */
 export function coloreTestoSu(sfondo: string): string {
   const n = Number.parseInt(sfondo.slice(1), 16);
@@ -181,6 +194,12 @@ export function validaAspetto(valore: unknown): AspettoGrafico | null {
       throw new AspettoNonValido("Colore del testo non valido: usare #rrggbb.");
     }
     aspetto.coloreTesto = valore.coloreTesto.toLowerCase();
+  }
+  if (valore.coloreContenuto !== undefined && valore.coloreContenuto !== null) {
+    if (typeof valore.coloreContenuto !== "string" || !COLORE_VALIDO.test(valore.coloreContenuto)) {
+      throw new AspettoNonValido("Colore del contenuto non valido: usare #rrggbb.");
+    }
+    aspetto.coloreContenuto = valore.coloreContenuto.toLowerCase();
   }
   const centrato = booleano(valore.testoCentrato, "Testo centrato");
   if (centrato) aspetto.testoCentrato = true;

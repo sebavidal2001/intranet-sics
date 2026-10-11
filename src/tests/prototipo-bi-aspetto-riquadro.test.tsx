@@ -1,7 +1,7 @@
 (globalThis as any).IntersectionObserver = class { observe(){} unobserve(){} disconnect(){} takeRecords(){return []} };
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { AspettoNonValido, classiTestoRiquadro, coloreTestoSu, stileRiquadro, validaAspetto } from "@/lib/prototipo-bi/aspetto";
+import { AspettoNonValido, classiTestoRiquadro, coloreContenutoKpi, coloreTestoSu, stileRiquadro, validaAspetto } from "@/lib/prototipo-bi/aspetto";
 import { GraficoDaAnalisi } from "@/components/prototipo-bi/grafico-da-risultato";
 import type { RisultatoQuery, SerieAnalisiEseguita } from "@/lib/prototipo-bi/tipi";
 
@@ -39,5 +39,26 @@ describe("aspetto del riquadro: sfondo, colore del testo, testo centrato", () =>
     expect(radice.style.color).toBe("rgb(255, 255, 255)");
     expect(radice.className).toContain("text-center");
     expect(screen.getByText("Totale")).toBeInTheDocument();
+  });
+});
+
+describe("colore del contenuto delle KPI", () => {
+  it("si valida, e senza scelta segue testo e sfondo", () => {
+    expect(validaAspetto({ coloreContenuto: "#FFFFFF" })).toEqual({ coloreContenuto: "#ffffff" });
+    expect(() => validaAspetto({ coloreContenuto: "bianco" })).toThrow();
+    expect(coloreContenutoKpi({ coloreContenuto: "#ffffff", coloreTesto: "#000000" })).toBe("#ffffff");
+    expect(coloreContenutoKpi({ coloreTesto: "#ff0000" })).toBe("#ff0000");
+    expect(coloreContenutoKpi({ sfondo: "#00a1be" })).toBe("#ffffff");
+    expect(coloreContenutoKpi(null)).toBeUndefined();
+  });
+
+  it("l'etichetta della KPI prende il colore in linea", () => {
+    const risultato = {
+      spec: { metrica: "ordinato" }, metrica: "ordinato", unita: "numero", totale: 107, certificata: true, avvisi: [],
+      righe: [{ etichetta: "Totale", chiavi: {}, valore: 107, conteggio: 1 }],
+    } as unknown as RisultatoQuery;
+    const serie = [{ ruolo: "principale", nome: "Righe", spec: risultato.spec, risultato }] as unknown as SerieAnalisiEseguita[];
+    render(<GraficoDaAnalisi serie={serie} aspetto={{ sfondo: "#00a1be", coloreContenuto: "#ffffff" }} />);
+    expect(screen.getByText("Totale")).toHaveStyle({ color: "rgb(255, 255, 255)" });
   });
 });

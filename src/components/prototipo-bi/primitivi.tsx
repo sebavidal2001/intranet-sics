@@ -391,6 +391,7 @@ export function KpiEroe({
   confronto,
   nota,
   scuro = false,
+  colore,
 }: {
   etichetta: string;
   valore: number | null | undefined;
@@ -398,7 +399,10 @@ export function KpiEroe({
   confronto?: { valore: number; etichetta: string; buonoSeAlto?: boolean } | null;
   nota?: string;
   scuro?: boolean;
+  /** Colore di etichetta, numero e nota (stile in linea): prevale sulle classi. */
+  colore?: string;
 }) {
+  const stile = colore ? { color: colore } : undefined;
   const disponibile = valore !== null && valore !== undefined;
   const valoreNumerico = valore ?? 0;
   const fmt = (n: number) => valoreFmt(n, unita);
@@ -411,6 +415,7 @@ export function KpiEroe({
   return (
     <div>
       <div
+        style={stile}
         className={`text-xs uppercase tracking-wide font-tenorite ${
           scuro ? "text-slate-400" : "text-text-muted"
         }`}
@@ -418,6 +423,7 @@ export function KpiEroe({
         {etichetta}
       </div>
       <div
+        style={stile}
         className={`font-tenorite font-bold leading-none mt-1 text-3xl lg:text-4xl ${
           scuro ? "text-white" : "text-text"
         }`}
@@ -439,7 +445,7 @@ export function KpiEroe({
         </div>
       )}
       {nota && (
-        <div className={`text-[11px] mt-1 ${scuro ? "text-slate-500" : "text-text-muted"}`}>
+        <div style={stile} className={`text-[11px] mt-1 ${scuro ? "text-slate-500" : "text-text-muted"}`}>
           {nota}
         </div>
       )}

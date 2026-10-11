@@ -718,6 +718,11 @@ export interface AspettoGrafico {
   sfondo?: string;
   /** Colore del testo, `#rrggbb`. Senza, segue lo sfondo (bianco sui scuri). */
   coloreTesto?: string;
+  /**
+   * Colore del contenuto delle KPI (etichetta, numero, nota), `#rrggbb`.
+   * Senza, segue il colore del testo, o il bianco/nero adatto allo sfondo.
+   */
+  coloreContenuto?: string;
   /** Titolo e numeri (le KPI) centrati nel riquadro. */
   testoCentrato?: boolean;
   griglia?: boolean;

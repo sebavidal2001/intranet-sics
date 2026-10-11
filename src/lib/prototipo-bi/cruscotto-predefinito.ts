@@ -41,6 +41,7 @@ export const RIQUADRI_RIMOSSI: { pagina: string; chiave: string }[] = [
 const ASPETTO_KPI_ACQUISTI: AspettoGrafico = {
   sfondo: COLORI_SICS.turchese.toLowerCase(),
   coloreTesto: "#ffffff",
+  coloreContenuto: "#ffffff",
   testoCentrato: true,
 };
 

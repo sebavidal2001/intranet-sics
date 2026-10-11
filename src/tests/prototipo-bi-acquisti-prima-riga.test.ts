@@ -14,7 +14,7 @@ describe("pagina Acquisti del Cruscotto: prima riga", () => {
 
   it("turchese SICS, testo bianco e centrato, in una forma che il database accetta", () => {
     for (const a of kpi) {
-      expect(validaAspetto(a.aspetto)).toEqual({ sfondo: "#00a1be", coloreTesto: "#ffffff", testoCentrato: true });
+      expect(validaAspetto(a.aspetto)).toEqual({ sfondo: "#00a1be", coloreTesto: "#ffffff", coloreContenuto: "#ffffff", testoCentrato: true });
     }
   });
 

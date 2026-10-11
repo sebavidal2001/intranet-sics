@@ -360,6 +360,23 @@ export function PannelloAspetto({
                   Automatico
                 </button>
               )}
+              <span className="ml-2 text-xs text-text-muted">Contenuto KPI</span>
+              <input
+                type="color"
+                aria-label="Colore del contenuto delle KPI"
+                value={corrente.coloreContenuto ?? corrente.coloreTesto ?? "#1a202c"}
+                onChange={(e) => aggiorna({ coloreContenuto: e.target.value.toLowerCase() })}
+                className="h-7 w-9 cursor-pointer rounded-md border border-border bg-bg p-0.5"
+              />
+              {corrente.coloreContenuto !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => aggiorna({ coloreContenuto: undefined })}
+                  className="h-7 rounded-md border border-border px-2 text-xs text-text-muted hover:text-text"
+                >
+                  Automatico
+                </button>
+              )}
               <label className="ml-2 flex items-center gap-1.5 text-xs text-text-muted">
                 <input
                   type="checkbox"
