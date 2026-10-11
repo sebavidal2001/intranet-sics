@@ -481,7 +481,7 @@ export function Heatmap({
   colonne: string[];
   /** valori[riga][colonna] */
   valori: Record<string, Record<string, number>>;
-  formato?: "euro" | "percentuale";
+  formato?: "euro" | "percentuale" | "numero";
   /** true = scala rosso/verde centrata sullo zero (per gli scostamenti) */
   divergente?: boolean;
   onClick?: (riga: string, colonna: string) => void;
@@ -520,7 +520,11 @@ export function Heatmap({
   }
 
   const fmt = (v: number) =>
-    formato === "euro" ? euro(v, imp.numeriCompatti) : `${v >= 0 ? "+" : ""}${v.toFixed(0)}%`;
+    formato === "euro"
+      ? euro(v, imp.numeriCompatti)
+      : formato === "numero"
+        ? v.toLocaleString("it-IT", { maximumFractionDigits: 0 })
+        : `${v >= 0 ? "+" : ""}${v.toFixed(0)}%`;
 
   return (
     <div className="overflow-x-auto">

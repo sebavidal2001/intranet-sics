@@ -1,11 +1,13 @@
 "use client";
 
 /**
+ * Vista "Carico di lavoro": quanto lavorano le persone, in Vendite e in Acquisti.
  *
- * Vista "Back office": quanto lavorano gli addetti e con che tempi.
- *
- * Misura il volume (documenti e righe), la reattività (giorni fra richiesta
- * del cliente e registrazione) e l'esito del lavoro.
+ * Due aree, un interruttore. Ognuna mostra il carico vero — i documenti creati
+ * nel gestionale per utente, tipo, giorno e ora (`vista-carico.tsx`). Per le
+ * Vendite, sotto, resta la parte sui PREVENTIVI: reattività (giorni fra
+ * richiesta del cliente e registrazione) ed esito (conversione), che i
+ * documenti per utente non sanno dire.
  *
  * ⚠️ ~50 documenti su 2.089 hanno una data di richiesta successiva alla
  * registrazione. Sono errori di inserimento e la vista li esclude dal calcolo
@@ -17,13 +19,19 @@ import { useMemo, useState } from "react";
 import { Info } from "lucide-react";
 import { KpiEroe, Scheda, useQueryBi } from "./primitivi";
 import { BarreScostamento, Heatmap } from "./grafici-avanzati";
-import { Anelli, AreeImpilate, CalendarioAttivita } from "./grafici-spettacolari";
+import { Anelli } from "./grafici-spettacolari";
 import { TabellaAnalitica, type ColonnaAnalitica, type RigaAnalitica } from "./tabella-analitica";
 import { PannelloDettaglio, type RichiestaPannello } from "./dettaglio-documenti";
-import { PersonaleInsieme, type PersonaPreventivi } from "./personale-insieme";
+import { VistaCarico } from "./vista-carico";
+import type { AreaLavoro } from "@/lib/prototipo-bi/carico-lavoro";
 import type { Dimensione, Periodo, SpecQuery, Filtro } from "@/lib/prototipo-bi/tipi";
 
 const MESI_BREVI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+
+const AREE: { chiave: AreaLavoro; etichetta: string; nota: string }[] = [
+  { chiave: "vendite", etichetta: "Vendite", nota: "preventivi, ordini, bolle e fatture ai clienti" },
+  { chiave: "acquisti", etichetta: "Acquisti", nota: "ordini, DDT e fatture dei fornitori" },
+];
 
 export function VistaBackoffice({
   anno,
@@ -38,7 +46,57 @@ export function VistaBackoffice({
   alternaFiltro: (campo: Dimensione, valore: string) => void;
   filtroDi: (campo: Dimensione) => string | null;
 }) {
-  const [normalizzato, setNormalizzato] = useState(false);
+  const [area, setArea] = useState<AreaLavoro>("vendite");
+
+  return (
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Area di lavoro" className="flex items-center gap-2 flex-wrap">
+        {AREE.map((a) => (
+          <button
+            key={a.chiave}
+            role="tab"
+            aria-selected={area === a.chiave}
+            onClick={() => setArea(a.chiave)}
+            className={`px-4 py-2 rounded-lg text-sm font-tenorite transition-colors ${
+              area === a.chiave ? "bg-primary text-white" : "border border-border hover:bg-bg-page text-text"
+            }`}
+          >
+            {a.etichetta}
+          </button>
+        ))}
+        <span className="text-xs text-text-muted">{AREE.find((a) => a.chiave === area)?.nota}</span>
+      </div>
+
+      {/* I filtri di business unit e agente non toccano il carico: i documenti sono di persone. */}
+      <VistaCarico area={area} anno={anno} periodo={periodo} />
+
+      {area === "vendite" && (
+        <SezionePreventivi
+          anno={anno}
+          periodo={periodo}
+          filtriSpec={filtriSpec}
+          alternaFiltro={alternaFiltro}
+          filtroDi={filtroDi}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Reattività ed esito dei preventivi per addetto: la parte che i documenti per utente non coprono. */
+function SezionePreventivi({
+  anno,
+  periodo,
+  filtriSpec,
+  alternaFiltro,
+  filtroDi,
+}: {
+  anno: number;
+  periodo: Periodo;
+  filtriSpec: Filtro[];
+  alternaFiltro: (campo: Dimensione, valore: string) => void;
+  filtroDi: (campo: Dimensione) => string | null;
+}) {
   const [dettaglio, setDettaglio] = useState<RichiestaPannello | null>(null);
 
   const apriDettaglio = (campo: Dimensione, valore: string) =>
@@ -65,8 +123,6 @@ export function VistaBackoffice({
       valorePerAddetto: { metrica: "preventivi_valore", raggruppa: ["creatore"], ...base, ordina: "valore_desc" },
       convPerAddetto: { metrica: "tasso_conversione", raggruppa: ["creatore"], ...base, ordina: "valore_desc" },
 
-      righeGiorno: { metrica: "righe_preventivo", granularita: "giorno", ...base, ordina: "etichetta" },
-      righeMeseAddetto: { metrica: "righe_preventivo", granularita: "mese", raggruppa: ["creatore"], ...base, ordina: "etichetta" },
       giorniMeseAddetto: { metrica: "giorni_risposta", granularita: "mese", raggruppa: ["creatore"], ...base, ordina: "etichetta" },
     };
   }, [periodo, filtriSpec]);
@@ -74,46 +130,6 @@ export function VistaBackoffice({
   const { risultati, errori } = useQueryBi(specs);
   const r = (k: string) => risultati[k];
   const tot = (k: string) => risultati[k]?.totale ?? 0;
-
-  const valoriCalendario = useMemo(() => {
-    const s = r("righeGiorno");
-    const out: Record<string, number> = {};
-    for (const x of s?.righe ?? []) {
-      const g = x.chiavi.periodo;
-      if (g) out[g] = x.valore;
-    }
-    return out;
-  }, [risultati]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const carico = useMemo(() => {
-    const s = r("righeMeseAddetto");
-    if (!s) return { periodi: [], serie: [] };
-    const periodi = [...new Set(s.righe.map((x) => x.chiavi.periodo).filter(Boolean))].sort() as string[];
-    const nomi = [...new Set(s.righe.map((x) => x.chiavi.creatore).filter(Boolean))] as string[];
-
-    // Ordine per volume complessivo: chi lavora di più sta in basso nella
-    // pila, dove la lettura è più stabile.
-    const volume = new Map<string, number>();
-    for (const x of s.righe) {
-      const n = x.chiavi.creatore;
-      if (n) volume.set(n, (volume.get(n) ?? 0) + x.valore);
-    }
-    nomi.sort((a, b) => (volume.get(b) ?? 0) - (volume.get(a) ?? 0));
-
-    const etichetta = (p: string) => MESI_BREVI[Number(p.slice(5, 7)) - 1] ?? p;
-    return {
-      periodi: periodi.map(etichetta),
-      serie: nomi.map((n) => ({
-        nome: n,
-        valori: Object.fromEntries(
-          periodi.map((p) => [
-            etichetta(p),
-            s.righe.find((x) => x.chiavi.creatore === n && x.chiavi.periodo === p)?.valore ?? 0,
-          ])
-        ),
-      })),
-    };
-  }, [risultati]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const heatmapTempi = useMemo(() => {
     const s = r("giorniMeseAddetto");
@@ -170,15 +186,6 @@ export function VistaBackoffice({
     });
   }, [risultati]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Per la vista d'insieme col personale acquisti: null finche' i preventivi
-  // non sono arrivati, cosi' la tabella non mostra gli acquisti da soli.
-  const preventiviPerPersona = useMemo<PersonaPreventivi[] | null>(() => {
-    const doc = r("docPerAddetto");
-    if (!doc) return null;
-    const righe = new Map((r("righePerAddetto")?.righe ?? []).map((x) => [x.etichetta, x.valore]));
-    return doc.righe.map((x) => ({ nome: x.etichetta, documenti: x.valore, righe: righe.get(x.etichetta) ?? 0 }));
-  }, [risultati]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const colonneAddetti: ColonnaAnalitica[] = [
     // `unita: "numero"` è indispensabile: senza, il conteggio dei preventivi
     // veniva stampato in euro ("418 €").
@@ -222,18 +229,18 @@ export function VistaBackoffice({
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-3 pt-2">
+          <h2 className="font-tenorite text-base font-semibold">Preventivi: reattività ed esito</h2>
+          <p className="text-xs text-text-muted">
+            quanto in fretta si risponde ai clienti e che fine fanno i preventivi, per addetto — i filtri di
+            business unit e agente valgono qui
+          </p>
+        </div>
         {errori._generale && (
           <div className="lg:col-span-3 p-3 rounded-lg bg-danger/10 border border-danger/30 text-sm text-danger">
             {errori._generale}
           </div>
         )}
-
-        <PersonaleInsieme
-          anno={anno}
-          periodo={periodo}
-          preventiviPerPersona={preventiviPerPersona}
-          preventiviMensili={r("righeMeseAddetto")}
-        />
 
         <Scheda
           titolo="Volume di lavoro"
@@ -275,43 +282,6 @@ export function VistaBackoffice({
           <div className="mt-4 pt-3 border-t border-border">
             <Anelli voci={anelliGiornata} onClick={(c) => alternaFiltro("creatore", c)} />
           </div>
-        </Scheda>
-
-        <Scheda
-          titolo="Il ritmo di lavoro, giorno per giorno"
-          className="lg:col-span-3"
-          sottotitolo="righe di preventivo lavorate — le caselle vuote sono chiusure, weekend o giorni senza richieste"
-          info="Ogni casella è un giorno dell'anno, più intensa quanto più si è lavorato. Serve a vedere i picchi e i vuoti che una serie mensile appiattisce: le due settimane bianche di agosto sono la chiusura aziendale, non un calo di domanda."
-        >
-          <CalendarioAttivita valori={valoriCalendario} anno={anno} unita="numero" />
-        </Scheda>
-
-        <Scheda
-          titolo="Come si distribuisce il carico"
-          className="lg:col-span-2"
-          sottotitolo={
-            normalizzato
-              ? "quota di ciascun addetto sul totale del mese"
-              : "righe lavorate per mese, impilate per addetto"
-          }
-          info="In modalità volumi l'altezza totale è il lavoro complessivo del mese; in modalità quote ogni mese vale 100% e si legge solo come il carico si ripartisce fra le persone. La seconda è utile per capire se qualcuno è cresciuto di peso relativo anche quando il volume totale cala."
-          azione={
-            <button
-              onClick={() => setNormalizzato((v) => !v)}
-              className="px-2.5 py-1.5 text-xs rounded-lg border border-border hover:bg-bg-page"
-            >
-              {normalizzato ? "Mostra volumi" : "Mostra quote %"}
-            </button>
-          }
-        >
-          <AreeImpilate
-            periodi={carico.periodi}
-            serie={carico.serie}
-            unita="numero"
-            normalizzato={normalizzato}
-            altezza={300}
-            onClick={(n) => alternaFiltro("creatore", n)}
-          />
         </Scheda>
 
         <Scheda
