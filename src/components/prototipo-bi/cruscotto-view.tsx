@@ -505,13 +505,6 @@ export function CruscottoView({
           ordina: "valore_desc",
           limite: 400,
         },
-        clientiMese: {
-          metrica: "ordinato",
-          granularita: "mese",
-          raggruppa: ["cliente"],
-          ...base,
-          ordina: "etichetta",
-        },
         ordinatoAgente: { metrica: "ordinato", raggruppa: ["agente"], ...base, ordina: "valore_desc" },
         // La scheda disegna anche la torta per business unit: senza questa
         // riga il pannello restava a scheletro per sempre, e uno scheletro
@@ -1401,14 +1394,13 @@ export function CruscottoView({
             <Scheda
               titolo="Clienti — quadro completo"
               className="lg:col-span-2"
-              sottotitolo="ordinabile per qualsiasi colonna; l’andamento è la tendenza dei mesi, verde se sale — il mese in corso, ancora incompleto, non conta"
+              sottotitolo="ordinabile per qualsiasi colonna"
             >
               <TabellaAnalitica
                 colonnaDimensione="Cliente"
-                colonne={colonneConfronto({ annoCorrente: anno, conSparkline: true })}
-                righe={tabellaDi("clienti", "clientiAP", null, "clientiMese", "cliente").righe}
+                colonne={colonneConfronto({ annoCorrente: anno })}
+                righe={tabellaDi("clienti", "clientiAP", null, null, "cliente").righe}
                 massimoIniziale={15}
-                ultimoPeriodoParziale
                 onClickRiga={(c) => alternaFiltro("cliente", c)}
                 rigaEvidenziata={filtroDi("cliente")}
               />
