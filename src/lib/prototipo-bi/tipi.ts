@@ -805,6 +805,23 @@ export const FAMIGLIE_RILEVATORI = [
   "costi_acquisto",
   "fornitori",
   "carico_acquisti",
+  // Dati che prima il briefing non leggeva (rilevatori-estesi.ts).
+  "incassi_scaduti",
+  "pagamenti_fornitori",
+  "cassa_30_giorni",
+  "clienti_pagano_tardi",
+  "articoli_scoperti",
+  "giacenza_ferma",
+  "rincari_recenti",
+  "clienti_senza_visite",
+  "visite_senza_seguito",
+  "visite_in_calo",
+  "preventivi_senza_ordine",
+  "trasporto_costo",
+  "vettore_concentrato",
+  "fatture_senza_ordine",
+  "dipendenza_fornitore",
+  "clienti_senza_agente",
 ] as const;
 
 export type FamigliaRilevatore = (typeof FAMIGLIE_RILEVATORI)[number];

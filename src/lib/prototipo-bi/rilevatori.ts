@@ -27,6 +27,7 @@ import {
 import { costruisciCalendario, dataDaIso, iso, settimanaIso } from "./calendario";
 import { chiusureEffettive } from "./chiusure-dedotte";
 import { fattoreNovita } from "./selezione-briefing";
+import { RILEVATORI_ESTESI } from "./rilevatori-estesi";
 import {
   inizioSettimana,
   nomeBuyer,
@@ -1396,6 +1397,7 @@ export function rilevaTutto(ctx: ContestoRilevatori): Segnale[] {
     rilevaCostiAcquisto,
     rilevaFornitori,
     rilevaCaricoAcquisti,
+    ...RILEVATORI_ESTESI,
   ];
 
   const out: Segnale[] = [];

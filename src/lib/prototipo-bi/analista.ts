@@ -203,6 +203,38 @@ function azioneDeterministica(s: Segnale): string | null {
       return "Sollecitare i fornitori indicati e valutare alternative per gli articoli critici.";
     case "carico_acquisti":
       return "Rivedere la distribuzione degli ordini fra i buyer e smaltire le righe scadute.";
+    case "incassi_scaduti":
+      return "Sollecitare i clienti con più scaduto, partendo da quelli oltre i 90 giorni.";
+    case "pagamenti_fornitori":
+      return "Preparare la distinta dei pagamenti, partendo dai fornitori già scaduti.";
+    case "cassa_30_giorni":
+      return "Anticipare gli incassi della settimana scoperta o spostare i pagamenti non urgenti.";
+    case "clienti_pagano_tardi":
+      return "Verificare con l'amministrazione le condizioni di pagamento dei clienti indicati.";
+    case "articoli_scoperti":
+      return "Emettere o sollecitare gli ordini a fornitore per gli articoli scoperti.";
+    case "giacenza_ferma":
+      return "Decidere per gli articoli fermi: svendita, reso al fornitore o svalutazione.";
+    case "rincari_recenti":
+      return "Aggiornare i listini di vendita degli articoli che hanno rincarato.";
+    case "clienti_senza_visite":
+      return "Pianificare una visita per i clienti elencati, a partire dall'ordinato maggiore.";
+    case "visite_senza_seguito":
+      return "Richiamare i clienti la cui prossima visita non è stata fatta.";
+    case "visite_in_calo":
+      return "Verificare con gli agenti le province dove le visite sono calate.";
+    case "preventivi_senza_ordine":
+      return "Ricontattare i clienti a cui è stato presentato il preventivo e non hanno ordinato.";
+    case "trasporto_costo":
+      return "Confrontare le tariffe dei vettori e rivedere le spese di trasporto addebitate.";
+    case "vettore_concentrato":
+      return "Valutare un secondo vettore per ridurre la dipendenza.";
+    case "fatture_senza_ordine":
+      return "Controllare in contabilità le fatture senza ordine collegato.";
+    case "dipendenza_fornitore":
+      return "Valutare fornitori alternativi per le famiglie di acquisto più concentrate.";
+    case "clienti_senza_agente":
+      return "Assegnare un agente ai clienti che ordinano senza portafoglio.";
     default:
       return null;
   }

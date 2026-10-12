@@ -49,6 +49,22 @@ const ETICHETTE_FAMIGLIA: Record<FamigliaRilevatore, string> = {
   costi_acquisto: "Costi d'acquisto",
   fornitori: "Fornitori",
   carico_acquisti: "Carico acquisti",
+  incassi_scaduti: "Incassi scaduti",
+  pagamenti_fornitori: "Pagamenti ai fornitori",
+  cassa_30_giorni: "Cassa a 30 giorni",
+  clienti_pagano_tardi: "Clienti che pagano tardi",
+  articoli_scoperti: "Articoli scoperti",
+  giacenza_ferma: "Giacenza ferma",
+  rincari_recenti: "Rincari recenti",
+  clienti_senza_visite: "Clienti senza visite",
+  visite_senza_seguito: "Visite senza seguito",
+  visite_in_calo: "Visite in calo",
+  preventivi_senza_ordine: "Preventivi senza ordine",
+  trasporto_costo: "Costo trasporto",
+  vettore_concentrato: "Vettore unico",
+  fatture_senza_ordine: "Fatture senza ordine",
+  dipendenza_fornitore: "Dipendenza fornitore",
+  clienti_senza_agente: "Clienti senza agente",
 };
 
 export function BriefingView() {
