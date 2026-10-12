@@ -87,6 +87,8 @@ export interface EsitoModello {
   costo: number | null;
   /** Token d'ingresso serviti dalla cache invece che riletti per intero. */
   cache: number;
+  /** Perché il modello si è fermato: "length" = tagliato dal tetto di token. */
+  finishReason?: string | null;
 }
 
 export async function chiamaModello(
@@ -130,7 +132,10 @@ export async function chiamaModello(
   }
 
   const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string; tool_calls?: ToolCall[] } }>;
+    choices?: Array<{
+      finish_reason?: string | null;
+      message?: { content?: string; tool_calls?: ToolCall[] };
+    }>;
     usage?: {
       prompt_tokens?: number;
       completion_tokens?: number;
@@ -147,6 +152,7 @@ export async function chiamaModello(
     uscita: json.usage?.completion_tokens ?? 0,
     costo: json.usage?.cost ?? null,
     cache: json.usage?.prompt_tokens_details?.cached_tokens ?? 0,
+    finishReason: json.choices?.[0]?.finish_reason ?? null,
   };
 }
 
@@ -245,7 +251,7 @@ export async function generaBriefing(opzioni: {
 
       // Il briefing è redazione su fatti già calcolati: il modello economico
       // basta e avanza, e gira ogni mattina per ogni destinatario.
-      const { testo } = await chiamaModello(
+      const { testo, finishReason } = await chiamaModello(
         MODELLI.leggero.id,
         [
           { role: "system", content: ISTRUZIONI_BRIEFING },
@@ -257,8 +263,14 @@ export async function generaBriefing(opzioni: {
               `Segnali:\n${JSON.stringify(payload, null, 2)}`,
           },
         ],
-        { temperatura: 0.2, maxToken: 900 }
+        // Haiku 5.5 ragiona prima di rispondere e quei token contano nel tetto:
+        // con 900 la risposta veniva tagliata a metà JSON (09-12/10/2026).
+        { temperatura: 0.2, maxToken: 3000 }
       );
+
+      if (finishReason === "length") {
+        throw new Error("risposta del modello tagliata dal limite di token");
+      }
 
       const parsed = JSON.parse(testo.replace(/^```json\s*|\s*```$/g, "").trim()) as {
         voci?: Array<{ segnaleId: string; testo: string; azioneSuggerita?: string | null }>;
