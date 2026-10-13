@@ -32,6 +32,21 @@ describe("analisi vettori", () => {
     expect(screen.getByRole("status").textContent).toMatch(/Una fattura acquisita senza quadratura non è inclusa/);
   });
 
+  it("le barre mensili stanno in un contenitore che ha altezza propria", () => {
+    // jsdom non calcola il layout: si verifica la struttura che dà alla percentuale
+    // un genitore alto quanto il grafico (prima era «auto» e le barre valevano zero).
+    const mese = (m: number, fatturato: number) => ({ anno: 2026, mese: m, righe: 5, colli: 6, kg: 50, fatturato, atteso: fatturato, anomalie: 0 });
+    render(<AnalisiView dati={{ ...base, mesi: [mese(1, 1000), mese(2, 500)] }} anno={2026} />);
+    const barre = screen.getAllByTestId("barra-mese");
+    expect(barre).toHaveLength(2);
+    expect(barre[0].style.height).toBe("100%");
+    expect(barre[1].style.height).toBe("50%");
+    for (const barra of barre) {
+      expect(barra.parentElement?.className).toMatch(/flex-1/);
+      expect(barra.parentElement?.parentElement?.className).toMatch(/h-full/);
+    }
+  });
+
   it("una risposta vecchia, senza il campo, non rompe la pagina", () => {
     const vecchia = { ...base } as Partial<Analisi>;
     delete vecchia.fatture_non_quadrate;

@@ -190,3 +190,36 @@ describe("StoricoView: solo le spedizioni a nostro carico, salvo richiesta", () 
     expect(screen.getByText(/sono comprese le partenze in porto assegnato/)).toBeInTheDocument();
   });
 });
+
+describe("StoricoView: filtri cambiati in fila", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("la risposta di un filtro superato non sostituisce quella dell'ultimo", async () => {
+    const risposte: Array<(riferimento: string) => void> = [];
+    const fetchMock = vi.fn(() => new Promise((resolve) => {
+      risposte.push((riferimento) => resolve({
+        ok: true,
+        json: async () => ({ ...iniziali, righe: [{ ...nonFatturata, riferimento }] }),
+      }));
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<StoricoView iniziali={iniziali} valori={valori} />);
+
+    fireEvent.change(screen.getByLabelText("Mese di riferimento"), { target: { value: "8" } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText("Anno di riferimento"), { target: { value: "2026" } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    // la seconda richiesta risponde prima, la prima arriva in ritardo
+    risposte[1]("ULTIMO-FILTRO");
+    await screen.findByText("ULTIMO-FILTRO");
+    risposte[0]("FILTRO-SUPERATO");
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(screen.getByText("ULTIMO-FILTRO")).toBeInTheDocument();
+    expect(screen.queryByText("FILTRO-SUPERATO")).toBeNull();
+    // la richiesta superata viene anche annullata
+    const primaChiamata = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(primaChiamata[1].signal?.aborted).toBe(true);
+  });
+});

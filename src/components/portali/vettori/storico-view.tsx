@@ -208,15 +208,20 @@ export function StoricoView({ iniziali, valori, filtriIniziali, puoGestire = fal
       primoGiro.current = false;
       return;
     }
+    // Ogni cambio di filtro annulla la richiesta precedente. Prima l'annullamento
+    // stava dentro il timer e non veniva mai chiamato: cambiando due filtri in
+    // fila, la risposta del primo poteva arrivare dopo e sostituire quella giusta.
+    let annullato = false;
+    const controllo = new AbortController();
     const attesa = setTimeout(
       () => {
-        let annullato = false;
         setInCorso(true);
         setErrore(null);
         fetch("/api/portali/vettori/spedizioni", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(corpoRichiesta(filtri)),
+          signal: controllo.signal,
         })
           .then(async (res) => {
             const d = await res.json();
@@ -233,13 +238,14 @@ export function StoricoView({ iniziali, valori, filtriIniziali, puoGestire = fal
           .finally(() => {
             if (!annullato) setInCorso(false);
           });
-        return () => {
-          annullato = true;
-        };
       },
       filtri.cerca ? 450 : 0
     );
-    return () => clearTimeout(attesa);
+    return () => {
+      annullato = true;
+      clearTimeout(attesa);
+      controllo.abort();
+    };
   }, [filtri]);
 
   const scarica = useCallback(async () => {

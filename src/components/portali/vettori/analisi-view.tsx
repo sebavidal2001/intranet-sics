@@ -218,21 +218,27 @@ export function AnalisiView({ dati, anno }: Props) {
             <div className="px-5 py-4">
               <div className="flex items-end gap-2 h-40">
                 {dati.mesi.map((m) => (
-                  <div key={`${m.anno}-${m.mese}`} className="flex-1 flex flex-col items-center gap-1">
+                  // La colonna occupa tutta l'altezza del grafico e la barra sta in
+                  // un contenitore che cresce: senza, l'altezza in percentuale si
+                  // calcolava su un genitore alto «auto» e le barre valevano zero.
+                  <div key={`${m.anno}-${m.mese}`} className="flex-1 h-full flex flex-col items-center gap-1">
                     <span className="text-[10px] text-text-muted tabular-nums">
                       {eur(m.fatturato)}
                     </span>
-                    <div
-                      className="w-full rounded-t"
-                      style={{
-                        height: `${Math.max(3, (m.fatturato / maxMese) * 100)}%`,
-                        background:
-                          m.anomalie > 0
-                            ? "linear-gradient(180deg,#f59e0b 0%,#00a1be 60%)"
-                            : "#00a1be",
-                      }}
-                      title={`${int(m.righe)} spedizioni · ${int(m.anomalie)} fuori linea`}
-                    />
+                    <div className="w-full flex-1 min-h-0 flex items-end">
+                      <div
+                        data-testid="barra-mese"
+                        className="w-full rounded-t"
+                        style={{
+                          height: `${Math.max(3, (m.fatturato / maxMese) * 100)}%`,
+                          background:
+                            m.anomalie > 0
+                              ? "linear-gradient(180deg,#f59e0b 0%,#00a1be 60%)"
+                              : "#00a1be",
+                        }}
+                        title={`${int(m.righe)} spedizioni · ${int(m.anomalie)} fuori linea`}
+                      />
+                    </div>
                     <span className="text-[11px] text-text-muted">
                       {MESI_BREVI[m.mese - 1]}
                     </span>
