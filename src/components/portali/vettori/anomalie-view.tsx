@@ -83,6 +83,7 @@ export function AnomalieView({ iniziali, vettori, puoDecidere }: Props) {
     nomeFile: string;
     eml: string;
     quante: number;
+    escluse: string[];
   } | null>(null);
 
   const visibili = useMemo(
@@ -167,7 +168,7 @@ export function AnomalieView({ iniziali, vettori, puoDecidere }: Props) {
         setErrore(dati.error ?? "Non è stato possibile costruire la bozza.");
         return;
       }
-      setBozza({ ...dati.bozza, quante: dati.quante });
+      setBozza({ ...dati.bozza, quante: dati.quante, escluse: dati.escluse ?? [] });
     } catch {
       setErrore("Non è stato possibile contattare il server.");
     } finally {
@@ -542,6 +543,7 @@ function AnteprimaBozza({
     cc: string[];
     nomeFile: string;
     quante: number;
+    escluse: string[];
   };
   onChiudi: () => void;
   onScarica: () => void;
@@ -582,6 +584,11 @@ function AnteprimaBozza({
 
         <div className="px-5 py-4 overflow-auto">
           <p className="text-sm mb-3">Cc: {bozza.cc.join("; ") || "nessuno"}</p>
+          {bozza.destinatari.length === 0 && <p className="text-sm text-warning mb-3">Nessun destinatario: configuralo in Listini → Email di contestazione, oppure scrivilo in Outlook prima di inviare.</p>}
+          {bozza.escluse.length > 0 && <div className="mb-3 rounded-lg bg-bg-page px-3 py-2 text-xs text-text-muted" data-testid="bozza-escluse">
+            <p className="font-medium text-text">{bozza.escluse.length === 1 ? "1 spedizione non è nella mail" : `${bozza.escluse.length} spedizioni non sono nella mail`}: il vettore ha fatturato meno dell&apos;atteso, non c&apos;è niente da contestare. Restano fra le anomalie da decidere.</p>
+            <ul className="mt-1 list-disc pl-4">{bozza.escluse.map((e) => <li key={e}>{e}</li>)}</ul>
+          </div>}
           {errore && <p role="alert" className="text-sm text-danger mb-3">{errore}</p>}
           <p className="text-xs text-text-muted font-medium mb-1">Oggetto</p>
           <p className="text-sm text-text mb-4">{bozza.oggetto}</p>

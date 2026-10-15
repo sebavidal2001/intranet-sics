@@ -15,6 +15,10 @@ export interface DatiBozza {
 }
 
 export interface Bozza {
+  /** Spedizioni nella mail (una per riga di fattura). */
+  spedizioni: number;
+  /** Spedizioni fatturate meno dell'atteso: restano fuori dalla mail. */
+  escluse: string[];
   oggetto: string;
   corpo: string;
   destinatari: string[];
@@ -33,20 +37,74 @@ const eur = (n: number | null | undefined) =>
     ? "—"
     : n.toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 
-/** La tabella delle spedizioni contestate, in testo semplice. */
-export function tabellaAnomalie(anomalie: AnomaliaElenco[]): string {
-  if (anomalie.length === 0) return "(nessuna spedizione da segnalare)";
+/** Una spedizione della fattura con tutte le sue anomalie aperte. */
+export interface SpedizioneContestata {
+  data: string | null;
+  riferimento: string | null;
+  controparte: string | null;
+  fatturato: number | null;
+  atteso: number | null;
+  /** L'importo che si chiede di verificare; null se la spedizione va solo controllata (es. peso). */
+  differenza: number | null;
+  motivi: string[];
+}
 
-  const righe = anomalie.map((a) => {
+/**
+ * Raggruppa le anomalie per spedizione e toglie quelle a nostro favore.
+ *
+ * Una riga di fattura può avere due anomalie (importo e peso): nella mail
+ * deve comparire una volta sola, con i due motivi, e il suo importo contare
+ * una volta. Una spedizione fatturata meno del previsto non si contesta al
+ * vettore: resta fra le anomalie da decidere, ma fuori dalla mail e dal totale.
+ */
+export function raggruppaPerSpedizione(anomalie: AnomaliaElenco[]): {
+  contestate: SpedizioneContestata[];
+  escluse: SpedizioneContestata[];
+} {
+  const gruppi = new Map<string, AnomaliaElenco[]>();
+  for (const a of anomalie) {
+    const chiave = a.fattura_numero != null && a.riga_numero != null ? `${a.fattura_numero}|${a.riga_numero}` : a.id;
+    gruppi.set(chiave, [...(gruppi.get(chiave) ?? []), a]);
+  }
+  const contestate: SpedizioneContestata[] = [];
+  const escluse: SpedizioneContestata[] = [];
+  for (const gruppo of gruppi.values()) {
+    const primo = gruppo[0];
+    const positivi = gruppo.map((a) => a.importo_contestato).filter((n): n is number => n != null && n > 0);
+    const aNostroFavore =
+      positivi.length === 0 &&
+      (gruppo.some((a) => a.importo_contestato != null && a.importo_contestato < 0) ||
+        (primo.fatturato != null && primo.atteso != null && primo.fatturato <= primo.atteso));
+    const voce: SpedizioneContestata = {
+      data: primo.data_spedizione,
+      riferimento: primo.riferimento,
+      controparte: primo.controparte,
+      fatturato: primo.fatturato,
+      atteso: primo.atteso,
+      differenza: positivi.length ? Math.max(...positivi) : null,
+      motivi: [...new Set(gruppo.map((a) => a.descrizione))],
+    };
+    (aNostroFavore ? escluse : contestate).push(voce);
+  }
+  const perData = (x: SpedizioneContestata, y: SpedizioneContestata) => (x.data ?? "").localeCompare(y.data ?? "");
+  return { contestate: contestate.sort(perData), escluse: escluse.sort(perData) };
+}
+
+/** La tabella delle spedizioni contestate, in testo semplice: una riga per spedizione. */
+export function tabellaAnomalie(anomalie: AnomaliaElenco[]): string {
+  const { contestate } = raggruppaPerSpedizione(anomalie);
+  if (contestate.length === 0) return "(nessuna spedizione da segnalare)";
+
+  const righe = contestate.map((s) => {
     const pezzi = [
-      a.data_spedizione ?? "—",
-      a.riferimento ?? "senza riferimento",
-      a.controparte ?? "—",
-      `fatturato ${eur(a.fatturato)}`,
+      s.data ?? "—",
+      s.riferimento ?? "senza riferimento",
+      s.controparte ?? "—",
+      `fatturato ${eur(s.fatturato)}`,
     ];
-    if (a.atteso != null && a.atteso > 0) pezzi.push(`atteso ${eur(a.atteso)}`);
-    if (a.importo_contestato != null) pezzi.push(`differenza ${eur(a.importo_contestato)}`);
-    return `- ${pezzi.join(" · ")}\n  ${a.descrizione}`;
+    if (s.atteso != null && s.atteso > 0) pezzi.push(`atteso ${eur(s.atteso)}`);
+    if (s.differenza != null) pezzi.push(`differenza ${eur(s.differenza)}`);
+    return `- ${pezzi.join(" · ")}\n${s.motivi.map((m) => `  ${m}`).join("\n")}`;
   });
 
   return righe.join("\n");
@@ -80,17 +138,15 @@ function intestazione(nome: string, valore: string): string {
 }
 
 export function costruisciBozza(d: DatiBozza): Bozza {
-  const totaleContestato = d.anomalie.reduce(
-    (a, x) => a + (x.importo_contestato ?? 0),
-    0
-  );
+  const { contestate, escluse } = raggruppaPerSpedizione(d.anomalie);
+  const totaleContestato = contestate.reduce((a, x) => a + (x.differenza ?? 0), 0);
 
   const valori: Record<string, string> = {
     vettore: d.vettoreNome,
     mese: MESI[d.mese - 1] ?? String(d.mese),
     anno: String(d.anno),
     direzione: [...new Set(d.anomalie.map((a) => a.direzione === "entrata" ? "arrivi da fornitori" : a.direzione === "uscita" ? "invii a clienti" : "da classificare"))].join(", "),
-    n_anomalie: String(d.anomalie.length),
+    n_anomalie: String(contestate.length),
     totale_contestato: eur(Math.round(totaleContestato * 100) / 100),
     tabella: tabellaAnomalie(d.anomalie),
   };
@@ -122,5 +178,9 @@ export function costruisciBozza(d: DatiBozza): Bozza {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")}-${String(d.mese).padStart(2, "0")}-${d.anno}.eml`;
 
-  return { oggetto, corpo, destinatari: d.destinatari, cc: d.cc, nomeFile, eml };
+  return {
+    spedizioni: contestate.length,
+    escluse: escluse.map((x) => `${x.data ?? "—"} · ${x.riferimento ?? "senza riferimento"} · ${x.controparte ?? "—"} · fatturato ${eur(x.fatturato)}, atteso ${eur(x.atteso)}`),
+    oggetto, corpo, destinatari: d.destinatari, cc: d.cc, nomeFile, eml,
+  };
 }

@@ -115,9 +115,9 @@ describe("costruisciBozza", () => {
       ...base,
       anomalie: [
         anomalia({ importo_contestato: 16.8 }),
-        anomalia({ id: "b", importo_contestato: 4.2 }),
+        anomalia({ id: "b", riga_numero: 4, importo_contestato: 4.2 }),
         // Una senza importo non deve far diventare NaN il totale.
-        anomalia({ id: "c", importo_contestato: null }),
+        anomalia({ id: "c", riga_numero: 5, importo_contestato: null }),
       ],
     });
     expect(b.corpo).toContain("21,00");
@@ -177,5 +177,37 @@ describe("costruisciBozza", () => {
     const b = costruisciBozza({ ...base, anomalie: [] });
     expect(b.corpo).toContain("nessuna spedizione da segnalare");
     expect(b.corpo).toContain("risultano 0 spedizioni");
+  });
+});
+
+describe("bozza · una riga per spedizione", () => {
+  const base = {
+    vettoreNome: "GLS", anno: 2026, mese: 8, destinatari: [], cc: [],
+    oggettoModello: "Verifica {vettore}", corpoModello: "{n_anomalie} spedizioni, {totale_contestato}\n{tabella}",
+  };
+
+  it("due anomalie sulla stessa riga contano una volta, con i due motivi", () => {
+    const b = costruisciBozza({ ...base, anomalie: [
+      anomalia({ importo_contestato: 1.78, descrizione: "Fatturato 11% sopra" }),
+      anomalia({ id: "b", tipo: "peso_diverso_da_bolla", importo_contestato: null, descrizione: "Peso in fattura 17,3 kg contro 14,7" }),
+    ] });
+    expect(b.spedizioni).toBe(1);
+    expect(b.corpo).toContain("1 spedizioni, 1,78");
+    expect(b.corpo.match(/ROSSI SPA/g)).toHaveLength(1);
+    expect(b.corpo).toContain("Fatturato 11% sopra");
+    expect(b.corpo).toContain("Peso in fattura 17,3 kg");
+  });
+
+  it("una spedizione fatturata meno dell'atteso resta fuori dalla mail e dal totale", () => {
+    const b = costruisciBozza({ ...base, anomalie: [
+      anomalia({ importo_contestato: 1.68 }),
+      anomalia({ id: "b", riga_numero: 9, controparte: "AIREX SPA", fatturato: 17.02, atteso: 31.42, importo_contestato: -14.4 }),
+      anomalia({ id: "c", riga_numero: 9, controparte: "AIREX SPA", fatturato: 17.02, atteso: 31.42, tipo: "peso_diverso_da_bolla", importo_contestato: null }),
+    ] });
+    expect(b.spedizioni).toBe(1);
+    expect(b.corpo).toContain("1 spedizioni, 1,68");
+    expect(b.corpo).not.toContain("AIREX");
+    expect(b.escluse).toHaveLength(1);
+    expect(b.escluse[0]).toContain("AIREX");
   });
 });

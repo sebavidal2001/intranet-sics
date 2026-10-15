@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       corpoModello: modello.corpo,
     });
 
-    return NextResponse.json({ bozza, quante: anomalie.length });
+    return NextResponse.json({ bozza, quante: bozza.spedizioni, escluse: bozza.escluse });
   } catch (e) {
     logError("vettori.anomalie.bozza", "costruzione bozza fallita", e);
     return NextResponse.json(
