@@ -91,7 +91,44 @@ interface Riepilogo {
   differenza: number;
 }
 
+interface CarburanteMese { vettore: string; anno: number; mese: number }
+interface EsitoCarburante {
+  inseriti: Array<CarburanteMese & { percentuale: number }>;
+  discordanti: Array<CarburanteMese & { presente: number; letta: number }>;
+}
+
+const MESI_CARB = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+const NOMI_VETTORE: Record<string, string> = { gls: "GLS", tnt: "TNT", fedex: "FedEx", trading_post: "Trading Post" };
+const percCarb = (n: number) => `${(n * 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 3 })}%`;
+const quale = (c: CarburanteMese) => `${NOMI_VETTORE[c.vettore] ?? c.vettore} ${MESI_CARB[c.mese - 1]} ${c.anno}`;
+
+/**
+ * Il carburante che la fattura dichiara. In anteprima dice cosa succederà,
+ * dopo l'acquisizione cosa è successo. Un valore diverso da quello già in
+ * Listini non viene mai sovrascritto: va visto da una persona.
+ */
+function AvvisoCarburante({ esito, acquisita }: { esito: EsitoCarburante; acquisita: boolean }) {
+  if (esito.inseriti.length === 0 && esito.discordanti.length === 0) return null;
+  return <div className="mt-4 space-y-2" data-testid="avviso-carburante">
+    {esito.discordanti.length > 0 && <div className="rounded-lg border p-4 flex items-start gap-3" style={{ borderColor: "var(--color-warning)", background: "rgba(245,158,11,0.07)" }}>
+      <TriangleAlert className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+      <div className="min-w-0 flex-1 text-sm text-text space-y-1">
+        <p className="font-semibold">Carburante diverso da quello in Listini</p>
+        <ul className="list-disc pl-5">
+          {esito.discordanti.map((d) => <li key={`${d.vettore}-${d.anno}-${d.mese}`}>{quale(d)}: la fattura dichiara <strong>{percCarb(d.letta)}</strong>, in Listini c&apos;è <strong>{percCarb(d.presente)}</strong>.</li>)}
+        </ul>
+        <p className="text-text-muted">{acquisita ? "Il valore di Listini non è stato cambiato." : "Acquisendo, il valore di Listini non viene cambiato."} Se la fattura ha ragione, correggi la percentuale in Listini e chiedi il ricalcolo delle fatture già acquisite di quel mese.</p>
+        <Link href="/vettori/listini" className="text-primary underline underline-offset-2">Apri Listini</Link>
+      </div>
+    </div>}
+    {esito.inseriti.length > 0 && <p className="text-sm text-text-muted">
+      Carburante {acquisita ? "registrato" : "che verrà registrato acquisendo"}: {esito.inseriti.map((c) => `${quale(c)} ${percCarb(c.percentuale)}`).join(", ")} (letto dalla fattura, il mese non aveva ancora una percentuale).
+    </p>}
+  </div>;
+}
+
 interface Anteprima {
+  carburante?: EsitoCarburante | null;
   nomeFile: string;
   origineMetadati: {
     numero: "documento" | "assente";
@@ -147,6 +184,7 @@ export function FattureView() {
   const [file, setFile] = useState<File | null>(null);
   const [anteprima, setAnteprima] = useState<Anteprima | null>(null);
   const [salvata, setSalvata] = useState<string | null>(null);
+  const [carburanteAcquisito, setCarburanteAcquisito] = useState<EsitoCarburante | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const [inCorso, setInCorso] = useState<"lettura" | "salvataggio" | null>(null);
   const [sopra, setSopra] = useState(false);
@@ -202,6 +240,7 @@ export function FattureView() {
           setDirezione(dati.righe.some((x: Riga) => x.direzione === "entrata") ? "entrata" : dati.righe.some((x: Riga) => x.direzione === "uscita") ? "uscita" : "ignota");
         }
       } else {
+        setCarburanteAcquisito((dati.carburante as EsitoCarburante | null) ?? null);
         setSalvata(
           `Acquisita: ${dati.esito.righe} spedizioni, ${dati.esito.spedizioni_nuove} nuove bolle collegate, ${dati.esito.anomalie} anomalie da decidere.` +
             (rigaSenzaBolla(dati.riepilogo)
@@ -344,6 +383,9 @@ export function FattureView() {
           </Button>
         </div>
       )}
+
+      {salvata && carburanteAcquisito && <AvvisoCarburante esito={carburanteAcquisito} acquisita />}
+      {anteprima?.carburante && !salvata && <AvvisoCarburante esito={anteprima.carburante} acquisita={false} />}
 
       {anteprima && q && r && !salvata && (
         <>

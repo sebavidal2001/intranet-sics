@@ -16,6 +16,8 @@ export const NuovoListino = z.object({
   valido_dal: z.string().date(),
   fasce: z.array(FasciaConfig).min(1).max(300),
   supplementi: z.array(z.object({ codice: z.string().min(1), valore: z.number().finite().min(0) })).max(100),
+  // Frazione (0,0721 = 7,21%). Assente = non toccare; null = nessun adeguamento.
+  adeguamento: z.number().finite().min(0, "L'adeguamento non può essere negativo").max(0.5, "L'adeguamento deve essere al massimo del 50%").nullable().optional(),
 }).superRefine((b, ctx) => {
   for (const zona of new Set(b.fasce.map((f) => f.zona_id))) {
     const righe = b.fasce.filter((f) => f.zona_id === zona).sort((a, c) => a.peso_da - c.peso_da);
@@ -27,6 +29,26 @@ export const NuovoListino = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["supplementi"], message: "Supplementi duplicati." });
 });
 export type FasciaModificabile = z.infer<typeof FasciaConfig>;
+
+/** Centesimi con arrotondamento commerciale, come li scrive il vettore. */
+const centesimi = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/**
+ * Applica un aumento percentuale a tutte le tariffe: importo di ogni fascia e
+ * importo dello scatto. Si parte sempre dai valori della versione in vigore,
+ * così premere due volte non somma gli aumenti. Le soglie di peso non cambiano.
+ */
+export function aumentaFasce<T extends { importo: number; scatto_importo: number | null }>(
+  fasce: T[],
+  percentuale: number
+): T[] {
+  const k = 1 + percentuale / 100;
+  return fasce.map((f) => ({
+    ...f,
+    importo: centesimi(Number(f.importo) * k),
+    scatto_importo: f.scatto_importo == null ? null : centesimi(Number(f.scatto_importo) * k),
+  }));
+}
 
 /**
  * Un supplemento nuovo, con il periodo in cui vale. La data di inizio è

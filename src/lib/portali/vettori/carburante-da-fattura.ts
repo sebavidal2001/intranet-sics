@@ -146,3 +146,34 @@ export async function registraCarburanteLetto(
   }
   return esito;
 }
+
+/**
+ * Lo stesso confronto, senza scrivere: per l'anteprima. Dice quali mesi la
+ * fattura riempirebbe e dove dichiara un valore diverso da quello già salvato,
+ * così chi carica lo vede prima di premere Acquisisci.
+ */
+export async function confrontaCarburanteLetto(voci: CarburanteLetto[]): Promise<EsitoRegistrazioneCarburante> {
+  const esito: EsitoRegistrazioneCarburante = { inseriti: [], discordanti: [] };
+  if (voci.length === 0) return esito;
+  const admin = createAdminClient();
+  const { data: vettori, error: eV } = await admin
+    .schema("vettori").from("vettori").select("id, codice")
+    .in("codice", [...new Set(voci.map((v) => v.vettore))]);
+  if (eV) throw new Error(`Lettura vettori fallita: ${eV.message}`);
+  const idPer = new Map((vettori ?? []).map((v) => [v.codice as string, v.id as string]));
+  for (const voce of voci) {
+    const vettoreId = idPer.get(voce.vettore);
+    if (!vettoreId) continue;
+    const { data: esistente, error: eE } = await admin
+      .schema("vettori").from("carburante").select("percentuale, fonte")
+      .eq("vettore_id", vettoreId).eq("anno", voce.anno).eq("mese", voce.mese).limit(1);
+    if (eE) throw new Error(`Lettura carburante fallita: ${eE.message}`);
+    const presente = (esistente ?? [])[0] as { percentuale: number; fonte: string } | undefined;
+    if (!presente || presente.fonte === "stimato") {
+      esito.inseriti.push({ vettore: voce.vettore, anno: voce.anno, mese: voce.mese, percentuale: voce.percentuale });
+    } else if (Math.abs(Number(presente.percentuale) - voce.percentuale) > 0.00005) {
+      esito.discordanti.push({ vettore: voce.vettore, anno: voce.anno, mese: voce.mese, presente: Number(presente.percentuale), letta: voce.percentuale });
+    }
+  }
+  return esito;
+}

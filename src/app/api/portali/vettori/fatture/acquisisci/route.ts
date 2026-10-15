@@ -14,7 +14,7 @@ import {
   risolviEstremiFattura,
   salvaAcquisizione,
 } from "@/lib/portali/vettori/acquisizione";
-import { carburanteDaFattura, registraCarburanteLetto, type EsitoRegistrazioneCarburante } from "@/lib/portali/vettori/carburante-da-fattura";
+import { carburanteDaFattura, confrontaCarburanteLetto, registraCarburanteLetto, type EsitoRegistrazioneCarburante } from "@/lib/portali/vettori/carburante-da-fattura";
 import { logError, logInfo } from "@/lib/logger";
 import { proponiPerFattura } from "@/lib/portali/vettori/aggancio-ai";
 import { chiaveConfigurata } from "@/lib/ai/openrouter";
@@ -215,6 +215,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (soloAnteprima) {
+      // Il carburante che la fattura dichiara, confrontato con quello già
+      // salvato: in anteprima si legge soltanto.
+      let carburante: EsitoRegistrazioneCarburante | null = null;
+      try {
+        carburante = await confrontaCarburanteLetto(carburanteDaFattura(fattura));
+      } catch (e) {
+        logError("vettori.fatture.acquisisci", "confronto carburante fallito", e);
+      }
       return NextResponse.json({
         salvata: false,
         nomeFile: file.name,
@@ -232,6 +240,7 @@ export async function POST(request: NextRequest) {
         },
         quadratura,
         riepilogo,
+        carburante,
         righe: payload.righe,
         // Con il riconoscimento ottico l'anteprima porta anche l'immagine della
         // pagina e la confidenza cella per cella: e li che l'operatore
