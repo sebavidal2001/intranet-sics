@@ -104,6 +104,9 @@ describe("lettura dei numeri all'italiana", () => {
     // numeri farebbe agganciare fra loro spedizioni che non c'entrano niente.
     expect(normalizzaRiferimento("0")).toBeNull();
     expect(normalizzaRiferimento("000")).toBeNull();
+    // Trading Post accoda il progressivo: «1587/00» è la BF 1587.
+    expect(normalizzaRiferimento("1587/00")).toBe("1587");
+    expect(normalizzaRiferimento("1587/01")).toBe("158701");
     expect(normalizzaRiferimento("XXX")).toBeNull();
     expect(normalizzaRiferimento("764")).toBe("764");
     expect(normalizzaRiferimento("0764")).toBe("764");

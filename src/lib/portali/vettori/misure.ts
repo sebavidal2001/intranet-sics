@@ -140,8 +140,14 @@ export function datiFisici(riga: RigaFattura, sped: SpedizioneLogica | null | un
     riga.data && Math.abs(Date.parse(r.data_arrivo) - Date.parse(riga.data)) <= 7 * 86400000
   ) : [];
   const rilevata = candidati.length === 1 ? candidati[0] : undefined;
-  const colliBolla = misureBolla.filter((m) => m.quantita > 0).map(({ quantita, lunghezzaCm, larghezzaCm, altezzaCm }) => ({ quantita, lunghezzaCm, larghezzaCm, altezzaCm }));
-  const pesoBolla = misureBolla.length > 0 && misureBolla.every((m) => (m.pesoRealeKg ?? 0) > 0) ? misureBolla.reduce((t, m) => t + (m.pesoRealeKg ?? 0), 0) : null;
+  const misurate = misureBolla.filter((m) => m.quantita > 0);
+  // Misure di magazzino su una parte dei colli (BC 2631: 1 collo da 6,5 kg su
+  // 2 colli e 26,5 kg di bolla): usarle come se fossero tutta la spedizione
+  // dimezzava peso e colli e generava un'anomalia falsa. Valgono solo complete.
+  const colliMisuratiBolla = misurate.reduce((t, m) => t + m.quantita, 0);
+  const misureParziali = misurate.length > 0 && (sped?.colli ?? 0) > colliMisuratiBolla;
+  const colliBolla = misureParziali ? [] : misurate.map(({ quantita, lunghezzaCm, larghezzaCm, altezzaCm }) => ({ quantita, lunghezzaCm, larghezzaCm, altezzaCm }));
+  const pesoBolla = !misureParziali && misureBolla.length > 0 && misureBolla.every((m) => (m.pesoRealeKg ?? 0) > 0) ? misureBolla.reduce((t, m) => t + (m.pesoRealeKg ?? 0), 0) : null;
   const colliMisurati = misure?.volumeMc ? undefined : misure?.colli?.length ? misure.colli : colliBolla.length ? colliBolla : rilevata?.lunghezza_cm && rilevata.larghezza_cm && rilevata.altezza_cm ? [{ quantita: rilevata.colli, lunghezzaCm: rilevata.lunghezza_cm, larghezzaCm: rilevata.larghezza_cm, altezzaCm: rilevata.altezza_cm }] : undefined;
   const volumeBolla = sped?.volumeMc && sped.volumeMc > 0 ? sped.volumeMc : null;
   const volumeFattura = Number(riga.dettaglio.volumeMc) > 0 ? Number(riga.dettaglio.volumeMc) : null;
@@ -164,6 +170,7 @@ export function datiFisici(riga: RigaFattura, sped: SpedizioneLogica | null | un
 
   return { fonte, note: [
     ...(candidati.length > 1 ? ["Più rilevazioni compatibili: inserire le misure corrette nel controllo."] : []),
+    ...(misureParziali ? [`Misure di magazzino su ${colliMisuratiBolla} colli dei ${sped?.colli} della bolla: non usate, completarle nella pagina Bolle.`] : []),
     ...(fonte.includes("fattura") || fonte.includes("vettore") ? ["Dato dichiarato dal vettore: inserire le misure per verificare indipendentemente il peso volumetrico."] : []),
   ], dati: {
     colli: colliMisurati?.reduce((s, c) => s + c.quantita, 0) ?? positivo(rilevata?.colli) ?? positivo(riga.colli) ?? positivo(sped?.colli) ?? 1,

@@ -439,11 +439,37 @@ export async function calcolaControlloRiga(
   riga.dettaglio.fonteMisure = fisici.fonte;
   riga.dettaglio.condizioniApplicate = JSON.stringify(fisici.dati.condizioni ?? []);
   riga.dettaglio.formulaVolumetrico = `Volume totale dei colli (m³) × ${listino.vettore.divisoreVolumetrico} kg/m³; per ogni collo: L × P × H in cm ÷ 1.000.000.`;
-  const calcolo = calcolaCostoAtteso(fisici.dati, listino);
+  const calcoloPieno = calcolaCostoAtteso(fisici.dati, listino);
   const valutabile = riga.totale != null && listino.carburante != null &&
-    calcolo.pesoTassabile > 0 && calcolo.fasciaDescrizione !== "nessuna fascia";
-  const clsCalcolata = valutabile ? classifica(riga.totale!, calcolo.totale, SOGLIE_DEFAULT)
+    calcoloPieno.pesoTassabile > 0 && calcoloPieno.fasciaDescrizione !== "nessuna fascia";
+  const clsPiena = valutabile ? classifica(riga.totale!, calcoloPieno.totale, SOGLIE_DEFAULT)
     : { esito: "non_valutabile", scostamento: null };
+
+  /*
+   * Volumetrico che il vettore non ha applicato.
+   *
+   * Trading Post applica il volumetrico solo ai colli che misura lei, e in quel
+   * caso stampa il volume in fattura; per tutti gli altri fattura sul peso reale.
+   * Le nostre misure di magazzino danno spesso un volumetrico più alto, e la
+   * riga usciva «da verificare» perché il vettore chiedeva MENO del previsto:
+   * ARMANETTI, MADEL e altri tre sulla fattura 2728/TP di settembre, che
+   * l'amministrazione aveva già verificato come corrette (16/10/2026).
+   * Se rifacendo il conto sul peso reale l'importo torna, la riga è in linea e
+   * l'avvertenza dice quanto avrebbe potuto costare.
+   */
+  const misureNostre = ["Misure della bolla", "Misure di magazzino", "Volume della bolla"].includes(fisici.fonte);
+  const volumeDelVettore = Number(riga.dettaglio.volumeMc) > 0 || (riga.pesoVolumetrico ?? 0) > 0;
+  const calcoloReale = valutabile && clsPiena.scostamento != null && clsPiena.scostamento < -SOGLIE_DEFAULT.verifica &&
+    calcoloPieno.pesoApplicato === "volumetrico" && misureNostre && !volumeDelVettore
+    ? calcolaCostoAtteso({ ...fisici.dati, misureColli: undefined, volumeMc: null, lunghezzaCm: undefined, larghezzaCm: undefined, altezzaCm: undefined }, listino)
+    : null;
+  const clsReale = calcoloReale ? classifica(riga.totale!, calcoloReale.totale, SOGLIE_DEFAULT) : null;
+  const volumetricoNonApplicato = clsReale?.esito === "in_linea";
+  const calcolo = volumetricoNonApplicato ? calcoloReale! : calcoloPieno;
+  const clsCalcolata = volumetricoNonApplicato ? clsReale! : clsPiena;
+  const notaVolumetrico = volumetricoNonApplicato
+    ? [`Il vettore ha fatturato sul peso reale (${calcoloReale!.pesoTassabile} kg) e non sul volumetrico delle nostre misure (${calcoloPieno.pesoVolumetrico} kg, ${calcoloPieno.totale.toFixed(2)} €): differenza a nostro favore, nessuna azione.`]
+    : [];
   // Senza bolla il peso viene dalla sola fattura: un importo che coincide non
   // dimostra niente, quindi "in linea" non si dichiara. Una deviazione invece
   // resta visibile (da verificare / anomalia): il segnale vale comunque.
@@ -471,7 +497,7 @@ export async function calcolaControlloRiga(
       atteso_dettaglio: calcolo.supplementi,
       scostamento: cls.scostamento,
       esito: cls.esito,
-      avvertenze: [...calcolo.avvertenze, ...fisici.note, ...noteOversized, `Fonte peso volumetrico: ${fisici.fonte}.`,
+      avvertenze: [...notaVolumetrico, ...calcolo.avvertenze, ...fisici.note, ...noteOversized, `Fonte peso volumetrico: ${fisici.fonte}.`,
         ...(!provincia ? ["Provincia assente: applicata la zona predefinita del vettore, da verificare."] : []),
         ...(calcolo.pesoTassabile <= 0 ? ["Peso assente: inserire il peso della spedizione."] : []),
         ...(riga.totale == null ? ["Importo fatturato assente."] : []),

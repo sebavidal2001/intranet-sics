@@ -79,6 +79,9 @@ describe("confronto fra ragioni sociali troncate", () => {
     ["AIGNEP SPA (BS ) B", "AIGNEP spa"],
     ["MEC FLUID 2 SRL (V", "MEC FLUID 2 srl"],
     ["ITALGOMMA SRL (E9)", "ITALGOMMA srl"],
+    // Trading Post, fattura 2728/TP di settembre 2026
+    ["AGRAL SRL BRESCIA BS", "ARGAL srl"],
+    ["SAS SINTERIZZ SALA BOL", "SAS SINTERIZZATI srl"],
   ])("«%s» e «%s» sono la stessa azienda", (fattura, gestionale) => {
     expect(nomiCompatibili(fattura, gestionale)).toBe(true);
   });
@@ -86,6 +89,10 @@ describe("confronto fra ragioni sociali troncate", () => {
   it("non aggancia aziende diverse", () => {
     expect(nomiCompatibili("AIGNEP SPA", "AIREX SRL")).toBe(false);
     expect(nomiCompatibili("ATLAS FILTRI", "ATLANTA")).toBe(false);
+    // Una lettera diversa non è una trasposizione, e le parole corte non contano.
+    expect(nomiCompatibili("ROSSI SRL", "ROSSO SRL")).toBe(false);
+    expect(nomiCompatibili("ABC SRL", "ACB SRL")).toBe(false);
+    expect(nomiCompatibili("G.T. COMIS spa", "AGRAL SRL BRESCIA BS")).toBe(false);
   });
 
   it("i nomi troppo corti non bastano: meglio nessun aggancio che uno sbagliato", () => {

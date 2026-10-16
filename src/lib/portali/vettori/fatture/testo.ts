@@ -66,7 +66,9 @@ export function percentualeIt(v: string | null | undefined): number | null {
  */
 export function normalizzaRiferimento(v: string | null | undefined): string | null {
   if (!v) return null;
-  const pulito = String(v).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // «1587/00»: Trading Post accoda il progressivo della bolla. Con i separatori
+  // tolti diventava «158700» e la BF 1587 non si trovava più (fattura 2728/TP).
+  const pulito = String(v).trim().replace(/\/0+$/, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!pulito) return null;
   const senzaZeri = pulito.replace(/^0+/, "");
   if (!senzaZeri) return null; // era tutto zeri: segnaposto, non riferimento

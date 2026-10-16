@@ -80,3 +80,23 @@ describe("volume degli Excel collegato al controllo", () => {
     });
   });
 });
+
+describe("misure di magazzino su una parte dei colli", () => {
+  const uscita: RigaFattura = { ...riga, direzione: "uscita", riferimento: "2631", colli: 2, peso: 27 };
+  const sped = { colli: 2, peso: 26.5 } as Parameters<typeof datiFisici>[1];
+  const unCollo = [{ quantita: 1, lunghezzaCm: 34, larghezzaCm: 28, altezzaCm: 18, pesoRealeKg: 6.5 }];
+
+  it("non usa peso e colli di misure incomplete (BC 2631)", () => {
+    const { dati, note } = datiFisici(uscita, sped, undefined, [], 300, unCollo);
+    expect(dati.pesoReale).toBe(26.5);
+    expect(dati.colli).toBe(2);
+    expect(note.join(" ")).toMatch(/su 1 colli dei 2/);
+  });
+
+  it("le usa quando coprono tutti i colli", () => {
+    const due = [{ ...unCollo[0], quantita: 2, pesoRealeKg: 13 }];
+    const { dati, fonte } = datiFisici(uscita, sped, undefined, [], 300, due);
+    expect(fonte).toBe("Misure della bolla");
+    expect(dati.pesoReale).toBe(13);
+  });
+});

@@ -341,7 +341,25 @@ export function nomiCompatibili(
 
   // 2. Una parola significativa in comune.
   const lunghe = new Set(x.filter((p) => p.length >= 4));
-  return y.some((p) => p.length >= 4 && lunghe.has(p));
+  if (y.some((p) => p.length >= 4 && lunghe.has(p))) return true;
+
+  // 3. La stessa parola scritta male dal vettore, come la scrive davvero
+  //    Trading Post (fattura 2728/TP, settembre 2026): troncata a dieci
+  //    caratteri («SINTERIZZ» per SINTERIZZATI) o con due lettere vicine
+  //    invertite («AGRAL» per ARGAL). Solo parole di almeno cinque lettere:
+  //    sotto, troppe aziende diverse si somigliano.
+  return x.some((p) => y.some((q) => paroleSimili(p, q)));
+}
+
+/** Una parola è il troncamento dell'altra, o la stessa con due lettere vicine scambiate. */
+function paroleSimili(a: string, b: string): boolean {
+  if (a.length < 5 || b.length < 5) return false;
+  if (a.startsWith(b) || b.startsWith(a)) return true;
+  if (a.length !== b.length) return false;
+  const diverse: number[] = [];
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diverse.push(i);
+  return diverse.length === 2 && diverse[1] === diverse[0] + 1 &&
+    a[diverse[0]] === b[diverse[1]] && a[diverse[1]] === b[diverse[0]];
 }
 
 export type QualitaAbbinamento = "numero" | "assistito" | "nessuno";
