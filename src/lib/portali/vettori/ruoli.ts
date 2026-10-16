@@ -13,6 +13,7 @@ export const VETTORI_RUOLI = {
   amministrazione: "amministrazione",
   magazzino: "magazzino",
   direzione: "direzione",
+  listini: "listini",
 } as const;
 
 export type VettoriRuoloSlug = (typeof VETTORI_RUOLI)[keyof typeof VETTORI_RUOLI];
@@ -58,13 +59,34 @@ export function vedeImporti(ctx: VettoriContext): boolean {
   if (ctx.livello === "admin" || ctx.livello === "superadmin") return true;
   return (
     ctx.ruoli.includes(VETTORI_RUOLI.amministrazione) ||
-    ctx.ruoli.includes(VETTORI_RUOLI.direzione)
+    ctx.ruoli.includes(VETTORI_RUOLI.direzione) ||
+    ctx.ruoli.includes(VETTORI_RUOLI.listini)
   );
 }
 
-/** Può modificare listini, decidere anomalie e chiudere i mesi. */
+/** Può caricare fatture, decidere anomalie e chiudere i mesi. */
 export function puoGestire(ctx: VettoriContext): boolean {
   return haRuoloFunzionale(ctx, [VETTORI_RUOLI.amministrazione]);
+}
+
+/** Vede la pagina Listini: l'amministrazione in consultazione, chi li gestisce per modificarli. */
+export function vedeListini(ctx: VettoriContext): boolean {
+  return puoGestire(ctx) || ctx.ruoli.includes(VETTORI_RUOLI.listini);
+}
+
+/**
+ * Può cambiare tariffe, supplementi e percentuali carburante.
+ *
+ * Volutamente NON passa da `haRuoloFunzionale`: lì il livello «admin» del
+ * portale apre tutto, e l'amministrazione (16/10/2026) ha chiesto che i listini
+ * li tocchi solo chi tiene i rapporti con i vettori, per non creare confusione.
+ * Resta il superadmin, per non lasciare il portale senza nessuno che possa
+ * correggere un listino se quella persona manca.
+ * Il carburante letto dalle fatture al momento dell'acquisizione non passa di
+ * qui: è un dato del documento, non una scelta.
+ */
+export function puoModificareListini(ctx: VettoriContext): boolean {
+  return ctx.livello === "superadmin" || ctx.ruoli.includes(VETTORI_RUOLI.listini);
 }
 
 /** Può registrare e misurare le bolle a magazzino. */

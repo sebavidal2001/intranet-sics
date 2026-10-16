@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireVettori } from "@/lib/portali/vettori/api-guard";
-import { VETTORI_RUOLI } from "@/lib/portali/vettori/ruoli";
+import { puoModificareListini } from "@/lib/portali/vettori/ruoli";
 import { codiceSupplemento, NuovoSupplemento } from "@/lib/portali/vettori/listini-config";
 import { logError } from "@/lib/logger";
 
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  * versione del listino; questa è l'unica strada per una voce nuova.
  */
 export async function POST(request: NextRequest) {
-  const guard = await requireVettori({ ruoli: [VETTORI_RUOLI.amministrazione] });
+  const guard = await requireVettori({ consenti: puoModificareListini });
   if (!guard.ok) return guard.response;
 
   const parsed = NuovoSupplemento.safeParse(await request.json().catch(() => null));
@@ -47,7 +47,7 @@ const Rimozione = z.object({ listino_id: z.string().uuid(), codice: z.string().m
 
 /** Toglie un supplemento a periodo (le voci permanenti del listino restano). */
 export async function DELETE(request: NextRequest) {
-  const guard = await requireVettori({ ruoli: [VETTORI_RUOLI.amministrazione] });
+  const guard = await requireVettori({ consenti: puoModificareListini });
   if (!guard.ok) return guard.response;
 
   const parsed = Rimozione.safeParse(await request.json().catch(() => null));

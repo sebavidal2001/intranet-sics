@@ -6,21 +6,28 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/vettori/bolle" }));
 
 describe("menu del portale vettori", () => {
   it("segue la giornata dell'operatore, come chiesto dall'amministrazione", () => {
-    render(<VettoriSidebar livello="admin" profile={null} ruoli={[]} puoGestire puoRegistrareArrivi vedeImporti />);
+    render(<VettoriSidebar livello="admin" profile={null} ruoli={[]} puoGestire puoRegistrareArrivi vedeImporti vedeListini />);
     expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
       "Simulazione", "Bolle", "Spedizioni", "Fatture", "Anomalie", "Analisi", "Listini",
     ]);
   });
 
   it("il magazzino vede solo simulazione, bolle e analisi", () => {
-    render(<VettoriSidebar livello="viewer" profile={null} ruoli={[]} puoGestire={false} puoRegistrareArrivi vedeImporti={false} />);
+    render(<VettoriSidebar livello="viewer" profile={null} ruoli={[]} puoGestire={false} puoRegistrareArrivi vedeImporti={false} vedeListini={false} />);
     expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual(["Simulazione", "Bolle", "Analisi"]);
   });
 
   it("la direzione vede Spedizioni ma non le pagine riservate all'amministrazione", () => {
-    render(<VettoriSidebar livello="viewer" profile={null} ruoli={["direzione"]} puoGestire={false} puoRegistrareArrivi={false} vedeImporti />);
+    render(<VettoriSidebar livello="viewer" profile={null} ruoli={["direzione"]} puoGestire={false} puoRegistrareArrivi={false} vedeImporti vedeListini={false} />);
     expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
       "Simulazione", "Spedizioni", "Analisi",
+    ]);
+  });
+
+  it("chi gestisce i listini vede Listini e Analisi ma non fatture e anomalie", () => {
+    render(<VettoriSidebar livello="viewer" profile={null} ruoli={["listini"]} puoGestire={false} puoRegistrareArrivi={false} vedeImporti vedeListini />);
+    expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Simulazione", "Spedizioni", "Analisi", "Listini",
     ]);
   });
 });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireVettori } from "@/lib/portali/vettori/api-guard";
-import { VETTORI_RUOLI } from "@/lib/portali/vettori/ruoli";
+import { puoModificareListini } from "@/lib/portali/vettori/ruoli";
 import { riepilogoListini } from "@/lib/portali/vettori/letture";
 import { logError } from "@/lib/logger";
 
@@ -31,7 +31,7 @@ const Body = z.object({
  */
 export async function PUT(request: NextRequest) {
   try {
-    const guard = await requireVettori({ ruoli: [VETTORI_RUOLI.amministrazione] });
+    const guard = await requireVettori({ consenti: puoModificareListini });
     if (!guard.ok) return guard.response;
 
     const parsed = Body.safeParse(await request.json());

@@ -14,6 +14,9 @@ import { getVettoriContext, haRuoloFunzionale, type VettoriContext } from "./ruo
  *
  * Con ruolo funzionale richiesto:
  *   const guard = await requireVettori({ ruoli: ["amministrazione"] });
+ *
+ * Con una regola che non segue la gerarchia dei livelli (es. i listini):
+ *   const guard = await requireVettori({ consenti: puoModificareListini });
  */
 export type VettoriGuardResult =
   | { ok: true; user: { id: string }; ctx: VettoriContext }
@@ -22,6 +25,7 @@ export type VettoriGuardResult =
 export async function requireVettori(opts?: {
   minLivello?: "viewer" | "exporter" | "admin";
   ruoli?: readonly string[];
+  consenti?: (ctx: VettoriContext) => boolean;
 }): Promise<VettoriGuardResult> {
   const supabase = await createClient();
   const {
@@ -49,7 +53,10 @@ export async function requireVettori(opts?: {
       response: NextResponse.json({ error: "Accesso negato" }, { status: 403 }),
     };
   }
-  if (opts?.ruoli && !haRuoloFunzionale(ctx, opts.ruoli)) {
+  if (
+    (opts?.ruoli && !haRuoloFunzionale(ctx, opts.ruoli)) ||
+    (opts?.consenti && !opts.consenti(ctx))
+  ) {
     return {
       ok: false,
       response: NextResponse.json(

@@ -6,6 +6,7 @@ import {
   puoGestire,
   puoRegistrareArrivi,
   vedeImporti,
+  vedeListini,
 } from "@/lib/portali/vettori/ruoli";
 
 /**
@@ -38,6 +39,7 @@ export default async function PortaleVettoriLayout({
         puoGestire={puoGestire(ctx)}
         puoRegistrareArrivi={puoRegistrareArrivi(ctx)}
         vedeImporti={vedeImporti(ctx)}
+        vedeListini={vedeListini(ctx)}
       />
       <main className="flex-1 overflow-auto p-6">{children}</main>
     </div>

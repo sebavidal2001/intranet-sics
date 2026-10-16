@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Fuel, Loader2, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ExternalLink, Fuel, Loader2, Lock, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ListinoRiepilogo } from "@/lib/portali/vettori/letture";
 import { carburanteDatato, carburanteVigente } from "@/lib/portali/vettori/carburante";
@@ -16,6 +16,10 @@ interface Props {
   iniziali: ListinoRiepilogo[];
   anno: number;
   mese: number;
+  /** Tariffe, supplementi e carburante: solo chi tiene i rapporti con i vettori. */
+  modificabile: boolean;
+  /** Riaddebito ai clienti e mail di contestazione restano all'amministrazione. */
+  gestione: boolean;
 }
 
 const MESI = [
@@ -28,6 +32,22 @@ const TIPO_CALCOLO: Record<string, string> = {
   per_collo: "a collo",
   per_kg: "a chilogrammo",
   percentuale_nolo: "percentuale sul nolo",
+};
+
+/**
+ * Dove si legge la percentuale del mese, per vettore.
+ *
+ * FedEx la pubblica sul sito a inizio mese ma il sito rifiuta le richieste che
+ * non vengono da un browser (08/10/2026): non la si può leggere dal server, la
+ * si apre e la si copia. GLS la stampa in fattura e si aggiorna da sola
+ * all'acquisizione: si inserisce qui solo se serve prima.
+ */
+const FONTE_CARBURANTE: Record<string, { url?: string; testo: string }> = {
+  fedex: {
+    url: "https://www.fedex.com/it-it/shipping/surcharges.html",
+    testo: "A inizio mese: apri la pagina FedEx, sezione «nazionale», e copia la percentuale del mese.",
+  },
+  gls: { testo: "Si aggiorna da sola quando si carica la fattura di fine mese." },
 };
 
 const pct = (n: number | null | undefined) =>
@@ -49,7 +69,7 @@ function quandoSiApplica(s: { condizione: string | null; soglia_kg_da?: number |
   return condizione === "sempre" ? soglie : `${condizione}, ${soglie}`;
 }
 
-export function ListiniView({ iniziali, anno, mese }: Props) {
+export function ListiniView({ iniziali, anno, mese, modificabile, gestione }: Props) {
   const [listini, setListini] = useState(iniziali);
   useEffect(() => setListini(iniziali), [iniziali]);
   const [errore, setErrore] = useState<string | null>(null);
@@ -127,6 +147,17 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
         </p>
       </header>
 
+      {!modificabile && (
+        <div className="mb-5 rounded-xl border border-border bg-bg-page px-5 py-3 flex items-start gap-2.5">
+          <Lock className="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
+          <p className="text-xs text-text-muted leading-snug max-w-3xl">
+            Consultazione. Tariffe, supplementi e percentuali carburante li aggiorna chi tiene
+            i rapporti con i vettori (ruolo «Listini»), così le modifiche passano da una persona
+            sola. Il carburante stampato sulle fatture si salva comunque da solo quando le acquisisci.
+          </p>
+        </div>
+      )}
+
       {/* ---------------------------- carburante ---------------------------- */}
       <section className="rounded-xl border border-border bg-bg overflow-hidden mb-6">
         <div className="px-5 py-3 border-b border-border flex items-center gap-2 flex-wrap">
@@ -192,6 +223,7 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
         <div className="divide-y divide-border/60">
           {nostri.map((l) => {
             const corrente = carburanteVigente(l.carburante, annoScelto, meseScelto);
+            const fonte = FONTE_CARBURANTE[l.vettore.codice];
             return (
               <div
                 key={l.vettore.codice}
@@ -205,7 +237,19 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
                       : l.vettore.codice === "trading_post" ? "Nessun fuel mensile: addizionale nei supplementi" : "non inserita"}
                   </p>
                 </div>
+                {modificabile && (
                 <div className="flex items-center gap-2 flex-1 justify-end">
+                  {fonte?.url && (
+                    <a
+                      href={fonte.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs text-primary hover:bg-bg-page"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Apri pagina {l.vettore.nome}
+                    </a>
+                  )}
                   <input
                     inputMode="decimal"
                     value={valori[l.vettore.codice] ?? ""}
@@ -230,6 +274,10 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
                     {corrente ? "Aggiorna" : "Salva"}
                   </Button>
                 </div>
+                )}
+                {fonte && (
+                  <p className="w-full text-[11px] text-text-muted -mt-1">{fonte.testo}</p>
+                )}
                 <div className="w-full flex flex-wrap gap-1.5">
                   {l.carburante.slice(0, 8).map((c) => (
                     <span
@@ -271,16 +319,18 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
         )}
       </section>
 
-      <RiaddebitoImpostazioni />
+      {gestione && <RiaddebitoImpostazioni />}
 
       {/* ------------------------------ listini ----------------------------- */}
       <div className="space-y-4">
         {nostri.map((l) => (
-          <Scheda key={`${l.vettore.codice}-${l.listino?.id}`} l={l} />
+          <Scheda key={`${l.vettore.codice}-${l.listino?.id}`} l={l} modificabile={modificabile} />
         ))}
       </div>
 
-      <MailImpostazioni vettori={nostri.map((l) => ({ id: l.vettore.id, nome: l.vettore.nome }))} />
+      {gestione && (
+        <MailImpostazioni vettori={nostri.map((l) => ({ id: l.vettore.id, nome: l.vettore.nome }))} />
+      )}
       {altri.length > 0 && (
         <section className="mt-6 rounded-xl border border-border bg-bg px-5 py-4">
           <h2 className="font-tenorite font-bold text-sm text-text mb-1">
@@ -297,7 +347,7 @@ export function ListiniView({ iniziali, anno, mese }: Props) {
   );
 }
 
-function Scheda({ l }: { l: ListinoRiepilogo }) {
+function Scheda({ l, modificabile }: { l: ListinoRiepilogo; modificabile: boolean }) {
   const v = l.vettore;
   return (
     <section className="rounded-xl border border-border bg-bg overflow-hidden">
@@ -312,8 +362,8 @@ function Scheda({ l }: { l: ListinoRiepilogo }) {
         </div>
       </div>
 
-      <ListinoEditor l={l} />
-      <SupplementoPeriodo l={l} />
+      {modificabile && <ListinoEditor l={l} />}
+      {modificabile && <SupplementoPeriodo l={l} />}
       <div className="px-5 py-4 grid gap-4 md:grid-cols-2">
         <div>
           <p className="text-[11px] uppercase tracking-wider text-text-muted font-semibold mb-1.5">

@@ -29,9 +29,11 @@ interface VettoriSidebarProps {
   puoGestire: boolean
   puoRegistrareArrivi: boolean
   vedeImporti: boolean
+  /** Listini: l'amministrazione li consulta, chi tiene i rapporti coi vettori li modifica. */
+  vedeListini: boolean
 }
 
-type Visibilita = "tutti" | "banco" | "importi" | "gestione";
+type Visibilita = "tutti" | "banco" | "importi" | "gestione" | "listini";
 
 /**
  * L'ordine segue la giornata dell'operatore, come l'ha descritta
@@ -46,7 +48,7 @@ const VOCI: ReadonlyArray<{ name: string; url: string; icon: typeof Calculator; 
   { name: "Fatture", url: "/vettori/fatture", icon: FileText, visibile: "gestione" },
   { name: "Anomalie", url: "/vettori/anomalie", icon: TriangleAlert, visibile: "gestione" },
   { name: "Analisi", url: "/vettori/analisi", icon: BarChart3, visibile: "tutti" },
-  { name: "Listini", url: "/vettori/listini", icon: Settings, visibile: "gestione" },
+  { name: "Listini", url: "/vettori/listini", icon: Settings, visibile: "listini" },
 ];
 
 export function VettoriSidebar({
@@ -55,6 +57,7 @@ export function VettoriSidebar({
   puoGestire,
   puoRegistrareArrivi,
   vedeImporti,
+  vedeListini,
 }: VettoriSidebarProps) {
   const pathname = usePathname()
 
@@ -64,7 +67,8 @@ export function VettoriSidebar({
     visibile === "tutti" ||
     (visibile === "banco" && puoRegistrareArrivi) ||
     (visibile === "importi" && vedeImporti) ||
-    (visibile === "gestione" && puoGestire)
+    (visibile === "gestione" && puoGestire) ||
+    (visibile === "listini" && vedeListini)
   )
 
   return (

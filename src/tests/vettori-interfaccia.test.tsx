@@ -23,7 +23,7 @@ describe("gestione listini", () => {
   it("mostra il fuel ereditato e salva zero senza alterare il mese originale", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ listini: [listino] }) });
     vi.stubGlobal("fetch", fetchMock);
-    render(<ListiniView iniziali={[listino]} anno={2026} mese={9} />);
+    render(<ListiniView iniziali={[listino]} anno={2026} mese={9} modificabile gestione />);
     expect(screen.getByText(/in vigore: 13% · da luglio 2026/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Percentuale carburante GLS"), { target: { value: "0" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiorna" }));
@@ -36,7 +36,7 @@ describe("gestione listini", () => {
   it("mantiene le tariffe digitate dopo un errore e invia una nuova versione", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, json: async () => ({ error: "Ricaricare il listino" }) });
     vi.stubGlobal("fetch", fetchMock);
-    render(<ListiniView iniziali={[listino]} anno={2026} mese={9} />);
+    render(<ListiniView iniziali={[listino]} anno={2026} mese={9} modificabile gestione />);
     fireEvent.click(screen.getByRole("button", { name: "Modifica tariffe" }));
     fireEvent.change(screen.getByLabelText("Italia, fascia 1, importo"), { target: { value: "9.5" } });
     fireEvent.click(screen.getByRole("button", { name: "Salva nuova versione" }));
@@ -47,5 +47,21 @@ describe("gestione listini", () => {
     );
     expect((screen.getByLabelText("Italia, fascia 1, importo") as HTMLInputElement).value).toBe("9.5");
     expect(JSON.parse(String(chiamata(fetchMock, "/listini")?.[1]?.body)).fasce[0].importo).toBe(9.5);
+  });
+  it("in consultazione non mostra campi né pulsanti di modifica", () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    render(<ListiniView iniziali={[listino]} anno={2026} mese={9} modificabile={false} gestione />);
+    expect(screen.getByText(/Consultazione\./)).toBeTruthy();
+    expect(screen.queryByLabelText("Percentuale carburante GLS")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Modifica tariffe" })).toBeNull();
+    expect(screen.getByText(/in vigore: 13% · da luglio 2026/)).toBeTruthy();
+  });
+  it("per FedEx porta alla pagina del sito da cui copiare la percentuale", () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const fedex = { ...listino, vettore: { ...listino.vettore, codice: "fedex", nome: "FedEx" } };
+    render(<ListiniView iniziali={[fedex]} anno={2026} mese={10} modificabile gestione={false} />);
+    const link = screen.getByRole("link", { name: /Apri pagina FedEx/ }) as HTMLAnchorElement;
+    expect(link.href).toContain("fedex.com/it-it/shipping/surcharges");
+    expect(link.target).toBe("_blank");
   });
 });
