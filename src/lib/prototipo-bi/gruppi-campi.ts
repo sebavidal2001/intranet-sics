@@ -125,6 +125,8 @@ export const DATASET_DI_METRICA: Partial<Record<string, string>> = {
   acquisti_righe: "acquisti",
   puntualita_fornitori: "acquisti",
   ritardo_medio_fornitori: "acquisti",
+  ritardo_consegna_fornitori: "acquisti",
+  scorta_minima: "acquisti",
   giorni_consegna_fornitori: "acquisti",
   acquisti_da_sollecitare: "acquisti",
   ritardo_da_sollecitare: "acquisti",

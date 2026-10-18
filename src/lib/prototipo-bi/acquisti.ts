@@ -48,6 +48,11 @@ export interface RigaAcquisto {
   rigaEvasa: boolean;
   chiusaForzata: boolean;
   primoArrivo: string | null;
+  /**
+   * Scorta minima dell'articolo nel gestionale, al giorno dell'estrazione
+   * (migration 156). null = non impostata, o vista vecchia senza la colonna.
+   */
+  scortaMinima?: number | null;
 }
 
 /** Data a cui il fornitore si e' impegnato. */
@@ -149,6 +154,7 @@ export function daVista(g: Grezza): RigaAcquisto {
     rigaEvasa: g.riga_evasa === true,
     chiusaForzata: g.chiusa_forzata === true,
     primoArrivo: dataOpz(g.primo_arrivo),
+    scortaMinima: g.scorta_minima == null || num(g.scorta_minima) <= 0 ? null : num(g.scorta_minima),
   };
 }
 
@@ -408,6 +414,8 @@ export function comeFatti(righe: RigaAcquisto[], oggi: string): RigaFatto[] {
       giorniConsegna: r.primoArrivo ? giorniFra(r.dataOrdine, r.primoArrivo) : null,
       giorniRitardoAperto: p && scaduta(r, oggi) ? giorniFra(p, oggi) : null,
       giorniRitardo: p && r.primoArrivo && puntuale(r) === false ? giorniFra(p, r.primoArrivo) : null,
+      giorniScostamento: p && r.primoArrivo ? giorniFra(p, r.primoArrivo) : null,
+      scortaMinima: r.scortaMinima ?? null,
     };
   });
 }

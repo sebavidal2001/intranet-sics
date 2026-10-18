@@ -7,7 +7,7 @@ function riga(p: Partial<RigaAcquisto> & { dataOrdine: string }): RigaAcquisto {
   return {
     idRiga: 1, profilo: "OF", numeroOrdine: 1, codiceFornitore: "F", fornitore: "COLUMBUS", buyerUtente: "x", buyer: "X",
     articolo: "A", descrizione: "", gruppoArticoli: "S", categoria: "-", businessUnit: "-", quantita: 10, qtaArrivata: 10, valore: 100, dataPrevista: null,
-    dataConfermata: "2026-08-10", rigaEvasa: true, chiusaForzata: false, primoArrivo: "2026-08-05", ...p,
+    dataConfermata: "2026-08-10", rigaEvasa: true, chiusaForzata: false, primoArrivo: "2026-08-05", scortaMinima: null, ...p,
   };
 }
 
@@ -42,6 +42,53 @@ describe("ritardo medio degli acquisti", () => {
     expect(esegui({ metrica: "ritardo_da_sollecitare" }, S).totale).toBe(20);
     const per = esegui({ metrica: "ritardo_da_sollecitare", raggruppa: ["documento"] }, S);
     expect(per.righe.find((x) => x.etichetta.includes(" 1/"))?.valore).toBe(10);
+  });
+});
+
+function snapshot(righe: RigaAcquisto[]): Snapshot {
+  return {
+    generatoIl: "", runCorrente: null, runRicevutoIl: null, dataMassima: "2026-09-24", dataMinima: "2026-01-01", conteggi: {},
+    dataset: {
+      ordinato: [], fatturato: [], consegnato: [], portafoglio: [], preventivi_aperti: [], controllo_banco: [], consegnato_futuro_per_mese: [],
+      acquisti: comeFatti(righe, "2026-09-25"),
+    },
+  } as unknown as Snapshot;
+}
+
+describe("ritardo di consegna sulla data confermata", () => {
+  it("media con segno su tutte le righe arrivate: gli anticipi contano in negativo", () => {
+    const S = snapshot([
+      riga({ dataOrdine: "2026-07-01" }), // 5 giorni prima del confermato: -5
+      riga({ dataOrdine: "2026-07-02", primoArrivo: "2026-08-20" }), // +10
+      riga({ dataOrdine: "2026-07-03", primoArrivo: "2026-08-10" }), // il giorno promesso: 0
+      riga({ dataOrdine: "2026-07-04", rigaEvasa: false, qtaArrivata: 0, primoArrivo: null }), // non arrivata: non conta
+    ]);
+    expect(esegui({ metrica: "ritardo_consegna_fornitori" }, S).totale).toBe(1.67); // (-5 + 10 + 0) / 3, arrotondato dal motore
+  });
+
+  it("parte dalla data confermata e ripiega sulla prevista solo se manca", () => {
+    const S = snapshot([
+      riga({ dataOrdine: "2026-07-01", dataPrevista: "2026-08-01", dataConfermata: "2026-08-10", primoArrivo: "2026-08-12" }), // +2, non +11
+      riga({ dataOrdine: "2026-07-02", dataPrevista: "2026-08-01", dataConfermata: null, primoArrivo: "2026-08-05" }), // +4
+    ]);
+    expect(esegui({ metrica: "ritardo_consegna_fornitori" }, S).totale).toBe(3);
+  });
+
+  it("l'etichetta della misura delle righe scadute e' accorciata", async () => {
+    const { CATALOGO } = await import("@/lib/prototipo-bi/semantico");
+    expect(CATALOGO.ritardo_da_sollecitare.etichetta).toBe("Giorni di ritardo");
+  });
+});
+
+describe("scorta minima sulle righe d'acquisto", () => {
+  it("per articolo vale la scorta, non la somma sulle righe d'ordine", () => {
+    const S = snapshot([
+      riga({ dataOrdine: "2026-07-01", articolo: "A", scortaMinima: 50 }),
+      riga({ dataOrdine: "2026-07-02", articolo: "A", scortaMinima: 50 }),
+      riga({ dataOrdine: "2026-07-03", articolo: "B", scortaMinima: null }),
+    ]);
+    const per = esegui({ metrica: "scorta_minima", raggruppa: ["codice_articolo"] }, S);
+    expect(per.righe.find((x) => x.etichetta.startsWith("A"))?.valore).toBe(50);
   });
 });
 

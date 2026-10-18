@@ -11,8 +11,10 @@
  * Uso:
  *   node scripts/bi-ingest-acquisti.mjs --file=<path.csv> [--run-id=<id>] [--dry-run] [--batch=<n>]
  *
- * Tracciato: 24 colonne senza intestazione, nell'ordine di
- * scripts/bi-bridge/query/ACQUISTI.sql (vedi COLONNE qui sotto).
+ * Tracciato: 25 colonne senza intestazione, nell'ordine di
+ * scripts/bi-bridge/query/ACQUISTI.sql (vedi COLONNE qui sotto). Si accetta
+ * anche il tracciato a 24 (senza scorta_minima, migration 156): la query sul
+ * server del gestionale si aggiorna a mano e puo' arrivare dopo il deploy.
  *
  * Exit code: 0 riuscito, 1 fallito. Il tentativo resta in bi.acquisti_ingest.
  */
@@ -59,7 +61,10 @@ const COLONNE = [
   "fornitore", "buyer_utente", "buyer", "codice_articolo", "descrizione", "gruppo_articoli",
   "quantita", "qta_evasa", "prezzo_netto", "valore", "data_prevista", "data_confermata",
   "data_richiesta", "riga_evasa", "chiusa_forzata", "primo_arrivo", "ultimo_arrivo", "qta_arrivata",
+  "scorta_minima",
 ];
+/** Il tracciato prima della scorta minima: stesse colonne, senza l'ultima. */
+const COLONNE_SENZA_SCORTA = COLONNE.length - 1;
 const PROFILI = new Set(["OF", "OFT", "OFR"]);
 
 function numero(v, colonna, numRiga) {
@@ -86,7 +91,7 @@ function flag(v) {
  * data nel campo del fornitore.
  */
 function convertiRiga(riga, numRiga) {
-  if (riga.length !== COLONNE.length) {
+  if (riga.length !== COLONNE.length && riga.length !== COLONNE_SENZA_SCORTA) {
     throw new Error(`riga ${numRiga}: ${riga.length} colonne invece di ${COLONNE.length}`);
   }
   const c = Object.fromEntries(COLONNE.map((nome, i) => [nome, riga[i]]));
@@ -124,6 +129,8 @@ function convertiRiga(riga, numRiga) {
     primo_arrivo: data(c.primo_arrivo, "primo_arrivo", numRiga),
     ultimo_arrivo: data(c.ultimo_arrivo, "ultimo_arrivo", numRiga),
     qta_arrivata: numero(c.qta_arrivata, "qta_arrivata", numRiga),
+    // Vuota o 0 = nessuna scorta impostata: NULL, non zero.
+    scorta_minima: numero(c.scorta_minima, "scorta_minima", numRiga) || null,
   };
 }
 

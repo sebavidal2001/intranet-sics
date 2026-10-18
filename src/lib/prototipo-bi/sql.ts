@@ -41,7 +41,8 @@ ORDINI DI ACQUISTO A FORNITORE — schema public, colonne SENZA virgolette:
   codice_articolo, descrizione, gruppo_articoli, quantita, qta_evasa, prezzo_netto,
   valore, data_prevista, data_confermata (promessa del fornitore), data_richiesta,
   riga_evasa, chiusa_forzata (boolean), primo_arrivo, ultimo_arrivo (DDT del
-  fornitore collegati), qta_arrivata.
+  fornitore collegati), qta_arrivata, categoria, business_unit, scorta_minima
+  (scorta minima dell'articolo nel gestionale, oggi; NULL = non impostata).
   Puntuale = primo_arrivo <= coalesce(data_confermata, data_prevista).
   Scaduta = not riga_evasa and not chiusa_forzata and qta_arrivata < quantita
   and coalesce(data_confermata, data_prevista) < current_date.

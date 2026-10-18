@@ -282,6 +282,8 @@ export const CARTELLE: Cartella[] = [
         etichetta: "Ordinato",
         descrizione: "Gli ordini a fornitore.",
         valori: ["acquisti_valore", "acquisti_quantita", "acquisti_ordini", "acquisti_righe"],
+        // La scorta e' un attributo dell'articolo, non una somma: sta fra le misure.
+        misure: ["scorta_minima"],
         // Il numero dell'ordine a fornitore porta gia' profilo e anno («OF 12/2026»).
         campi: [
           { chiave: "fornitore" },
@@ -298,7 +300,7 @@ export const CARTELLE: Cartella[] = [
         etichetta: "Consegnato",
         descrizione: "Gli arrivi della merce (DDT del fornitore): puntualità, tempi di consegna, righe da sollecitare.",
         valori: ["acquisti_da_sollecitare", "acquisti_valore_da_sollecitare"],
-        misure: ["puntualita_fornitori", "ritardo_medio_fornitori", "ritardo_da_sollecitare", "giorni_consegna_fornitori"],
+        misure: ["puntualita_fornitori", "ritardo_medio_fornitori", "ritardo_consegna_fornitori", "ritardo_da_sollecitare", "giorni_consegna_fornitori"],
         campi: [
           { chiave: "fornitore" },
           { chiave: "buyer" },
@@ -706,6 +708,16 @@ export const GRUPPI_MISURE: GruppoMisure[] = [
       {
         chiave: "ritardo_medio_fornitori",
         calcolo: "Media dei giorni di ritardo sulla data promessa, sulle sole righe arrivate in ritardo.",
+      },
+      {
+        chiave: "scorta_minima",
+        calcolo:
+          "Scorta minima dell'articolo impostata nel gestionale, oggi: per articolo è la sua scorta, su gruppi più larghi la maggiore (mai la somma).",
+      },
+      {
+        chiave: "ritardo_consegna_fornitori",
+        calcolo:
+          "Media dei giorni fra la data confermata (o la prevista) e il primo arrivo, su tutte le righe arrivate: gli anticipi contano in negativo.",
       },
       {
         chiave: "ritardo_da_sollecitare",

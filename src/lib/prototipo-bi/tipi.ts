@@ -81,6 +81,14 @@ export interface RigaFatto {
   /** Giorni di ritardo (promessa → giorno dell'estrazione) delle righe ancora aperte e scadute; null altrimenti. */
   giorniRitardoAperto?: number | null;
   /**
+   * Giorni dalla promessa al primo arrivo, CON SEGNO, su tutte le righe arrivate
+   * con una promessa: positivo = in ritardo, negativo = in anticipo, 0 = il giorno
+   * promesso. null se non ancora arrivata o senza promessa.
+   */
+  giorniScostamento?: number | null;
+  /** Scorta minima dell'articolo nel gestionale (stato di oggi); null se non impostata. */
+  scortaMinima?: number | null;
+  /**
    * Vero se la business unit non e' quella del gestionale (la riga non aveva
    * gruppo) ma quella del documento a cui appartiene. Vedi
    * `ricollocaNonAssegnate` in business-unit.ts.
@@ -433,6 +441,8 @@ export type ChiaveMetrica =
   | "puntualita_fornitori"
   | "giorni_consegna_fornitori"
   | "ritardo_medio_fornitori"
+  | "ritardo_consegna_fornitori"
+  | "scorta_minima"
   | "acquisti_da_sollecitare"
   | "ritardo_da_sollecitare"
   | "acquisti_valore_da_sollecitare"

@@ -30,8 +30,18 @@
    (arrivi parziali, chiusure forzate), quindi si ricarica l'intera finestra
    ogni notte e l'ingest sostituisce tutto dalla data minima del file in avanti.
 
+   ── SCORTA MINIMA (colonna 25, dal 18/10/2026) ─────────────────────────────
+   `dba.scorta` non ha l'articolo: si aggancia tramite l'unita' di confezione
+   (`scorta.id_unita_confezione` -> `unita_confezione.id_articolo`), come fa la
+   vista del gestionale `dba.vs_scorta_minima`. Verificato il 18/10/2026: 2.316
+   articoli con scorta minima > 0 (1.446 ordinati a fornitore dal 2025), quasi
+   tutti sul magazzino 1 (AIRFLUID). Un articolo con piu' righe (11 casi: due
+   magazzini o due confezioni) prende la scorta maggiore. Scorta di sicurezza e
+   lotto di riordino in `dba.scorta` sono sempre vuoti: non si estraggono. E' lo
+   stato di OGGI dell'anagrafica, ripetuto su ogni riga dell'articolo.
+
    Query di sola lettura. Genera un CSV UTF-8 separato da ';', senza
-   intestazione (FORMAT ASCII non la scrive): 24 colonne, verificate a valle in
+   intestazione (FORMAT ASCII non la scrive): 25 colonne, verificate a valle in
    scripts/bi-ingest-acquisti.mjs.
 */
 
@@ -61,7 +71,8 @@ SELECT
     ISNULL(r.chiude_a_forza, 'N')                        AS chiusa_forzata,
     DATEFORMAT(arr.primo_arrivo, 'YYYY-MM-DD')           AS primo_arrivo,
     DATEFORMAT(arr.ultimo_arrivo, 'YYYY-MM-DD')          AS ultimo_arrivo,
-    ISNULL(arr.qta_arrivata, 0)                          AS qta_arrivata
+    ISNULL(arr.qta_arrivata, 0)                          AS qta_arrivata,
+    sc_min.scorta_minima                                 AS scorta_minima
 
 FROM dba.documento d
   JOIN dba.riga_documento r        ON r.id_documento = d.id_documento
@@ -82,6 +93,13 @@ FROM dba.documento d
          AND rb.id_riga_doc_provenienza IS NOT NULL
        GROUP BY rb.id_riga_doc_provenienza
   ) arr ON arr.id_riga_ordine = r.id_riga_documento
+  LEFT OUTER JOIN (
+      SELECT uc.id_articolo, MAX(s.scorta_minima) AS scorta_minima
+        FROM dba.scorta s
+        JOIN dba.unita_confezione uc ON uc.id_unita_confezione = s.id_unita_confezione
+       WHERE s.scorta_minima > 0
+       GROUP BY uc.id_articolo
+  ) sc_min ON sc_min.id_articolo = a.id_articolo
 
 WHERE d.codice_profilo IN ('OF', 'OFT', 'OFR')
   AND d.data_registrazione >= '2024-01-01'

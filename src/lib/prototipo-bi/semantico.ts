@@ -511,6 +511,29 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
     unita: "giorni",
     valore: (r) => (r.giorniRitardo === null || r.giorniRitardo === undefined ? null : r.giorniRitardo),
   },
+  ritardo_consegna_fornitori: {
+    chiave: "ritardo_consegna_fornitori",
+    etichetta: "Ritardo di consegna",
+    descrizione:
+      "Giorni medi fra la data confermata dal fornitore (la prevista, se non c'è conferma) e il primo arrivo, su tutte le righe arrivate: positivo = in ritardo, negativo = in anticipo.",
+    dataset: "acquisti",
+    aggregazione: "media",
+    unita: "giorni",
+    valore: (r) => (r.giorniScostamento === null || r.giorniScostamento === undefined ? null : r.giorniScostamento),
+  },
+  // La scorta e' dell'ARTICOLO, ripetuta su ogni sua riga d'ordine: sommarla
+  // la moltiplicherebbe per il numero di righe. Il massimo per articolo e' la
+  // scorta stessa; su gruppi piu' larghi (fornitore) e' la scorta maggiore.
+  scorta_minima: {
+    chiave: "scorta_minima",
+    etichetta: "Scorta minima",
+    descrizione:
+      "Scorta minima dell'articolo impostata nel gestionale, al giorno dell'estrazione. Ha senso suddivisa per articolo; su gruppi più larghi vale la scorta maggiore.",
+    dataset: "acquisti",
+    aggregazione: "massimo",
+    unita: "numero",
+    valore: (r) => (r.scortaMinima === null || r.scortaMinima === undefined ? null : r.scortaMinima),
+  },
   giorni_consegna_fornitori: {
     chiave: "giorni_consegna_fornitori",
     etichetta: "Giorni ordine → arrivo",
@@ -531,7 +554,7 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   },
   ritardo_da_sollecitare: {
     chiave: "ritardo_da_sollecitare",
-    etichetta: "Giorni di ritardo (righe da sollecitare)",
+    etichetta: "Giorni di ritardo",
     descrizione:
       "Giorni dalla data promessa a oggi, sulle righe ancora aperte con la promessa passata. Per gruppo vale il ritardo maggiore: suddividendo per ordine e articolo è quello della singola riga, come nella tabella «Da sollecitare» del Cruscotto.",
     dataset: "acquisti",

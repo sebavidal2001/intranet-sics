@@ -687,6 +687,10 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * 8 (10/10/2026): `profilo` (tipo documento) sulle vendite e sugli acquisti,
  * `esitoVisita` e `prossimaVisita` sulle visite: una cache vecchia non li ha.
  *
+ * 11 (18/10/2026): scorta minima e scostamento con segno sulle righe di
+ * acquisto (migration 156): una cache vecchia non li ha e le due misure nuove
+ * risponderebbero vuote.
+ *
  * 10 (10/10/2026): carico di lavoro, anagrafica clienti, articoli, variazioni di
  * costo, spedizioni (dataset nuovi); condizione di pagamento e anagrafica del
  * cliente agganciate alle righe di vendita e di acquisto.
@@ -699,7 +703,7 @@ export async function costruisciSnapshot(): Promise<Snapshot> {
  * 6 (08/10/2026): `dataset.visite`, le visite dei commerciali (metrica
  * visite_numero; dimensioni cap, provincia, grado, tipo_visita).
  */
-const VERSIONE_FORMA = 10;
+const VERSIONE_FORMA = 11;
 
 // Cache in memoria per la durata del processo: evita di rileggere il file
 // JSON ad ogni richiesta durante una sessione di lavoro.
