@@ -69,7 +69,7 @@
                         "SqlFile":  "ACQUISTI.sql",
                         "OutputFile":  "acquisti_righe.csv",
                         "Dataset":  "acquisti_righe",
-                        "ExpectedColumns":  24,
+                        "ExpectedColumns":  25,
                         "Profilo":  "acquisti",
                         "HeaderPattern":  "^id_riga$"
                     },
