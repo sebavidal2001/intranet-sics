@@ -95,7 +95,7 @@ describe("dashboard con una misura personalizzata", () => {
       specs: Array<{ id: string; spec: { misura?: { nome: string } } }>;
     };
     expect(corpo.specs.find((s) => s.id.startsWith("r2"))?.spec.misura?.nome).toBe("Margine componenti");
-    expect(screen.getByText("clic Margine componenti")).toBeInTheDocument();
+    expect(await screen.findByText("clic Margine componenti")).toBeInTheDocument();
   });
 
   it("Ctrl+clic su una metrica apre i documenti", async () => {
@@ -103,7 +103,9 @@ describe("dashboard con una misura personalizzata", () => {
     render(<DashboardView dashboardIniziale={DASHBOARD} />);
     await waitFor(() => expect(spia.mock.calls.length).toBeGreaterThan(0));
 
-    fireEvent.click(screen.getByText("clic fatturato"), { ctrlKey: true });
+    // Il riquadro compare quando la risposta e' arrivata, non quando fetch e'
+    // stato chiamato: va aspettato, altrimenti sulla CI a volte non c'e' ancora.
+    fireEvent.click(await screen.findByText("clic fatturato"), { ctrlKey: true });
     await waitFor(() => expect(chiamateDettaglio(spia).length).toBeGreaterThan(0));
   });
 
@@ -112,7 +114,7 @@ describe("dashboard con una misura personalizzata", () => {
     render(<DashboardView dashboardIniziale={DASHBOARD} />);
     await waitFor(() => expect(spia.mock.calls.length).toBeGreaterThan(0));
 
-    fireEvent.click(screen.getByText("clic Margine componenti"), { ctrlKey: true });
+    fireEvent.click(await screen.findByText("clic Margine componenti"), { ctrlKey: true });
     // Si lascia il tempo a un'eventuale apertura asincrona prima di concludere.
     await new Promise((r) => setTimeout(r, 50));
     expect(chiamateDettaglio(spia)).toHaveLength(0);
