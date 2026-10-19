@@ -7,8 +7,10 @@ import type { ConfermaSimulazione } from "@/lib/portali/vettori/tipi";
 import { logError } from "@/lib/logger";
 import {
   CorpoConfermaSimulazione,
+  ETICHETTE_CONFERMA,
   type SimulazioneConfermataInput,
 } from "@/lib/portali/vettori/simulazione-conferma";
+import { rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
 
 export const dynamic = "force-dynamic";
 
@@ -127,13 +129,9 @@ export async function POST(request: NextRequest) {
     }
     const parsed = CorpoConfermaSimulazione.safeParse(corpo);
     if (!parsed.success) {
-      // Un 400 qui e' quasi sempre uno scollamento fra la risposta di /simula e
-      // questo schema, non un errore dell'operatore: va lasciato nel log.
-      logError("vettori.simulazioni", "conferma rifiutata dallo schema", parsed.error.issues.slice(0, 5));
-      return NextResponse.json(
-        { error: "Dati non validi.", dettagli: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      // Un campo dell'operatore torna col suo nome; uno scollamento fra /simula
+      // e lo schema torna come errore del programma e finisce nel log.
+      return rispostaDatiNonValidi(parsed.error, ETICHETTE_CONFERMA, "vettori.simulazioni");
     }
     const { simulazione, bolla } = parsed.data;
     const colliNeiGruppi = simulazione.gruppi.reduce(

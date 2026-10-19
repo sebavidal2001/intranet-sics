@@ -5,6 +5,16 @@ import { requireVettori } from "@/lib/portali/vettori/api-guard";
 import { puoModificareListini } from "@/lib/portali/vettori/ruoli";
 import { riepilogoListini } from "@/lib/portali/vettori/letture";
 import { logError } from "@/lib/logger";
+import { rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
+
+const ETICHETTE = {
+  vettore: "Vettore",
+  anno: "Anno",
+  mese: "Mese",
+  percentuale: "Percentuale carburante",
+  fonte: "Fonte",
+  note: "Note",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +46,7 @@ export async function PUT(request: NextRequest) {
 
     const parsed = Body.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Dati non validi", dettagli: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return rispostaDatiNonValidi(parsed.error, ETICHETTE, "vettori.carburante");
     }
     const b = parsed.data;
 

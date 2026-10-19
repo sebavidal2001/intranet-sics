@@ -6,6 +6,16 @@ import { VETTORI_RUOLI } from "@/lib/portali/vettori/ruoli";
 import { elencoAnomalie } from "@/lib/portali/vettori/letture";
 import { costruisciBozza } from "@/lib/portali/vettori/comunicazioni";
 import { logError } from "@/lib/logger";
+import { rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
+
+const ETICHETTE = {
+  vettore: "Vettore",
+  anno: "Anno",
+  mese: "Mese",
+  "destinatari.*": "Destinatario {n}",
+  "cc.*": "Copia conoscenza {n}",
+  ids: "Righe selezionate",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +43,7 @@ export async function POST(request: NextRequest) {
 
     const parsed = Body.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Dati non validi", dettagli: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return rispostaDatiNonValidi(parsed.error, ETICHETTE, "vettori.anomalie.bozza");
     }
     const b = parsed.data;
 

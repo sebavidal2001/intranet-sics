@@ -1,14 +1,19 @@
 import { z } from "zod";
+import { conPrefisso, ETICHETTE_SIMULAZIONE, type EtichetteCampi } from "@/lib/portali/vettori/dati-non-validi";
 
 /**
  * Il corpo della conferma di una simulazione (`POST .../vettori/simulazioni`).
  *
  * Sta qui e non nella route perche' deve combaciare con quello che produce
  * `POST .../vettori/simula`: la pagina rimanda indietro gli esiti cosi' come li
- * ha ricevuti. Gli schemi sono stretti di proposito, quindi ogni campo nuovo
- * nella risposta della simulazione va aggiunto anche qui, e anche all'esito
- * del test «il corpo della conferma passa lo schema del server» in
- * `vettori-simulazione.test.tsx`, che lo fa passare per questo schema.
+ * ha ricevuti.
+ *
+ * Due regole diverse. I campi che l'operatore compila (spedizione e bolla)
+ * restano stretti. Gli esiti invece sono l'archivio di cosa ha calcolato
+ * `/simula`: lo schema controlla i campi che la conferma usa e lascia passare
+ * gli altri (`passthrough`). Prima erano stretti anche loro, e ogni campo
+ * informativo aggiunto a `/simula` senza toccare questo file bloccava tutte le
+ * bolle con «Dati non validi» (8–19/10/2026, `carburanteNonAggiornato`).
  */
 const CONDIZIONI = [
   "bancale",
@@ -35,7 +40,7 @@ const VoceCalcolo = z.object({
   codice: z.string(),
   descrizione: z.string(),
   importo: z.number().finite(),
-}).strict();
+}).passthrough();
 
 const Costo = z.object({
   pesoReale: z.number().min(0),
@@ -51,7 +56,7 @@ const Costo = z.object({
   fuoriBase: z.number().min(0),
   totale: z.number().min(0),
   avvertenze: z.array(z.string()),
-}).strict();
+}).passthrough();
 
 const Riaddebito = z.object({
   importo: z.number().min(0).nullable(),
@@ -59,7 +64,7 @@ const Riaddebito = z.object({
   basePeso: z.enum(["reale", "tassabile"]),
   regola: z.string(),
   avvertenza: z.string().nullable(),
-}).strict();
+}).passthrough();
 
 const Esito = z.object({
   vettoreId: z.string().uuid(),
@@ -76,7 +81,7 @@ const Esito = z.object({
     etichetta: z.string(),
     validoDal: z.string().date(),
     validoAl: z.string().date().nullable(),
-  }).strict().nullable().optional(),
+  }).passthrough().nullable().optional(),
   calcolo: Costo.optional(),
   differenzaDalMigliore: z.number().finite().optional(),
   riaddebito: Riaddebito.optional(),
@@ -86,8 +91,8 @@ const Esito = z.object({
   carburanteNonAggiornato: z.object({
     anno: z.number().int(),
     mese: z.number().int().min(1).max(12),
-  }).strict().optional(),
-}).strict();
+  }).passthrough().optional(),
+}).passthrough();
 
 export const SimulazioneConfermata = z.object({
   direzione: z.enum(["entrata", "uscita"]).default("uscita"),
@@ -120,3 +125,13 @@ export const CorpoConfermaSimulazione = z.object({
 }).strict();
 
 export type SimulazioneConfermataInput = z.infer<typeof SimulazioneConfermata>;
+
+/** I campi della conferma che l'operatore compila, con le parole della pagina. */
+export const ETICHETTE_CONFERMA: EtichetteCampi = {
+  ...conPrefisso("simulazione", ETICHETTE_SIMULAZIONE),
+  "simulazione.riaddebitoPrevisto": "Addebito al cliente (€)",
+  "bolla.numeroRiferimento": "Numero bolla",
+  "bolla.dataDocumento": "Data documento",
+  "bolla.controparteNome": "Cliente/fornitore",
+  "bolla.controparteCodice": "Codice cliente",
+};

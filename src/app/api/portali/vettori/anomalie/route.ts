@@ -5,6 +5,9 @@ import { requireVettori } from "@/lib/portali/vettori/api-guard";
 import { VETTORI_RUOLI } from "@/lib/portali/vettori/ruoli";
 import { elencoAnomalie } from "@/lib/portali/vettori/letture";
 import { logError } from "@/lib/logger";
+import { rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
+
+const ETICHETTE = { stato: "Esito", motivazione: "Motivazione" };
 
 export const dynamic = "force-dynamic";
 
@@ -55,10 +58,7 @@ export async function PATCH(request: NextRequest) {
 
     const parsed = Decisione.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Dati non validi", dettagli: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return rispostaDatiNonValidi(parsed.error, ETICHETTE, "vettori.anomalie");
     }
     const { id, stato } = parsed.data;
     const motivazione = parsed.data.motivazione?.trim() || null;

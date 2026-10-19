@@ -8,6 +8,7 @@ import {
 } from "@/lib/portali/vettori/riaddebito";
 import { VETTORI_RUOLI } from "@/lib/portali/vettori/ruoli";
 import { logError } from "@/lib/logger";
+import { rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,26 @@ const Accordo = z.object({
   }
 });
 
+const ETICHETTE_VERSIONE = {
+  validoDal: "Valido dal",
+  basePeso: "Base del peso",
+  scaglioni: "Scaglioni",
+  "scaglioni.*.pesoDa": "Scaglione {n}, peso da",
+  "scaglioni.*.pesoA": "Scaglione {n}, peso a",
+  "scaglioni.*.importo": "Scaglione {n}, importo",
+  "scaglioni.*.nota": "Scaglione {n}, nota",
+};
+
+const ETICHETTE_ACCORDO = {
+  codiceCliente: "Codice cliente",
+  ragioneSociale: "Ragione sociale",
+  validoDal: "Valido dal",
+  validoAl: "Valido al",
+  modalita: "Modalità",
+  importo: "Importo",
+  nota: "Nota",
+};
+
 function oggi(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -100,10 +121,7 @@ export async function POST(request: NextRequest) {
     }
     const parsed = SalvataggioVersione.safeParse(corpo);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Dati non validi.", dettagli: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return rispostaDatiNonValidi(parsed.error, ETICHETTE_VERSIONE, "vettori.riaddebito");
     }
 
     const admin = createAdminClient();
@@ -148,10 +166,7 @@ export async function PUT(request: NextRequest) {
     }
     const parsed = Accordo.safeParse(corpo);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Dati non validi.", dettagli: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return rispostaDatiNonValidi(parsed.error, ETICHETTE_ACCORDO, "vettori.riaddebito");
     }
     const { id, ...accordo } = parsed.data;
     const valori = {

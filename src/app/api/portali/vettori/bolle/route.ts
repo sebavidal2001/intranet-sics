@@ -33,6 +33,15 @@ import type {
   OrigineSpedizione,
 } from "@/lib/portali/vettori/tipi";
 import { logError } from "@/lib/logger";
+import { rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
+
+const ETICHETTE_MISURA = {
+  quantita: "Quantità",
+  lunghezzaCm: "Lunghezza (cm)",
+  larghezzaCm: "Larghezza (cm)",
+  altezzaCm: "Altezza (cm)",
+  pesoRealeKg: "Peso reale (kg)",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -561,10 +570,7 @@ export async function POST(request: NextRequest) {
 
     const misura = MutazioneBollaMisura.safeParse(corpo);
     if (!misura.success) {
-      return NextResponse.json(
-        { error: "Dati non validi.", dettagli: misura.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return rispostaDatiNonValidi(misura.error, ETICHETTE_MISURA, "vettori.bolle");
     }
     return await mutaMisura(misura.data, guard.user.id);
   } catch (error) {

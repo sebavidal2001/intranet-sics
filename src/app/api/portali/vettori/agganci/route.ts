@@ -12,6 +12,7 @@ import {
   sganciaAggancio,
 } from "@/lib/portali/vettori/aggancio-ai";
 import { logError } from "@/lib/logger";
+import { rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Corpo della richiesta non valido." }, { status: 400 });
     }
     const parsed = Corpo.safeParse(corpo);
-    if (!parsed.success) return NextResponse.json({ error: "Dati non validi." }, { status: 400 });
+    if (!parsed.success) return rispostaDatiNonValidi(parsed.error, { motivo: "Motivo" }, "vettori.agganci");
     const c = parsed.data;
 
     if (c.azione === "ricalcola") {

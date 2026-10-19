@@ -4,6 +4,7 @@ import { requireVettori } from "@/lib/portali/vettori/api-guard";
 import { VETTORI_RUOLI } from "@/lib/portali/vettori/ruoli";
 import { segnaAddebitoVerificato } from "@/lib/portali/vettori/storico";
 import { logError } from "@/lib/logger";
+import { rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
     const parsed = Corpo.safeParse(corpo);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Dati non validi." }, { status: 400 });
+      return rispostaDatiNonValidi(parsed.error, {}, "vettori.spedizioni.verifica-addebito");
     }
 
     const esito = await segnaAddebitoVerificato(

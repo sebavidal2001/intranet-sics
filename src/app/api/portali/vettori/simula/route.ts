@@ -22,6 +22,7 @@ import type {
 } from "@/lib/portali/vettori/tipi";
 import { logError } from "@/lib/logger";
 import { oggiRoma } from "@/lib/portali/vettori/oggi-roma";
+import { ETICHETTE_SIMULAZIONE, rispostaDatiNonValidi } from "@/lib/portali/vettori/dati-non-validi";
 
 export const dynamic = "force-dynamic";
 
@@ -83,10 +84,7 @@ export async function POST(request: NextRequest) {
     }
     const parsed = Body.safeParse(corpo);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Dati non validi.", dettagli: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return rispostaDatiNonValidi(parsed.error, ETICHETTE_SIMULAZIONE, "vettori.simula");
     }
     const input = parsed.data;
     const colliNeiGruppi = input.gruppi.reduce((totale, gruppo) => totale + gruppo.quantita, 0);
