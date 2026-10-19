@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
-import { Heatmap } from "@/components/prototipo-bi/grafici-avanzati";
+import { Heatmap, estremiHeatmap } from "@/components/prototipo-bi/grafici-avanzati";
 import { graficiPossibili, scegliGrafico } from "@/lib/prototipo-bi/scelta-grafico";
 import type { RisultatoQuery } from "@/lib/prototipo-bi/tipi";
 
@@ -41,8 +41,16 @@ describe("incrocio di due campi troppo grande", () => {
 
   it("la mappa di calore regge centinaia di migliaia di celle (niente spread su min e max)", () => {
     // 700 × 300 = 210.000 celle: oltre il limite degli argomenti di una funzione.
+    // Si prova il calcolo degli estremi, non il disegno: rendere 210.000 celle
+    // in jsdom costava 70 s da solo e sforava i 120 s con la suite in parallelo.
     const righe = Array.from({ length: 700 }, (_, i) => `r${i}`);
     const colonne = Array.from({ length: 300 }, (_, i) => `c${i}`);
-    expect(() => render(<Heatmap righe={righe} colonne={colonne} valori={{ r0: { c0: 5 } }} />)).not.toThrow();
-  }, 120000);
+    const valori = { r0: { c0: 5 }, r699: { c299: -3 } };
+    expect(estremiHeatmap(righe, colonne, valori)).toEqual({ min: -3, max: 5, assoluto: 5 });
+  });
+
+  it("la mappa di calore si disegna con i suoi estremi", () => {
+    const { container } = render(<Heatmap righe={["a", "b"]} colonne={["x", "y"]} valori={{ a: { x: 5 } }} formato="numero" />);
+    expect(container.textContent).toContain("5");
+  });
 });

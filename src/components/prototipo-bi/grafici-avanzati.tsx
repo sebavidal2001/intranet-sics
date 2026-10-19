@@ -469,6 +469,28 @@ export function Bullet({
 // 4. HEATMAP — "dove e quando?"
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Minimo, massimo e massimo assoluto delle celle di una mappa di calore (le
+ * celle mancanti valgono 0). Ciclo e non `Math.min(...celle)`: lo spread di
+ * centinaia di migliaia di argomenti manda in errore la pagina.
+ */
+export function estremiHeatmap(
+  righe: string[],
+  colonne: string[],
+  valori: Record<string, Record<string, number>>
+): { min: number; max: number; assoluto: number } {
+  let mn = 0;
+  let mx = 0;
+  for (const r of righe) {
+    for (const c of colonne) {
+      const v = valori[r]?.[c] ?? 0;
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+  }
+  return { min: mn, max: mx, assoluto: Math.max(Math.abs(mn), Math.abs(mx)) };
+}
+
 export function Heatmap({
   righe,
   colonne,
@@ -487,20 +509,7 @@ export function Heatmap({
   onClick?: (riga: string, colonna: string) => void;
 }) {
   const { palette, imp } = useImpostazioni();
-  const { min, max, assoluto } = useMemo(() => {
-    // Ciclo e non `Math.min(...celle)`: lo spread di centinaia di migliaia di
-    // argomenti manda in errore la pagina.
-    let mn = 0;
-    let mx = 0;
-    for (const r of righe) {
-      for (const c of colonne) {
-        const v = valori[r]?.[c] ?? 0;
-        if (v < mn) mn = v;
-        if (v > mx) mx = v;
-      }
-    }
-    return { min: mn, max: mx, assoluto: Math.max(Math.abs(mn), Math.abs(mx)) };
-  }, [righe, colonne, valori]);
+  const { min, max, assoluto } = useMemo(() => estremiHeatmap(righe, colonne, valori), [righe, colonne, valori]);
 
   if (righe.length === 0 || colonne.length === 0) return <Vuoto altezza={200} />;
 
