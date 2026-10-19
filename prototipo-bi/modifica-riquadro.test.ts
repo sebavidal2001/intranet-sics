@@ -448,9 +448,17 @@ describe("misura principale", () => {
     expect(esito.invariato).toBe(true);
   });
 
+  it("verso gli acquisti la suddivisione per bu regge: e' la bu dell'articolo", () => {
+    const esito = applicaOperazioni({ ...statoIniziale(), serie: [statoIniziale().serie[0]] }, ops({ op: "imposta_misura_principale", metrica: "acquisti_valore" }), CONTESTO);
+    expect(esito.stato.serie[0].spec.metrica).toBe("acquisti_valore");
+    expect(esito.stato.serie[0].spec.raggruppa).toEqual(["bu"]);
+  });
+
   it("verso un altro dominio la suddivisione per bu non regge: errore, non un grafico vuoto", () => {
+    // Le fatture fornitore non hanno la business unit (gli acquisti si', dall'11/10:
+    // quella dell'articolo). Il dominio d'arrivo deve essere uno che la bu non ce l'ha.
     expect(() =>
-      applicaOperazioni({ ...statoIniziale(), serie: [statoIniziale().serie[0]] }, ops({ op: "imposta_misura_principale", metrica: "acquisti_valore" }), CONTESTO)
+      applicaOperazioni({ ...statoIniziale(), serie: [statoIniziale().serie[0]] }, ops({ op: "imposta_misura_principale", metrica: "fatturato_fornitore" }), CONTESTO)
     ).toThrow(/non si applica/);
   });
 });

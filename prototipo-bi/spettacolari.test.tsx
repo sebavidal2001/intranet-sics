@@ -385,8 +385,11 @@ describe("Vista Back office", () => {
       </ImpostazioniProvider>
     );
 
-    // La scheda chiede anche gli ordini a fornitore: si guarda solo il batch di query.
-    const query = () => spia.mock.calls.find(([url]) => url === "/api/bi/query");
+    // Dall'11/10 la scheda fa due batch: il carico di lavoro (documenti per
+    // utente, in `vista-carico.tsx`) e, sotto le Vendite, i preventivi. Qui si
+    // guarda quello dei preventivi, riconoscibile dalla sua metrica.
+    const query = () =>
+      spia.mock.calls.find(([url, init]) => url === "/api/bi/query" && String(init?.body).includes("preventivi_creati"));
     await waitFor(() => expect(query()).toBeDefined());
 
     const inviato = JSON.stringify(JSON.parse(String(query()?.[1]?.body)));
@@ -405,17 +408,6 @@ describe("Vista Back office", () => {
     expect(within(tabella).getByText("LUCIA RODA")).toBeInTheDocument();
   });
 
-  it("alterna volumi e quote percentuali", async () => {
-    vi.stubGlobal("fetch", mockQuery({}));
-    render(
-      <ImpostazioniProvider>
-        <VistaBackoffice anno={2026} periodo={{ anno: 2026 }} filtriSpec={[]} alternaFiltro={() => {}} filtroDi={() => null} />
-      </ImpostazioniProvider>
-    );
-    // Due grafici hanno il loro interruttore: si prova quello del carico dei preventivi.
-    await waitFor(() => expect(screen.getByText("Come si distribuisce il carico")).toBeInTheDocument());
-    const sezione = screen.getByText("Come si distribuisce il carico").closest("section")!;
-    fireEvent.click(within(sezione).getByText("Mostra quote %"));
-    expect(within(sezione).getByText("Mostra volumi")).toBeInTheDocument();
-  });
+  // L'interruttore volumi/quote del carico mensile si e' spostato con il quadro
+  // del carico in `vista-carico.tsx`: lo prova src/tests/prototipo-bi-vista-carico.test.tsx.
 });

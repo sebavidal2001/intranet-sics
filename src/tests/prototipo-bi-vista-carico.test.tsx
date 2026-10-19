@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { VistaBackoffice } from "@/components/prototipo-bi/vista-backoffice";
 import { VistaCarico } from "@/components/prototipo-bi/vista-carico";
 import type { RisultatoQuery, SpecQuery } from "@/lib/prototipo-bi/tipi";
@@ -101,9 +101,12 @@ describe("VistaCarico", () => {
     expect(screen.getAllByText("vendite").length).toBeGreaterThan(0);
     // 300 righe su 800 sono dell'utente condiviso «vendite» (37,5%): l'avviso c'è.
     expect(screen.getByText(/utenti condivisi \(vendite, segreteria/)).toBeInTheDocument();
-    // Le colonne dei tipi di documento dell'area.
-    expect(screen.getByText("Preventivi")).toBeInTheDocument();
-    expect(screen.getByText("Fatture")).toBeInTheDocument();
+    // Le colonne dei tipi di documento dell'area. Si cercano come intestazioni
+    // della tabella: le stesse parole sono anche nella legenda del mix documenti,
+    // che compare quando il grafico ha misurato il contenitore — un getByText
+    // trovava una o due copie secondo i tempi, e il test era instabile.
+    expect(screen.getByRole("button", { name: "Ordina per Preventivi" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ordina per Fatture" })).toBeInTheDocument();
     // Una sola chiamata al motore, e nessuna all'API degli acquisti per le Vendite.
     expect(f.mock.calls.filter(([u]) => u === "/api/bi/query")).toHaveLength(1);
     expect(f.mock.calls.some(([u]) => String(u).startsWith("/api/bi/acquisti"))).toBe(false);
@@ -126,6 +129,17 @@ describe("VistaCarico", () => {
     );
     await waitFor(() => expect(screen.getByText("Puntualità")).toBeInTheDocument());
     expect(f.mock.calls.some(([u]) => u === "/api/bi/acquisti?dal=2026-01-01&al=2026-09-30")).toBe(true);
+  });
+
+  it("alterna volumi e quote percentuali nel carico mensile", async () => {
+    stubFetch();
+    render(<VistaCarico area="vendite" anno={2026} periodo={{ anno: 2026 }} />);
+
+    await waitFor(() => expect(screen.getByText("Come si distribuisce il carico")).toBeInTheDocument(), { timeout: 5000 });
+    const sezione = screen.getByText("Come si distribuisce il carico").closest("section")!;
+    fireEvent.click(within(sezione).getByText("Mostra quote %"));
+    expect(within(sezione).getByText("Mostra volumi")).toBeInTheDocument();
+    expect(within(sezione).getByText("quota di ciascuno sul totale del mese")).toBeInTheDocument();
   });
 });
 
