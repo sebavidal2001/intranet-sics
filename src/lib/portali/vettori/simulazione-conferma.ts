@@ -6,8 +6,9 @@ import { z } from "zod";
  * Sta qui e non nella route perche' deve combaciare con quello che produce
  * `POST .../vettori/simula`: la pagina rimanda indietro gli esiti cosi' come li
  * ha ricevuti. Gli schemi sono stretti di proposito, quindi ogni campo nuovo
- * nella risposta della simulazione va aggiunto anche qui — il test
- * `vettori-simulazione-conferma` fa passare un esito vero per questo schema.
+ * nella risposta della simulazione va aggiunto anche qui, e anche all'esito
+ * del test «il corpo della conferma passa lo schema del server» in
+ * `vettori-simulazione.test.tsx`, che lo fa passare per questo schema.
  */
 const CONDIZIONI = [
   "bancale",
@@ -80,6 +81,12 @@ const Esito = z.object({
   differenzaDalMigliore: z.number().finite().optional(),
   riaddebito: Riaddebito.optional(),
   margine: z.number().finite().nullable().optional(),
+  // Avviso «carburante non del mese»: mancava, e ogni simulazione fatta prima
+  // di inserire la percentuale del mese finiva in «Dati non validi».
+  carburanteNonAggiornato: z.object({
+    anno: z.number().int(),
+    mese: z.number().int().min(1).max(12),
+  }).strict().optional(),
 }).strict();
 
 export const SimulazioneConfermata = z.object({

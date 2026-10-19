@@ -151,6 +151,9 @@ describe("simulazione vettori", () => {
         vettoreId: "00000000-0000-4000-8000-00000000a001",
         listino: { id: "00000000-0000-4000-8000-00000000b001", etichetta: "Listino 2026", validoDal: "2026-01-01", validoAl: null },
         differenzaDalMigliore: 0,
+        // C'è ogni volta che la percentuale del mese non è ancora inserita: lo
+        // schema non la conosceva e dall'8/10 rifiutava la conferma.
+        carburanteNonAggiornato: { anno: 2026, mese: 9 },
       }],
     };
     const fetchMock = vi.fn().mockImplementation(async (input: string) => {
