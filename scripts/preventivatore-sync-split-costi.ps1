@@ -71,16 +71,19 @@ scp -q $csvLocale "${Vm}:/tmp/split_costi.csv"
 if ($LASTEXITCODE -ne 0) { throw "scp fallito" }
 
 Write-Host "3/3 Sostituzione dello split nel database..."
-$remoto = @"
+# Lo script remoto viaggia come file: passare comandi con virgolette come argomento di ssh
+# li rompe (PowerShell 5.1 toglie le virgolette interne).
+$remoto = @'
 set -e
 chmod 644 /tmp/split_costi.csv
-sudo -n -u postgres psql -d intranet -v ON_ERROR_STOP=1 \
-  -c "TRUNCATE preventivatore.articoli_costi_split_staging" \
-  -c "\copy preventivatore.articoli_costi_split_staging FROM '/tmp/split_costi.csv' WITH (FORMAT csv, DELIMITER ';')" \
-  -c "SELECT preventivatore.sostituisci_split_costi($MinRighe, 'sync da PC')"
-rm -f /tmp/split_costi.csv
-"@
-$remoto = $remoto -replace "`r", ""
-ssh $Vm $remoto
+sudo -n -u postgres psql -d intranet -v ON_ERROR_STOP=1   -c "TRUNCATE preventivatore.articoli_costi_split_staging"   -c "\copy preventivatore.articoli_costi_split_staging FROM '/tmp/split_costi.csv' WITH (FORMAT csv, DELIMITER ';')"   -c "SELECT preventivatore.sostituisci_split_costi(__MIN__, 'sync da PC')"
+rm -f /tmp/split_costi.csv /tmp/split_costi_carica.sh
+'@
+$remoto = ($remoto -replace "`r", "") -replace "__MIN__", $MinRighe
+$shLocale = Join-Path $Cartella "split_costi_carica.sh"
+[IO.File]::WriteAllText($shLocale, $remoto, (New-Object System.Text.UTF8Encoding($false)))
+scp -q $shLocale "${Vm}:/tmp/split_costi_carica.sh"
+if ($LASTEXITCODE -ne 0) { throw "scp dello script fallito" }
+ssh $Vm "bash /tmp/split_costi_carica.sh"
 if ($LASTEXITCODE -ne 0) { throw "Caricamento fallito (lo split precedente e' rimasto intatto)" }
 Write-Host "Fatto."
