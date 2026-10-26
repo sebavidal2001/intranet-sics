@@ -67,7 +67,7 @@ export default async function DettaglioPreventivoPage({
     sb
       .schema("preventivatore")
       .from("righe_distinta")
-      .select("id, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_pct, ricarico_coefficiente, tipo_riga, totale_riga, codice_blocco, scala_con_quantita")
+      .select("id, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_pct, ricarico_coefficiente, tipo_riga, totale_riga, codice_blocco, scala_con_quantita, costo_materiale, costo_manodopera, costo_lavorazione, costo_lav_esterna, costo_altro, split_fonte")
       .eq("documento_id", id)
       // `ordine` (migration 065) preserva l'ordine builder; fallback legacy.
       .order("ordine", { ascending: true, nullsFirst: false })

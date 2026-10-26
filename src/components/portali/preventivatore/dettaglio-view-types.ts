@@ -85,6 +85,13 @@ export interface PreventivoRigaRaw {
   scala_con_quantita?: boolean | null;
   totale_riga: number | string | null;
   codice_blocco: string | null;
+  // Split del costo congelato dal builder (migration 157); null per lo storico importato.
+  costo_materiale?: number | string | null;
+  costo_manodopera?: number | string | null;
+  costo_lavorazione?: number | string | null;
+  costo_lav_esterna?: number | string | null;
+  costo_altro?: number | string | null;
+  split_fonte?: string | null;
 }
 
 // Blocco salvato dal builder (preventivi tipo='generato').

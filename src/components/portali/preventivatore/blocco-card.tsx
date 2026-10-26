@@ -31,6 +31,7 @@ import { BloccoTemplatePanel, type TemplateListItem } from "@/components/portali
 import { InlineCodiceSearch } from "@/components/portali/preventivatore/inline-codice-search"
 import { NumInput } from "@/components/portali/preventivatore/num-input"
 import { FlexmoveRiepilogoModal } from "@/components/portali/preventivatore/flexmove-riepilogo-modal"
+import { SplitCostoBlocco } from "@/components/portali/preventivatore/split-costo-blocco"
 
 // ─── SearchArticoli ───────────────────────────────────────────────────────────
 
@@ -1030,6 +1031,7 @@ export function BloccoCard({
                 </>
               )}
             </div>
+            <SplitCostoBlocco blocco={blocco} q={q} />
             <p className="mt-2 text-[10px] text-text-muted italic">
               Imballaggio, spese generali e margine trattativa sono applicati nel riepilogo finale.
             </p>

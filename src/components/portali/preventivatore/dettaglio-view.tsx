@@ -11,6 +11,7 @@ import { CorreggiTotaliDialog } from "./correggi-totali-dialog";
 import { ConfermaDefinitivo } from "./conferma-definitivo";
 import { SchedaTecnicaDialog } from "./scheda-tecnica-dialog";
 import type { BuilderState } from "./nuovo-view-types";
+import { COMPONENTI, SPLIT_VUOTO, totaleSplit, type SplitCosti } from "@/lib/portali/preventivatore/split-costi";
 import { formattaNomeCliente, capitalizzaDescrizione } from "@/lib/portali/preventivatore/testo";
 import { badgeStato, STATI_NON_MODIFICABILI } from "@/lib/portali/preventivatore/stati";
 import {
@@ -185,6 +186,28 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
     const marginePct = costoTot > 0 ? (margineEuro / costoTot) * 100 : null;
     return { costoTot, baseVendTot, imballaggioTot, tempiTot, speseTot, prezzoTot, margineEuro, marginePct };
   }, [isGenerato, blocchiTable, righePerBlocco, margineDoc]);
+
+  // Composizione del costo diretto (migration 157): split congelato su ogni riga dal trigger
+  // del DB. Stessa convenzione di crea_documento_dal_builder: materiali ×Q, manodopera ×1
+  // (le ore sono dell'intero lotto). Assente per i preventivi storici importati da Excel.
+  const composizioneCosto = useMemo<SplitCosti | null>(() => {
+    if (!isGenerato || !righe_distinta.some((r) => r.split_fonte)) return null;
+    const tot: SplitCosti = { ...SPLIT_VUOTO };
+    for (const b of blocchiTable) {
+      const key = b.codice_blocco ?? b.sheet_name ?? "—";
+      const q = b.quantita_pezzi ?? 1;
+      for (const r of righePerBlocco.get(key) ?? []) {
+        if (!r.split_fonte) continue;
+        const k = (toNum(r.quantita) ?? 0) * (r.tipo_riga === "manodopera" ? 1 : q);
+        tot.materiale += k * (toNum(r.costo_materiale) ?? 0);
+        tot.manodopera += k * (toNum(r.costo_manodopera) ?? 0);
+        tot.lavorazione += k * (toNum(r.costo_lavorazione) ?? 0);
+        tot.lav_esterna += k * (toNum(r.costo_lav_esterna) ?? 0);
+        tot.altro += k * (toNum(r.costo_altro) ?? 0);
+      }
+    }
+    return totaleSplit(tot) > 0 ? tot : null;
+  }, [isGenerato, righe_distinta, blocchiTable, righePerBlocco]);
 
   // Raggruppa righe distinta per sheet_name (fallback su codice_blocco se sheet vuoto)
   const righePerSheet = useMemo(() => {
@@ -612,6 +635,7 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
       {isGenerato && progetto && (
         <>
           <RiepilogoProgetto p={progetto} />
+          {composizioneCosto && <ComposizioneCosto split={composizioneCosto} />}
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-text uppercase tracking-wide flex items-center gap-2">
               <Package className="w-4 h-4" />
@@ -665,6 +689,53 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+const COLORI_COSTO: Record<keyof SplitCosti, string> = {
+  materiale: "#00a1be",
+  manodopera: "#f59e0b",
+  lavorazione: "#8b5cf6",
+  lav_esterna: "#ef4444",
+  altro: "#94a3b8",
+};
+
+// Composizione del costo diretto del preventivo (materia prima / manodopera / trattamenti
+// esterni), congelata al salvataggio. È la base su cui poi si confronta il consuntivo.
+function ComposizioneCosto({ split }: { split: SplitCosti }) {
+  const tot = totaleSplit(split);
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold text-text uppercase tracking-wide flex items-center gap-2">
+        <Tag className="w-4 h-4" />
+        Composizione del costo
+      </h2>
+      <div className="border border-border rounded-xl bg-bg p-4 space-y-3">
+        <div className="h-3 rounded bg-slate-100 overflow-hidden flex">
+          {COMPONENTI.map((k) =>
+            split[k.chiave] > 0 ? (
+              <div key={k.chiave} title={`${k.etichetta}: ${fmtEuro(split[k.chiave])}`} style={{ width: `${(split[k.chiave] / tot) * 100}%`, background: COLORI_COSTO[k.chiave] }} />
+            ) : null
+          )}
+        </div>
+        <dl className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
+          {COMPONENTI.map((k) => (
+            <div key={k.chiave}>
+              <dt className="text-xs text-text-muted inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-sm" style={{ background: COLORI_COSTO[k.chiave] }} />{k.etichetta}
+              </dt>
+              <dd className="tabular-nums text-text">
+                {fmtEuro(split[k.chiave])} <span className="text-xs text-text-muted">({((split[k.chiave] / tot) * 100).toFixed(0)}%)</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <p className="text-[11px] text-text-muted">
+          Costo diretto (materiali × pezzi del blocco, ore di lavorazione per l&apos;intero lotto): senza imballaggio, spese generali e margine.
+          Le percentuali per articolo vengono dallo standard di Impresa al momento del salvataggio; gli articoli senza standard sono contati come materia prima.
+        </p>
+      </div>
+    </section>
+  );
+}
 
 interface ProgettoTotali {
   costoTot: number;

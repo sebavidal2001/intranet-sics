@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Settings,
   BarChart3,
+  Scale,
 } from "lucide-react"
 import type { LivelloAccesso } from "@/lib/auth/portale"
 import { hasMinLivello } from "@/lib/auth/portale"
@@ -32,6 +33,10 @@ const NAV_ITEMS = [
   { name: "Archivio", url: "/preventivatore/archivio", icon: Archive },
 ]
 
+// Costi interni e standard di Impresa: la pagina e le API controllano comunque il ruolo
+// funzionale (ufficio tecnico), qui si evita solo di proporre la voce a chi vede il portale in sola lettura.
+const NAV_CONSUNTIVAZIONE = { name: "Consuntivazione", url: "/preventivatore/consuntivazione", icon: Scale }
+
 const ADMIN_ITEMS = [
   { name: "Impostazioni", url: "/preventivatore/impostazioni", icon: Settings },
 ]
@@ -40,10 +45,11 @@ export function PreventivatoreSidebar({ livello, profile }: PreventivatoreSideba
   const pathname = usePathname()
   const isAdmin = hasMinLivello(livello, "admin")
 
-  const allItems = isAdmin ? [...NAV_ITEMS, ...ADMIN_ITEMS] : NAV_ITEMS
+  const voci = hasMinLivello(livello, "exporter") ? [...NAV_ITEMS, NAV_CONSUNTIVAZIONE] : NAV_ITEMS
+  const allItems = isAdmin ? [...voci, ...ADMIN_ITEMS] : voci
   // Indice della prima voce admin: il divisore va disegnato lì sopra. Prima era
   // renderizzato in coda al <nav>, quindi separava l'ultima voce dal nulla.
-  const primaVoceAdmin = isAdmin ? NAV_ITEMS.length : -1
+  const primaVoceAdmin = isAdmin ? voci.length : -1
 
   return (
     <aside
