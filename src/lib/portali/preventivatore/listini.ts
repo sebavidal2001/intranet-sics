@@ -14,6 +14,24 @@
  * (per mostrare il rapporto) e nel route handler (che non si fida del client).
  */
 
+/**
+ * Listini che riportano il prezzo di LISTINO lordo e lasciano lo sconto di
+ * acquisto alla categoria commerciale del gestionale (Alusic). Il costo è
+ * prezzo × Π(1 − sconto/100); le fasce stanno qui, nel codice, perché cambiarle è
+ * una decisione di acquisto, non un'impostazione da pannello.
+ */
+export interface ScontoPerCategoria {
+  /** Colonna con il codice della categoria commerciale (es. "ALUS/100"). */
+  colonnaCategoria: string;
+  /** Colonna con la descrizione della categoria, che porta la fascia scritta a parole. */
+  colonnaDescrizioneCategoria: string;
+  /**
+   * Sconti a cascata in % per categoria: [30, 10] = 30% poi 10%. Lista vuota =
+   * prezzo già netto. Una categoria assente da qui blocca il caricamento.
+   */
+  fasce: Record<string, number[]>;
+}
+
 export interface TracciatoListino {
   /** Etichetta mostrata nella UI. */
   etichetta: string;
@@ -25,6 +43,8 @@ export interface TracciatoListino {
   colonnaPrezzo: string;
   /** Divisore applicato al prezzo per ottenere il costo di preventivazione. */
   divisore: number;
+  /** Se presente, il costo è il prezzo scontato secondo la categoria della riga. */
+  sconto?: ScontoPerCategoria;
   /**
    * Testi che devono comparire da qualche parte nelle prime righe del foglio.
    * È il controllo che distingue "il file giusto" da "un altro Excel qualsiasi":
@@ -54,9 +74,37 @@ export const TRACCIATI: Record<string, TracciatoListino | null> = {
     descrizioneFormato:
       "listino Dorner/FlexMove: codice in colonna B, descrizione in C, prezzo in R (diviso 2)",
   },
-  // Alusic usa un tracciato diverso da Dorner e il file non è ancora arrivato.
-  // Finché resta null il caricamento viene bloccato con un messaggio esplicito.
-  ALUSIC: null,
+  // Alusic: esportazione del listino del gestionale (26/10/2026). "Prezzo" (G) è il
+  // listino lordo; la fascia di sconto non è una colonna ma sta nel nome della
+  // categoria commerciale (J/K). Verificato sull'UC del gestionale: il rapporto
+  // UC/prezzo non supera mai la fascia (es. ALUS/004 max 0,551 contro 0,55).
+  // ALUS/001 «60% (ex 60+5%)»: vale 60, il «ex» indica la fascia precedente.
+  ALUSIC: {
+    etichetta: "Alusic",
+    colonnaCodice: "B",
+    colonnaDescrizione: "C",
+    colonnaPrezzo: "G",
+    divisore: 1,
+    sconto: {
+      colonnaCategoria: "J",
+      colonnaDescrizioneCategoria: "K",
+      fasce: {
+        "ALUS/001": [60],
+        "ALUS/003": [50],
+        "ALUS/004": [45],
+        "ALUS/005": [60],
+        "ALUS/100": [50],
+        "ALUS/200": [50],
+        "ALUS/400": [30, 10],
+        "ALUS/600": [50],
+        "WURT/001": [], // «WURTH netto»: prezzo già netto
+      },
+    },
+    intestazioniAttese: ["Codice Cat.Comm.", "Descrizione Cat. Comm.", "Prezzo Minimo"],
+    minVociAttese: 300,
+    descrizioneFormato:
+      "listino Alusic esportato dal gestionale: codice in colonna B, descrizione in C, prezzo di listino in G, categoria commerciale in J/K (la fascia di sconto si ricava dalla categoria)",
+  },
 };
 
 export const FORNITORI_DISPONIBILI = Object.keys(TRACCIATI);
@@ -102,6 +150,23 @@ export interface EsitoValidazione {
  */
 export function normalizzaCodice(codice: string): string {
   return codice.trim().replace(/[\s.\-_/\\*?]+/g, "").toUpperCase();
+}
+
+/** Fattore di costo di una fascia a cascata: [30, 10] → 0,63. */
+export function fattoreSconto(fascia: number[]): number {
+  return fascia.reduce((f, pct) => f * (1 - pct / 100), 1);
+}
+
+/**
+ * Fascia scritta nel nome della categoria: "ALUSIC acessori (50%)" → [50],
+ * "(30+10%)" → [30, 10], "60% (ex 60+5%)" → [60] (vale la prima), "WURTH netto" → [].
+ * Serve da controllo incrociato con le fasce fissate nel tracciato: se Alusic
+ * cambia lo sconto di una categoria il nome cambia e il caricamento si ferma.
+ */
+export function fasciaDaDescrizione(desc: string): number[] {
+  const m = desc.match(/(\d+(?:[.,]\d+)?(?:\s*\+\s*\d+(?:[.,]\d+)?)*)\s*%/);
+  if (!m) return [];
+  return m[1].split("+").map((n) => Number(n.replace(",", ".")));
 }
 
 /** "A" → 0, "B" → 1, "R" → 17, "AA" → 26. */
@@ -242,6 +307,12 @@ export function validaEParsa(
 
   const perCodice = new Map<string, VoceListino>();
   const conflitti = new Set<string>();
+  const categorieIgnote = new Map<string, number>();
+  const categorieCambiate = new Map<string, string>();
+  const categorieViste = new Map<string, { fascia: number[]; n: number }>();
+  const sconto = tracciato.sconto;
+  const iCat = sconto ? letteraToIndice(sconto.colonnaCategoria) : -1;
+  const iDesCat = sconto ? letteraToIndice(sconto.colonnaDescrizioneCategoria) : -1;
   let scartate = 0;
 
   righe.forEach((riga, idx) => {
@@ -263,7 +334,26 @@ export function validaEParsa(
 
     const rawDesc = iDes >= 0 ? riga?.[iDes] : null;
     const descrizione = rawDesc == null ? null : String(rawDesc).trim() || null;
-    const costo = Math.round((prezzo / tracciato.divisore) * 10000) / 10000;
+    let costo = prezzo / tracciato.divisore;
+    if (sconto) {
+      const cat = String(riga?.[iCat] ?? "").trim();
+      const nomeCat = String(riga?.[iDesCat] ?? "").trim();
+      const fascia = sconto.fasce[cat];
+      if (!fascia) {
+        const k = cat || "(vuota)";
+        categorieIgnote.set(k, (categorieIgnote.get(k) ?? 0) + 1);
+        scartate++;
+        return;
+      }
+      if (fasciaDaDescrizione(nomeCat).join("+") !== fascia.join("+")) {
+        categorieCambiate.set(cat, `${nomeCat} (nel codice: ${fascia.join("+") || "netto"}%)`);
+        scartate++;
+        return;
+      }
+      costo *= fattoreSconto(fascia);
+      categorieViste.set(cat, { fascia, n: (categorieViste.get(cat)?.n ?? 0) + 1 });
+    }
+    costo = Math.round(costo * 10000) / 10000;
 
     const esistente = perCodice.get(chiaveCod);
     if (esistente && Math.abs(esistente.costo - costo) > 0.0001) conflitti.add(codice);
@@ -280,9 +370,33 @@ export function validaEParsa(
   const voci = Array.from(perCodice.values());
   log.push(
     `Colonne ${tracciato.colonnaCodice} / ${tracciato.colonnaDescrizione || "—"} / ${tracciato.colonnaPrezzo}` +
-      (tracciato.divisore !== 1 ? ` — prezzo diviso ${tracciato.divisore}` : "")
+      (tracciato.divisore !== 1 ? ` — prezzo diviso ${tracciato.divisore}` : "") +
+      (sconto ? " — prezzo di listino scontato per categoria" : "")
   );
+  if (sconto) {
+    const righeCat = Array.from(categorieViste.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([c, v]) => `${c}: ${v.fascia.length ? v.fascia.join("+") + "%" : "netto"} (${v.n})`);
+    log.push(`Sconto per categoria — ${righeCat.join(" · ")}`);
+  }
   log.push(`${voci.length} codici estratti · ${scartate} righe ignorate (intestazioni e titoli di sezione)`);
+
+  if (categorieIgnote.size > 0) {
+    problemi.push({
+      gravita: "errore",
+      codice: "categoria_senza_sconto",
+      messaggio: `Categorie commerciali senza fascia di sconto nel tracciato: ${Array.from(categorieIgnote.entries()).map(([c, n]) => `${c} (${n} righe)`).join(", ")}.`,
+      azione: "Il costo di questi articoli non si può ricavare: aggiungi la fascia in TRACCIATI (listini.ts) dopo averla confermata con l'ufficio acquisti.",
+    });
+  }
+  if (categorieCambiate.size > 0) {
+    problemi.push({
+      gravita: "errore",
+      codice: "sconto_categoria_cambiato",
+      messaggio: `Il nome della categoria non coincide con la fascia fissata nel tracciato: ${Array.from(categorieCambiate.entries()).map(([c, d]) => `${c} → ${d}`).join("; ")}.`,
+      azione: "Probabilmente Alusic ha cambiato lo sconto di quella categoria: aggiorna la fascia in TRACCIATI dopo averla verificata, poi ricarica.",
+    });
+  }
 
   // ── 5) Il risultato è plausibile ───────────────────────────────────────────
   if (voci.length === 0) {

@@ -200,6 +200,7 @@ export async function POST(request: NextRequest) {
           descrizione: tracciato.colonnaDescrizione,
           prezzo: tracciato.colonnaPrezzo,
           divisore: tracciato.divisore,
+          ...(tracciato.sconto ? { sconto: tracciato.sconto } : {}),
         },
         righe_lette: esito.righe_lette,
         righe_valide: perCodice.size,

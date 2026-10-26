@@ -4,6 +4,8 @@ import {
   letteraToIndice,
   cellaToNumero,
   validaEParsa,
+  fasciaDaDescrizione,
+  fattoreSconto,
   TRACCIATI,
 } from "@/lib/portali/preventivatore/listini";
 
@@ -64,13 +66,17 @@ describe("validaEParsa — controlli che bloccano il caricamento", () => {
     expect(out.problemi[0].codice).toBe("fornitore_sconosciuto");
   });
 
-  it("rifiuta un fornitore dichiarato ma senza tracciato (Alusic)", () => {
-    // Alusic è in elenco ma il suo formato non è ancora definito: meglio
-    // bloccare che indovinare le colonne e produrre costi sbagliati.
-    expect(TRACCIATI.ALUSIC).toBeNull();
-    const out = validaEParsa([INTESTAZIONI_DORNER, riga("X-1", "a", 10)], "ALUSIC");
-    expect(out.ok).toBe(false);
-    expect(out.problemi[0].codice).toBe("tracciato_non_configurato");
+  it("rifiuta un fornitore dichiarato ma senza tracciato", () => {
+    // Un fornitore può stare in TRACCIATI come null finché manca il file di
+    // riferimento: meglio bloccare che indovinare le colonne.
+    TRACCIATI.PROVA = null;
+    try {
+      const out = validaEParsa([INTESTAZIONI_DORNER, riga("X-1", "a", 10)], "PROVA");
+      expect(out.ok).toBe(false);
+      expect(out.problemi[0].codice).toBe("tracciato_non_configurato");
+    } finally {
+      delete TRACCIATI.PROVA;
+    }
   });
 
   it("rifiuta un foglio che non ha le intestazioni attese", () => {
@@ -155,5 +161,83 @@ describe("validaEParsa — estrazione con tracciato Dorner (B / C / R ÷2)", () 
     expect(out.log.join("\n")).toContain("Dorner");
     expect(out.log.join("\n")).toContain("F-2017-Epicor");
     expect(out.log.some((r) => r.includes("Controlli superati"))).toBe(true);
+  });
+});
+
+
+/** Riga del listino Alusic: B codice, C descrizione, G prezzo, J/K categoria. */
+function rigaAlusic(codice: string, prezzo: number, cat: string, nomeCat: string) {
+  const r: unknown[] = new Array(11).fill(null);
+  r[1] = codice;
+  r[2] = "descrizione";
+  r[6] = prezzo;
+  r[9] = cat;
+  r[10] = nomeCat;
+  return r;
+}
+const INTESTAZIONI_ALUSIC = (() => {
+  const r: unknown[] = new Array(11).fill(null);
+  r[1] = "Codice";
+  r[6] = "Prezzo";
+  r[7] = "Prezzo\nMinimo";
+  r[9] = "Codice Cat.Comm.";
+  r[10] = "Descrizione \nCat. Comm. ";
+  return r;
+})();
+
+describe("fasciaDaDescrizione / fattoreSconto", () => {
+  it("legge la fascia scritta nel nome della categoria", () => {
+    expect(fasciaDaDescrizione("ALUSIC acessori (50%)")).toEqual([50]);
+    expect(fasciaDaDescrizione("ALUSIC sist.lin.vie di corsa (30+10%)")).toEqual([30, 10]);
+    expect(fasciaDaDescrizione("ALUSIC profili 60%       (ex 60+5%)")).toEqual([60]);
+    expect(fasciaDaDescrizione('ALUSIC "LEAN MANUFACTURING" (sc.50%)')).toEqual([50]);
+    expect(fasciaDaDescrizione("WURTH netto")).toEqual([]);
+  });
+  it("compone gli sconti a cascata", () => {
+    expect(fattoreSconto([50])).toBeCloseTo(0.5);
+    expect(fattoreSconto([30, 10])).toBeCloseTo(0.63);
+    expect(fattoreSconto([])).toBe(1);
+  });
+});
+
+describe("validaEParsa — Alusic (sconto dalla categoria)", () => {
+  const voci100 = Array.from({ length: 320 }, (_, i) =>
+    rigaAlusic(`013.${i}`, 10, "ALUS/100", "ALUSIC acessori (50%)")
+  );
+
+  it("applica la fascia della categoria al prezzo di listino", () => {
+    const out = validaEParsa(
+      [
+        INTESTAZIONI_ALUSIC,
+        ...voci100,
+        rigaAlusic("084.1", 100, "ALUS/400", "ALUSIC sist.lin.vie di corsa (30+10%)"),
+        rigaAlusic("W-1", 7.5, "WURT/001", "WURTH netto"),
+      ],
+      "ALUSIC"
+    );
+    expect(out.ok).toBe(true);
+    const per = (c: string) => out.voci.find((v) => v.codice === c)!;
+    expect(per("013.0").costo).toBe(5);
+    expect(per("084.1").costo).toBe(63);
+    expect(per("W-1").costo).toBe(7.5);
+    expect(per("013.0").prezzo_origine).toBe(10);
+  });
+
+  it("blocca se compare una categoria senza fascia nel tracciato", () => {
+    const out = validaEParsa(
+      [INTESTAZIONI_ALUSIC, ...voci100, rigaAlusic("X-1", 10, "ALUS/777", "ALUSIC nuova (40%)")],
+      "ALUSIC"
+    );
+    expect(out.ok).toBe(false);
+    expect(out.problemi.map((p) => p.codice)).toContain("categoria_senza_sconto");
+  });
+
+  it("blocca se il nome della categoria dichiara uno sconto diverso dal tracciato", () => {
+    const out = validaEParsa(
+      [INTESTAZIONI_ALUSIC, ...voci100, rigaAlusic("X-1", 10, "ALUS/100", "ALUSIC acessori (55%)")],
+      "ALUSIC"
+    );
+    expect(out.ok).toBe(false);
+    expect(out.problemi.map((p) => p.codice)).toContain("sconto_categoria_cambiato");
   });
 });
