@@ -83,7 +83,25 @@ export interface ArticoloBlocco {
   metri_catena?: number
   /** Metri di guida per pezzo (moltiplicatore, es. trave = 4). */
   metri_guida?: number
+  /**
+   * Split dello standard di Impresa (migration 158). `ult_costo` e' la sola MATERIA PRIMA; qui ci sono,
+   * PER UNITA' di articolo, le componenti spostate nelle righe «da distinta» del blocco.
+   * `undefined` = non ancora valutato (il builder chiede lo standard); `null` = nessuno standard,
+   * l'articolo resta a costo pieno.
+   */
+  split?: SplitArticolo | null
 }
+
+/** Componenti di costo per unita' di articolo spostate nelle lavorazioni «da distinta». */
+export interface SplitArticolo {
+  manodopera: number
+  lavorazione: number
+  lav_esterna: number
+  altro: number
+}
+
+/** Componente di una riga di lavorazione «da distinta» generata dallo split. */
+export type ComponenteDistinta = "manodopera" | "lav_esterna" | "altro"
 
 /** Articolo catena/guida selezionato dall'anagrafica per il blocco Nastro. */
 export interface ArticoloRef {
@@ -113,6 +131,11 @@ export interface ServizioBlocco {
    * se false è "una tantum" (es. Progettazione) e si conta una volta sola.
    */
   scala_con_quantita: boolean
+  /**
+   * Riga automatica «da distinta» (migration 158): la genera il builder dallo split degli articoli,
+   * non si modifica a mano e si ricalcola da sola. `tariffa_ora` e' l'IMPORTO del lotto, `ore` = 1.
+   */
+  auto_split?: ComponenteDistinta
 }
 
 export interface Blocco {
@@ -423,6 +446,8 @@ export interface BuilderStateLavorazione {
   coeff_ricarico: number
   totale: number
   scala_con_quantita: boolean
+  /** Riga generata dallo split degli articoli (migration 158): `ore` non sono ore di lavoro. */
+  da_distinta?: boolean
 }
 
 export interface BuilderStateBlocco {
@@ -472,7 +497,8 @@ export function buildBuilderState(input: {
   const totMat = blocchi.reduce((s, b) => s + b.articoli.reduce((x, a) => x + calcNettoArticolo(a), 0), 0)
   const totSrv = blocchi.reduce((s, b) => s + b.servizi.reduce((x, sv) => x + calcTotaleServizio(sv), 0), 0)
   const allArt = blocchi.flatMap((b) => b.articoli)
-  const oreTot = blocchi.reduce((s, b) => s + b.servizi.reduce((x, sv) => x + sv.ore, 0), 0)
+  // Le righe «da distinta» hanno ore = 1 per costruzione (l'importo sta in tariffa_ora): non sono ore di lavoro.
+  const oreTot = blocchi.reduce((s, b) => s + b.servizi.reduce((x, sv) => x + (sv.auto_split ? 0 : sv.ore), 0), 0)
   const coeffMedio = allArt.length > 0 ? allArt.reduce((s, a) => s + a.coeff_ricarico, 0) / allArt.length : 0
   return {
     titolo: titolo.trim() || null,
@@ -501,6 +527,7 @@ export function buildBuilderState(input: {
         netto: calcNettoArticolo(a),
       })),
       lavorazioni: b.servizi.map((s) => ({
+        da_distinta: Boolean(s.auto_split),
         nome: s.nome,
         categoria: s.categoria,
         ore: s.ore,

@@ -199,6 +199,12 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
       for (const r of righePerBlocco.get(key) ?? []) {
         if (!r.split_fonte) continue;
         const k = (toNum(r.quantita) ?? 0) * (r.tipo_riga === "manodopera" ? 1 : q);
+        // Riga articolo con split (migration 158): qui c'e' solo la materia prima, il resto sta
+        // nelle righe «da distinta» che si sommano per conto loro (le altre colonne sono informative).
+        if (r.split_fonte === "materia") {
+          tot.materiale += k * (toNum(r.costo_materiale) ?? 0);
+          continue;
+        }
         tot.materiale += k * (toNum(r.costo_materiale) ?? 0);
         tot.manodopera += k * (toNum(r.costo_manodopera) ?? 0);
         tot.lavorazione += k * (toNum(r.costo_lavorazione) ?? 0);
@@ -285,6 +291,7 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
           coeff_ricarico: coeff,
           totale: toNum(r.totale_riga) ?? (coeff > 0 ? tariffa * ore / coeff : 0),
           scala_con_quantita: r.scala_con_quantita ?? true,
+          da_distinta: r.split_fonte === "distinta",
         };
       });
       const totaleMateriali = articoli.reduce((somma, r) => somma + r.netto, 0);
@@ -320,7 +327,7 @@ export function DettaglioPreventivoView({ dettaglio }: { dettaglio: PreventivoDe
         netto_totale: materiali + servizi,
         n_blocchi: blocchi.length,
         n_articoli: articoli.length,
-        ore_totali: blocchi.flatMap((b) => b.lavorazioni).reduce((somma, r) => somma + r.ore, 0),
+        ore_totali: blocchi.flatMap((b) => b.lavorazioni).reduce((somma, r) => somma + (r.da_distinta ? 0 : r.ore), 0),
         coeff_ricarico_medio: articoli.length > 0 ? articoli.reduce((somma, r) => somma + r.coeff_ricarico, 0) / articoli.length : 0,
       },
     };

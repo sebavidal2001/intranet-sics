@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { PlusCircle, Loader2, Wand2, Package, Hammer, Sparkles, TrendingUp } from "lucide-react"
@@ -36,6 +36,76 @@ import {
   type Blocco,
 } from "@/components/portali/preventivatore/nuovo-view-types"
 import { useMemo } from "react"
+import {
+  codiciDaValutare,
+  costoPienoArticolo,
+  normalizzaSplit,
+  riscalaArticolo,
+  type QuoteStandard,
+} from "@/components/portali/preventivatore/split-builder"
+import { normalizzaCodice } from "@/lib/portali/preventivatore/listini"
+import type { ArticoloBlocco, ComponenteDistinta, ServizioBlocco, SplitArticolo } from "@/components/portali/preventivatore/nuovo-view-types"
+
+// ─── Mappatura stato builder ↔ API (articoli e lavorazioni, con lo split di migration 158) ───
+
+interface ArticoloApi {
+  codice: string; descrizione: string; qty: number; ult_costo: number; coeff_ricarico: number
+  data_ult_costo?: string | null; split?: SplitArticolo | null
+}
+interface ServizioApi {
+  nome: string; categoria: string; ore: number; tariffa_ora: number; coeff_ricarico: number
+  scala_con_quantita?: boolean; split_componente?: ComponenteDistinta | null
+}
+
+function articoloDaApi(a: ArticoloApi): ArticoloBlocco {
+  return {
+    _key: genKey(),
+    prodotto_id: "",
+    codice: a.codice,
+    descrizione: a.descrizione,
+    ult_costo: a.ult_costo,
+    qty: a.qty,
+    coeff_ricarico: a.coeff_ricarico,
+    manuale: !a.codice,
+    data_ult_costo: a.data_ult_costo ?? null,
+    // Presente solo per le righe salvate con lo split (ult_costo = materia prima); altrimenti il
+    // builder rivaluta l'articolo con lo standard corrente.
+    split: a.split ?? undefined,
+  }
+}
+
+function servizioDaApi(s: ServizioApi): ServizioBlocco {
+  return {
+    _key: genKey(),
+    servizio_id: "",
+    nome: s.nome,
+    categoria: s.split_componente ? "Da distinta" : s.categoria,
+    tariffa_ora: s.tariffa_ora,
+    ore: s.ore,
+    coeff_ricarico: s.coeff_ricarico,
+    scala_con_quantita: s.scala_con_quantita ?? true,
+    auto_split: s.split_componente ?? undefined,
+  }
+}
+
+const articoloPerPayload = (a: ArticoloBlocco) => ({
+  codice: a.codice,
+  descrizione: a.descrizione,
+  qty: a.qty,
+  ult_costo: a.ult_costo,
+  coeff_ricarico: a.coeff_ricarico,
+  ...(a.split ? { split: a.split } : {}),
+})
+
+const servizioPerPayload = (s: ServizioBlocco) => ({
+  nome: s.nome,
+  categoria: s.categoria,
+  ore: s.ore,
+  tariffa_ora: s.tariffa_ora,
+  coeff_ricarico: s.coeff_ricarico,
+  scala_con_quantita: s.scala_con_quantita,
+  ...(s.auto_split ? { split_componente: s.auto_split } : {}),
+})
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -77,6 +147,44 @@ export function NuovoView({
   const [settimaneMax, setSettimaneMax] = useState("")
   const [margineGlobale, setMargineGlobale] = useState(0)
   const [blocchi, setBlocchi] = useState<Blocco[]>([])
+
+  // ── Split di costo (migration 158) ─────────────────────────────────────────
+  // Standard di Impresa per codice (come scritto nel blocco): quote, oppure null se Impresa non ha
+  // uno standard. Si riempie in blocco, una richiesta per volta, e non si rilegge: cambia di notte.
+  const standardRef = useRef(new Map<string, QuoteStandard | null>())
+  const tentatiRef = useRef(new Set<string>())
+  const [standardVer, setStandardVer] = useState(0)
+
+  const caricaStandard = useCallback(async (codici: string[]) => {
+    const da = codici.filter((c) => !standardRef.current.has(c))
+    if (da.length === 0) return
+    da.forEach((c) => tentatiRef.current.add(c))
+    try {
+      const res = await fetch(`/api/portali/preventivatore/costi-split?codici=${encodeURIComponent(da.join(","))}`)
+      if (!res.ok) return // resta da valutare: il salvataggio ricade sul calcolo del database
+      const j = (await res.json()) as { split?: Record<string, QuoteStandard> }
+      for (const c of da) standardRef.current.set(c, j.split?.[normalizzaCodice(c)] ?? null)
+      setStandardVer((v) => v + 1)
+    } catch {
+      /* rete: stesso comportamento, nessuno split */
+    }
+  }, [])
+
+  // 1) chiede lo standard per gli articoli nuovi; 2) quando c'e', sposta manodopera e trattamenti
+  // nelle righe «da distinta» (idempotente: se non c'e' niente da cambiare non rilancia).
+  useEffect(() => {
+    // Con poca attesa: scrivendo un codice a mano non si chiede lo standard a ogni lettera.
+    const t = setTimeout(() => {
+      const nuovi = codiciDaValutare(blocchi).filter((c) => !tentatiRef.current.has(c))
+      if (nuovi.length > 0) void caricaStandard(nuovi)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [blocchi, caricaStandard])
+
+  useEffect(() => {
+    const n = normalizzaSplit(blocchi, standardRef.current)
+    if (n) setBlocchi(n)
+  }, [blocchi, standardVer])
   const [serviziDB, setServiziDB] = useState<ServizioDB[]>(serviziIniziali ?? [])
   const [loadingServizi, setLoadingServizi] = useState(!serviziIniziali)
   const [templates, setTemplates] = useState<TemplateListItem[]>(templateIniziali ?? [])
@@ -156,6 +264,12 @@ export function NuovoView({
     setFaseSalvataggio("salvataggio")
     setSaveError(null)
     try {
+      // Lo split deve essere definitivo prima di salvare: se lo standard di qualche articolo non e'
+      // ancora arrivato lo aspetto, cosi' ciascuna riga parte gia' come materia prima + «da distinta».
+      const daValutare = codiciDaValutare(blocchi)
+      if (daValutare.length > 0) await caricaStandard(daValutare)
+      const blocchiDaSalvare = normalizzaSplit(blocchi, standardRef.current) ?? blocchi
+      if (blocchiDaSalvare !== blocchi) setBlocchi(blocchiDaSalvare)
       const payload = {
         titolo: titolo.trim() || undefined,
         codice: codiceCommessa.trim() || undefined,
@@ -168,27 +282,14 @@ export function NuovoView({
         // solo se > 0 (cronometro effettivamente usato).
         tempo_preventivazione_sec: getPreventivoTimerSeconds(timerKey) || undefined,
         _versione_attesa: editId && versioneAttesa ? versioneAttesa : undefined,
-        blocchi: blocchi.map((b) => ({
+        blocchi: blocchiDaSalvare.map((b) => ({
           nome: b.nome || undefined,
           tipo: b.tipo,
           note: b.note || undefined,
           quantita_pezzi: b.quantita_pezzi ?? 1,
           margine_trattativa_pct: b.margine_trattativa_pct ?? undefined,
-          articoli: b.articoli.map((a) => ({
-            codice: a.codice,
-            descrizione: a.descrizione,
-            qty: a.qty,
-            ult_costo: a.ult_costo,
-            coeff_ricarico: a.coeff_ricarico,
-          })),
-          servizi: b.servizi.map((s) => ({
-            nome: s.nome,
-            categoria: s.categoria,
-            ore: s.ore,
-            tariffa_ora: s.tariffa_ora,
-            coeff_ricarico: s.coeff_ricarico,
-            scala_con_quantita: s.scala_con_quantita,
-          })),
+          articoli: b.articoli.map(articoloPerPayload),
+          servizi: b.servizi.map(servizioPerPayload),
         })),
       }
       const res = await fetch(
@@ -244,8 +345,8 @@ export function NuovoView({
           blocchi?: Array<{
             nome?: string; tipo?: string; note?: string
             quantita_pezzi?: number; margine_trattativa_pct?: number | null
-            articoli: Array<{ codice: string; descrizione: string; qty: number; ult_costo: number; coeff_ricarico: number; data_ult_costo?: string | null }>
-            servizi: Array<{ nome: string; categoria: string; ore: number; tariffa_ora: number; coeff_ricarico: number; scala_con_quantita?: boolean }>
+            articoli: ArticoloApi[]
+            servizi: ServizioApi[]
           }>
           avvisi?: { articoli_aggiornati: number; servizi_aggiornati: number; articoli_non_trovati: number }
         }
@@ -264,27 +365,8 @@ export function NuovoView({
           espanso: i === 0,
           quantita_pezzi: b.quantita_pezzi ?? 1,
           margine_trattativa_pct: b.margine_trattativa_pct ?? null,
-          articoli: b.articoli.map((a) => ({
-            _key: genKey(),
-            prodotto_id: "",
-            codice: a.codice,
-            descrizione: a.descrizione,
-            ult_costo: a.ult_costo,
-            qty: a.qty,
-            coeff_ricarico: a.coeff_ricarico,
-            manuale: !a.codice,
-            data_ult_costo: a.data_ult_costo ?? null,
-          })),
-          servizi: b.servizi.map((s) => ({
-            _key: genKey(),
-            servizio_id: "",
-            nome: s.nome,
-            categoria: s.categoria,
-            tariffa_ora: s.tariffa_ora,
-            ore: s.ore,
-            coeff_ricarico: s.coeff_ricarico,
-            scala_con_quantita: s.scala_con_quantita ?? true,
-          })),
+          articoli: b.articoli.map(articoloDaApi),
+          servizi: b.servizi.map(servizioDaApi),
         }))
         setBlocchi(nuoviBlocchi.length > 0 ? nuoviBlocchi : [creaBlocco()])
 
@@ -336,8 +418,8 @@ export function NuovoView({
           blocchi?: Array<{
             nome?: string; tipo?: string; note?: string
             quantita_pezzi?: number; margine_trattativa_pct?: number | null
-            articoli: Array<{ codice: string; descrizione: string; qty: number; ult_costo: number; coeff_ricarico: number; data_ult_costo?: string | null }>
-            servizi: Array<{ nome: string; categoria: string; ore: number; tariffa_ora: number; coeff_ricarico: number; scala_con_quantita?: boolean }>
+            articoli: ArticoloApi[]
+            servizi: ServizioApi[]
           }>
         }
 
@@ -359,27 +441,8 @@ export function NuovoView({
           espanso: i === 0,
           quantita_pezzi: b.quantita_pezzi ?? 1,
           margine_trattativa_pct: b.margine_trattativa_pct ?? null,
-          articoli: b.articoli.map((a) => ({
-            _key: genKey(),
-            prodotto_id: "",
-            codice: a.codice,
-            descrizione: a.descrizione,
-            ult_costo: a.ult_costo,
-            qty: a.qty,
-            coeff_ricarico: a.coeff_ricarico,
-            manuale: !a.codice,
-            data_ult_costo: a.data_ult_costo ?? null,
-          })),
-          servizi: b.servizi.map((s) => ({
-            _key: genKey(),
-            servizio_id: "",
-            nome: s.nome,
-            categoria: s.categoria,
-            tariffa_ora: s.tariffa_ora,
-            ore: s.ore,
-            coeff_ricarico: s.coeff_ricarico,
-            scala_con_quantita: s.scala_con_quantita ?? true,
-          })),
+          articoli: b.articoli.map(articoloDaApi),
+          servizi: b.servizi.map(servizioDaApi),
         }))
         setBlocchi(nuoviBlocchi.length > 0 ? nuoviBlocchi : [creaBlocco()])
       } catch (err) {
@@ -431,14 +494,17 @@ export function NuovoView({
           ...b,
           articoli: b.articoli.map((a) => {
             const cur = a.codice ? costi.get(a.codice) : undefined
-            if (cur && Math.abs(cur.costo - a.ult_costo) > 0.001) {
+            // Il costo corrente e' un TOTALE: per un articolo splittato si confronta col costo pieno
+            // e si riscalano insieme materia prima e componenti spostate.
+            if (cur && Math.abs(cur.costo - costoPienoArticolo(a)) > 0.001) {
               nArt++
-              return { ...a, ult_costo: cur.costo, data_ult_costo: cur.data ?? a.data_ult_costo }
+              return { ...riscalaArticolo(a, cur.costo), data_ult_costo: cur.data ?? a.data_ult_costo }
             }
             return a
           }),
           servizi: b.servizi.map((s) => {
-            const t = tariffe.get(s.nome.trim().toLowerCase())
+            // Le righe «da distinta» non hanno una tariffa di catalogo: si ricalcolano dagli articoli.
+            const t = s.auto_split ? undefined : tariffe.get(s.nome.trim().toLowerCase())
             if (t != null && Math.abs(t - s.tariffa_ora) > 0.001) {
               nSrv++
               return { ...s, tariffa_ora: t }
@@ -537,7 +603,7 @@ export function NuovoView({
 
   const nArticoliTotali = blocchi.reduce((n, b) => n + b.articoli.length, 0)
   const oreTotali = blocchi.reduce(
-    (ore, b) => ore + b.servizi.reduce((o, s) => o + s.ore, 0),
+    (ore, b) => ore + b.servizi.reduce((o, s) => o + (s.auto_split ? 0 : s.ore), 0),
     0
   )
 
@@ -550,11 +616,12 @@ export function NuovoView({
 
   // Coeff. di ricarico medio dei SERVIZI (prezzo = costo ÷ coeff). Distinto da
   // quello dei materiali: la card Servizi deve mostrare il proprio, non quello articoli.
-  const nServiziTotali = blocchi.reduce((n, b) => n + b.servizi.length, 0)
+  // Le righe «da distinta» (generate dallo split) non contano: non sono lavorazioni scelte a mano.
+  const nServiziTotali = blocchi.reduce((n, b) => n + b.servizi.filter((s) => !s.auto_split).length, 0)
   const coeffRicaricoMedioServizi =
     nServiziTotali > 0
       ? blocchi
-          .flatMap((b) => b.servizi)
+          .flatMap((b) => b.servizi.filter((s) => !s.auto_split))
           .reduce((sum, s) => sum + s.coeff_ricarico, 0) / nServiziTotali
       : 0
 

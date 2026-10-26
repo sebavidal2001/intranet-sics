@@ -42,12 +42,24 @@ export const TemplateCompatibileDocumentoSchema = z.object({
   }).passthrough()),
 }).passthrough();
 
+/**
+ * Split di costo dell'articolo (migration 158): `ult_costo` e' la sola materia prima e qui
+ * viaggiano, PER UNITA', le componenti spostate nelle righe «da distinta» del blocco.
+ */
+const SplitArticoloSchema = z.object({
+  manodopera: NUM_POS.max(10_000_000),
+  lavorazione: NUM_POS.max(10_000_000),
+  lav_esterna: NUM_POS.max(10_000_000),
+  altro: NUM_POS.max(10_000_000),
+});
+
 const ArticoloSchema = z.object({
   codice: z.string().trim().max(64),
   descrizione: z.string().trim().max(500),
   qty: NUM_POS.max(100000),
   ult_costo: NUM_POS.max(10_000_000),
   coeff_ricarico: COEFF,
+  split: SplitArticoloSchema.optional(),
 });
 
 export const ServizioSchema = z.object({
@@ -59,6 +71,21 @@ export const ServizioSchema = z.object({
   scala_con_quantita: z.boolean().optional(),
 });
 
+/**
+ * Riga di lavorazione «da distinta» (migration 158): importo complessivo del lotto per una
+ * componente di costo. Qui `tariffa_ora` e' un IMPORTO (ore = 1), quindi il tetto orario di
+ * LIMITI_SERVIZIO non si applica; vale solo per queste righe, riconoscibili da `split_componente`.
+ */
+export const ServizioDistintaSchema = z.object({
+  nome: ServizioConfigurazioneSchema.shape.nome,
+  categoria: ServizioConfigurazioneSchema.shape.categoria.optional(),
+  ore: NUM_POS.max(100000),
+  tariffa_ora: NUM_POS.max(10_000_000),
+  coeff_ricarico: COEFF,
+  scala_con_quantita: z.boolean().optional(),
+  split_componente: z.enum(["manodopera", "lav_esterna", "altro"]),
+});
+
 const PCT = z.number().finite().min(0).max(1000);
 
 const BloccoSchema = z.object({
@@ -68,7 +95,7 @@ const BloccoSchema = z.object({
   quantita_pezzi: z.number().int().min(1).max(100000).optional(),
   margine_trattativa_pct: PCT.optional(),
   articoli: z.array(ArticoloSchema).default([]),
-  servizi: z.array(ServizioSchema).default([]),
+  servizi: z.array(z.union([ServizioDistintaSchema, ServizioSchema])).default([]),
 });
 
 export const PostBodySchema = z.object({

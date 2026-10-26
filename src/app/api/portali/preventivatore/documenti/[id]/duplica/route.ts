@@ -29,6 +29,13 @@ type RigaRow = {
   ricarico_pct: number | string | null;
   tipo_riga: string | null;
   scala_con_quantita: boolean | null;
+  // Split di costo (migration 157/158)
+  costo_materiale?: number | string | null;
+  costo_manodopera?: number | string | null;
+  costo_lavorazione?: number | string | null;
+  costo_lav_esterna?: number | string | null;
+  costo_altro?: number | string | null;
+  split_fonte?: string | null;
 };
 
 function num(v: number | string | null | undefined): number {
@@ -81,7 +88,7 @@ export async function GET(
       sb
         .schema("preventivatore")
         .from("righe_distinta")
-        .select("codice_blocco, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_coefficiente, ricarico_pct, tipo_riga, scala_con_quantita")
+        .select("codice_blocco, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_coefficiente, ricarico_pct, tipo_riga, scala_con_quantita, costo_materiale, costo_manodopera, costo_lavorazione, costo_lav_esterna, costo_altro, split_fonte")
         .eq("documento_id", id)
         .order("id", { ascending: true }),
     ]);
@@ -170,7 +177,12 @@ export async function GET(
         const articoli = rs
           .filter((r) => r.tipo_riga !== "manodopera")
           .map((r) => {
-            const originale = num(r.prezzo_unitario);
+            // Riga con split (migration 158): prezzo_unitario e' la sola materia prima. La copia riparte
+            // dal costo PIENO, cosi' il confronto col costo corrente (un totale) resta corretto e il
+            // builder rivaluta lo split con lo standard di oggi.
+            const originale = r.split_fonte === "materia"
+              ? num(r.prezzo_unitario) + num(r.costo_manodopera) + num(r.costo_lavorazione) + num(r.costo_lav_esterna) + num(r.costo_altro)
+              : num(r.prezzo_unitario);
             const corrente = r.codice_articolo ? prezziCorrenti.get(r.codice_articolo) : undefined;
             const trovato = corrente !== undefined;
             if (!trovato && r.codice_articolo) articoliNonTrovati++;
@@ -191,7 +203,8 @@ export async function GET(
           });
 
         const servizi = rs
-          .filter((r) => r.tipo_riga === "manodopera")
+          // Le righe «da distinta» si rigenerano dagli articoli: non si copiano.
+          .filter((r) => r.tipo_riga === "manodopera" && r.split_fonte !== "distinta")
           .map((r) => {
             const originale = num(r.prezzo_unitario);
             const match = tariffeCorrenti.get((r.descrizione ?? "").trim().toLowerCase());

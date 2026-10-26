@@ -31,7 +31,8 @@ import { BloccoTemplatePanel, type TemplateListItem } from "@/components/portali
 import { InlineCodiceSearch } from "@/components/portali/preventivatore/inline-codice-search"
 import { NumInput } from "@/components/portali/preventivatore/num-input"
 import { FlexmoveRiepilogoModal } from "@/components/portali/preventivatore/flexmove-riepilogo-modal"
-import { SplitCostoBlocco } from "@/components/portali/preventivatore/split-costo-blocco"
+import { SplitInfo, CostiDaDistinta } from "@/components/portali/preventivatore/split-distinta-ui"
+import { senzaSplit } from "@/components/portali/preventivatore/split-builder"
 
 // ─── SearchArticoli ───────────────────────────────────────────────────────────
 
@@ -519,7 +520,10 @@ export function BloccoCard({
   function aggiornaArticolo(key: string, campo: keyof ArticoloBlocco, valore: number | string) {
     const articoli = blocco.articoli.map((a) => {
       if (a._key !== key) return a
-      const next = { ...a, [campo]: valore }
+      let next = { ...a, [campo]: valore }
+      // Cambiando il codice lo split dell'articolo precedente non vale piu': si torna al costo
+      // pieno e il builder rivaluta il nuovo codice.
+      if (campo === "codice" && a.split !== undefined) next = senzaSplit(next)
       // Modifica manuale della quantità di una riga-formula → override (la formula non la sovrascrive più)
       if (campo === "qty" && a.qta_formula) next.qta_override = true
       return next
@@ -541,7 +545,7 @@ export function BloccoCard({
       a._key !== key ? a : {
         ...a,
         prodotto_id: p.id, codice: p.codice, descrizione: capitalizzaDescrizione(p.descrizione),
-        data_ult_costo: p.data_ult_costo ?? null, manuale: false,
+        data_ult_costo: p.data_ult_costo ?? null, manuale: false, split: undefined,
         ...(blocco.usa_catena_guida ? { ult_costo_componente: base } : { ult_costo: base }),
       }
     )
@@ -636,7 +640,8 @@ export function BloccoCard({
   function toggleLavorazioni() {
     const attive = blocco.lavorazioni_attive ?? true
     if (attive) {
-      onChange({ ...blocco, lavorazioni_attive: false, servizi: [] })
+      // Le righe «da distinta» non sono lavorazioni scelte: restano (e' costo degli articoli).
+      onChange({ ...blocco, lavorazioni_attive: false, servizi: blocco.servizi.filter((s) => s.auto_split) })
     } else {
       onChange({ ...blocco, lavorazioni_attive: true })
     }
@@ -915,16 +920,25 @@ export function BloccoCard({
                                 : undefined
                           }
                         >
-                          <NumInput
-                            min={0}
-                            step={0.01}
-                            value={blocco.usa_catena_guida ? (a.ult_costo_componente ?? a.ult_costo) : a.ult_costo}
-                            onChange={(n) =>
-                              aggiornaArticolo(a._key, blocco.usa_catena_guida ? "ult_costo_componente" : "ult_costo", n)
-                            }
-                            className={`w-full text-right text-sm border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1 ${prezzoVecchio(a.data_ult_costo) ? "bg-amber-100" : "bg-transparent"}`}
-                            title={blocco.usa_catena_guida ? "Costo base del componente (catena/guida aggiunti nel Netto)" : undefined}
-                          />
+                          <div className="flex items-center gap-1">
+                            <SplitInfo articolo={a} />
+                            <NumInput
+                              min={0}
+                              step={0.01}
+                              value={blocco.usa_catena_guida ? (a.ult_costo_componente ?? a.ult_costo) : a.ult_costo}
+                              onChange={(n) =>
+                                aggiornaArticolo(a._key, blocco.usa_catena_guida ? "ult_costo_componente" : "ult_costo", n)
+                              }
+                              className={`w-full text-right text-sm border-0 focus:outline-none focus:ring-1 focus:ring-[#00a1be]/40 rounded px-1 ${prezzoVecchio(a.data_ult_costo) ? "bg-amber-100" : "bg-transparent"}`}
+                              title={
+                                blocco.usa_catena_guida
+                                  ? "Costo base del componente (catena/guida aggiunti nel Netto)"
+                                  : a.split
+                                    ? "Solo materia prima: manodopera e trattamenti sono nelle righe «da distinta»"
+                                    : undefined
+                              }
+                            />
+                          </div>
                         </td>
                         <td className="px-2 py-1.5 border border-border">
                           <NumInput
@@ -976,6 +990,9 @@ export function BloccoCard({
             )}
           </div>
 
+          {/* Costi da distinta: manodopera e trattamenti degli articoli con standard Impresa */}
+          <CostiDaDistinta servizi={blocco.servizi.filter((s) => s.auto_split)} quantita={q} />
+
           {/* Servizi & Lavorazioni — con switch attiva/disattiva per blocco */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -1000,7 +1017,7 @@ export function BloccoCard({
             </div>
             {(blocco.lavorazioni_attive ?? true) ? (
               <ServiziSection
-                servizi={blocco.servizi}
+                servizi={blocco.servizi.filter((s) => !s.auto_split)}
                 serviziDisponibili={serviziDB}
                 quantita={q}
                 onAggiungi={aggiungiServizio}
@@ -1031,7 +1048,6 @@ export function BloccoCard({
                 </>
               )}
             </div>
-            <SplitCostoBlocco blocco={blocco} q={q} />
             <p className="mt-2 text-[10px] text-text-muted italic">
               Imballaggio, spese generali e margine trattativa sono applicati nel riepilogo finale.
             </p>

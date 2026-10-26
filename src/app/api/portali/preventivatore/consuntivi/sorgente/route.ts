@@ -50,6 +50,8 @@ export async function GET(request: NextRequest) {
         .from("righe_distinta")
         .select("id, codice_blocco, tipo_riga, codice_articolo, descrizione, quantita, prezzo_unitario, costo_materiale, costo_manodopera, costo_lavorazione, costo_lav_esterna, costo_altro, split_fonte")
         .eq("documento_id", documentoId)
+        // Le righe «da distinta» derivano dagli articoli e non sono selezionabili a parte.
+        .or("split_fonte.is.null,split_fonte.neq.distinta")
         .order("ordine", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: true }),
     ]);

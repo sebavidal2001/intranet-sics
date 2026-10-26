@@ -31,6 +31,13 @@ type RigaRow = {
   ricarico_pct: number | string | null;
   tipo_riga: string | null;
   scala_con_quantita: boolean | null;
+  // Split di costo (migration 157/158)
+  costo_materiale?: number | string | null;
+  costo_manodopera?: number | string | null;
+  costo_lavorazione?: number | string | null;
+  costo_lav_esterna?: number | string | null;
+  costo_altro?: number | string | null;
+  split_fonte?: string | null;
 };
 
 function num(v: number | string | null | undefined): number {
@@ -87,7 +94,7 @@ export async function GET(
       sb
         .schema("preventivatore")
         .from("righe_distinta")
-        .select("codice_blocco, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_coefficiente, ricarico_pct, tipo_riga, scala_con_quantita")
+        .select("codice_blocco, sheet_name, codice_articolo, descrizione, quantita, prezzo_unitario, ricarico_coefficiente, ricarico_pct, tipo_riga, scala_con_quantita, costo_materiale, costo_manodopera, costo_lavorazione, costo_lav_esterna, costo_altro, split_fonte")
         .eq("documento_id", id)
         .order("ordine", { ascending: true, nullsFirst: false })
         .order("id", { ascending: true }),
@@ -137,6 +144,18 @@ export async function GET(
             ult_costo: num(r.prezzo_unitario),
             coeff_ricarico: num(r.ricarico_coefficiente) || num(r.ricarico_pct) || 0.5,
             data_ult_costo: null,
+            // Riga salvata con lo split (migration 158): ult_costo e' la sola materia prima e qui
+            // ci sono le componenti, per unita', spostate nelle righe «da distinta».
+            ...(r.split_fonte === "materia"
+              ? {
+                  split: {
+                    manodopera: num(r.costo_manodopera),
+                    lavorazione: num(r.costo_lavorazione),
+                    lav_esterna: num(r.costo_lav_esterna),
+                    altro: num(r.costo_altro),
+                  },
+                }
+              : {}),
           }));
 
         const servizi = rs
@@ -148,6 +167,9 @@ export async function GET(
             tariffa_ora: num(r.prezzo_unitario),
             coeff_ricarico: num(r.ricarico_coefficiente) || num(r.ricarico_pct) || 0.5,
             scala_con_quantita: r.scala_con_quantita ?? true,
+            ...(r.split_fonte === "distinta"
+              ? { split_componente: num(r.costo_manodopera) > 0 ? "manodopera" : num(r.costo_lav_esterna) > 0 ? "lav_esterna" : "altro" }
+              : {}),
           }));
 
         return {
