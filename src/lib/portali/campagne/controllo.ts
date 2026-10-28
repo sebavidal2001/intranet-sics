@@ -87,6 +87,17 @@ export interface InvioStorico {
   data_consegna: string;
 }
 
+/**
+ * Una consegna al banco registrata dal programma senza numero d'ordine: il cliente ha
+ * ritirato la documentazione di persona, quindi la riga che ne segue in Impresa non e'
+ * "senza busta".
+ */
+export interface ConsegnaBanco {
+  campagna_id: string;
+  codice_cliente: string;
+  data_consegna: string;
+}
+
 /** (cliente, anno, numero) di tutti gli invii non annullati, anche quelli chiusi. */
 export interface OrdineCollegato {
   codice_cliente: string;
@@ -113,6 +124,8 @@ export interface InputControllo {
   ordiniCollegati: OrdineCollegato[];
   /** Invii importati dall'Excel ancora senza numero d'ordine. Opzionale. */
   storici?: InvioStorico[];
+  /** Consegne al banco senza numero d'ordine, di qualunque origine. Opzionale. */
+  consegneBanco?: ConsegnaBanco[];
 }
 
 export type EsitoControllo =
@@ -272,6 +285,9 @@ export function ordineRecente(dataDoc: string, riferimento: string): boolean {
   const giorni = (new Date(riferimento).getTime() - new Date(dataDoc).getTime()) / 86_400_000;
   return giorni <= GIORNI_ATTESA_DDT;
 }
+
+/** Quanti giorni separano la consegna al banco dall'ordine che la riga di Impresa racconta. */
+export const GIORNI_BANCO_ORDINE = 14;
 
 const dataConsegnaRiga =(r: RigaImpresa) => r.confermata ?? r.richiesta ?? null;
 const numeroOrd = (n: string) => Number.parseInt(normNumero(n), 10) || 0;
@@ -601,10 +617,29 @@ export function eseguiControllo(input: InputControllo): RisultatoControllo {
     ...occupati,
     ...lavoro.filter((i) => i.ordine_numero && i.ordine_anno !== null).map((i) => chiaveOrdine(i.codice_cliente, i.ordine_anno, i.ordine_numero)),
   ]);
+  // Una consegna al banco senza ordine copre UNA riga: la piu' vicina per data, della
+  // stessa campagna (o di campagna non riconoscibile) e dello stesso cliente.
+  const bancoUsato = new Set<number>();
+  const banco = input.consegneBanco ?? [];
   for (const r of input.righeAperte) {
     const k = chiaveOrdine(r.cliente, r.anno, r.numero);
     if (legati.has(k)) continue;
     const nominate = campagneNominate(r, campagne);
+    const giorniDa = (b: ConsegnaBanco) => Math.abs(new Date(b.data_consegna).getTime() - new Date(r.data_doc).getTime()) / 86_400_000;
+    const coperta = banco
+      .map((b, i) => ({ b, i }))
+      .filter(
+        ({ b, i }) =>
+          !bancoUsato.has(i) &&
+          b.codice_cliente === r.cliente &&
+          giorniDa(b) <= GIORNI_BANCO_ORDINE &&
+          (nominate.length === 0 || nominate.some((c) => c.id === b.campagna_id))
+      )
+      .sort((x, y) => giorniDa(x.b) - giorniDa(y.b))[0];
+    if (coperta) {
+      bancoUsato.add(coperta.i);
+      continue;
+    }
     const campagna = nominate.length === 1 ? nominate[0] : null;
     nuova({
       chiave: `documentazione_senza_busta|${k}`,

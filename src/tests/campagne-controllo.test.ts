@@ -385,6 +385,33 @@ describe("documentazione senza busta", () => {
     expect(r.anomalie).toEqual([]);
   });
 
+  const banco = (o: Partial<{ campagna_id: string; codice_cliente: string; data_consegna: string }> = {}) => ({
+    campagna_id: "c1",
+    codice_cliente: "K9",
+    data_consegna: "2026-09-30",
+    ...o,
+  });
+  const rigaK9 = () => riga({ cliente: "K9", numero: "55", data_doc: "2026-09-30" });
+
+  it("una consegna al banco senza ordine della stessa campagna copre la riga", () => {
+    const r = eseguiControllo(input({ invii: [], righe: [rigaK9()], consegneBanco: [banco()] }));
+    expect(r.anomalie).toEqual([]);
+  });
+
+  it("la consegna al banco copre una sola riga", () => {
+    const r = eseguiControllo(
+      input({ invii: [], righe: [rigaK9(), riga({ cliente: "K9", numero: "56", data_doc: "2026-09-30" })], consegneBanco: [banco()] })
+    );
+    expect(r.anomalie).toHaveLength(1);
+  });
+
+  it("non copre se è di un altro cliente, di un'altra campagna o troppo lontana nel tempo", () => {
+    for (const b of [banco({ codice_cliente: "K2" }), banco({ campagna_id: "c2" }), banco({ data_consegna: "2026-08-01" })]) {
+      const r = eseguiControllo(input({ invii: [], righe: [rigaK9()], consegneBanco: [b] }));
+      expect(tipi(r)).toEqual(["documentazione_senza_busta"]);
+    }
+  });
+
   it("senza parole riconoscibili la campagna resta ignota ma l'anomalia c'è", () => {
     const r = eseguiControllo(input({ invii: [], righe: [riga({ descrizione: "INVIO DOCUMENTAZIONE" })] }));
     expect(r.anomalie[0].campagna_id).toBeNull();

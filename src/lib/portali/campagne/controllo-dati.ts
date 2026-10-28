@@ -6,6 +6,7 @@ import {
   type CampagnaCtrl,
   type DdtImpresa,
   type InvioCtrl,
+  type ConsegnaBanco,
   type InvioStorico,
   type MossaScambio,
   type OrdineImpresa,
@@ -131,6 +132,17 @@ async function lavora(controlloId: string, o: OpzioniControllo): Promise<Riassun
   if (soloClienti) qStorici = qStorici.in("codice_cliente", soloClienti);
   const storici = (ok("storico senza ordine", await qStorici) ?? []) as InvioStorico[];
 
+  // Le consegne al banco senza numero d'ordine (registrate dal programma o importate):
+  // coprono la riga DOCUMENTAZIONE che compare in Impresa per lo stesso ritiro.
+  let qBanco = db()
+    .from("invii")
+    .select("campagna_id, codice_cliente, data_consegna")
+    .eq("stato", "consegnata_banco")
+    .is("ordine_numero", null)
+    .not("data_consegna", "is", null);
+  if (soloClienti) qBanco = qBanco.in("codice_cliente", soloClienti);
+  const consegneBanco = (ok("consegne al banco", await qBanco) ?? []) as ConsegnaBanco[];
+
   const clientiInvii = [...new Set([...invii.map((i) => i.codice_cliente), ...storici.map((i) => i.codice_cliente)])];
   const datiDel = ok("data dei dati", await db().rpc("impresa_aggiornato_il")) as string | null;
 
@@ -159,6 +171,7 @@ async function lavora(controlloId: string, o: OpzioniControllo): Promise<Riassun
     ddt,
     ordiniCollegati: collegati,
     storici,
+    consegneBanco,
   });
 
   // 4) SCRITTURA DEGLI INVII — condizionata allo stato: se un collega ha agito
