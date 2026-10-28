@@ -535,6 +535,13 @@ export type Dimensione =
   /** Date di consegna chiesta e confermata al cliente (vendite). */
   | "data_consegna_richiesta"
   | "data_consegna_confermata"
+  /**
+   * Dove cade la consegna confermata rispetto a OGGI: in ritardo, entro 7 giorni,
+   * entro 30 giorni… Solo per il portafoglio. I filtri non sanno dire «prima di
+   * una data» e il periodo guarda la data del documento: senza questa fascia
+   * «cosa e' in ritardo» non si puo' chiedere.
+   */
+  | "fascia_consegna"
   /** Data promessa dal fornitore (acquisti). */
   | "data_promessa"
   /** Addetto back office che ha creato il preventivo. */

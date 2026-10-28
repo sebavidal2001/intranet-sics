@@ -224,7 +224,7 @@ export const CARTELLE: Cartella[] = [
         // `consegnato_futuro` e' lo stesso portafoglio sul mese di consegna: resta nel motore
         // (lo usa il Cruscotto) ma non si offre due volte.
         valori: ["portafoglio"],
-        campi: CAMPI_DOCUMENTO_VENDITA("Numero ordine/anno"),
+        campi: [...CAMPI_DOCUMENTO_VENDITA("Numero ordine/anno"), { chiave: "fascia_consegna" }],
         famiglieDocumento: ["portafoglio"],
       },
       {

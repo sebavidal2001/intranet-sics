@@ -45,6 +45,8 @@ export function motivoDimensioneNonAmmessa(dimensione: Dimensione): string {
     case "esito":
     case "fascia_eta":
       return "Solo per i preventivi";
+    case "fascia_consegna":
+      return "Solo per il portafoglio";
     case "causale":
     case "causale_codice":
       return "Solo per consegnato, banco e preventivi";

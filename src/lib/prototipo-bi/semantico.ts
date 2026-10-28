@@ -922,6 +922,31 @@ export const CATALOGO: Record<ChiaveMetrica, DefinizioneMetrica> = {
   },
 };
 
+/** Oggi nel fuso dell'azienda (yyyy-mm-dd): a mezzanotte UTC a Roma e' gia' un altro giorno. */
+function oggiAzienda(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Rome" });
+}
+
+/**
+ * Dove cade la consegna confermata rispetto a `oggi` (a 7 e a 30 giorni, non «fine
+ * mese»: l'ultima settimana del mese quella fascia sarebbe vuota). Le etichette portano un
+ * numero davanti perche' l'ordinamento per etichetta le metta in ordine di
+ * urgenza. Senza data confermata e' una fascia a parte: sono le righe che nessuno
+ * ha ancora promesso, e in una stampa con filtro sulla data non comparirebbero.
+ */
+export function fasciaConsegna(confermata: string | undefined, oggi: string): string {
+  if (!confermata) return "5 - Senza data confermata";
+  if (confermata < oggi) return "1 - In ritardo";
+  const tra = (giorni: number) => {
+    const d = new Date(`${oggi}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + giorni);
+    return d.toISOString().slice(0, 10);
+  };
+  if (confermata <= tra(7)) return "2 - Entro 7 giorni";
+  if (confermata <= tra(30)) return "3 - Entro 30 giorni";
+  return "4 - Oltre 30 giorni";
+}
+
 const SOLO_ACQUISTI = new Set<Dimensione>(["fornitore", "buyer"]);
 const SOLO_VISITE = new Set<Dimensione>(["cap", "provincia", "grado", "tipo_visita", "esito_visita", "prossima_visita"]);
 // Le dimensioni che appartengono a un solo dominio: sulle vendite non esistono. La
@@ -1017,6 +1042,10 @@ export const DIMENSIONI: Record<Dimensione, { etichetta: string; estrai: (r: Rig
   data_consegna_confermata: {
     etichetta: "Consegna confermata",
     estrai: (r) => r.dataConsegnaConfermata || "(non indicata)",
+  },
+  fascia_consegna: {
+    etichetta: "Scadenza consegna",
+    estrai: (r) => fasciaConsegna(r.dataConsegnaConfermata, oggiAzienda()),
   },
   data_promessa: { etichetta: "Data promessa", estrai: (r) => r.promessa || "(non indicata)" },
   esito_visita: { etichetta: "Esito visita", estrai: (r) => r.esitoVisita || "(non indicato)" },

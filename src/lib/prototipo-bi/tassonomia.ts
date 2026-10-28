@@ -286,6 +286,10 @@ export function dimensioniPerMetrica(metrica: ChiaveMetrica): Dimensione[] {
     dimensioni.push("creatore", "esito", "fascia_eta", "causale", "causale_codice");
   }
 
+  if (dataset === "portafoglio") {
+    dimensioni.push("fascia_consegna");
+  }
+
   // Il dataset delle consegne e quello del banco sono gli unici che espongono
   // una causale di movimento; portafoglio e consegne future non la conservano.
   if (dataset === "consegnato" || dataset === "controllo_banco") {
