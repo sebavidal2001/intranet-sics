@@ -28,6 +28,9 @@ interface Props {
   iniziali: AnomaliaElenco[];
   vettori: Array<{ codice: string; nome: string }>;
   puoDecidere: boolean;
+  /** Filtri iniziali, per arrivare dall'Analisi su un tipo preciso. */
+  tipoIniziale?: string;
+  statoIniziale?: string;
 }
 
 const ETICHETTA_TIPO: Record<string, string> = {
@@ -65,9 +68,17 @@ const eur = (n: number | null | undefined) =>
 const pct = (n: number | null | undefined) =>
   n == null ? "—" : `${n > 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
 
-export function AnomalieView({ iniziali, vettori, puoDecidere }: Props) {
+export function AnomalieView({
+  iniziali,
+  vettori,
+  puoDecidere,
+  tipoIniziale = "",
+  statoIniziale = "aperta",
+}: Props) {
   const [anomalie, setAnomalie] = useState(iniziali);
-  const [stato, setStato] = useState<string>("aperta");
+  const [stato, setStato] = useState<string>(statoIniziale);
+  const [tipo, setTipo] = useState<string>(tipoIniziale);
+  const [aperte, setAperte] = useState<Set<string>>(new Set());
   const [vettore, setVettore] = useState<string>("");
   const [direzione, setDirezione] = useState("");
   const [periodo, setPeriodo] = useState("");
@@ -91,11 +102,12 @@ export function AnomalieView({ iniziali, vettori, puoDecidere }: Props) {
       anomalie.filter(
         (a) =>
           (stato === "" || a.stato === stato) &&
+          (tipo === "" || a.tipo === tipo) &&
           (vettore === "" || a.vettore_codice === vettore) &&
           (direzione === "" || a.direzione === direzione) &&
           (periodo === "" || `${a.anno}-${a.mese}` === periodo)
       ),
-    [anomalie, stato, vettore, direzione, periodo]
+    [anomalie, stato, tipo, vettore, direzione, periodo]
   );
 
   const totali = useMemo(() => {
@@ -251,6 +263,21 @@ export function AnomalieView({ iniziali, vettori, puoDecidere }: Props) {
           </select>
         </label>
         <label className="text-xs">
+          <span className="block text-text-muted mb-1 font-medium">Motivo</span>
+          <select
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+            className="h-9 rounded-lg border border-border bg-bg px-3 text-sm text-text"
+          >
+            <option value="">Tutti</option>
+            {Object.entries(ETICHETTA_TIPO).map(([codice, nome]) => (
+              <option key={codice} value={codice}>
+                {nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs">
           <span className="block text-text-muted mb-1 font-medium">Vettore</span>
           <select
             value={vettore}
@@ -343,7 +370,10 @@ export function AnomalieView({ iniziali, vettori, puoDecidere }: Props) {
 
                   <p className="text-xs text-text-muted mt-1">
                     {a.data_spedizione ?? "senza data"} ·{" "}
-                    <span className="font-mono">{a.riferimento ?? "senza riferimento"}</span> ·{" "}
+                    <span className="font-mono" title="Numero bolla (BF)">
+                      {a.riferimento ?? "senza riferimento"}
+                    </span>
+                    {a.protocollo ? ` (prot. ${a.protocollo})` : ""} ·{" "}
                     {a.controparte ?? "controparte ignota"}
                     {a.colli != null ? ` · ${a.colli} colli` : ""}
                     {a.peso_tassato != null || a.peso != null
@@ -356,8 +386,25 @@ export function AnomalieView({ iniziali, vettori, puoDecidere }: Props) {
                   {a.motivazione && (
                     <p className="text-xs mt-1.5 text-text-muted italic">
                       Motivazione: {a.motivazione}
+                      {a.decisa_il ? ` (${a.decisa_il.slice(0, 10)})` : ""}
                     </p>
                   )}
+
+                  <button
+                    type="button"
+                    className="text-xs text-primary-dark hover:underline mt-1.5"
+                    aria-expanded={aperte.has(a.id)}
+                    onClick={() =>
+                      setAperte((prima) => {
+                        const dopo = new Set(prima);
+                        if (!dopo.delete(a.id)) dopo.add(a.id);
+                        return dopo;
+                      })
+                    }
+                  >
+                    {aperte.has(a.id) ? "Nascondi dettaglio" : "Mostra dettaglio spedizione"}
+                  </button>
+                  {aperte.has(a.id) && <DettaglioSpedizione a={a} />}
                 </div>
 
                 <div className="text-right shrink-0">
@@ -642,6 +689,48 @@ function Tessera({
         {valore}
       </p>
       <p className="text-[11px] text-text-muted mt-0.5 leading-snug">{nota}</p>
+    </div>
+  );
+}
+
+function DettaglioSpedizione({ a }: { a: AnomaliaElenco }) {
+  const voci: Array<[string, string]> = [
+    ["Bolla (BF)", a.riferimento ?? "—"],
+    ["Protocollo BF", a.protocollo ?? "—"],
+    ["Bolla citata in fattura", a.riferimento_fattura ?? "—"],
+    ["N. spedizione vettore", a.numero_spedizione ?? "—"],
+    ["Fattura", a.fattura_numero ? `${a.fattura_numero}${a.riga_numero ? ` · riga ${a.riga_numero}` : ""}` : "—"],
+    ["Cliente / fornitore", a.controparte ?? "—"],
+    ["Data", a.data_spedizione ?? "—"],
+    ["Colli", a.colli != null ? String(a.colli) : "—"],
+    ["Peso reale", a.peso != null ? `${a.peso} kg` : "—"],
+    ["Peso volumetrico", a.peso_volumetrico != null ? `${a.peso_volumetrico} kg` : "—"],
+    ["Peso tassato", a.peso_tassato != null ? `${a.peso_tassato} kg` : "—"],
+    ["Peso applicato al calcolo", a.peso_applicato ?? "—"],
+    ["Listino / zona", [a.listino, a.zona].filter(Boolean).join(" · ") || "—"],
+    ["Nolo", eur(a.nolo)],
+    ["Supplementi", eur(a.supplementi)],
+    ["Adeguamento", eur(a.adeguamento)],
+    ["Carburante", eur(a.carburante)],
+    ["Fatturato / atteso", `${eur(a.fatturato)} / ${eur(a.atteso)}`],
+  ];
+  return (
+    <div className="mt-2 rounded-lg border border-border/60 bg-bg-page px-3 py-2.5">
+      <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3 text-xs">
+        {voci.map(([k, val]) => (
+          <div key={k} className="flex justify-between gap-3">
+            <dt className="text-text-muted">{k}</dt>
+            <dd className="text-text tabular-nums text-right">{val}</dd>
+          </div>
+        ))}
+      </dl>
+      {a.avvertenze && a.avvertenze.length > 0 && (
+        <ul className="mt-2 text-xs text-text-muted list-disc pl-4 space-y-0.5">
+          {a.avvertenze.map((x) => (
+            <li key={x}>{x}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

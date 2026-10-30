@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BarChart3, Info } from "lucide-react";
 import type { Analisi } from "@/lib/portali/vettori/letture";
@@ -266,9 +267,13 @@ export function AnalisiView({ dati, anno }: Props) {
                     key={t.tipo}
                     className="px-5 py-2.5 flex items-center justify-between gap-4"
                   >
-                    <span className="text-sm text-text">
+                    <Link
+                      href={`/vettori/anomalie?tipo=${encodeURIComponent(t.tipo)}&stato=tutte`}
+                      className="text-sm text-text hover:text-primary-dark hover:underline"
+                      title="Vedi le singole spedizioni"
+                    >
                       {ETICHETTA_TIPO[t.tipo] ?? t.tipo}
-                    </span>
+                    </Link>
                     <span className="text-xs text-text-muted tabular-nums shrink-0">
                       {int(t.quante)} volte · {int(t.aperte)} ancora aperte ·{" "}
                       {eurPreciso(t.contestato)}

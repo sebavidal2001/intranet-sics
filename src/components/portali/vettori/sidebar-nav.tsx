@@ -46,7 +46,7 @@ const VOCI: ReadonlyArray<{ name: string; url: string; icon: typeof Calculator; 
   { name: "Bolle", url: "/vettori/bolle", icon: Ruler, visibile: "banco" },
   { name: "Spedizioni", url: "/vettori/spedizioni", icon: PackageSearch, visibile: "importi" },
   { name: "Fatture", url: "/vettori/fatture", icon: FileText, visibile: "gestione" },
-  { name: "Anomalie", url: "/vettori/anomalie", icon: TriangleAlert, visibile: "gestione" },
+  { name: "Anomalie", url: "/vettori/anomalie", icon: TriangleAlert, visibile: "importi" },
   { name: "Analisi", url: "/vettori/analisi", icon: BarChart3, visibile: "tutti" },
   { name: "Listini", url: "/vettori/listini", icon: Settings, visibile: "listini" },
 ];

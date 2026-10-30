@@ -13,10 +13,12 @@ export const dynamic = "force-dynamic";
 
 const STATI = ["aperta", "contestata", "accettata", "corretta"] as const;
 
-/** GET — elenco filtrato. */
+/** GET — elenco filtrato. In sola lettura anche per direzione e listini: vedono cosa è stato accettato e perché. */
 export async function GET(request: NextRequest) {
   try {
-    const guard = await requireVettori({ ruoli: [VETTORI_RUOLI.amministrazione] });
+    const guard = await requireVettori({
+      ruoli: [VETTORI_RUOLI.amministrazione, VETTORI_RUOLI.direzione, VETTORI_RUOLI.listini],
+    });
     if (!guard.ok) return guard.response;
 
     const p = request.nextUrl.searchParams;

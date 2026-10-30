@@ -34,6 +34,17 @@ export interface AnomaliaElenco {
   mese: number | null;
   riga_numero: number | null;
   riferimento: string | null;
+  riferimento_fattura?: string | null;
+  numero_spedizione?: string | null;
+  protocollo?: string | null;
+  spedizione_id?: string | null;
+  peso_volumetrico?: number | null;
+  nolo?: number | null;
+  supplementi?: number | null;
+  adeguamento?: number | null;
+  carburante?: number | null;
+  peso_applicato?: string | null;
+  avvertenze?: string[] | null;
   controparte: string | null;
   direzione: string | null;
   data_spedizione: string | null;

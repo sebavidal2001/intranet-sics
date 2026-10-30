@@ -308,6 +308,8 @@ export interface RigaStorico {
   porto_codice: string | null;
   /** Sugli arrivi: il nostro protocollo BF (la bolla e' il DDT del fornitore). */
   numero_protocollo: string | null;
+  /** Numero bolla citato dal vettore in fattura, se diverso da quello della BF. */
+  riferimento_fattura?: string | null;
   riaddebito_previsto: number | null;
   riaddebito_verificato_il: string | null;
   /** false = la fattura e' stata acquisita senza quadratura. NULL senza fattura. */

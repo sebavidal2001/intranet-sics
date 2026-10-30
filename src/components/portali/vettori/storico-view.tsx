@@ -869,6 +869,11 @@ function Riga({
         </td>
         <td className="px-3 py-1.5 font-mono text-[12px] whitespace-nowrap">
           {r.riferimento ?? <span className="text-danger">senza bolla</span>}
+          {r.riferimento_fattura && r.riferimento_fattura !== r.riferimento && (
+            <span className="block font-sans text-[10px] text-text-muted" title="Numero bolla citato dal vettore in fattura">
+              in fattura: {r.riferimento_fattura}
+            </span>
+          )}
           {r.numero_protocollo && (
             <span className="block font-sans text-[10px] text-text-muted" title="Nostro protocollo BF">
               Prot. {r.numero_protocollo}
